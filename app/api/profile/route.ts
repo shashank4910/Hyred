@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { embed, extractResumeInsights } from '@/lib/gemini';
 import { parseResume } from '@/lib/resume';
-import type { Preferences } from '@/lib/types';
+import type { Preferences, ResumeInsights } from '@/lib/types';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -12,6 +12,7 @@ type JsonBody = {
   full_name?: string;
   resume_text?: string;
   preferences?: Preferences;
+  insights?: ResumeInsights;
 };
 
 export async function POST(req: NextRequest) {
@@ -20,6 +21,7 @@ export async function POST(req: NextRequest) {
   let fullName: string | null = null;
   let resumeText: string;
   let preferences: Preferences = {};
+  let providedInsights: ResumeInsights | null = null;
 
   if (contentType.includes('multipart/form-data')) {
     // File upload path
@@ -35,6 +37,14 @@ export async function POST(req: NextRequest) {
           { error: 'invalid preferences JSON' },
           { status: 400 },
         );
+      }
+    }
+    const insightsRaw = form.get('insights');
+    if (typeof insightsRaw === 'string' && insightsRaw) {
+      try {
+        providedInsights = JSON.parse(insightsRaw);
+      } catch {
+        // ignore - we'll re-extract
       }
     }
 
@@ -65,7 +75,7 @@ export async function POST(req: NextRequest) {
       resumeText = fallbackText;
     }
   } else {
-    // JSON path (legacy / preferences-only updates)
+    // JSON path
     let body: JsonBody;
     try {
       body = (await req.json()) as JsonBody;
@@ -76,6 +86,7 @@ export async function POST(req: NextRequest) {
     fullName = body.full_name ?? null;
     resumeText = body.resume_text ?? '';
     preferences = body.preferences ?? {};
+    providedInsights = body.insights ?? null;
   }
 
   if (!email) {
@@ -102,14 +113,19 @@ export async function POST(req: NextRequest) {
     !existing.resume_embedding;
 
   let embedding: number[] | null = (existing?.resume_embedding as number[]) ?? null;
-  let insights = existing?.insights ?? null;
+  let insights = providedInsights ?? existing?.insights ?? null;
 
   if (resumeChanged) {
     try {
-      // Run embedding + insights extraction in parallel
+      // If client already extracted insights (via /api/profile/parse), skip LLM call here.
+      const insightsPromise =
+        providedInsights != null
+          ? Promise.resolve(providedInsights)
+          : extractResumeInsights(resumeText).catch(() => null);
+
       const [vec, ins] = await Promise.all([
         embed(resumeText),
-        extractResumeInsights(resumeText).catch(() => null),
+        insightsPromise,
       ]);
       embedding = vec;
       if (ins) insights = ins;
