@@ -29,7 +29,7 @@ export default async function Dashboard({
 
   const { data: profile } = await sb
     .from('profiles')
-    .select('id, email, full_name, resume_text, insights')
+    .select('id, email, full_name, resume_text, insights, preferences')
     .order('created_at')
     .limit(1)
     .maybeSingle();
@@ -37,6 +37,14 @@ export default async function Dashboard({
   if (!profile || !profile.resume_text) {
     return <EmptyOnboarding />;
   }
+
+  // Effective min score: explicit ?min= URL param overrides; otherwise use
+  // the user's saved preference; default to 70.
+  const effectiveMinScore = sp.min
+    ? Number(sp.min)
+    : Number(
+        (profile.preferences as { min_score?: number } | null)?.min_score ?? 70,
+      );
 
   // Status counts
   const counts: Record<string, number> = {};
@@ -76,11 +84,9 @@ export default async function Dashboard({
     )
     .eq('profile_id', profile.id)
     .eq('status', status)
+    .gte('llm_score', effectiveMinScore)
     .order('llm_score', { ascending: false });
 
-  if (sp.min) {
-    query = query.gte('llm_score', Number(sp.min));
-  }
   if (sp.source) {
     query = query.eq('jobs.source', sp.source);
   }
@@ -95,6 +101,16 @@ export default async function Dashboard({
   }
 
   const { data: matches } = await query.limit(100);
+
+  // Count total matches in this status across ALL scores (so we can tell the
+  // user how many are hidden by their min_score filter).
+  const { count: totalInStatus } = await sb
+    .from('matches')
+    .select('id', { count: 'exact', head: true })
+    .eq('profile_id', profile.id)
+    .eq('status', status);
+  const hiddenBelowThreshold =
+    (totalInStatus ?? 0) - ((matches ?? []).length || 0);
 
   return (
     <div className="space-y-6">
@@ -154,7 +170,12 @@ export default async function Dashboard({
 
       {/* Results */}
       {(matches ?? []).length === 0 ? (
-        <EmptyMatches status={status} totalJobs={totalJobs ?? 0} />
+        <EmptyMatches
+          status={status}
+          totalJobs={totalJobs ?? 0}
+          hiddenBelowThreshold={hiddenBelowThreshold}
+          effectiveMinScore={effectiveMinScore}
+        />
       ) : (
         <ul className="space-y-2.5">
           {(matches ?? []).map((m) => {
@@ -237,7 +258,50 @@ function EmptyOnboarding() {
   );
 }
 
-function EmptyMatches({ status, totalJobs }: { status: string; totalJobs: number }) {
+function EmptyMatches({
+  status,
+  totalJobs,
+  hiddenBelowThreshold,
+  effectiveMinScore,
+}: {
+  status: string;
+  totalJobs: number;
+  hiddenBelowThreshold: number;
+  effectiveMinScore: number;
+}) {
+  // If we have lower-scored matches that are filtered out, surface that
+  // clearly and link to /onboarding to lower the threshold.
+  if (hiddenBelowThreshold > 0) {
+    return (
+      <div className="card text-center py-10 space-y-3">
+        <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/10 text-amber-300 mx-auto">
+          <Inbox className="h-5 w-5" />
+        </div>
+        <p className="text-sm">
+          <span className="font-semibold">{hiddenBelowThreshold}</span> match
+          {hiddenBelowThreshold === 1 ? ' is' : 'es are'} hidden because{' '}
+          {hiddenBelowThreshold === 1 ? 'its score is' : 'their scores are'}{' '}
+          below your threshold of{' '}
+          <span className="text-primary font-semibold">{effectiveMinScore}</span>.
+        </p>
+        <p className="text-xs text-muted">
+          Lower the threshold in your{' '}
+          <Link href="/onboarding" className="text-primary hover:underline">
+            profile
+          </Link>{' '}
+          to view them, or wait for the next scan to bring fresher jobs.
+        </p>
+        <Link
+          href={`/?status=${status}&min=0`}
+          className="btn inline-flex"
+          scroll={false}
+        >
+          Show all scores anyway
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <div className="card text-center py-12">
       <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-surface text-muted mx-auto">

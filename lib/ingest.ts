@@ -167,7 +167,9 @@ export async function runIngest(opts?: {
           jobDescription: c.description,
         });
         scored++;
-        if (score < minScore) continue;
+        // Persist EVERY scored match. The dashboard applies the min-score
+        // filter at view time, so nothing is lost. `kept` still counts only
+        // matches above threshold for run-summary purposes.
         const { error } = await sb.from('matches').upsert(
           {
             profile_id: p.id,
@@ -179,7 +181,7 @@ export async function runIngest(opts?: {
           },
           { onConflict: 'profile_id,job_id' },
         );
-        if (!error) kept++;
+        if (!error && score >= minScore) kept++;
       } catch (e) {
         runErrors.push({ source: 'score', error: `${c.id}: ${(e as Error).message}` });
       }
