@@ -13,9 +13,15 @@
   "dependencies": {
     "@google/generative-ai": "^0.24.0",
     "@supabase/supabase-js": "^2.45.4",
+    "date-fns": "^4.3.0",
+    "jose": "^6.2.3",
+    "lucide-react": "^1.16.0",
+    "mammoth": "^1.12.0",
     "next": "^15.1.6",
+    "pdf-parse-fork": "^1.2.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "sonner": "^2.0.7"
   },
   "devDependencies": {
     "@types/node": "^22.9.0",
