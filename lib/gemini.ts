@@ -1,22 +1,34 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+/**
+ * AI helpers (powered by OpenAI gpt-4o-mini + text-embedding-3-small).
+ *
+ * The file is named `gemini.ts` for historical reasons; it now uses OpenAI.
+ * Function names and signatures are unchanged so the rest of the codebase
+ * doesn't need to know which provider is in use.
+ */
+
+import OpenAI from 'openai';
 import type { ResumeInsights } from './types';
 
-function getClient() {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) throw new Error('Missing GEMINI_API_KEY env var');
-  return new GoogleGenerativeAI(key);
+const CHAT_MODEL = 'gpt-4o-mini';
+const EMBED_MODEL = 'text-embedding-3-small'; // 1536 dims
+
+function getClient(): OpenAI {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) throw new Error('Missing OPENAI_API_KEY env var');
+  return new OpenAI({ apiKey: key });
 }
 
 /**
- * Embed a piece of text using Gemini text-embedding-004 (768 dims).
+ * Embed a piece of text. text-embedding-3-small returns 1536 floats.
  */
 export async function embed(text: string): Promise<number[]> {
   const client = getClient();
-  const model = client.getGenerativeModel({ model: 'text-embedding-004' });
-  // Cap input length to keep us safely within token limits.
   const trimmed = text.slice(0, 8000);
-  const res = await model.embedContent(trimmed);
-  return res.embedding.values;
+  const res = await client.embeddings.create({
+    model: EMBED_MODEL,
+    input: trimmed,
+  });
+  return res.data[0].embedding;
 }
 
 /**
@@ -31,15 +43,8 @@ export async function scoreJob(args: {
   jobDescription: string | null;
 }): Promise<{ score: number; reason: string }> {
   const client = getClient();
-  const model = client.getGenerativeModel({
-    model: 'gemini-1.5-flash',
-    generationConfig: {
-      responseMimeType: 'application/json',
-      temperature: 0.2,
-    },
-  });
 
-  const prompt = `You are a senior tech recruiter. Score how well this job matches the candidate.
+  const userPrompt = `Score how well this job matches the candidate.
 
 CANDIDATE RESUME:
 ${args.resume.slice(0, 6000)}
@@ -64,8 +69,17 @@ Penalize: heavy mismatch in seniority, irrelevant domain, missing must-have skil
 
 Respond with strict JSON: {"score": <int 0-100>, "reason": "<one or two sentences>"}`;
 
-  const res = await model.generateContent(prompt);
-  const text = res.response.text();
+  const res = await client.chat.completions.create({
+    model: CHAT_MODEL,
+    response_format: { type: 'json_object' },
+    temperature: 0.2,
+    messages: [
+      { role: 'system', content: 'You are a senior tech recruiter.' },
+      { role: 'user', content: userPrompt },
+    ],
+  });
+
+  const text = res.choices[0]?.message?.content ?? '{}';
   try {
     const parsed = JSON.parse(text);
     const score = Math.max(0, Math.min(100, Math.round(Number(parsed.score) || 0)));
@@ -87,12 +101,8 @@ export async function generateCoverLetter(args: {
   jobDescription: string | null;
 }): Promise<string> {
   const client = getClient();
-  const model = client.getGenerativeModel({
-    model: 'gemini-1.5-flash',
-    generationConfig: { temperature: 0.7 },
-  });
 
-  const prompt = `Write a concise, confident cover letter (max 220 words) for this job.
+  const userPrompt = `Write a concise, confident cover letter (max 220 words) for this job.
 Avoid clichés ("I am writing to apply..."). Lead with a hook tied to the company or role.
 Reference 2-3 concrete achievements from the resume that map directly to job requirements.
 End with a clear call to action. No emojis. No placeholders like [Your Name] - use the real name if provided.
@@ -110,8 +120,15 @@ ${(args.jobDescription ?? '').slice(0, 4000)}
 
 Output the cover letter only, no preamble.`;
 
-  const res = await model.generateContent(prompt);
-  return res.response.text().trim();
+  const res = await client.chat.completions.create({
+    model: CHAT_MODEL,
+    temperature: 0.7,
+    messages: [
+      { role: 'system', content: 'You write tailored cover letters for senior tech roles.' },
+      { role: 'user', content: userPrompt },
+    ],
+  });
+  return (res.choices[0]?.message?.content ?? '').trim();
 }
 
 /**
@@ -123,15 +140,8 @@ export async function extractResumeInsights(
   resume: string,
 ): Promise<ResumeInsights> {
   const client = getClient();
-  const model = client.getGenerativeModel({
-    model: 'gemini-1.5-flash',
-    generationConfig: {
-      responseMimeType: 'application/json',
-      temperature: 0.2,
-    },
-  });
 
-  const prompt = `Read this resume and extract structured insights.
+  const userPrompt = `Read this resume and extract structured insights.
 
 RESUME:
 ${resume.slice(0, 8000)}
@@ -158,8 +168,17 @@ Rules:
 - top_skills must be concrete tools/technologies (e.g. "kubernetes", "jmeter"), not soft skills.
 - summary must avoid first person ("Performance engineer with 12 years..." not "I am a...").`;
 
-  const res = await model.generateContent(prompt);
-  const text = res.response.text();
+  const res = await client.chat.completions.create({
+    model: CHAT_MODEL,
+    response_format: { type: 'json_object' },
+    temperature: 0.2,
+    messages: [
+      { role: 'system', content: 'You parse resumes into structured JSON. Output JSON only.' },
+      { role: 'user', content: userPrompt },
+    ],
+  });
+
+  const text = res.choices[0]?.message?.content ?? '{}';
   try {
     const parsed = JSON.parse(text);
     const cleanString = (v: unknown): string | undefined => {
@@ -206,15 +225,8 @@ export async function matchSkills(args: {
   if (!args.candidateSkills.length) return { matched: [], missing: [] };
 
   const client = getClient();
-  const model = client.getGenerativeModel({
-    model: 'gemini-1.5-flash',
-    generationConfig: {
-      responseMimeType: 'application/json',
-      temperature: 0.1,
-    },
-  });
 
-  const prompt = `Given a job description and a list of candidate skills, identify which candidate skills are mentioned or strongly implied by the JD, and which key skills the JD asks for that the candidate is missing.
+  const userPrompt = `Given a job description and a list of candidate skills, identify which candidate skills are mentioned or strongly implied by the JD, and which key skills the JD asks for that the candidate is missing.
 
 CANDIDATE SKILLS:
 ${args.candidateSkills.join(', ')}
@@ -228,9 +240,15 @@ Return strict JSON:
   "missing": [<up to 6 important skills the JD asks for that aren't in the candidate's list>]
 }`;
 
-  const res = await model.generateContent(prompt);
+  const res = await client.chat.completions.create({
+    model: CHAT_MODEL,
+    response_format: { type: 'json_object' },
+    temperature: 0.1,
+    messages: [{ role: 'user', content: userPrompt }],
+  });
+
   try {
-    const parsed = JSON.parse(res.response.text());
+    const parsed = JSON.parse(res.choices[0]?.message?.content ?? '{}');
     const matched = Array.isArray(parsed.matched)
       ? parsed.matched.map(String).filter((s: string) => args.candidateSkills.includes(s))
       : [];
