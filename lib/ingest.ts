@@ -55,17 +55,45 @@ export async function runIngest(opts?: {
 
   try {
     // ---------- 1. Pick the profile ----------
-    const profileQuery = opts?.profileEmail
-      ? sb.from('profiles').select('*').eq('email', opts.profileEmail).single()
-      : sb.from('profiles').select('*').order('created_at').limit(1).maybeSingle();
+    // Case-insensitive email match with whitespace trim, with a graceful
+    // fallback to the first profile if no match is found. This makes the
+    // INGEST_PROFILE_EMAIL secret forgiving of typos / casing differences.
+    const wantedEmail = opts?.profileEmail?.trim().toLowerCase();
+    let profile: Profile | null = null;
 
-    const { data: profile, error: profileErr } = await profileQuery;
-    if (profileErr) throw new Error(`Profile lookup failed: ${profileErr.message}`);
-    if (!profile) throw new Error('No profile found. Complete onboarding first.');
+    if (wantedEmail) {
+      const { data, error } = await sb
+        .from('profiles')
+        .select('*')
+        .ilike('email', wantedEmail)
+        .maybeSingle();
+      if (error) throw new Error(`Profile lookup failed: ${error.message}`);
+      profile = (data as Profile | null) ?? null;
+      if (!profile) {
+        console.warn(
+          `[ingest] No profile matched email "${wantedEmail}", falling back to first profile.`,
+        );
+      }
+    }
+
+    if (!profile) {
+      const { data, error } = await sb
+        .from('profiles')
+        .select('*')
+        .order('created_at')
+        .limit(1)
+        .maybeSingle();
+      if (error) throw new Error(`Profile lookup failed: ${error.message}`);
+      profile = (data as Profile | null) ?? null;
+    }
+
+    if (!profile) {
+      throw new Error('No profile found. Complete onboarding first.');
+    }
     if (!profile.resume_text || !profile.resume_embedding) {
       throw new Error('Profile is missing resume_text or resume_embedding.');
     }
-    const p = profile as Profile;
+    const p = profile;
     const minScore = p.preferences?.min_score ?? MIN_SCORE_TO_KEEP;
     const blacklist = new Set(
       (p.preferences?.blacklist_companies ?? []).map((s) => s.toLowerCase().trim()),
