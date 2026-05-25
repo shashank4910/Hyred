@@ -166,12 +166,15 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
           { id },
         );
       } else {
-        // Parsed OK, but the AI step failed (e.g. Gemini quota).
+        // Parsed OK, but the AI step failed (quota, billing, network, etc).
         // Resume text is still saved so the user can fill the form manually.
-        toast.warning(
-          'Resume parsed, but AI auto-fill is unavailable right now. Fill in details manually and save.',
-          { id, duration: 8000 },
-        );
+        const detail = data.analysis_error
+          ? truncate(data.analysis_error, 220)
+          : 'AI auto-fill is unavailable right now.';
+        toast.warning(`Resume parsed. ${detail}`, {
+          id,
+          duration: 12000,
+        });
       }
     } catch (e) {
       toast.error((e as Error).message, { id });
