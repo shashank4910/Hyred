@@ -20,6 +20,12 @@ export type Preferences = {
 };
 
 export type ResumeInsights = {
+  // Contact info extracted from the resume (used for autofill)
+  full_name?: string;
+  email?: string;
+  current_location?: string;
+  phone?: string;
+  // Career signals
   years_experience?: number;
   seniority?: 'junior' | 'mid' | 'senior' | 'staff' | 'principal' | 'unknown';
   top_skills?: string[];

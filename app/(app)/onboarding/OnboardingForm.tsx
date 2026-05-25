@@ -11,6 +11,7 @@ import {
   Sparkles,
   CheckCircle2,
   Save,
+  Wand2,
 } from 'lucide-react';
 import type { Preferences, ResumeInsights } from '@/lib/types';
 
@@ -23,6 +24,17 @@ type Initial = {
   resumeChars: number;
 };
 
+/**
+ * Fields that can be auto-filled by AI from a resume.
+ * Tracked so we can show a ✨ AI badge that disappears once user edits.
+ */
+type AiField =
+  | 'email'
+  | 'fullName'
+  | 'roles'
+  | 'locations'
+  | 'phone';
+
 export function OnboardingForm({ initial }: { initial: Initial }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -33,6 +45,7 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
   const [fullName, setFullName] = useState(initial.fullName);
   const [resumeText, setResumeText] = useState(initial.resumeText);
   const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [parsedText, setParsedText] = useState<string>('');
   const [dragOver, setDragOver] = useState(false);
 
   // Preferences
@@ -53,9 +66,58 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
 
   // State
   const [insights, setInsights] = useState<ResumeInsights | null>(initial.insights);
+  const [analyzing, setAnalyzing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [aiFields, setAiFields] = useState<Set<AiField>>(new Set());
 
-  function handleFile(file: File | null) {
+  function markAiFilled(...fields: AiField[]) {
+    setAiFields((prev) => {
+      const next = new Set(prev);
+      fields.forEach((f) => next.add(f));
+      return next;
+    });
+  }
+
+  function clearAiFlag(field: AiField) {
+    setAiFields((prev) => {
+      if (!prev.has(field)) return prev;
+      const next = new Set(prev);
+      next.delete(field);
+      return next;
+    });
+  }
+
+  /**
+   * Apply AI-extracted insights to form fields.
+   * Only fills empty fields by default to avoid clobbering user edits.
+   */
+  function applyInsights(ins: ResumeInsights, force = false) {
+    const filled: AiField[] = [];
+
+    if (ins.email && (force || !email)) {
+      setEmail(ins.email);
+      filled.push('email');
+    }
+    if (ins.full_name && (force || !fullName)) {
+      setFullName(ins.full_name);
+      filled.push('fullName');
+    }
+    if (ins.suggested_roles?.length && (force || !roles)) {
+      setRoles(ins.suggested_roles.join(', '));
+      filled.push('roles');
+    }
+    if (ins.current_location && (force || !locations)) {
+      // Combine resume location with sensible defaults
+      const parts = [ins.current_location, 'Remote'];
+      setLocations(parts.join(', '));
+      filled.push('locations');
+    }
+
+    if (filled.length) markAiFilled(...filled);
+    return filled.length;
+  }
+
+  async function handleFile(file: File | null) {
     if (!file) return;
     const ext = file.name.toLowerCase();
     if (
@@ -71,14 +133,75 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
       return;
     }
     setResumeFile(file);
+    await analyzeFile(file);
   }
 
-  function applyInsightSuggestions() {
-    if (!insights) return;
-    if (insights.suggested_roles?.length) {
-      setRoles(insights.suggested_roles.join(', '));
+  /**
+   * Upload the file to /api/profile/parse, then auto-fill the form.
+   * Does not save anything to the database.
+   */
+  async function analyzeFile(file: File) {
+    setAnalyzing(true);
+    const id = toast.loading('Analyzing your resume...');
+    try {
+      const fd = new FormData();
+      fd.append('resume', file);
+      const res = await fetch('/api/profile/parse', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Analysis failed');
+
+      setParsedText(data.resume_text);
+      const ins = data.insights as ResumeInsights;
+      setInsights(ins);
+      const count = applyInsights(ins);
+
+      toast.success(
+        count > 0
+          ? `Auto-filled ${count} field${count === 1 ? '' : 's'} from resume`
+          : 'Resume analyzed',
+        { id },
+      );
+    } catch (e) {
+      toast.error((e as Error).message, { id });
+      setResumeFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    } finally {
+      setAnalyzing(false);
     }
-    toast.success('Suggested roles applied');
+  }
+
+  /**
+   * Re-run AI analysis on whatever resume content we currently have
+   * (parsed file content or pasted text).
+   */
+  async function reanalyze() {
+    const text = parsedText || resumeText;
+    if (!text || text.length < 50) {
+      toast.error('No resume content to analyze');
+      return;
+    }
+    setAnalyzing(true);
+    const id = toast.loading('Re-analyzing...');
+    try {
+      const res = await fetch('/api/profile/parse', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ resume_text: text }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed');
+      const ins = data.insights as ResumeInsights;
+      setInsights(ins);
+      const count = applyInsights(ins, true); // force overwrite
+      toast.success(
+        count > 0 ? `Refreshed ${count} field${count === 1 ? '' : 's'}` : 'Done',
+        { id },
+      );
+    } catch (e) {
+      toast.error((e as Error).message, { id });
+    } finally {
+      setAnalyzing(false);
+    }
   }
 
   async function save() {
@@ -86,7 +209,7 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
       toast.error('Email is required');
       return;
     }
-    if (!resumeFile && !resumeText.trim()) {
+    if (!resumeFile && !resumeText.trim() && !parsedText) {
       toast.error('Upload a resume or paste text');
       return;
     }
@@ -101,20 +224,20 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
     };
 
     setSaving(true);
-    const id = toast.loading(
-      resumeFile
-        ? 'Parsing resume and extracting insights...'
-        : 'Embedding and analyzing resume...',
-    );
+    const id = toast.loading('Saving profile...');
     try {
       const fd = new FormData();
       fd.append('email', email);
       fd.append('full_name', fullName);
       fd.append('preferences', JSON.stringify(prefs));
+      if (insights) {
+        // Pass already-extracted insights so backend skips the LLM call
+        fd.append('insights', JSON.stringify(insights));
+      }
       if (resumeFile) {
         fd.append('resume', resumeFile);
       } else {
-        fd.append('resume_text', resumeText);
+        fd.append('resume_text', parsedText || resumeText);
       }
 
       const res = await fetch('/api/profile', { method: 'POST', body: fd });
@@ -126,12 +249,14 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
       }
       toast.success(
         data.reembedded
-          ? `Saved · resume embedded (${data.resume_chars} chars)`
+          ? `Saved · resume embedded (${data.resume_chars.toLocaleString()} chars)`
           : 'Preferences saved',
         { id },
       );
       setResumeFile(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
+      // Once saved, the AI-fill flags no longer apply (user has confirmed)
+      setAiFields(new Set());
       startTransition(() => router.refresh());
     } catch (e) {
       toast.error((e as Error).message, { id });
@@ -142,14 +267,26 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
 
   return (
     <div className="space-y-5">
-      {insights && <InsightsPanel insights={insights} onApply={applyInsightSuggestions} />}
+      {insights && (
+        <InsightsPanel
+          insights={insights}
+          onReanalyze={reanalyze}
+          analyzing={analyzing}
+        />
+      )}
 
       <section className="card space-y-4">
-        <h2 className="font-semibold flex items-center gap-2">
-          <FileText className="h-4 w-4 text-primary" /> Resume
-        </h2>
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold flex items-center gap-2">
+            <FileText className="h-4 w-4 text-primary" /> Resume
+          </h2>
+          {analyzing && (
+            <span className="inline-flex items-center gap-1.5 text-xs text-primary">
+              <Loader2 className="h-3 w-3 animate-spin" /> Analyzing with AI
+            </span>
+          )}
+        </div>
 
-        {/* File upload */}
         <div
           onDragOver={(e) => {
             e.preventDefault();
@@ -163,11 +300,13 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
           }}
           className={
             'rounded-lg border-2 border-dashed p-6 text-center transition-colors cursor-pointer ' +
-            (dragOver
-              ? 'border-primary bg-primary/5'
-              : 'border-border hover:border-primary/40')
+            (analyzing
+              ? 'border-primary/60 bg-primary/5 animate-pulse'
+              : dragOver
+                ? 'border-primary bg-primary/5'
+                : 'border-border hover:border-primary/40')
           }
-          onClick={() => fileInputRef.current?.click()}
+          onClick={() => !analyzing && fileInputRef.current?.click()}
         >
           <input
             ref={fileInputRef}
@@ -183,17 +322,20 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
               <span className="text-muted text-xs">
                 ({(resumeFile.size / 1024).toFixed(0)}KB)
               </span>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setResumeFile(null);
-                  if (fileInputRef.current) fileInputRef.current.value = '';
-                }}
-                className="ml-2 text-muted hover:text-red-300"
-                aria-label="Remove"
-              >
-                <X className="h-4 w-4" />
-              </button>
+              {!analyzing && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setResumeFile(null);
+                    setParsedText('');
+                    if (fileInputRef.current) fileInputRef.current.value = '';
+                  }}
+                  className="ml-2 text-muted hover:text-red-300"
+                  aria-label="Remove"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
             </div>
           ) : (
             <div>
@@ -203,7 +345,7 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
                 <span className="text-primary">click to browse</span>
               </p>
               <p className="text-xs text-muted mt-1">
-                .pdf, .docx, or .txt · max 5MB
+                .pdf, .docx, or .txt · max 5MB · AI auto-fills your details
               </p>
             </div>
           )}
@@ -227,33 +369,60 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
             onChange={(e) => setResumeText(e.target.value)}
             placeholder="Paste your full resume here..."
           />
-          <p className="text-xs text-muted mt-1">{resumeText.length} chars</p>
+          <div className="flex items-center justify-between mt-1">
+            <p className="text-xs text-muted">{resumeText.length} chars</p>
+            {resumeText.length >= 200 && (
+              <button
+                type="button"
+                onClick={reanalyze}
+                disabled={analyzing}
+                className="btn"
+              >
+                {analyzing ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Wand2 className="h-3 w-3" />
+                )}
+                Analyze pasted text
+              </button>
+            )}
+          </div>
         </details>
       </section>
 
       <section className="card space-y-3">
         <h2 className="font-semibold">About you</h2>
         <div className="grid sm:grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs text-muted">Email</label>
+          <Field
+            label="Email"
+            ai={aiFields.has('email')}
+          >
             <input
-              className="input mt-1"
+              className="input"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                clearAiFlag('email');
+              }}
               type="email"
               placeholder="you@example.com"
               required
             />
-          </div>
-          <div>
-            <label className="text-xs text-muted">Full name</label>
+          </Field>
+          <Field
+            label="Full name"
+            ai={aiFields.has('fullName')}
+          >
             <input
-              className="input mt-1"
+              className="input"
               value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
+              onChange={(e) => {
+                setFullName(e.target.value);
+                clearAiFlag('fullName');
+              }}
               placeholder="Shashank Singh"
             />
-          </div>
+          </Field>
         </div>
       </section>
 
@@ -263,19 +432,30 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
           <Field
             label="Target roles"
             hint="Comma separated. Used by the LLM to focus matching."
+            ai={aiFields.has('roles')}
           >
             <input
               className="input"
               value={roles}
-              onChange={(e) => setRoles(e.target.value)}
+              onChange={(e) => {
+                setRoles(e.target.value);
+                clearAiFlag('roles');
+              }}
               placeholder="Senior Performance Engineer, SRE Lead"
             />
           </Field>
-          <Field label="Preferred locations" hint="Comma separated.">
+          <Field
+            label="Preferred locations"
+            hint="Comma separated."
+            ai={aiFields.has('locations')}
+          >
             <input
               className="input"
               value={locations}
-              onChange={(e) => setLocations(e.target.value)}
+              onChange={(e) => {
+                setLocations(e.target.value);
+                clearAiFlag('locations');
+              }}
               placeholder="India, Remote, Bangalore"
             />
           </Field>
@@ -340,15 +520,27 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
 function Field({
   label,
   hint,
+  ai,
   children,
 }: {
   label: string;
   hint?: string;
+  ai?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <div>
-      <label className="text-xs text-muted">{label}</label>
+      <div className="flex items-center justify-between">
+        <label className="text-xs text-muted">{label}</label>
+        {ai && (
+          <span
+            className="inline-flex items-center gap-0.5 text-[10px] text-primary"
+            title="Auto-filled by AI from your resume. Edit to override."
+          >
+            <Sparkles className="h-2.5 w-2.5" /> AI
+          </span>
+        )}
+      </div>
       <div className="mt-1">{children}</div>
       {hint && <p className="text-xs text-muted mt-1">{hint}</p>}
     </div>
@@ -357,22 +549,27 @@ function Field({
 
 function InsightsPanel({
   insights,
-  onApply,
+  onReanalyze,
+  analyzing,
 }: {
   insights: ResumeInsights;
-  onApply: () => void;
+  onReanalyze: () => void;
+  analyzing: boolean;
 }) {
   return (
     <section className="card border-primary/30 bg-primary/5 space-y-3 animate-fade-in">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <h2 className="font-semibold flex items-center gap-2 text-primary">
           <Sparkles className="h-4 w-4" /> Resume insights
         </h2>
-        {insights.suggested_roles?.length ? (
-          <button onClick={onApply} className="btn">
-            Apply suggested roles
-          </button>
-        ) : null}
+        <button onClick={onReanalyze} disabled={analyzing} className="btn">
+          {analyzing ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <Wand2 className="h-3 w-3" />
+          )}
+          Re-analyze
+        </button>
       </div>
       {insights.summary && (
         <p className="text-sm text-fg/90">{insights.summary}</p>
@@ -382,14 +579,10 @@ function InsightsPanel({
           <KV label="Experience" value={`${insights.years_experience} years`} />
         )}
         {insights.seniority && (
-          <KV
-            label="Seniority"
-            value={insights.seniority}
-            capitalize
-          />
+          <KV label="Seniority" value={insights.seniority} capitalize />
         )}
-        {insights.top_skills && insights.top_skills.length > 0 && (
-          <KV label="Top skills" value={`${insights.top_skills.length} extracted`} />
+        {insights.current_location && (
+          <KV label="Location" value={insights.current_location} />
         )}
       </div>
       {insights.top_skills && insights.top_skills.length > 0 && (

@@ -138,6 +138,10 @@ ${resume.slice(0, 8000)}
 
 Return strict JSON in this shape:
 {
+  "full_name": "<candidate's full name as it appears on the resume>",
+  "email": "<primary email address from the resume, or null if not present>",
+  "current_location": "<city and country, e.g. 'Bangalore, India', or null>",
+  "phone": "<phone number with country code, or null>",
   "years_experience": <integer total years of professional experience>,
   "seniority": "junior" | "mid" | "senior" | "staff" | "principal",
   "top_skills": [<up to 12 most prominent technical skills, lowercase, deduped>],
@@ -146,6 +150,9 @@ Return strict JSON in this shape:
 }
 
 Rules:
+- Use null for any field not clearly present in the resume. Do not guess.
+- full_name: clean it up if needed but keep it as the candidate writes it.
+- current_location: prefer "City, Country". If only city, return city.
 - Be specific in suggested_roles (e.g. "Staff Performance Engineer" not "Engineer").
 - For seniority: <2y=junior, 2-5y=mid, 5-9y=senior, 9-13y=staff, >13y=principal.
 - top_skills must be concrete tools/technologies (e.g. "kubernetes", "jmeter"), not soft skills.
@@ -155,7 +162,17 @@ Rules:
   const text = res.response.text();
   try {
     const parsed = JSON.parse(text);
+    const cleanString = (v: unknown): string | undefined => {
+      if (typeof v !== 'string') return undefined;
+      const t = v.trim();
+      if (!t || t.toLowerCase() === 'null') return undefined;
+      return t;
+    };
     return {
+      full_name: cleanString(parsed.full_name),
+      email: cleanString(parsed.email),
+      current_location: cleanString(parsed.current_location),
+      phone: cleanString(parsed.phone),
       years_experience:
         typeof parsed.years_experience === 'number'
           ? Math.max(0, Math.round(parsed.years_experience))
