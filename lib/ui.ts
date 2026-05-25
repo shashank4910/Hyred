@@ -30,6 +30,8 @@ export const SOURCE_LABELS: Record<string, string> = {
   remoteok: 'RemoteOK',
   hn: 'HN',
   arbeitnow: 'Arbeitnow',
+  adzuna_in: 'Adzuna IN',
+  manual: 'Imported',
 };
 
 export const STATUS_ORDER = [
