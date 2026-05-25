@@ -139,6 +139,9 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
   /**
    * Upload the file to /api/profile/parse, then auto-fill the form.
    * Does not save anything to the database.
+   *
+   * If the LLM analysis fails (quota, network, etc) we still keep the parsed text
+   * so the user can save manually without AI auto-fill.
    */
   async function analyzeFile(file: File) {
     setAnalyzing(true);
@@ -151,16 +154,25 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
       if (!res.ok) throw new Error(data.error || 'Analysis failed');
 
       setParsedText(data.resume_text);
-      const ins = data.insights as ResumeInsights;
-      setInsights(ins);
-      const count = applyInsights(ins);
 
-      toast.success(
-        count > 0
-          ? `Auto-filled ${count} field${count === 1 ? '' : 's'} from resume`
-          : 'Resume analyzed',
-        { id },
-      );
+      if (data.insights) {
+        const ins = data.insights as ResumeInsights;
+        setInsights(ins);
+        const count = applyInsights(ins);
+        toast.success(
+          count > 0
+            ? `Auto-filled ${count} field${count === 1 ? '' : 's'} from resume`
+            : 'Resume analyzed',
+          { id },
+        );
+      } else {
+        // Parsed OK, but the AI step failed (e.g. Gemini quota).
+        // Resume text is still saved so the user can fill the form manually.
+        toast.warning(
+          'Resume parsed, but AI auto-fill is unavailable right now. Fill in details manually and save.',
+          { id, duration: 8000 },
+        );
+      }
     } catch (e) {
       toast.error((e as Error).message, { id });
       setResumeFile(null);
@@ -190,9 +202,18 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed');
+      if (!data.insights) {
+        toast.warning(
+          data.analysis_error
+            ? `AI unavailable: ${truncate(data.analysis_error, 100)}`
+            : 'AI returned no insights',
+          { id, duration: 8000 },
+        );
+        return;
+      }
       const ins = data.insights as ResumeInsights;
       setInsights(ins);
-      const count = applyInsights(ins, true); // force overwrite
+      const count = applyInsights(ins, true);
       toast.success(
         count > 0 ? `Refreshed ${count} field${count === 1 ? '' : 's'}` : 'Done',
         { id },
@@ -635,4 +656,8 @@ function csvToList(s: string): string[] {
     .split(',')
     .map((x) => x.trim())
     .filter(Boolean);
+}
+
+function truncate(s: string, max: number): string {
+  return s.length > max ? s.slice(0, max - 1) + '…' : s;
 }

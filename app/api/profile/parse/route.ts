@@ -66,18 +66,18 @@ export async function POST(req: NextRequest) {
   }
 
   let insights = null;
+  let analysisError: string | null = null;
   try {
     insights = await extractResumeInsights(resumeText);
   } catch (e) {
-    return NextResponse.json(
-      { error: `Analysis failed: ${(e as Error).message}` },
-      { status: 500 },
-    );
+    // Non-fatal: still return the parsed text so user can fill the form manually.
+    analysisError = (e as Error).message;
   }
 
   return NextResponse.json({
     resume_text: resumeText,
     resume_chars: resumeText.length,
     insights,
+    analysis_error: analysisError,
   });
 }
