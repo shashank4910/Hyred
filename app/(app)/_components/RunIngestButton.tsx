@@ -2,37 +2,41 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import { Loader2, RefreshCw } from 'lucide-react';
+import { toast } from 'sonner';
 
 export function RunIngestButton() {
   const [running, setRunning] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const router = useRouter();
 
   async function run() {
     setRunning(true);
-    setMsg(null);
+    const id = toast.loading('Scanning job boards...');
     try {
       const res = await fetch('/api/ingest', { method: 'POST' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Ingest failed');
-      setMsg(
-        `Fetched ${data.fetched}, new ${data.newJobs}, scored ${data.scored}, kept ${data.matchesCreated}.`,
+      toast.success(
+        `${data.matchesCreated} new match${data.matchesCreated === 1 ? '' : 'es'} · ${data.fetched} jobs scanned`,
+        { id },
       );
       startTransition(() => router.refresh());
     } catch (e) {
-      setMsg((e as Error).message);
+      toast.error((e as Error).message, { id });
     } finally {
       setRunning(false);
     }
   }
 
   return (
-    <div className="flex items-center gap-3">
-      {msg && <span className="text-xs text-muted">{msg}</span>}
-      <button onClick={run} disabled={running} className="btn-primary">
-        {running ? 'Running...' : 'Run ingest now'}
-      </button>
-    </div>
+    <button onClick={run} disabled={running} className="btn-primary">
+      {running ? (
+        <Loader2 className="h-4 w-4 animate-spin" />
+      ) : (
+        <RefreshCw className="h-4 w-4" />
+      )}
+      {running ? 'Scanning...' : 'Run scan'}
+    </button>
   );
 }

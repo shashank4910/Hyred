@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import type { ResumeInsights } from './types';
 
 function getClient() {
   const key = process.env.GEMINI_API_KEY;
@@ -111,4 +112,116 @@ Output the cover letter only, no preamble.`;
 
   const res = await model.generateContent(prompt);
   return res.response.text().trim();
+}
+
+/**
+ * Extract structured insights from a resume.
+ * Used to auto-fill suggested target roles, seniority, and top skills
+ * after a resume upload.
+ */
+export async function extractResumeInsights(
+  resume: string,
+): Promise<ResumeInsights> {
+  const client = getClient();
+  const model = client.getGenerativeModel({
+    model: 'gemini-2.0-flash',
+    generationConfig: {
+      responseMimeType: 'application/json',
+      temperature: 0.2,
+    },
+  });
+
+  const prompt = `Read this resume and extract structured insights.
+
+RESUME:
+${resume.slice(0, 8000)}
+
+Return strict JSON in this shape:
+{
+  "years_experience": <integer total years of professional experience>,
+  "seniority": "junior" | "mid" | "senior" | "staff" | "principal",
+  "top_skills": [<up to 12 most prominent technical skills, lowercase, deduped>],
+  "suggested_roles": [<up to 6 specific job titles this candidate is well-positioned for>],
+  "summary": "<1-2 sentence professional summary, 200 chars max>"
+}
+
+Rules:
+- Be specific in suggested_roles (e.g. "Staff Performance Engineer" not "Engineer").
+- For seniority: <2y=junior, 2-5y=mid, 5-9y=senior, 9-13y=staff, >13y=principal.
+- top_skills must be concrete tools/technologies (e.g. "kubernetes", "jmeter"), not soft skills.
+- summary must avoid first person ("Performance engineer with 12 years..." not "I am a...").`;
+
+  const res = await model.generateContent(prompt);
+  const text = res.response.text();
+  try {
+    const parsed = JSON.parse(text);
+    return {
+      years_experience:
+        typeof parsed.years_experience === 'number'
+          ? Math.max(0, Math.round(parsed.years_experience))
+          : undefined,
+      seniority: ['junior', 'mid', 'senior', 'staff', 'principal'].includes(
+        parsed.seniority,
+      )
+        ? parsed.seniority
+        : 'unknown',
+      top_skills: Array.isArray(parsed.top_skills)
+        ? parsed.top_skills.slice(0, 12).map(String)
+        : [],
+      suggested_roles: Array.isArray(parsed.suggested_roles)
+        ? parsed.suggested_roles.slice(0, 6).map(String)
+        : [],
+      summary: typeof parsed.summary === 'string' ? parsed.summary.slice(0, 300) : '',
+    };
+  } catch {
+    return { seniority: 'unknown', top_skills: [], suggested_roles: [] };
+  }
+}
+
+/**
+ * Given a job description and a list of candidate skills, return which
+ * skills are mentioned in the JD. Used for the skill-match visualization.
+ */
+export async function matchSkills(args: {
+  jobDescription: string;
+  candidateSkills: string[];
+}): Promise<{ matched: string[]; missing: string[] }> {
+  if (!args.candidateSkills.length) return { matched: [], missing: [] };
+
+  const client = getClient();
+  const model = client.getGenerativeModel({
+    model: 'gemini-2.0-flash',
+    generationConfig: {
+      responseMimeType: 'application/json',
+      temperature: 0.1,
+    },
+  });
+
+  const prompt = `Given a job description and a list of candidate skills, identify which candidate skills are mentioned or strongly implied by the JD, and which key skills the JD asks for that the candidate is missing.
+
+CANDIDATE SKILLS:
+${args.candidateSkills.join(', ')}
+
+JOB DESCRIPTION:
+${args.jobDescription.slice(0, 4000)}
+
+Return strict JSON:
+{
+  "matched": [<candidate skills that appear in the JD>],
+  "missing": [<up to 6 important skills the JD asks for that aren't in the candidate's list>]
+}`;
+
+  const res = await model.generateContent(prompt);
+  try {
+    const parsed = JSON.parse(res.response.text());
+    const matched = Array.isArray(parsed.matched)
+      ? parsed.matched.map(String).filter((s: string) => args.candidateSkills.includes(s))
+      : [];
+    const missing = Array.isArray(parsed.missing)
+      ? parsed.missing.slice(0, 6).map(String)
+      : [];
+    return { matched, missing };
+  } catch {
+    return { matched: [], missing: [] };
+  }
 }

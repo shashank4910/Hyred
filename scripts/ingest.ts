@@ -10,7 +10,7 @@ async function main() {
   console.log('Starting ingest...', profileEmail ? `profile=${profileEmail}` : '');
   const start = Date.now();
   try {
-    const result = await runIngest({ profileEmail });
+    const result = await runIngest({ profileEmail, triggeredBy: 'cron' });
     const elapsed = ((Date.now() - start) / 1000).toFixed(1);
     console.log(`Done in ${elapsed}s`);
     console.log(JSON.stringify(result, null, 2));

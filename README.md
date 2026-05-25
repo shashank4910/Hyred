@@ -1,48 +1,63 @@
 # JobRadar
 
-AI-curated job matches from across the web. Pulls jobs from public APIs, scores them against your resume with Gemini, and gives you a daily shortlist plus a tailored cover letter on demand.
+AI-curated job matches from across the web. Pulls jobs from public job APIs, scores them against your resume with Gemini, and gives you a curated dashboard plus a tailored cover letter on demand.
 
 - **Stack**: Next.js 15 (App Router) + TypeScript + Tailwind, Supabase (Postgres), Gemini 2.0 Flash + `text-embedding-004`, GitHub Actions cron, Vercel hosting.
-- **Cost target**: ₹0/month using free tiers.
+- **Cost**: ₹0/month using free tiers.
+
+## Features
+
+- 🔒 Password-protected single-user app with signed-cookie auth
+- 📄 Resume upload — drop a `.pdf` or `.docx`, we parse and embed it
+- 🧠 LLM-extracted resume insights (years, seniority, top skills, suggested target roles)
+- 🎯 Skill-match visualization on every job — what matches, what's missing
+- ✍️ One-click tailored cover letter (editable, copy, download as `.txt`)
+- 📊 Stats page with ingest run history and source coverage
+- 🔍 Search + filter dashboard by status, source, score, remote
+- 🚫 Company blacklist — never see jobs from companies you don't want
+- 📝 Notes per job — recruiter contact, interview prep, follow-ups
+- 🌓 Polished dark UI with skeletons, toasts, mobile-responsive
 
 ## How it works
 
 ```
-GitHub Actions (every 6h):
-  fetch jobs (Remotive, RemoteOK, HN Who-is-hiring)
+GitHub Actions (every 6h) -> npm run ingest:
+  fetch jobs (Remotive, RemoteOK, HN Who-is-hiring, Arbeitnow)
     -> upsert into Postgres (dedup by source+source_id)
     -> embed any new jobs (Gemini text-embedding-004, 768 dims)
     -> rank by cosine similarity vs your resume embedding
-    -> top 25 -> Gemini 2.0 Flash scores them 0-100 with a reason
-    -> persist matches with score >= min_score (default 60)
+    -> top 25 -> Gemini 2.0 Flash scores 0-100 with a reason
+    -> persist matches with score >= min_score (default 70)
+    -> log run to ingest_runs
 
 Web app (Next.js on Vercel):
-  Dashboard groups matches by status (new / saved / applied / interviewing / ...).
-  Click a match -> see why it scored, generate a tailored cover letter, mark applied.
+  Dashboard with stats hero, search, filters, status tabs.
+  Click match -> skill-match analysis, cover letter, notes, status tracking.
 ```
 
 ## One-time setup
 
-### 1. Create Supabase tables
-- Go to your Supabase project -> SQL Editor.
-- Open `supabase/migrations/0001_init.sql`, paste, run.
+### 1. Run Supabase migrations
+- Supabase Dashboard -> SQL Editor -> New query.
+- Run `supabase/migrations/0001_init.sql`.
+- Run `supabase/migrations/0002_production.sql`.
 
 ### 2. Get a Gemini API key
-- https://aistudio.google.com/apikey -> Create API key. Free tier: ~1M tokens/day.
+- https://aistudio.google.com/apikey -> Create API key. Free tier: 1M tokens/day.
 
 ### 3. Local env
 ```bash
 cp .env.example .env.local
-# fill in NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY,
-# SUPABASE_SERVICE_ROLE_KEY, GEMINI_API_KEY, INGEST_SECRET
+# fill all values. AUTH_SECRET: openssl rand -hex 32
 ```
 
 ### 4. Install + run
 ```bash
 npm install
 npm run dev
-# open http://localhost:3000/onboarding -> paste your resume -> Save
-# open http://localhost:3000 -> click "Run ingest now"
+# open http://localhost:3000 -> sign in with APP_PASSWORD
+# go to /onboarding -> upload resume -> Save
+# go to / -> click "Run scan"
 ```
 
 ### 5. Deploy on Vercel
@@ -52,15 +67,16 @@ npm run dev
 - Deploy.
 
 ### 6. Schedule the cron
-- Add the same env vars (plus `INGEST_PROFILE_EMAIL`) to **GitHub repo -> Settings -> Secrets and variables -> Actions**.
-- The workflow `.github/workflows/ingest.yml` runs every 6 hours automatically.
+- GitHub repo -> Settings -> Secrets and variables -> Actions.
+- Add: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY`, optionally `INGEST_PROFILE_EMAIL`.
+- Auto-runs every 6 hours; manual trigger available in **Actions** tab.
 
 ## Scripts
 
-- `npm run dev` - local dev server
-- `npm run build` - production build
-- `npm run ingest` - run the ingest pipeline locally (uses `.env.local`)
-- `npm run typecheck` - strict TS check
+- `npm run dev` — local dev server
+- `npm run build` — production build
+- `npm run ingest` — run the ingest pipeline locally (uses `.env.local`)
+- `npm run typecheck` — strict TS check
 
 ## Adding a job source
 
@@ -68,14 +84,15 @@ Drop a new file in `lib/sources/yourSource.ts` exporting `async function fetchYo
 
 ## Roadmap
 
-- [ ] Resume file upload (PDF / DOCX parsing)
-- [ ] More sources: Adzuna (India), Wellfound, Arbeitnow, The Muse, YC Work-at-a-Startup
+- [ ] Adzuna source for India coverage (free tier)
+- [ ] Wellfound + YC Work-at-a-Startup
 - [ ] Paste-a-URL: import any LinkedIn / Naukri job by URL
-- [ ] Multi-user auth (Supabase Auth)
-- [ ] Email digest of top daily matches
+- [ ] Email digest via Resend (free tier)
+- [ ] Streaming cover letter generation
 
 ## Security
 
 - The Supabase service-role key is used **only server-side** (API routes + cron) and stored as a secret in GitHub Actions and Vercel.
-- RLS is enabled. The `anon` key can only read from `jobs` (public data). `profiles` and `matches` are server-only.
-- The `/api/ingest` endpoint is gated by `INGEST_SECRET`.
+- RLS is enabled. The `anon` key can only read from `jobs` (public data). `profiles`, `matches`, and `ingest_runs` are server-only.
+- Routes are gated by middleware: a signed JWT cookie (HS256) verifies the session.
+- Login uses a constant-time password compare against `APP_PASSWORD`.
