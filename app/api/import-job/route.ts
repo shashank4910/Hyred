@@ -13,9 +13,7 @@ type Body = {
   manual_company?: string;
 };
 
-/**
- * Decode common HTML entities back to plain text.
- */
+/** Decode common HTML entities back to plain text. */
 function decodeHtmlEntities(s: string): string {
   return s
     .replace(/&nbsp;/g, ' ')
@@ -24,79 +22,164 @@ function decodeHtmlEntities(s: string): string {
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
     .replace(/&#x([0-9a-f]+);/gi, (_, code) =>
       String.fromCharCode(parseInt(code, 16)),
     )
     .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10)));
 }
 
+/** Strip HTML tags and collapse whitespace. */
+function htmlToText(html: string): string {
+  return decodeHtmlEntities(
+    html
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p>/gi, '\n\n')
+      .replace(/<\/li>/gi, '\n')
+      .replace(/<\/h[1-6]>/gi, '\n')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\n[ \t]+/g, '\n')
+      .replace(/\n\s*\n\s*\n+/g, '\n\n')
+      .trim(),
+  );
+}
+
+/**
+ * Find a JSON-LD JobPosting block. Almost every modern job site emits
+ * one for Google Jobs SEO — Naukri, Indeed, Wellfound, Glassdoor,
+ * Greenhouse, Lever, Workable, ZipRecruiter, Monster, Jobvite, etc.
+ *
+ * This is the most reliable extraction path for SPA-style sites whose
+ * visible HTML is rendered by JS after page load.
+ */
+function extractJsonLdJob(html: string): {
+  title?: string;
+  company?: string;
+  location?: string;
+  description?: string;
+  postedAt?: string;
+  salary?: string;
+} | null {
+  const blockRe =
+    /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  const candidates: Record<string, unknown>[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = blockRe.exec(html)) !== null) {
+    const raw = match[1].trim();
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      continue;
+    }
+    const flatten = (v: unknown): void => {
+      if (!v) return;
+      if (Array.isArray(v)) {
+        v.forEach(flatten);
+        return;
+      }
+      if (typeof v === 'object') {
+        const obj = v as Record<string, unknown>;
+        candidates.push(obj);
+        if (obj['@graph']) flatten(obj['@graph']);
+      }
+    };
+    flatten(parsed);
+  }
+
+  for (const c of candidates) {
+    const t = c['@type'];
+    const isJobPosting =
+      t === 'JobPosting' ||
+      (Array.isArray(t) && (t as string[]).includes('JobPosting'));
+    if (!isJobPosting) continue;
+
+    const title = typeof c.title === 'string' ? c.title : undefined;
+    const description =
+      typeof c.description === 'string' ? htmlToText(c.description) : undefined;
+
+    const org = c.hiringOrganization as Record<string, unknown> | undefined;
+    const company =
+      typeof org?.name === 'string' ? (org.name as string) : undefined;
+
+    const loc = c.jobLocation as Record<string, unknown> | undefined;
+    let location: string | undefined;
+    if (loc) {
+      const addr = loc.address as Record<string, unknown> | undefined;
+      location =
+        (addr?.addressLocality as string | undefined) ??
+        (addr?.addressRegion as string | undefined) ??
+        (loc.name as string | undefined);
+    }
+
+    const postedAt =
+      typeof c.datePosted === 'string' ? (c.datePosted as string) : undefined;
+
+    let salary: string | undefined;
+    const baseSalary = c.baseSalary as Record<string, unknown> | undefined;
+    if (baseSalary) {
+      const value = baseSalary.value as Record<string, unknown> | undefined;
+      const currency = (baseSalary.currency as string | undefined) ?? '';
+      if (value) {
+        const min = value.minValue ?? value.value;
+        const max = value.maxValue;
+        if (min && max && min !== max) {
+          salary = `${currency} ${min}–${max}`.trim();
+        } else if (min) {
+          salary = `${currency} ${min}`.trim();
+        }
+      }
+    }
+
+    return { title, company, location, description, postedAt, salary };
+  }
+
+  return null;
+}
+
+function extractMetaTag(html: string, names: string[]): string | undefined {
+  for (const n of names) {
+    const re = new RegExp(
+      `<meta\\s+(?:property|name)=["']${n}["']\\s+content=["']([^"']+)["']`,
+      'i',
+    );
+    const m = html.match(re);
+    if (m?.[1]) return m[1].trim();
+  }
+  return undefined;
+}
+
+/** Detect login walls. Conservative — only flag when we have strong signals. */
 function isLoginWall(text: string): boolean {
+  if (text.length > 3000) return false;
   const lower = text.toLowerCase();
-  // Heuristic: short pages with multiple login-related phrases are walls.
   const signals = [
     'sign in to view',
     'join linkedin',
     'log in to continue',
     'sign in to continue',
     'create your free profile',
-    'enable javascript',
+    'please enable javascript',
+    'this content is only available',
   ];
-  let hits = 0;
-  for (const s of signals) if (lower.includes(s)) hits++;
-  if (text.length < 1500 && hits >= 1) return true;
-  return hits >= 2;
-}
-
-function extractFromHtml(html: string): {
-  title?: string;
-  company?: string;
-  text: string;
-} {
-  const meta = (name: string) => {
-    const re = new RegExp(
-      `<meta\\s+(?:property|name)=["']${name}["']\\s+content=["']([^"']+)["']`,
-      'i',
-    );
-    return html.match(re)?.[1]?.trim();
-  };
-
-  let title =
-    meta('og:title') ??
-    meta('twitter:title') ??
-    html.match(/<title>([^<]*)<\/title>/i)?.[1]?.trim() ??
-    '';
-  // Strip trailing site names like " - LinkedIn" or " | Naukri.com"
-  title = title.replace(
-    /\s*[\|\-–—]\s*(LinkedIn|Naukri|Indeed|Glassdoor|Wellfound|AngelList|Greenhouse|Lever|Workable)[^]*$/i,
-    '',
-  );
-
-  const company = meta('og:site_name') ?? meta('application-name');
-
-  const cleaned = decodeHtmlEntities(
-    html
-      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-      .replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, '')
-      .replace(/<header[\s\S]*?<\/header>/gi, '')
-      .replace(/<footer[\s\S]*?<\/footer>/gi, '')
-      .replace(/<nav[\s\S]*?<\/nav>/gi, '')
-      .replace(/<svg[\s\S]*?<\/svg>/gi, '')
-      .replace(/<form[\s\S]*?<\/form>/gi, '')
-      .replace(/<br\s*\/?>/gi, '\n')
-      .replace(/<\/p>/gi, '\n\n')
-      .replace(/<\/li>/gi, '\n')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/[ \t]+/g, ' ')
-      .replace(/\n\s*\n\s*\n+/g, '\n\n')
-      .trim(),
-  );
-
-  return { title, company, text: cleaned };
+  for (const s of signals) {
+    if (lower.includes(s)) return text.length < 1500;
+  }
+  return false;
 }
 
 async function tryFetchUrl(url: string): Promise<
-  | { ok: true; title?: string; company?: string; text: string }
+  | {
+      ok: true;
+      title?: string;
+      company?: string;
+      location?: string;
+      text: string;
+      via: 'json-ld' | 'meta' | 'body';
+    }
   | { ok: false; reason: string }
 > {
   try {
@@ -119,19 +202,63 @@ async function tryFetchUrl(url: string): Promise<
       return { ok: false, reason: `Unsupported content-type: ${ct}` };
     }
     const html = await res.text();
-    const extracted = extractFromHtml(html);
 
-    if (extracted.text.length < 200) {
-      return { ok: false, reason: 'Page contained almost no text' };
+    // ---------- 1. Try JSON-LD JobPosting (most reliable) ----------
+    const jsonLd = extractJsonLdJob(html);
+    if (jsonLd?.description && jsonLd.description.length >= 100) {
+      return {
+        ok: true,
+        title: jsonLd.title,
+        company: jsonLd.company,
+        location: jsonLd.location,
+        text: jsonLd.description.slice(0, 8000),
+        via: 'json-ld',
+      };
     }
-    if (isLoginWall(extracted.text)) {
+
+    // ---------- 2. Pick best from meta-description / body / json-ld-short ----------
+    const ogTitle =
+      extractMetaTag(html, ['og:title', 'twitter:title']) ??
+      html.match(/<title>([^<]*)<\/title>/i)?.[1]?.trim();
+    const cleanTitle = ogTitle?.replace(
+      /\s*[\|\-–—]\s*(LinkedIn|Naukri|Naukri\.com|Indeed|Glassdoor|Wellfound|AngelList|Greenhouse|Lever|Workable)[^]*$/i,
+      '',
+    );
+    const metaDesc = extractMetaTag(html, [
+      'og:description',
+      'twitter:description',
+      'description',
+    ]);
+
+    const bodyText = htmlToText(html);
+
+    type Candidate = { text: string; via: 'meta' | 'body' | 'json-ld' };
+    const candidates: Candidate[] = [];
+    if (jsonLd?.description) candidates.push({ text: jsonLd.description, via: 'json-ld' });
+    if (metaDesc) candidates.push({ text: metaDesc, via: 'meta' });
+    if (bodyText) candidates.push({ text: bodyText, via: 'body' });
+
+    candidates.sort((a, b) => b.text.length - a.text.length);
+    const best = candidates[0];
+
+    if (!best || best.text.length < 100) {
+      return {
+        ok: false,
+        reason:
+          'Page contained almost no text (likely a JS-rendered SPA without JobPosting structured data)',
+      };
+    }
+    if (best.via === 'body' && isLoginWall(best.text)) {
       return { ok: false, reason: 'Page requires login (login wall detected)' };
     }
+
     return {
       ok: true,
-      title: extracted.title,
-      company: extracted.company,
-      text: extracted.text.slice(0, 8000),
+      title: jsonLd?.title ?? cleanTitle,
+      company: jsonLd?.company,
+      location: jsonLd?.location,
+      text: best.text.slice(0, 8000),
+      via: best.via,
     };
   } catch (e) {
     return { ok: false, reason: (e as Error).message };
@@ -156,6 +283,7 @@ export async function POST(req: NextRequest) {
 
   let title: string = body.manual_title?.trim() ?? '';
   let company: string | null = body.manual_company?.trim() || null;
+  let location: string | null = null;
   let description: string = body.manual_jd?.trim() ?? '';
 
   // If user didn't paste the JD manually, try to fetch + extract from URL.
@@ -165,6 +293,7 @@ export async function POST(req: NextRequest) {
       description = fetched.text;
       if (!title && fetched.title) title = fetched.title;
       if (!company && fetched.company) company = fetched.company;
+      if (fetched.location) location = fetched.location;
     } else {
       return NextResponse.json(
         {
@@ -208,7 +337,7 @@ export async function POST(req: NextRequest) {
         source_id: url,
         title,
         company,
-        location: null,
+        location,
         remote: /\b(remote|wfh|work from home)\b/i.test(`${title} ${description}`),
         url,
         description,
@@ -236,7 +365,7 @@ export async function POST(req: NextRequest) {
         jobToEmbeddingText({
           title,
           company,
-          location: null,
+          location,
           description,
           tags: null,
         }),
@@ -245,7 +374,7 @@ export async function POST(req: NextRequest) {
         resume: profile.resume_text,
         jobTitle: title,
         jobCompany: company,
-        jobLocation: null,
+        jobLocation: location,
         jobDescription: description,
       }),
     ]);
