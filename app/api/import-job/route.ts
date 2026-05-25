@@ -171,38 +171,99 @@ function isLoginWall(text: string): boolean {
   return false;
 }
 
+/**
+ * Strip markdown navigation noise so what's left is closer to actual JD prose.
+ * Jina output for big sites (Naukri, LinkedIn) is ~30KB and mostly nav links;
+ * this can drop it down to <10KB of mostly-relevant text.
+ */
+function cleanMarkdown(md: string): string {
+  return md
+    // Remove image markdown entirely: ![alt](src) and ![alt](blob:...)
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    // Convert link markdown to plain text: [text](url) -> text
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    // Drop bullet lines that are basically empty after link removal
+    .replace(/^[\s\-*]+$/gm, '')
+    // Collapse 3+ newlines to 2
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/**
+ * Heuristic: locate the start of the actual JD content within a long
+ * cleaned markdown document. We look for the first occurrence of any
+ * job-content marker; if found, slice from a bit before that marker
+ * onwards. Otherwise return the full text unchanged.
+ */
+function focusOnJobContent(text: string): string {
+  if (text.length < 6000) return text;
+  const markers = [
+    /\bjob description\b/i,
+    /\brole\s*&?\s*responsibilities\b/i,
+    /\bresponsibilities\b/i,
+    /\brequired skills\b/i,
+    /\bkey skills\b/i,
+    /\babout the role\b/i,
+    /\babout the job\b/i,
+    /\bwhat you('|\u2019)ll do\b/i,
+    /\bwhat we're looking for\b/i,
+    /\bqualifications\b/i,
+    /\bminimum requirements\b/i,
+    /\byears of experience\b/i,
+  ];
+  let earliest = -1;
+  for (const re of markers) {
+    const m = text.match(re);
+    if (!m) continue;
+    const idx = m.index ?? -1;
+    if (idx >= 0 && (earliest < 0 || idx < earliest)) earliest = idx;
+  }
+  if (earliest > 800) {
+    // Slice from a bit before the marker to keep some context (heading, etc).
+    return text.slice(Math.max(0, earliest - 200));
+  }
+  return text;
+}
+
 async function fetchViaJinaReader(url: string): Promise<
   | { ok: true; title?: string; text: string }
   | { ok: false; reason: string }
 > {
   // Jina Reader (https://jina.ai/reader/) renders JS-heavy pages with
   // headless Chrome and returns clean Markdown. Free tier, no API key
-  // required for basic use.
+  // required for basic use. We hint it to drop nav/header/footer.
   const jinaUrl = `https://r.jina.ai/${url}`;
   try {
     const res = await fetch(jinaUrl, {
       headers: {
         accept: 'text/plain',
         'X-Return-Format': 'markdown',
+        'X-Remove-Selector': 'nav,header,footer,aside,form,.advertisement,.ad,.sidebar,#sidebar,[role="navigation"],[role="banner"],[role="contentinfo"]',
       },
       signal: AbortSignal.timeout(25000),
     });
     if (!res.ok) {
       return { ok: false, reason: `Reader API returned HTTP ${res.status}` };
     }
-    const text = await res.text();
-    if (text.length < 200) {
+    const raw = await res.text();
+    if (raw.length < 200) {
       return { ok: false, reason: 'Reader API returned almost no text' };
     }
-    // Jina returns "Title: ...\nURL Source: ...\n\nMarkdown Content: ...\n<body>"
-    // Strip the metadata header to keep just the body.
-    let body = text;
-    const m = text.match(/Markdown Content:\s*\n([\s\S]+)$/);
-    if (m) body = m[1];
-    const titleMatch = text.match(/Title:\s*([^\n]+)/);
+    // Strip the "Title: ...\nURL Source: ...\nMarkdown Content:\n" header.
+    const titleMatch = raw.match(/Title:\s*([^\n]+)/);
     const title = titleMatch?.[1]?.trim();
+    let body = raw;
+    const m = raw.match(/Markdown Content:\s*\n([\s\S]+)$/);
+    if (m) body = m[1];
 
-    return { ok: true, title, text: body.trim().slice(0, 8000) };
+    const cleaned = cleanMarkdown(body);
+    const focused = focusOnJobContent(cleaned);
+
+    if (focused.length < 200) {
+      return { ok: false, reason: 'Cleaned text was too short after stripping nav' };
+    }
+
+    return { ok: true, title, text: focused.slice(0, 12000) };
   } catch (e) {
     return { ok: false, reason: (e as Error).message };
   }
