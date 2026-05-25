@@ -5,6 +5,7 @@ export type Profile = {
   resume_text: string | null;
   resume_embedding: number[] | null;
   preferences: Preferences;
+  insights: ResumeInsights | null;
   created_at: string;
   updated_at: string;
 };
@@ -15,6 +16,30 @@ export type Preferences = {
   locations?: string[];
   remote_only?: boolean;
   exclude_keywords?: string[];
+  blacklist_companies?: string[];
+};
+
+export type ResumeInsights = {
+  years_experience?: number;
+  seniority?: 'junior' | 'mid' | 'senior' | 'staff' | 'principal' | 'unknown';
+  top_skills?: string[];
+  suggested_roles?: string[];
+  summary?: string;
+};
+
+export type IngestRun = {
+  id: string;
+  started_at: string;
+  finished_at: string | null;
+  duration_ms: number | null;
+  fetched: number;
+  new_jobs: number;
+  embedded: number;
+  scored: number;
+  matches_created: number;
+  errors: { source: string; error: string }[];
+  triggered_by: string;
+  status: 'running' | 'success' | 'partial' | 'failed';
 };
 
 export type Job = {

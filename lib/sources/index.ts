@@ -2,10 +2,23 @@ import type { RawJob } from '../types';
 import { fetchRemotive } from './remotive';
 import { fetchRemoteOk } from './remoteok';
 import { fetchHackerNews } from './hackernews';
+import { fetchArbeitnow } from './arbeitnow';
 
-export type SourceName = 'remotive' | 'remoteok' | 'hn';
+export type SourceName = 'remotive' | 'remoteok' | 'hn' | 'arbeitnow';
 
-export const ALL_SOURCES: SourceName[] = ['remotive', 'remoteok', 'hn'];
+export const ALL_SOURCES: SourceName[] = [
+  'remotive',
+  'remoteok',
+  'hn',
+  'arbeitnow',
+];
+
+export const SOURCE_LABELS: Record<SourceName, string> = {
+  remotive: 'Remotive',
+  remoteok: 'RemoteOK',
+  hn: 'HN Who is hiring',
+  arbeitnow: 'Arbeitnow',
+};
 
 export async function fetchAllSources(
   sources: SourceName[] = ALL_SOURCES,
@@ -17,6 +30,7 @@ export async function fetchAllSources(
     remotive: () => fetchRemotive({ limit: 50 }),
     remoteok: () => fetchRemoteOk(),
     hn: () => fetchHackerNews({ limit: 60 }),
+    arbeitnow: () => fetchArbeitnow(),
   };
 
   await Promise.all(
