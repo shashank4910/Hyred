@@ -32,7 +32,7 @@ export async function scoreJob(args: {
 }): Promise<{ score: number; reason: string }> {
   const client = getClient();
   const model = client.getGenerativeModel({
-    model: 'gemini-2.0-flash',
+    model: 'gemini-1.5-flash',
     generationConfig: {
       responseMimeType: 'application/json',
       temperature: 0.2,
@@ -88,7 +88,7 @@ export async function generateCoverLetter(args: {
 }): Promise<string> {
   const client = getClient();
   const model = client.getGenerativeModel({
-    model: 'gemini-2.0-flash',
+    model: 'gemini-1.5-flash',
     generationConfig: { temperature: 0.7 },
   });
 
@@ -124,7 +124,7 @@ export async function extractResumeInsights(
 ): Promise<ResumeInsights> {
   const client = getClient();
   const model = client.getGenerativeModel({
-    model: 'gemini-2.0-flash',
+    model: 'gemini-1.5-flash',
     generationConfig: {
       responseMimeType: 'application/json',
       temperature: 0.2,
@@ -207,7 +207,7 @@ export async function matchSkills(args: {
 
   const client = getClient();
   const model = client.getGenerativeModel({
-    model: 'gemini-2.0-flash',
+    model: 'gemini-1.5-flash',
     generationConfig: {
       responseMimeType: 'application/json',
       temperature: 0.1,
