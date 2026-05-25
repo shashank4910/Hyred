@@ -171,6 +171,43 @@ function isLoginWall(text: string): boolean {
   return false;
 }
 
+async function fetchViaJinaReader(url: string): Promise<
+  | { ok: true; title?: string; text: string }
+  | { ok: false; reason: string }
+> {
+  // Jina Reader (https://jina.ai/reader/) renders JS-heavy pages with
+  // headless Chrome and returns clean Markdown. Free tier, no API key
+  // required for basic use.
+  const jinaUrl = `https://r.jina.ai/${url}`;
+  try {
+    const res = await fetch(jinaUrl, {
+      headers: {
+        accept: 'text/plain',
+        'X-Return-Format': 'markdown',
+      },
+      signal: AbortSignal.timeout(25000),
+    });
+    if (!res.ok) {
+      return { ok: false, reason: `Reader API returned HTTP ${res.status}` };
+    }
+    const text = await res.text();
+    if (text.length < 200) {
+      return { ok: false, reason: 'Reader API returned almost no text' };
+    }
+    // Jina returns "Title: ...\nURL Source: ...\n\nMarkdown Content: ...\n<body>"
+    // Strip the metadata header to keep just the body.
+    let body = text;
+    const m = text.match(/Markdown Content:\s*\n([\s\S]+)$/);
+    if (m) body = m[1];
+    const titleMatch = text.match(/Title:\s*([^\n]+)/);
+    const title = titleMatch?.[1]?.trim();
+
+    return { ok: true, title, text: body.trim().slice(0, 8000) };
+  } catch (e) {
+    return { ok: false, reason: (e as Error).message };
+  }
+}
+
 async function tryFetchUrl(url: string): Promise<
   | {
       ok: true;
@@ -178,10 +215,12 @@ async function tryFetchUrl(url: string): Promise<
       company?: string;
       location?: string;
       text: string;
-      via: 'json-ld' | 'meta' | 'body';
+      via: 'json-ld' | 'meta' | 'body' | 'reader';
     }
   | { ok: false; reason: string }
 > {
+  // ---------- A. Direct fetch attempt ----------
+  let directReason = '';
   try {
     const res = await fetch(url, {
       headers: {
@@ -194,75 +233,89 @@ async function tryFetchUrl(url: string): Promise<
       redirect: 'follow',
       signal: AbortSignal.timeout(15000),
     });
-    if (!res.ok) {
-      return { ok: false, reason: `Fetch returned HTTP ${res.status}` };
+    if (res.ok) {
+      const ct = res.headers.get('content-type') ?? '';
+      if (ct.includes('html') || ct.includes('text')) {
+        const html = await res.text();
+
+        // 1. JSON-LD JobPosting (most reliable)
+        const jsonLd = extractJsonLdJob(html);
+        if (jsonLd?.description && jsonLd.description.length >= 100) {
+          return {
+            ok: true,
+            title: jsonLd.title,
+            company: jsonLd.company,
+            location: jsonLd.location,
+            text: jsonLd.description.slice(0, 8000),
+            via: 'json-ld',
+          };
+        }
+
+        // 2. og:description / meta description / body — pick longest
+        const ogTitle =
+          extractMetaTag(html, ['og:title', 'twitter:title']) ??
+          html.match(/<title>([^<]*)<\/title>/i)?.[1]?.trim();
+        const cleanTitle = ogTitle?.replace(
+          /\s*[\|\-–—]\s*(LinkedIn|Naukri|Naukri\.com|Indeed|Glassdoor|Wellfound|AngelList|Greenhouse|Lever|Workable)[^]*$/i,
+          '',
+        );
+        const metaDesc = extractMetaTag(html, [
+          'og:description',
+          'twitter:description',
+          'description',
+        ]);
+        const bodyText = htmlToText(html);
+
+        type Candidate = { text: string; via: 'meta' | 'body' | 'json-ld' };
+        const candidates: Candidate[] = [];
+        if (jsonLd?.description)
+          candidates.push({ text: jsonLd.description, via: 'json-ld' });
+        if (metaDesc) candidates.push({ text: metaDesc, via: 'meta' });
+        if (bodyText) candidates.push({ text: bodyText, via: 'body' });
+        candidates.sort((a, b) => b.text.length - a.text.length);
+        const best = candidates[0];
+
+        if (best && best.text.length >= 100) {
+          if (best.via === 'body' && isLoginWall(best.text)) {
+            directReason = 'login wall on body text';
+          } else {
+            return {
+              ok: true,
+              title: jsonLd?.title ?? cleanTitle,
+              company: jsonLd?.company,
+              location: jsonLd?.location,
+              text: best.text.slice(0, 8000),
+              via: best.via,
+            };
+          }
+        } else {
+          directReason = 'page contained almost no text';
+        }
+      } else {
+        directReason = `unsupported content-type ${ct}`;
+      }
+    } else {
+      directReason = `HTTP ${res.status}`;
     }
-    const ct = res.headers.get('content-type') ?? '';
-    if (!ct.includes('html') && !ct.includes('text')) {
-      return { ok: false, reason: `Unsupported content-type: ${ct}` };
-    }
-    const html = await res.text();
+  } catch (e) {
+    directReason = (e as Error).message;
+  }
 
-    // ---------- 1. Try JSON-LD JobPosting (most reliable) ----------
-    const jsonLd = extractJsonLdJob(html);
-    if (jsonLd?.description && jsonLd.description.length >= 100) {
-      return {
-        ok: true,
-        title: jsonLd.title,
-        company: jsonLd.company,
-        location: jsonLd.location,
-        text: jsonLd.description.slice(0, 8000),
-        via: 'json-ld',
-      };
-    }
-
-    // ---------- 2. Pick best from meta-description / body / json-ld-short ----------
-    const ogTitle =
-      extractMetaTag(html, ['og:title', 'twitter:title']) ??
-      html.match(/<title>([^<]*)<\/title>/i)?.[1]?.trim();
-    const cleanTitle = ogTitle?.replace(
-      /\s*[\|\-–—]\s*(LinkedIn|Naukri|Naukri\.com|Indeed|Glassdoor|Wellfound|AngelList|Greenhouse|Lever|Workable)[^]*$/i,
-      '',
-    );
-    const metaDesc = extractMetaTag(html, [
-      'og:description',
-      'twitter:description',
-      'description',
-    ]);
-
-    const bodyText = htmlToText(html);
-
-    type Candidate = { text: string; via: 'meta' | 'body' | 'json-ld' };
-    const candidates: Candidate[] = [];
-    if (jsonLd?.description) candidates.push({ text: jsonLd.description, via: 'json-ld' });
-    if (metaDesc) candidates.push({ text: metaDesc, via: 'meta' });
-    if (bodyText) candidates.push({ text: bodyText, via: 'body' });
-
-    candidates.sort((a, b) => b.text.length - a.text.length);
-    const best = candidates[0];
-
-    if (!best || best.text.length < 100) {
-      return {
-        ok: false,
-        reason:
-          'Page contained almost no text (likely a JS-rendered SPA without JobPosting structured data)',
-      };
-    }
-    if (best.via === 'body' && isLoginWall(best.text)) {
-      return { ok: false, reason: 'Page requires login (login wall detected)' };
-    }
-
+  // ---------- B. Fallback: Jina Reader (handles JS-rendered SPAs) ----------
+  const reader = await fetchViaJinaReader(url);
+  if (reader.ok) {
     return {
       ok: true,
-      title: jsonLd?.title ?? cleanTitle,
-      company: jsonLd?.company,
-      location: jsonLd?.location,
-      text: best.text.slice(0, 8000),
-      via: best.via,
+      title: reader.title,
+      text: reader.text,
+      via: 'reader',
     };
-  } catch (e) {
-    return { ok: false, reason: (e as Error).message };
   }
+
+  return {
+    ok: false,
+    reason: `Page contained almost no text (likely a JS-rendered SPA without JobPosting structured data) [direct: ${directReason}; reader: ${reader.reason}]`,
+  };
 }
 
 export async function POST(req: NextRequest) {
