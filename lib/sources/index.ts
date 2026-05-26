@@ -56,7 +56,7 @@ function buildFns(context?: {
     const queries = buildSearchQueries({
       preferences: context?.preferences,
       insights: context?.insights,
-      maxQueries: 6, // Balance between coverage and API budget
+      maxQueries: 10, // Enough for roles + skills + domain expansions
     });
 
     fns.adzuna_in = () => fetchAdzuna({

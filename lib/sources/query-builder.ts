@@ -8,7 +8,8 @@ import type { Preferences, ResumeInsights } from '../types';
  *  1. Use explicit target roles from preferences (highest priority)
  *  2. Use AI-suggested roles from resume insights
  *  3. Use top skills as search terms (good for niche tools like "loadrunner")
- *  4. Combine role + location for geo-targeted searches
+ *  4. Expand domain-specific synonyms (e.g. performance engineer → performance tester, load testing)
+ *  5. Combine seniority + domain for compound queries
  *
  * Designed for multi-user: each user gets personalized queries
  * derived entirely from their own profile data.
@@ -18,7 +19,7 @@ export function buildSearchQueries(opts: {
   insights?: ResumeInsights | null;
   maxQueries?: number;
 }): string[] {
-  const { preferences, insights, maxQueries = 8 } = opts;
+  const { preferences, insights, maxQueries = 12 } = opts;
   const queries: string[] = [];
   const seen = new Set<string>();
 
@@ -53,19 +54,25 @@ export function buildSearchQueries(opts: {
       .filter(s => s.length > 3) // Skip "sql", "git" etc. — too generic
       .sort((a, b) => b.length - a.length); // Longer = more specific = better query
 
-    for (const skill of sortedSkills.slice(0, 4)) {
+    for (const skill of sortedSkills.slice(0, 5)) {
       add(skill);
     }
   }
 
-  // --- Priority 4: Seniority + domain combinations ---
-  // e.g. "senior performance engineer", "staff engineer"
-  if (insights?.seniority && insights.seniority !== 'unknown') {
-    const seniority = insights.seniority;
-    const domain = guessDomain(insights);
-    if (domain) {
-      add(`${seniority} ${domain}`);
+  // --- Priority 4: Domain-specific expansion ---
+  // For each detected domain, add related job title variants and key tools
+  // that the user might not have listed explicitly but would match jobs they want
+  const domain = guessDomain(insights);
+  if (domain) {
+    const expansions = DOMAIN_EXPANSIONS[domain] ?? [];
+    for (const expansion of expansions) {
+      add(expansion);
     }
+  }
+
+  // --- Priority 5: Seniority + domain combinations ---
+  if (insights?.seniority && insights.seniority !== 'unknown' && domain) {
+    add(`${insights.seniority} ${domain}`);
   }
 
   // --- Limit total queries to stay within API budget ---
@@ -73,40 +80,146 @@ export function buildSearchQueries(opts: {
 }
 
 /**
- * Guess the candidate's primary domain from their skills/roles.
- * Used to create compound queries like "senior performance engineer".
+ * Domain-specific query expansions.
+ * When we detect a user is in a certain domain, we automatically add
+ * related job title variants and tool names that surface relevant postings.
+ *
+ * This is what makes the system smart — a performance engineer doesn't
+ * need to manually type "performance tester", "load testing", "dynatrace" etc.
+ * The system knows these are all part of the same domain.
  */
-function guessDomain(insights: ResumeInsights): string | null {
+const DOMAIN_EXPANSIONS: Record<string, string[]> = {
+  'performance engineer': [
+    'performance tester',
+    'performance test engineer',
+    'load testing',
+    'performance testing',
+    'appdynamics',
+    'dynatrace',
+    'splunk',
+    'neoload',
+  ],
+  'devops engineer': [
+    'site reliability engineer',
+    'SRE',
+    'platform engineer',
+    'infrastructure engineer',
+    'cloud engineer',
+    'kubernetes',
+    'terraform',
+  ],
+  'data scientist': [
+    'machine learning engineer',
+    'ML engineer',
+    'AI engineer',
+    'deep learning',
+    'NLP engineer',
+    'data analyst',
+  ],
+  'data engineer': [
+    'analytics engineer',
+    'ETL developer',
+    'big data engineer',
+    'data platform',
+    'spark',
+    'airflow',
+  ],
+  'frontend engineer': [
+    'frontend developer',
+    'UI developer',
+    'react developer',
+    'angular developer',
+    'web developer',
+    'javascript developer',
+  ],
+  'backend engineer': [
+    'backend developer',
+    'server-side developer',
+    'API developer',
+    'java developer',
+    'python developer',
+    'node.js developer',
+  ],
+  'mobile developer': [
+    'iOS developer',
+    'android developer',
+    'flutter developer',
+    'react native developer',
+    'mobile engineer',
+  ],
+  'QA engineer': [
+    'test automation engineer',
+    'SDET',
+    'quality engineer',
+    'automation tester',
+    'selenium',
+    'cypress',
+  ],
+  'security engineer': [
+    'cybersecurity engineer',
+    'application security',
+    'penetration tester',
+    'security analyst',
+    'SOC analyst',
+  ],
+  'cloud engineer': [
+    'AWS engineer',
+    'Azure engineer',
+    'cloud architect',
+    'cloud infrastructure',
+    'solutions architect',
+  ],
+  'full stack developer': [
+    'full stack engineer',
+    'web developer',
+    'MERN developer',
+    'MEAN developer',
+    'software developer',
+  ],
+  'software engineer': [
+    'software developer',
+    'application developer',
+    'programmer',
+  ],
+};
+
+/**
+ * Guess the candidate's primary domain from their skills/roles.
+ * Used to trigger domain-specific query expansions.
+ */
+function guessDomain(insights?: ResumeInsights | null): string | null {
+  if (!insights) return null;
+
   const skills = (insights.top_skills ?? []).join(' ').toLowerCase();
   const roles = (insights.suggested_roles ?? []).join(' ').toLowerCase();
   const combined = `${skills} ${roles}`;
 
   // Order matters — more specific first
-  if (/performance|load test|jmeter|gatling|loadrunner/i.test(combined)) {
+  if (/performance|load test|jmeter|gatling|loadrunner|neoload/i.test(combined)) {
     return 'performance engineer';
   }
-  if (/devops|kubernetes|docker|terraform|ci.cd/i.test(combined)) {
+  if (/devops|kubernetes|docker|terraform|ci.cd|ansible/i.test(combined)) {
     return 'devops engineer';
   }
-  if (/data scien|machine learn|deep learn|nlp|pytorch/i.test(combined)) {
+  if (/data scien|machine learn|deep learn|nlp|pytorch|tensorflow/i.test(combined)) {
     return 'data scientist';
   }
-  if (/data engineer|spark|airflow|etl|pipeline/i.test(combined)) {
+  if (/data engineer|spark|airflow|etl|pipeline|dbt/i.test(combined)) {
     return 'data engineer';
   }
-  if (/react|angular|vue|frontend|css|tailwind/i.test(combined)) {
+  if (/react|angular|vue|frontend|css|tailwind|next\.?js/i.test(combined)) {
     return 'frontend engineer';
   }
-  if (/node|express|spring|backend|api|microservice/i.test(combined)) {
+  if (/node|express|spring|backend|api|microservice|django/i.test(combined)) {
     return 'backend engineer';
   }
   if (/ios|android|swift|kotlin|flutter|react native/i.test(combined)) {
     return 'mobile developer';
   }
-  if (/qa|test auto|selenium|cypress|playwright/i.test(combined)) {
+  if (/qa|test auto|selenium|cypress|playwright|sdet/i.test(combined)) {
     return 'QA engineer';
   }
-  if (/security|pentest|soc|siem|vulnerability/i.test(combined)) {
+  if (/security|pentest|soc|siem|vulnerability|appsec/i.test(combined)) {
     return 'security engineer';
   }
   if (/cloud|aws|azure|gcp|infrastructure/i.test(combined)) {
