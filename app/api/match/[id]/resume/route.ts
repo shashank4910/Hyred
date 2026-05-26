@@ -141,11 +141,72 @@ Output the complete ATS-optimized resume in plain text. No preamble, no explanat
       );
     }
 
-    return NextResponse.json({ ok: true, resume });
+    // --- Keyword analysis: what was injected vs already present ---
+    const originalLower = (profile.resume_text ?? '').toLowerCase();
+    const jdLower = (job.description ?? '').toLowerCase();
+
+    // Extract meaningful multi-word and single-word terms from the JD
+    // that look like skills/tools/technologies.
+    const jdKeywords = extractKeywords(jdLower);
+    const added: string[] = [];
+    const alreadyHad: string[] = [];
+
+    for (const kw of jdKeywords) {
+      const inResume = originalLower.includes(kw.toLowerCase());
+      const inGenerated = resume.toLowerCase().includes(kw.toLowerCase());
+      if (inGenerated && !inResume) {
+        added.push(kw);
+      } else if (inGenerated && inResume) {
+        alreadyHad.push(kw);
+      }
+    }
+
+    return NextResponse.json({
+      ok: true,
+      resume,
+      keywords: {
+        added: [...new Set(added)].slice(0, 15),
+        already_had: [...new Set(alreadyHad)].slice(0, 15),
+        total_jd_keywords: jdKeywords.length,
+      },
+    });
   } catch (e) {
     return NextResponse.json(
       { error: `Resume generation failed: ${(e as Error).message}` },
       { status: 500 },
     );
   }
+}
+
+/**
+ * Extract likely skill/technology keywords from JD text.
+ * Looks for capitalized terms, known patterns, and terms near
+ * "experience with", "proficiency in", "knowledge of", etc.
+ */
+function extractKeywords(jd: string): string[] {
+  const keywords = new Set<string>();
+
+  // Common tech terms pattern (2-3 word phrases and single words)
+  const patterns = [
+    /\b(?:jmeter|loadrunner|gatling|blazemeter|cavisson|netdynamics)\b/gi,
+    /\b(?:kubernetes|docker|jenkins|terraform|ansible|aws|azure|gcp)\b/gi,
+    /\b(?:java|python|javascript|typescript|golang|rust|scala|kotlin)\b/gi,
+    /\b(?:spring boot|react|angular|vue|node\.?js|express)\b/gi,
+    /\b(?:sql|postgresql|mysql|mongodb|redis|elasticsearch|kafka)\b/gi,
+    /\b(?:ci\/cd|devops|microservices|rest api|graphql|grpc)\b/gi,
+    /\b(?:agile|scrum|kanban|jira|confluence)\b/gi,
+    /\b(?:appdynamics|dynatrace|splunk|grafana|prometheus|datadog|new relic)\b/gi,
+    /\b(?:selenium|cypress|playwright|cucumber|karate)\b/gi,
+    /\b(?:performance testing|load testing|stress testing|api testing|test automation)\b/gi,
+    /\b(?:communication skills|problem solving|team lead|stakeholder)\b/gi,
+  ];
+
+  for (const re of patterns) {
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(jd)) !== null) {
+      keywords.add(m[0].trim());
+    }
+  }
+
+  return [...keywords];
 }

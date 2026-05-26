@@ -58,6 +58,11 @@ export function JobActions({
   const [atsResume, setAtsResume] = useState('');
   const [generatingResume, setGeneratingResume] = useState(false);
   const [resumeCopied, setResumeCopied] = useState(false);
+  const [keywords, setKeywords] = useState<{
+    added: string[];
+    already_had: string[];
+    total_jd_keywords: number;
+  } | null>(null);
 
   // Load skills if we have any candidate skills
   useEffect(() => {
@@ -160,6 +165,7 @@ export function JobActions({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed');
       setAtsResume(data.resume);
+      if (data.keywords) setKeywords(data.keywords);
       toast.success('ATS resume ready!', { id });
     } catch (e) {
       toast.error((e as Error).message, { id });
@@ -183,6 +189,40 @@ export function JobActions({
     a.download = 'resume-ats-optimized.txt';
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  async function downloadResumePdf() {
+    toast.loading('Generating PDF...');
+    const { jsPDF } = await import('jspdf');
+    const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+    const margin = 40;
+    const pageWidth = doc.internal.pageSize.getWidth() - margin * 2;
+    const lineHeight = 14;
+    let y = margin;
+
+    doc.setFont('Courier', 'normal');
+    doc.setFontSize(10);
+
+    const lines = doc.splitTextToSize(atsResume, pageWidth);
+    for (const line of lines) {
+      if (y > doc.internal.pageSize.getHeight() - margin) {
+        doc.addPage();
+        y = margin;
+      }
+      // Bold section headers (ALL CAPS lines)
+      if (/^[A-Z\s&]+$/.test(line.trim()) && line.trim().length > 2) {
+        doc.setFont('Courier', 'bold');
+        doc.text(line, margin, y);
+        doc.setFont('Courier', 'normal');
+      } else {
+        doc.text(line, margin, y);
+      }
+      y += lineHeight;
+    }
+
+    doc.save('resume-ats-optimized.pdf');
+    toast.dismiss();
+    toast.success('PDF downloaded');
   }
 
   return (
@@ -385,7 +425,10 @@ export function JobActions({
                   <Copy className="h-3.5 w-3.5" /> {resumeCopied ? 'Copied!' : 'Copy'}
                 </button>
                 <button onClick={downloadResume} className="btn">
-                  <Download className="h-3.5 w-3.5" /> Download .txt
+                  <Download className="h-3.5 w-3.5" /> .txt
+                </button>
+                <button onClick={downloadResumePdf} className="btn">
+                  <Download className="h-3.5 w-3.5" /> PDF
                 </button>
               </>
             )}
@@ -419,10 +462,53 @@ export function JobActions({
           </div>
         )}
         {atsResume ? (
-          <div>
-            <div className="text-xs text-muted mb-2 flex items-center gap-1.5">
+          <div className="space-y-3">
+            {/* Keyword analysis — like Simplify */}
+            {keywords && (
+              <div className="space-y-2 border-b border-border pb-3">
+                <div className="text-xs font-medium text-muted">
+                  Keywords analysis ({keywords.total_jd_keywords} detected in JD)
+                </div>
+                {keywords.added.length > 0 && (
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-primary mb-1">
+                      + Added to your resume ({keywords.added.length})
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {keywords.added.map((kw) => (
+                        <span
+                          key={kw}
+                          className="inline-flex items-center gap-0.5 rounded-full bg-primary/15 text-primary px-2 py-0.5 text-xs font-medium"
+                        >
+                          + {kw}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {keywords.already_had.length > 0 && (
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-muted mb-1">
+                      Already in your resume ({keywords.already_had.length})
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {keywords.already_had.map((kw) => (
+                        <span
+                          key={kw}
+                          className="inline-flex items-center gap-0.5 rounded-full border border-border px-2 py-0.5 text-xs text-muted"
+                        >
+                          <CheckCircle2 className="h-2.5 w-2.5" /> {kw}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="text-xs text-muted flex items-center gap-1.5">
               <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
-              Tailored for this job. Keywords injected. ATS-parseable plain text.
+              Tailored for this job. ATS-parseable plain text. Download as PDF to upload.
             </div>
             <pre className="whitespace-pre-wrap text-sm text-fg/90 font-sans leading-relaxed bg-bg/50 border border-border rounded-lg p-3 max-h-[400px] overflow-y-auto">
               {atsResume}
