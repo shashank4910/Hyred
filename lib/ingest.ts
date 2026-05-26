@@ -14,7 +14,7 @@ export type IngestResult = {
   runId?: string;
 };
 
-const SIMILARITY_TOP_N = 25;
+const SIMILARITY_TOP_N = 50;
 const MIN_SCORE_TO_KEEP = 60;
 
 /**
@@ -99,8 +99,11 @@ export async function runIngest(opts?: {
       (p.preferences?.blacklist_companies ?? []).map((s) => s.toLowerCase().trim()),
     );
 
-    // ---------- 2. Fetch from sources ----------
-    const { jobs: rawJobs, errors } = await fetchAllSources();
+    // ---------- 2. Fetch from sources (pass profile context for smarter queries) ----------
+    const { jobs: rawJobs, errors } = await fetchAllSources(undefined, {
+      preferences: p.preferences,
+      insights: p.insights,
+    });
     runErrors = errors;
     fetched = rawJobs.length;
 
@@ -139,7 +142,7 @@ export async function runIngest(opts?: {
       .select('id, title, company, location, description, embedding')
       .not('embedding', 'is', null)
       .order('fetched_at', { ascending: false })
-      .limit(300);
+      .limit(500);
 
     const resumeVec = p.resume_embedding!;
     const ranked = (candidates ?? [])
