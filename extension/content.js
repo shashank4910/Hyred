@@ -1,8 +1,8 @@
 // JobRadar Autofill — content script
 //
-// Lives on every supported site. Detects job application forms,
-// renders a floating "Add to JobRadar" / "Autofill" button, and
-// orchestrates the fill flow by:
+// Lives on every page (matches <all_urls> in manifest). Detects job
+// application forms, renders a floating "Autofill" button on supported
+// sites, and orchestrates the fill flow by:
 //   1. asking background for the user's profile
 //   2. asking background for any JobRadar match for this URL
 //      (so we can inject the existing AI cover letter)
@@ -18,6 +18,8 @@
 
   if (window.__jobRadarLoaded) return;
   window.__jobRadarLoaded = true;
+
+  const log = (...args) => console.log('[JobRadar]', ...args);
 
   // -------------------------------------------------------------------
   // Send a message to the background and await the response.
@@ -307,11 +309,15 @@
   // Main flow when the user clicks the floating button.
   // -------------------------------------------------------------------
   let busy = false;
-  async function runAutofill(fab) {
+  async function runAutofill() {
     if (busy) return;
     busy = true;
-    fab.setAttribute('aria-disabled', 'true');
-    fab.querySelector('.jr-label').textContent = 'Working…';
+    const fab = document.getElementById('jobradar-fab');
+    if (fab) {
+      fab.setAttribute('aria-disabled', 'true');
+      fab.querySelector('.jr-label').textContent = 'Working…';
+    }
+    toast('Filling form...', 'ok', 2000);
 
     try {
       const ping = await send('ping');
@@ -356,13 +362,21 @@
       if (coverInjected) parts.push('cover letter injected');
       if (answered) parts.push(`${answered} screening Q answered`);
       if (match) parts.push(`match score ${match.score}`);
-      toast(parts.join(' · '), filled || coverInjected || answered ? 'ok' : 'warn', 5000);
+      toast(
+        parts.join(' · '),
+        filled || coverInjected || answered ? 'ok' : 'warn',
+        5500,
+      );
+      log('autofill complete', { filled, coverInjected, answered, match });
     } catch (e) {
       toast(`Autofill failed: ${e?.message ?? e}`, 'err', 6000);
+      log('autofill error', e);
     } finally {
       busy = false;
-      fab.removeAttribute('aria-disabled');
-      fab.querySelector('.jr-label').textContent = 'Autofill';
+      if (fab) {
+        fab.removeAttribute('aria-disabled');
+        fab.querySelector('.jr-label').textContent = 'Autofill';
+      }
     }
   }
 
@@ -377,12 +391,25 @@
     fab.title = 'Autofill with JobRadar';
     fab.innerHTML =
       '<span class="jr-logo">JR</span><span class="jr-label">Autofill</span>';
-    fab.addEventListener('click', () => runAutofill(fab));
+    fab.addEventListener('click', () => runAutofill());
     document.body.appendChild(fab);
+    log('FAB mounted');
   }
 
   // -------------------------------------------------------------------
-  // Boot. Wait for ATS-ish content; many SPAs load forms after first paint.
+  // Listen for messages from the popup ("Autofill this page" button).
+  // -------------------------------------------------------------------
+  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg?.type === 'TRIGGER_AUTOFILL') {
+      mountFab();
+      runAutofill();
+      sendResponse({ ok: true });
+    }
+    return false;
+  });
+
+  // -------------------------------------------------------------------
+  // Auto-mount: known ATS host OR a page that looks like an app form.
   // -------------------------------------------------------------------
   function maybeMount() {
     const ats = detectAts();
@@ -390,10 +417,10 @@
       mountFab();
     }
   }
+
+  log('content script loaded on', HOST, location.pathname);
   maybeMount();
-  // Re-check on DOM changes for SPA route transitions.
   const obs = new MutationObserver(() => maybeMount());
   obs.observe(document.body, { childList: true, subtree: true });
-  // Stop observing after a minute to save CPU.
   setTimeout(() => obs.disconnect(), 60_000);
 })();

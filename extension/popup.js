@@ -126,3 +126,42 @@ $('#btn-disconnect').addEventListener('click', async () => {
   await clearStored();
   showSetup();
 });
+
+// Manual-trigger button: works on any URL even if the FAB didn't auto-mount.
+$('#btn-autofill-tab').addEventListener('click', async () => {
+  const errEl = $('#autofill-error');
+  errEl.textContent = '';
+  const btn = $('#btn-autofill-tab');
+  btn.disabled = true;
+  btn.textContent = 'Filling…';
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id || !tab.url || !/^https?:/i.test(tab.url)) {
+      throw new Error('Open a job application page (https) first.');
+    }
+    // Make sure the content script is injected (no-op if already loaded).
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ['content.js'],
+      });
+    } catch (e) {
+      throw new Error(
+        `Cannot run on this page: ${e?.message ?? 'restricted URL'}`,
+      );
+    }
+    chrome.tabs.sendMessage(tab.id, { type: 'TRIGGER_AUTOFILL' }, () => {
+      const err = chrome.runtime.lastError;
+      if (err) {
+        errEl.textContent = err.message;
+      } else {
+        window.close();
+      }
+    });
+  } catch (e) {
+    errEl.textContent = e.message ?? 'Failed';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Autofill this page';
+  }
+});
