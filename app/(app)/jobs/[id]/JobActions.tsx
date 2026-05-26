@@ -105,13 +105,8 @@ export function JobActions({
         if (d?.keywords) {
           setJdKeywords(d.keywords);
           setAlreadyHaveKeywords(d.alreadyHave ?? []);
-          // Auto-select all available keywords by default
-          const available = (d.keywords as string[]).filter(
-            (k: string) => !(d.alreadyHave ?? []).some(
-              (a: string) => a.toLowerCase() === k.toLowerCase()
-            )
-          );
-          setSelectedKeywords(available);
+          // Start with nothing selected — user must explicitly pick
+          setSelectedKeywords([]);
           setKeywordsLoaded(true);
         }
       })
@@ -197,6 +192,10 @@ export function JobActions({
     URL.revokeObjectURL(url);
   }
 
+  // Resume editing state
+  const [editingResume, setEditingResume] = useState(false);
+  const [editedResume, setEditedResume] = useState('');
+
   async function generateAtsResume() {
     setGeneratingResume(true);
     const id = toast.loading('Generating ATS-optimized resume...');
@@ -211,8 +210,10 @@ export function JobActions({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed');
       setAtsResume(data.resume);
+      setEditedResume(data.resume);
+      setEditingResume(true); // Open in edit/preview mode by default
       if (data.keywords) setKeywords(data.keywords);
-      toast.success('ATS resume ready!', { id });
+      toast.success('ATS resume ready — review & edit before exporting!', { id });
     } catch (e) {
       toast.error((e as Error).message, { id });
     } finally {
@@ -221,14 +222,15 @@ export function JobActions({
   }
 
   async function copyResume() {
-    await navigator.clipboard.writeText(atsResume);
+    await navigator.clipboard.writeText(editedResume || atsResume);
     setResumeCopied(true);
     toast.success('Resume copied to clipboard');
     setTimeout(() => setResumeCopied(false), 2000);
   }
 
   function downloadResumeTxt() {
-    const blob = new Blob([atsResume], { type: 'text/plain;charset=utf-8' });
+    const text = editedResume || atsResume;
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -241,7 +243,7 @@ export function JobActions({
     const id = toast.loading('Generating beautiful PDF...');
     try {
       const { generateBeautifulPdf } = await import('@/lib/pdf-resume');
-      const doc = generateBeautifulPdf(atsResume);
+      const doc = generateBeautifulPdf(editedResume || atsResume);
       doc.save('resume-ats-optimized.pdf');
       toast.success('PDF downloaded!', { id });
     } catch (e) {
@@ -519,7 +521,7 @@ export function JobActions({
           </div>
         )}
 
-        {/* Generated resume */}
+        {/* Generated resume — editable preview */}
         {atsResume && (
           <div className="space-y-3">
             {/* Keyword analysis */}
@@ -567,15 +569,39 @@ export function JobActions({
               </div>
             )}
 
-            <div className="flex items-center justify-between">
-              <div className="text-xs text-muted flex items-center gap-1.5">
-                <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
-                Tailored for this job. Download as PDF to upload.
+            {/* Action bar: Edit / Preview toggle + Export buttons */}
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setEditingResume(true)}
+                  className={editingResume
+                    ? 'text-xs font-medium text-primary border-b border-primary pb-0.5'
+                    : 'text-xs text-muted hover:text-fg'
+                  }
+                >
+                  <Pencil className="h-3 w-3 inline mr-1" />
+                  Edit
+                </button>
+                <button
+                  onClick={() => {
+                    setEditingResume(false);
+                    setAtsResume(editedResume); // save edits
+                  }}
+                  className={!editingResume
+                    ? 'text-xs font-medium text-primary border-b border-primary pb-0.5'
+                    : 'text-xs text-muted hover:text-fg'
+                  }
+                >
+                  <FileText className="h-3 w-3 inline mr-1" />
+                  Preview
+                </button>
               </div>
               <button
                 onClick={() => {
                   setAtsResume('');
+                  setEditedResume('');
                   setKeywords(null);
+                  setEditingResume(false);
                 }}
                 className="btn text-xs"
               >
@@ -584,9 +610,43 @@ export function JobActions({
               </button>
             </div>
 
-            <pre className="whitespace-pre-wrap text-sm text-fg/90 font-sans leading-relaxed bg-bg/50 border border-border rounded-lg p-3 max-h-[400px] overflow-y-auto">
-              {atsResume}
-            </pre>
+            {/* Editable textarea or read-only preview */}
+            {editingResume ? (
+              <div className="space-y-2">
+                <textarea
+                  value={editedResume}
+                  onChange={(e) => setEditedResume(e.target.value)}
+                  className="input min-h-[420px] font-mono text-sm leading-relaxed resize-y"
+                  placeholder="Edit your resume here..."
+                />
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] text-muted">
+                    Edit anything above — your changes will be used when exporting PDF or copying.
+                  </p>
+                  <button
+                    onClick={() => {
+                      setAtsResume(editedResume);
+                      setEditingResume(false);
+                      toast.success('Changes saved');
+                    }}
+                    className="btn-primary text-xs"
+                  >
+                    <Save className="h-3 w-3" />
+                    Save & Preview
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <pre className="whitespace-pre-wrap text-sm text-fg/90 font-sans leading-relaxed bg-bg/50 border border-border rounded-lg p-3 max-h-[420px] overflow-y-auto">
+                  {editedResume || atsResume}
+                </pre>
+                <div className="flex items-center gap-1.5 text-xs text-muted">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
+                  Tailored for this job. Click Edit to make changes, then export as PDF.
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

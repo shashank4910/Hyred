@@ -173,31 +173,34 @@ export async function POST(
 
   const client = new OpenAI({ apiKey: key });
 
-  // Build keyword injection instructions
+  // Build keyword injection instructions — ONLY selected keywords, nothing else
   const keywordInstructions = selectedKeywords.length > 0
-    ? `\n\nPRIORITY KEYWORDS — The user specifically selected these keywords to emphasize. Incorporate them naturally into bullet points, summary, and skills section where truthful. These are from the JD and the user wants them visible in the resume:\n${selectedKeywords.map(k => `  - ${k}`).join('\n')}\n`
-    : '';
+    ? `\n\nUSER-SELECTED KEYWORDS TO ADD:\nThe user has EXPLICITLY chosen these keywords to include. ONLY incorporate these specific keywords — do NOT add any other keywords, skills, or tools that are not already present in the candidate's original resume:\n${selectedKeywords.map(k => `  - ${k}`).join('\n')}\n\nFor each selected keyword above, find a natural place to mention it in an existing bullet point or the skills section. If you cannot truthfully incorporate a keyword based on existing experience, SKIP IT — do not fabricate context for it.\n`
+    : '\nThe user has NOT selected any additional keywords. Do NOT add any skills, tools, or technologies that are not already in the original resume. Only reorder and rephrase existing content.\n';
 
-  const prompt = `You are an expert resume writer who specializes in getting resumes past Applicant Tracking Systems (ATS).
+  const prompt = `You are an expert resume writer. Your job is to reformat and reorder the candidate's EXISTING resume content to better target a specific job.
 
-Given the candidate's current resume and a target job description, rewrite the resume to maximize ATS compatibility and relevance scoring for THIS specific job.
+ABSOLUTE RULES — VIOLATION OF THESE IS UNACCEPTABLE:
+1. NEVER add skills, tools, technologies, certifications, or experiences that are NOT in the original resume below.
+2. NEVER add "selenium", "cypress", "playwright", "karate", or ANY tool/technology unless it literally appears in the CANDIDATE'S CURRENT RESUME section below.
+3. The ONLY new keywords you may add are the ones listed in "USER-SELECTED KEYWORDS TO ADD" (if any). Even those must be woven into existing truthful context.
+4. Your output must be a reformatted version of the SAME content — reordered, rephrased for clarity, but containing NO new claims.
+5. The "Key Skills" section must ONLY list skills that appear in the original resume OR in the user-selected keywords list.
 
-RULES (critical):
-1. NEVER invent fake experience, certifications, degrees, companies, or skills the candidate doesn't have.
-2. DO reorder sections and bullets so the most relevant experience appears first.
-3. DO naturally incorporate keywords from the JD into existing bullet points where truthful.
-4. DO quantify achievements where the original resume already implies them.
-5. DO use a clean plain-text format: no tables, no columns, no graphics, no special characters.
-6. DO include a targeted "Summary" section (2-3 lines) at the top highlighting fit for THIS role.
-7. DO include a "Key Skills" section that mirrors the JD's required skills (only skills the candidate actually has).
-8. Keep the resume to ~1 page worth of text (roughly 400-600 words).
-9. Use the format: SECTION HEADERS IN CAPS, bullet points with "- " prefix.
-10. Contact info at the top: Name, Email, Phone, Location, LinkedIn (if available).
+FORMATTING RULES:
+1. Use clean plain-text: no tables, no columns, no graphics.
+2. Include a targeted "Summary" section (2-3 lines) using ONLY facts from the original resume.
+3. Include a "Key Skills" section — ONLY skills from the original resume + user-selected keywords.
+4. Keep it to ~1 page (400-600 words).
+5. Use SECTION HEADERS IN CAPS, bullet points with "- " prefix.
+6. Contact info at the top.
+7. Reorder bullets so the most relevant experience for this job appears first.
+8. Quantify achievements where the original resume already implies numbers.
 ${keywordInstructions}
-CANDIDATE'S CURRENT RESUME:
+CANDIDATE'S CURRENT RESUME (this is the ONLY source of truth — do not add anything not found here):
 ${profile.resume_text.slice(0, 7000)}
 
-TARGET JOB:
+TARGET JOB (use this ONLY to decide ordering and emphasis, NOT to add new skills):
 Title: ${job.title}
 Company: ${job.company ?? 'Not specified'}
 Location: ${job.location ?? 'Not specified'}
@@ -212,7 +215,7 @@ Email: ${profile.email}
 ${profile.insights?.phone ? `Phone: ${profile.insights.phone}` : ''}
 ${profile.insights?.current_location ? `Location: ${profile.insights.current_location}` : ''}
 
-Output the complete ATS-optimized resume in plain text. No preamble, no explanation — just the resume.`;
+Output the reformatted resume in plain text. No preamble, no explanation — just the resume.`;
 
   try {
     const res = await client.chat.completions.create({
@@ -222,7 +225,7 @@ Output the complete ATS-optimized resume in plain text. No preamble, no explanat
         {
           role: 'system',
           content:
-            'You rewrite resumes to pass ATS systems. Output clean plain text only. Never fabricate experience.',
+            'You reformat existing resumes. You NEVER add new skills, tools, or technologies. You only reorder and rephrase what already exists. If a skill is not in the original resume, it must NOT appear in your output unless the user explicitly selected it. Output clean plain text only.',
         },
         { role: 'user', content: prompt },
       ],
