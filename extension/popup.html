@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>JobRadar Autofill</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header class="brand">
+      <span class="logo">JR</span>
+      <span class="name">JobRadar Autofill</span>
+    </header>
+
+    <!-- Connected state -->
+    <section id="connected" class="hidden">
+      <div class="status ok">
+        <span class="dot"></span>
+        Connected to <span id="connected-host">…</span>
+      </div>
+      <div id="profile-summary" class="profile-summary"></div>
+      <div class="row">
+        <button id="btn-recheck" class="btn-ghost" type="button">
+          Refresh profile
+        </button>
+        <button id="btn-disconnect" class="btn-ghost danger" type="button">
+          Disconnect
+        </button>
+      </div>
+      <div class="hint">
+        On any job application page, click the floating
+        <strong>JobRadar</strong> button at the bottom-right to autofill.
+      </div>
+    </section>
+
+    <!-- Setup state -->
+    <section id="setup">
+      <p class="lead">
+        Connect this extension to your JobRadar deployment. Takes 10 seconds.
+      </p>
+      <form id="setup-form">
+        <label>
+          <span>JobRadar URL</span>
+          <input
+            id="url"
+            type="url"
+            placeholder="https://job-radar-xxxx.vercel.app"
+            required
+          />
+        </label>
+        <label>
+          <span>App password</span>
+          <input
+            id="password"
+            type="password"
+            placeholder="The APP_PASSWORD you set in Vercel"
+            required
+            minlength="6"
+          />
+        </label>
+        <button id="btn-connect" class="btn-primary" type="submit">
+          Connect
+        </button>
+        <p id="error" class="error"></p>
+      </form>
+    </section>
+
+    <footer class="foot">
+      v<span id="ver"></span>
+    </footer>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

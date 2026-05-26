@@ -1,0 +1,72 @@
+/* JobRadar Autofill — overlay styles. Heavily prefixed to avoid host conflicts. */
+
+#jobradar-fab {
+  position: fixed;
+  z-index: 2147483600;
+  right: 18px;
+  bottom: 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: #7cffb2;
+  color: #0b0d10;
+  border: none;
+  border-radius: 999px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  font: 600 13px/1 -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+  cursor: pointer;
+  transition: transform 0.15s, opacity 0.15s;
+}
+#jobradar-fab:hover {
+  transform: translateY(-1px);
+}
+#jobradar-fab[aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: progress;
+}
+#jobradar-fab .jr-logo {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: rgba(11, 13, 16, 0.18);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 800;
+  color: #0b0d10;
+}
+
+#jobradar-toast {
+  position: fixed;
+  z-index: 2147483601;
+  right: 18px;
+  bottom: 70px;
+  max-width: 320px;
+  padding: 10px 12px;
+  background: #14181d;
+  border: 1px solid #252b33;
+  color: #e6ebf2;
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  font: 500 12.5px/1.5 -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+  white-space: pre-line;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.18s, transform 0.18s;
+}
+#jobradar-toast.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+#jobradar-toast.ok {
+  border-color: rgba(124, 255, 178, 0.4);
+}
+#jobradar-toast.warn {
+  border-color: rgba(255, 196, 64, 0.4);
+}
+#jobradar-toast.err {
+  border-color: rgba(255, 92, 92, 0.4);
+}

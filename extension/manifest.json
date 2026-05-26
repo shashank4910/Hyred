@@ -1,0 +1,54 @@
+{
+  "manifest_version": 3,
+  "name": "JobRadar Autofill",
+  "version": "0.1.0",
+  "description": "AI-powered job application autofill, cover letter injection, and screening Q&A. Pairs with your JobRadar app.",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": ["https://*/*"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://boards.greenhouse.io/*",
+        "https://*.greenhouse.io/*",
+        "https://job-boards.greenhouse.io/*",
+        "https://jobs.lever.co/*",
+        "https://*.ashbyhq.com/*",
+        "https://jobs.ashbyhq.com/*",
+        "https://*.workable.com/*",
+        "https://apply.workable.com/*",
+        "https://*.myworkdayjobs.com/*",
+        "https://*.icims.com/*",
+        "https://*.bamboohr.com/*",
+        "https://*.smartrecruiters.com/*",
+        "https://*.recruitee.com/*",
+        "https://*.teamtailor.com/*",
+        "https://*.jobvite.com/*",
+        "https://*.taleo.net/*",
+        "https://www.naukri.com/*",
+        "https://www.linkedin.com/jobs/*",
+        "https://www.linkedin.com/comm/jobs/*",
+        "https://wellfound.com/*",
+        "https://angel.co/*",
+        "https://www.indeed.com/*"
+      ],
+      "js": ["content.js"],
+      "css": ["styles.css"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "JobRadar Autofill"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["inject.js"],
+      "matches": ["https://*/*"]
+    }
+  ]
+}

@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifySession, COOKIE } from '@/lib/auth';
 
-const PUBLIC_PATHS = ['/login', '/api/login', '/api/ingest'];
+const PUBLIC_PATHS = [
+  '/login',
+  '/api/login',
+  '/api/ingest',
+  // Extension API: each route enforces its own Bearer-JWT check;
+  // skip cookie-based middleware entirely so CORS preflight/Authorization
+  // works without a user session cookie.
+  '/api/extension',
+];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;

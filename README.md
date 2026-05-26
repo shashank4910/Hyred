@@ -17,6 +17,8 @@ AI-curated job matches from across the web. Pulls jobs from public job APIs, sco
 - 🚫 Company blacklist — never see jobs from companies you don't want
 - 📝 Notes per job — recruiter contact, interview prep, follow-ups
 - 🌓 Polished dark UI with skeletons, toasts, mobile-responsive
+- 🔗 **URL importer** — paste any LinkedIn/Naukri/anywhere URL → AI scores it
+- 🧩 **Browser extension** (`extension/`) — autofill any application form, inject cover letter, AI-answer screening questions
 
 ## How it works
 
