@@ -112,9 +112,14 @@ export default async function StatsPage() {
       </section>
 
       <section className="card">
-        <h2 className="font-semibold mb-3 flex items-center gap-2">
+        <h2 className="font-semibold mb-1 flex items-center gap-2">
           <Clock className="h-4 w-4 text-primary" /> Recent ingest runs
         </h2>
+        <p className="text-xs text-muted mb-3">
+          Pipeline time = fetch + embed + score + persist. GitHub Actions
+          adds ~20–30s overhead for checkout, setup-node, and npm install
+          on each run, so total wall-clock time is longer.
+        </p>
         {(runs ?? []).length === 0 ? (
           <p className="text-sm text-muted">No runs yet.</p>
         ) : (
@@ -128,7 +133,12 @@ export default async function StatsPage() {
                   <th className="py-2 text-right font-normal">New</th>
                   <th className="py-2 text-right font-normal">Scored</th>
                   <th className="py-2 text-right font-normal">Kept</th>
-                  <th className="py-2 text-right font-normal">Duration</th>
+                  <th
+                    className="py-2 text-right font-normal"
+                    title="Pipeline execution time — excludes GitHub Actions checkout/setup/npm install"
+                  >
+                    Pipeline time
+                  </th>
                   <th className="py-2 text-left font-normal">Trigger</th>
                 </tr>
               </thead>
