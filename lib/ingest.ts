@@ -99,7 +99,9 @@ export async function runIngest(opts?: {
       (p.preferences?.blacklist_companies ?? []).map((s) => s.toLowerCase().trim()),
     );
 
-    // ---------- 2. Fetch from sources (pass profile context for smarter queries) ----------
+    // ---------- 2. Fetch from sources ----------
+    // Pass profile context so queries are auto-derived from THIS user's
+    // resume + preferences. Each user gets personalized search terms.
     const { jobs: rawJobs, errors } = await fetchAllSources(undefined, {
       preferences: p.preferences,
       insights: p.insights,

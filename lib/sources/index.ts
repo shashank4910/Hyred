@@ -5,6 +5,7 @@ import { fetchRemoteOk } from './remoteok';
 import { fetchHackerNews } from './hackernews';
 import { fetchArbeitnow } from './arbeitnow';
 import { fetchAdzuna } from './adzuna';
+import { buildSearchQueries } from './query-builder';
 
 export type SourceName =
   | 'remotive'
@@ -35,7 +36,8 @@ export const SOURCE_LABELS: Record<SourceName, string> = {
  * on installs that haven't set them up yet.
  *
  * If profile context is provided (preferences + insights), it's used to
- * build smarter search queries for sources that support them (e.g. Adzuna).
+ * automatically build smart search queries — no manual keyword config needed.
+ * Works for any user: queries are derived from their resume + preferences.
  */
 function buildFns(context?: {
   preferences?: Preferences;
@@ -50,28 +52,12 @@ function buildFns(context?: {
 
   // Optional: only enable Adzuna India if creds are configured.
   if (process.env.ADZUNA_APP_ID && process.env.ADZUNA_APP_KEY) {
-    // Build search queries from user's preferences and skills
-    const queries: string[] = [];
-
-    // Add target roles as search queries
-    if (context?.preferences?.roles?.length) {
-      queries.push(...context.preferences.roles.slice(0, 4));
-    }
-
-    // Add top skills as additional queries (pick the most distinctive ones)
-    if (context?.insights?.top_skills?.length) {
-      const skills = context.insights.top_skills;
-      // Pick 2-3 distinctive skills that are likely to be in job titles
-      const skillQueries = skills
-        .filter(s => s.length > 3) // Skip very short terms
-        .slice(0, 3);
-      queries.push(...skillQueries);
-    }
-
-    // Fallback: if no queries from profile, use generic performance/testing terms
-    if (queries.length === 0) {
-      queries.push('performance engineer', 'load testing', 'software engineer');
-    }
+    // Auto-derive search queries from profile (works for any user)
+    const queries = buildSearchQueries({
+      preferences: context?.preferences,
+      insights: context?.insights,
+      maxQueries: 6, // Balance between coverage and API budget
+    });
 
     fns.adzuna_in = () => fetchAdzuna({
       country: 'in',
