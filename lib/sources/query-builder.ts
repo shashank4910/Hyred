@@ -31,46 +31,56 @@ export function buildSearchQueries(opts: {
     queries.push(q.trim());
   }
 
-  // --- Priority 1: Explicit target roles (user set these in preferences) ---
-  if (preferences?.roles?.length) {
-    for (const role of preferences.roles) {
-      add(role);
-    }
-  }
-
-  // --- Priority 2: AI-suggested roles from resume analysis ---
-  if (insights?.suggested_roles?.length) {
-    for (const role of insights.suggested_roles) {
-      add(role);
-    }
-  }
-
-  // --- Priority 3: Top skills as search queries ---
-  // Especially effective for niche tools (loadrunner, gatling, jmeter, etc.)
-  // that are likely to appear in job titles or requirements
+  // --- Priority 1: Distinctive single-word skills (HIGHEST SIGNAL) ---
+  // Single-word niche tools (loadrunner, jmeter, dynatrace, etc.) work
+  // best with Adzuna's `what` keyword search. Multi-word phrases do
+  // AND-matching which dilutes results.
   if (insights?.top_skills?.length) {
-    // Prefer skills that are likely to be in job titles (longer, more specific)
-    const sortedSkills = [...insights.top_skills]
-      .filter(s => s.length > 3) // Skip "sql", "git" etc. — too generic
-      .sort((a, b) => b.length - a.length); // Longer = more specific = better query
-
-    for (const skill of sortedSkills.slice(0, 5)) {
+    const singleWord = insights.top_skills
+      .filter(s => !s.includes(' ') && s.length > 4)
+      .slice(0, 6);
+    for (const skill of singleWord) {
       add(skill);
     }
   }
 
-  // --- Priority 4: Domain-specific expansion ---
-  // For each detected domain, add related job title variants and key tools
-  // that the user might not have listed explicitly but would match jobs they want
+  // --- Priority 2: Domain-specific 2-word tool phrases ---
+  // "performance testing", "load testing" — short enough to match well
   const domain = guessDomain(insights);
   if (domain) {
     const expansions = DOMAIN_EXPANSIONS[domain] ?? [];
-    for (const expansion of expansions) {
+    const shortExpansions = expansions.filter(e => e.split(' ').length <= 2);
+    for (const expansion of shortExpansions) {
       add(expansion);
     }
   }
 
-  // --- Priority 5: Seniority + domain combinations ---
+  // --- Priority 3: AI-suggested role titles ---
+  if (insights?.suggested_roles?.length) {
+    for (const role of insights.suggested_roles.slice(0, 3)) {
+      add(role);
+    }
+  }
+
+  // --- Priority 4: Multi-word skills (less effective but useful) ---
+  if (insights?.top_skills?.length) {
+    const multiWord = insights.top_skills
+      .filter(s => s.includes(' '))
+      .slice(0, 2);
+    for (const skill of multiWord) {
+      add(skill);
+    }
+  }
+
+  // --- Priority 5: User's explicit preference roles ---
+  // (Lower priority because long phrases AND-match poorly on Adzuna)
+  if (preferences?.roles?.length) {
+    for (const role of preferences.roles.slice(0, 3)) {
+      add(role);
+    }
+  }
+
+  // --- Priority 6: Seniority + domain combinations ---
   if (insights?.seniority && insights.seniority !== 'unknown' && domain) {
     add(`${insights.seniority} ${domain}`);
   }

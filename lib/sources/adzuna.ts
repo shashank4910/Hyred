@@ -163,7 +163,7 @@ export async function fetchAdzuna(opts?: AdzunaFetchOpts): Promise<RawJob[]> {
   const queries: string[] = [];
 
   if (opts?.queries?.length) {
-    queries.push(...opts.queries.slice(0, 6)); // Cap at 6 queries to respect API limits
+    queries.push(...opts.queries); // Use ALL queries from buildSearchQueries
   } else if (opts?.whatPhrase) {
     queries.push(opts.whatPhrase);
   }

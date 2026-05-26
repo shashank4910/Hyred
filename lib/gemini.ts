@@ -66,12 +66,14 @@ Score this match on a scale of 0-100 where:
   <40    = poor fit, completely different domain
 
 SCORING GUIDELINES:
-- If the job requires skills that exist in the candidate's resume, score 70+.
-- If the job is in the same DOMAIN (e.g. both are testing/performance/QA), score at least 60 even if specific tools differ.
-- Tools can be learned — weight domain experience and seniority more than specific tool names.
-- Do NOT heavily penalize for missing 1-2 nice-to-have skills if core experience aligns.
-- Location mismatch alone should NOT drop score below 60 if skills match.
-- Remote jobs should get a small boost for candidates open to remote.
+- ADJACENT DOMAINS get 70+: a Performance Engineer applying to Test Automation, SDET, or QA Automation roles is a STRONG match (same testing domain).
+- A Performance Engineer applying to "Software Engineer in Test", "QA Lead", "Test Engineer", "Automation Engineer" → score 70-80.
+- A Performance Engineer applying to general "Java Developer" or "Backend Engineer" → score 50-60 (transferable Java skills).
+- If the job title contains ANY of the candidate's domain keywords (testing, performance, automation, QA, SDET, load, stress) → score 70+.
+- Tools can be learned. Weight DOMAIN over specific tools (e.g. JMeter vs Gatling vs LoadRunner are interchangeable).
+- Do NOT heavily penalize for missing 1-2 nice-to-have skills if core domain aligns.
+- Location mismatch alone should NEVER drop score below 60 if skills match.
+- Remote jobs get a small boost.
 
 Respond with strict JSON: {"score": <int 0-100>, "reason": "<one or two sentences>"}`;
 
