@@ -42,7 +42,8 @@ export type SearchProfile = {
   version: number;
 };
 
-const PROFILE_VERSION = 1;
+// Bump this when you change the prompt above so cached profiles regenerate.
+const PROFILE_VERSION = 2;
 const CACHE_DAYS = 7;
 
 /**
@@ -97,15 +98,15 @@ OUTPUT a JSON object with this exact shape:
     - Order from MOST specific to LEAST specific
     - Use lowercase
   >],
-  "titlePatterns": [<10-15 lowercase substrings. If a job title contains ANY of these, the job is LIKELY relevant. Examples for performance engineer: ['performance', 'load test', 'stress test', 'jmeter', 'loadrunner', 'sre', 'site reliability', 'sdet', 'test automation', 'qa engineer']>],
-  "antiPatterns": [<8-15 lowercase substrings that indicate a job is DEFINITELY NOT relevant. These are stronger than titlePatterns and override them. Examples for performance engineer: ['frontend', 'react', 'angular', 'sales', 'marketing', 'designer', 'product manager', 'data scientist', 'machine learning', 'business analyst']>]
+  "titlePatterns": [<10-15 lowercase substrings. If a job title contains ANY of these, the job is LIKELY relevant. CRITICAL — use COMPOUND/SPECIFIC phrases, NOT ambiguous single words. Examples for performance engineer: ['performance test', 'performance engineer', 'performance tester', 'load test', 'stress test', 'jmeter', 'loadrunner', 'sdet', 'qa automation', 'test automation', 'software engineer in test', 'site reliability', 'sre engineer', 'quality engineer', 'reliability engineer']. AVOID single ambiguous words like 'performance' (matches "Performance Marketer", "Investment Performance Analyst" — false positives) or 'analyst' (matches finance roles).>],
+  "antiPatterns": [<8-15 lowercase substrings that indicate a job is DEFINITELY NOT relevant. These are stronger than titlePatterns and override them. Examples for performance engineer: ['frontend', 'react developer', 'angular developer', 'mobile developer', 'ios developer', 'android developer', 'sales', 'marketing', 'marketer', 'designer', 'product manager', 'data scientist', 'machine learning', 'business analyst', 'investment performance', 'asset performance', 'financial analyst', 'video content', 'social media']>]
 }
 
 GUIDANCE:
 - searchKeywords: think "what 1-2 word query would Adzuna's keyword search return mostly relevant jobs for?". Niche tools work best.
-- titlePatterns: be inclusive — better to flag a maybe-relevant job for AI scoring than miss it.
-- antiPatterns: be aggressive — these jobs will be filtered out without AI scoring, saving cost. Only include domains the candidate is clearly NOT trying to switch to.
-- For a performance engineer, antiPatterns should reject roles like 'Frontend Developer', 'Mobile Developer', 'Sales', 'Product Manager' — these waste API budget if scored.
+- titlePatterns: BE PRECISE. Use compound phrases that uniquely identify the domain. NEVER use a single ambiguous word that has different meanings in different fields (e.g. don't use 'performance' alone — use 'performance test', 'performance engineer', 'performance testing').
+- antiPatterns: include domain-specific noise patterns. For "performance engineer", explicitly reject finance terms like 'investment performance', 'asset performance', 'financial analyst', 'performance marketer' — these jobs use the word "performance" in a non-engineering sense.
+- antiPatterns: be aggressive — these jobs will be filtered out without AI scoring, saving cost.
 - For specific roles (like a performance engineer), DON'T put 'engineer' in antiPatterns since most matching titles end in 'engineer'.
 
 Output strict JSON only.`;
