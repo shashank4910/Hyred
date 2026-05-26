@@ -17,8 +17,10 @@ import {
   Pencil,
   FileText,
   Rocket,
+  Zap,
 } from 'lucide-react';
 import { STATUS_ORDER } from '@/lib/ui';
+import { KeywordPicker } from './KeywordPicker';
 
 type Skills = { matched: string[]; missing: string[]; allSkills: string[] } | null;
 
@@ -62,7 +64,15 @@ export function JobActions({
     added: string[];
     already_had: string[];
     total_jd_keywords: number;
+    selected_count?: number;
   } | null>(null);
+
+  // Keyword picker state
+  const [jdKeywords, setJdKeywords] = useState<string[]>([]);
+  const [alreadyHaveKeywords, setAlreadyHaveKeywords] = useState<string[]>([]);
+  const [selectedKeywords, setSelectedKeywords] = useState<string[]>([]);
+  const [loadingKeywords, setLoadingKeywords] = useState(false);
+  const [keywordsLoaded, setKeywordsLoaded] = useState(false);
 
   // Load skills if we have any candidate skills
   useEffect(() => {
@@ -83,6 +93,31 @@ export function JobActions({
       cancelled = true;
     };
   }, [matchId, candidateSkills.length]);
+
+  // Load JD keywords for the keyword picker
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingKeywords(true);
+    fetch(`/api/match/${matchId}/resume`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return;
+        if (d?.keywords) {
+          setJdKeywords(d.keywords);
+          setAlreadyHaveKeywords(d.alreadyHave ?? []);
+          // Start with nothing selected — user must explicitly pick
+          setSelectedKeywords([]);
+          setKeywordsLoaded(true);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setLoadingKeywords(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [matchId]);
 
   async function generate() {
     setGenerating(true);
@@ -157,16 +192,28 @@ export function JobActions({
     URL.revokeObjectURL(url);
   }
 
+  // Resume editing state
+  const [editingResume, setEditingResume] = useState(false);
+  const [editedResume, setEditedResume] = useState('');
+
   async function generateAtsResume() {
     setGeneratingResume(true);
     const id = toast.loading('Generating ATS-optimized resume...');
     try {
-      const res = await fetch(`/api/match/${matchId}/resume`, { method: 'POST' });
+      const res = await fetch(`/api/match/${matchId}/resume`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          selectedKeywords: selectedKeywords.length > 0 ? selectedKeywords : undefined,
+        }),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed');
       setAtsResume(data.resume);
+      setEditedResume(data.resume);
+      setEditingResume(true); // Open in edit/preview mode by default
       if (data.keywords) setKeywords(data.keywords);
-      toast.success('ATS resume ready!', { id });
+      toast.success('ATS resume ready — review & edit before exporting!', { id });
     } catch (e) {
       toast.error((e as Error).message, { id });
     } finally {
@@ -175,14 +222,15 @@ export function JobActions({
   }
 
   async function copyResume() {
-    await navigator.clipboard.writeText(atsResume);
+    await navigator.clipboard.writeText(editedResume || atsResume);
     setResumeCopied(true);
     toast.success('Resume copied to clipboard');
     setTimeout(() => setResumeCopied(false), 2000);
   }
 
-  function downloadResume() {
-    const blob = new Blob([atsResume], { type: 'text/plain;charset=utf-8' });
+  function downloadResumeTxt() {
+    const text = editedResume || atsResume;
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -192,37 +240,15 @@ export function JobActions({
   }
 
   async function downloadResumePdf() {
-    toast.loading('Generating PDF...');
-    const { jsPDF } = await import('jspdf');
-    const doc = new jsPDF({ unit: 'pt', format: 'a4' });
-    const margin = 40;
-    const pageWidth = doc.internal.pageSize.getWidth() - margin * 2;
-    const lineHeight = 14;
-    let y = margin;
-
-    doc.setFont('Courier', 'normal');
-    doc.setFontSize(10);
-
-    const lines = doc.splitTextToSize(atsResume, pageWidth);
-    for (const line of lines) {
-      if (y > doc.internal.pageSize.getHeight() - margin) {
-        doc.addPage();
-        y = margin;
-      }
-      // Bold section headers (ALL CAPS lines)
-      if (/^[A-Z\s&]+$/.test(line.trim()) && line.trim().length > 2) {
-        doc.setFont('Courier', 'bold');
-        doc.text(line, margin, y);
-        doc.setFont('Courier', 'normal');
-      } else {
-        doc.text(line, margin, y);
-      }
-      y += lineHeight;
+    const id = toast.loading('Generating beautiful PDF...');
+    try {
+      const { generateBeautifulPdf } = await import('@/lib/pdf-resume');
+      const doc = generateBeautifulPdf(editedResume || atsResume);
+      doc.save('resume-ats-optimized.pdf');
+      toast.success('PDF downloaded!', { id });
+    } catch (e) {
+      toast.error(`PDF generation failed: ${(e as Error).message}`, { id });
     }
-
-    doc.save('resume-ats-optimized.pdf');
-    toast.dismiss();
-    toast.success('PDF downloaded');
   }
 
   return (
@@ -414,7 +440,7 @@ export function JobActions({
 
       {/* ATS-Optimized Resume */}
       <div className="card">
-        <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <h2 className="font-semibold flex items-center gap-2">
             <FileText className="h-4 w-4 text-primary" /> ATS Resume
           </h2>
@@ -424,36 +450,69 @@ export function JobActions({
                 <button onClick={copyResume} className="btn">
                   <Copy className="h-3.5 w-3.5" /> {resumeCopied ? 'Copied!' : 'Copy'}
                 </button>
-                <button onClick={downloadResume} className="btn">
+                <button onClick={downloadResumeTxt} className="btn">
                   <Download className="h-3.5 w-3.5" /> .txt
                 </button>
-                <button onClick={downloadResumePdf} className="btn">
+                <button onClick={downloadResumePdf} className="btn-primary">
                   <Download className="h-3.5 w-3.5" /> PDF
                 </button>
               </>
             )}
-            <button
-              onClick={generateAtsResume}
-              disabled={generatingResume}
-              className="btn-primary"
-            >
-              {generatingResume ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : atsResume ? (
-                <RotateCw className="h-3.5 w-3.5" />
-              ) : (
-                <Sparkles className="h-3.5 w-3.5" />
-              )}
-              {generatingResume
-                ? 'Generating...'
-                : atsResume
-                  ? 'Regenerate'
-                  : 'Generate ATS Resume'}
-            </button>
+            {!atsResume && (
+              <button
+                onClick={generateAtsResume}
+                disabled={generatingResume}
+                className="btn-primary"
+              >
+                {generatingResume ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="h-3.5 w-3.5" />
+                )}
+                {generatingResume ? 'Generating...' : 'Generate ATS Resume'}
+              </button>
+            )}
           </div>
         </div>
+
+        {/* Keyword Picker — shown before generation or for regeneration */}
+        {!atsResume && !generatingResume && (
+          <div className="space-y-4">
+            {loadingKeywords && !keywordsLoaded && (
+              <div className="space-y-2">
+                <div className="skeleton h-4 w-1/3" />
+                <div className="flex gap-2">
+                  <div className="skeleton h-7 w-20 rounded-full" />
+                  <div className="skeleton h-7 w-24 rounded-full" />
+                  <div className="skeleton h-7 w-16 rounded-full" />
+                  <div className="skeleton h-7 w-28 rounded-full" />
+                  <div className="skeleton h-7 w-20 rounded-full" />
+                </div>
+              </div>
+            )}
+
+            {keywordsLoaded && jdKeywords.length > 0 && (
+              <div className="border border-border rounded-lg p-3 bg-bg/40">
+                <KeywordPicker
+                  keywords={jdKeywords}
+                  alreadyHave={alreadyHaveKeywords}
+                  selected={selectedKeywords}
+                  onSelectionChange={setSelectedKeywords}
+                />
+              </div>
+            )}
+
+            {keywordsLoaded && jdKeywords.length === 0 && (
+              <p className="text-sm text-muted">
+                Click <span className="text-primary">Generate ATS Resume</span> to create a version of your resume optimized for this job&apos;s ATS keywords. Never fabricates experience — only reorders and emphasizes what you already have.
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Loading skeleton */}
         {generatingResume && !atsResume && (
-          <div className="space-y-2">
+          <div className="space-y-2 mt-3">
             <div className="skeleton h-4 w-full" />
             <div className="skeleton h-4 w-11/12" />
             <div className="skeleton h-4 w-10/12" />
@@ -461,18 +520,22 @@ export function JobActions({
             <div className="skeleton h-4 w-3/4" />
           </div>
         )}
-        {atsResume ? (
+
+        {/* Generated resume — editable preview */}
+        {atsResume && (
           <div className="space-y-3">
-            {/* Keyword analysis — like Simplify */}
+            {/* Keyword analysis */}
             {keywords && (
               <div className="space-y-2 border-b border-border pb-3">
-                <div className="text-xs font-medium text-muted">
-                  Keywords analysis ({keywords.total_jd_keywords} detected in JD)
+                <div className="text-xs font-medium text-muted flex items-center gap-1.5">
+                  <Zap className="h-3.5 w-3.5 text-primary" />
+                  Keywords analysis ({keywords.total_jd_keywords} detected in JD
+                  {keywords.selected_count ? `, ${keywords.selected_count} prioritized` : ''})
                 </div>
                 {keywords.added.length > 0 && (
                   <div>
                     <div className="text-[10px] uppercase tracking-wide text-primary mb-1">
-                      + Added to your resume ({keywords.added.length})
+                      + Woven into your resume ({keywords.added.length})
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {keywords.added.map((kw) => (
@@ -506,20 +569,85 @@ export function JobActions({
               </div>
             )}
 
-            <div className="text-xs text-muted flex items-center gap-1.5">
-              <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
-              Tailored for this job. ATS-parseable plain text. Download as PDF to upload.
+            {/* Action bar: Edit / Preview toggle + Export buttons */}
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setEditingResume(true)}
+                  className={editingResume
+                    ? 'text-xs font-medium text-primary border-b border-primary pb-0.5'
+                    : 'text-xs text-muted hover:text-fg'
+                  }
+                >
+                  <Pencil className="h-3 w-3 inline mr-1" />
+                  Edit
+                </button>
+                <button
+                  onClick={() => {
+                    setEditingResume(false);
+                    setAtsResume(editedResume); // save edits
+                  }}
+                  className={!editingResume
+                    ? 'text-xs font-medium text-primary border-b border-primary pb-0.5'
+                    : 'text-xs text-muted hover:text-fg'
+                  }
+                >
+                  <FileText className="h-3 w-3 inline mr-1" />
+                  Preview
+                </button>
+              </div>
+              <button
+                onClick={() => {
+                  setAtsResume('');
+                  setEditedResume('');
+                  setKeywords(null);
+                  setEditingResume(false);
+                }}
+                className="btn text-xs"
+              >
+                <RotateCw className="h-3 w-3" />
+                Regenerate
+              </button>
             </div>
-            <pre className="whitespace-pre-wrap text-sm text-fg/90 font-sans leading-relaxed bg-bg/50 border border-border rounded-lg p-3 max-h-[400px] overflow-y-auto">
-              {atsResume}
-            </pre>
+
+            {/* Editable textarea or read-only preview */}
+            {editingResume ? (
+              <div className="space-y-2">
+                <textarea
+                  value={editedResume}
+                  onChange={(e) => setEditedResume(e.target.value)}
+                  className="input min-h-[420px] font-mono text-sm leading-relaxed resize-y"
+                  placeholder="Edit your resume here..."
+                />
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] text-muted">
+                    Edit anything above — your changes will be used when exporting PDF or copying.
+                  </p>
+                  <button
+                    onClick={() => {
+                      setAtsResume(editedResume);
+                      setEditingResume(false);
+                      toast.success('Changes saved');
+                    }}
+                    className="btn-primary text-xs"
+                  >
+                    <Save className="h-3 w-3" />
+                    Save & Preview
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <pre className="whitespace-pre-wrap text-sm text-fg/90 font-sans leading-relaxed bg-bg/50 border border-border rounded-lg p-3 max-h-[420px] overflow-y-auto">
+                  {editedResume || atsResume}
+                </pre>
+                <div className="flex items-center gap-1.5 text-xs text-muted">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
+                  Tailored for this job. Click Edit to make changes, then export as PDF.
+                </div>
+              </div>
+            )}
           </div>
-        ) : (
-          !generatingResume && (
-            <p className="text-sm text-muted">
-              Click <span className="text-primary">Generate ATS Resume</span> to create a version of your resume optimized for this job&apos;s ATS keywords. Never fabricates experience — only reorders and emphasizes what you already have.
-            </p>
-          )
         )}
       </div>
 

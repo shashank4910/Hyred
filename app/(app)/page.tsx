@@ -38,13 +38,12 @@ export default async function Dashboard({
     return <EmptyOnboarding />;
   }
 
-  // Effective min score: explicit ?min= URL param overrides; otherwise use
-  // the user's saved preference; default to 70.
-  const effectiveMinScore = sp.min
-    ? Number(sp.min)
-    : Number(
-        (profile.preferences as { min_score?: number } | null)?.min_score ?? 70,
-      );
+  // Effective min score: explicit ?min= URL param overrides; otherwise default to 50.
+  // We do NOT use the user's saved preferences.min_score as a HARD filter on
+  // the dashboard — that's used by the ingest's "Kept" counter only. Showing
+  // a saturated dashboard with all 50+ matches is more useful than silently
+  // hiding everything when the user has set a high threshold.
+  const effectiveMinScore = sp.min ? Number(sp.min) : 50;
 
   // Status counts
   const counts: Record<string, number> = {};

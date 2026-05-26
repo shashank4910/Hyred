@@ -2,6 +2,13 @@ import { supabaseAdmin } from './supabase/server';
 import { fetchAllSources } from './sources';
 import { embed, scoreJob } from './gemini';
 import { cosineSimilarity, jobToEmbeddingText } from './matcher';
+import {
+  generateSearchProfile,
+  isProfileFresh,
+  classifyByTitle,
+  aiRelevanceFilter,
+  type SearchProfile,
+} from './search-profile';
 import type { Profile, RawJob } from './types';
 
 export type IngestResult = {
@@ -12,21 +19,32 @@ export type IngestResult = {
   matchesCreated: number;
   errors: { source: string; error: string }[];
   runId?: string;
+  /** Diagnostic — populated only when AI pre-filter ran */
+  prefilter?: {
+    profileGenerated: boolean;
+    titleAccepted: number;
+    titleRejected: number;
+    titleMaybe: number;
+    aiKept: number;
+    aiDropped: number;
+  };
 };
 
-const SIMILARITY_TOP_N = 25;
-const MIN_SCORE_TO_KEEP = 60;
+const SIMILARITY_TOP_N = 80;
+const MIN_SCORE_TO_KEEP = 40;
 
 /**
  * Full ingest pipeline:
- *  1. Open an ingest_runs row (status=running)
- *  2. Fetch jobs from all sources
- *  3. Upsert new jobs to DB
- *  4. Embed any jobs missing embeddings
- *  5. Compute cosine similarity vs profile resume embedding
- *  6. LLM-score top N similar jobs
- *  7. Persist matches above threshold (skipping blacklisted companies)
- *  8. Close the ingest_runs row with stats
+ *  1. Open ingest_runs row
+ *  2. Pick profile, ensure fresh AI-generated SearchProfile
+ *  3. Fetch jobs from sources (Adzuna queries come from SearchProfile)
+ *  4. Upsert jobs to DB
+ *  5. Embed jobs missing embeddings
+ *  6. Build candidate pool (recently fetched, unseen)
+ *  7. Pre-filter by title patterns from SearchProfile (cheap regex)
+ *  8. AI relevance filter on "maybe" candidates (batched, cheap)
+ *  9. LLM-score the relevant candidates (existing detailed scoring)
+ *  10. Persist matches and close run
  */
 export async function runIngest(opts?: {
   profileEmail?: string;
@@ -35,7 +53,6 @@ export async function runIngest(opts?: {
   const sb = supabaseAdmin();
   const startedAt = Date.now();
 
-  // Open run record
   const { data: runRow } = await sb
     .from('ingest_runs')
     .insert({
@@ -52,12 +69,17 @@ export async function runIngest(opts?: {
   let scored = 0;
   let kept = 0;
   let runErrors: { source: string; error: string }[] = [];
+  const prefilter: IngestResult['prefilter'] = {
+    profileGenerated: false,
+    titleAccepted: 0,
+    titleRejected: 0,
+    titleMaybe: 0,
+    aiKept: 0,
+    aiDropped: 0,
+  };
 
   try {
     // ---------- 1. Pick the profile ----------
-    // Case-insensitive email match with whitespace trim, with a graceful
-    // fallback to the first profile if no match is found. This makes the
-    // INGEST_PROFILE_EMAIL secret forgiving of typos / casing differences.
     const wantedEmail = opts?.profileEmail?.trim().toLowerCase();
     let profile: Profile | null = null;
 
@@ -87,34 +109,79 @@ export async function runIngest(opts?: {
       profile = (data as Profile | null) ?? null;
     }
 
-    if (!profile) {
-      throw new Error('No profile found. Complete onboarding first.');
-    }
+    if (!profile) throw new Error('No profile found. Complete onboarding first.');
     if (!profile.resume_text || !profile.resume_embedding) {
       throw new Error('Profile is missing resume_text or resume_embedding.');
     }
     const p = profile;
     const minScore = p.preferences?.min_score ?? MIN_SCORE_TO_KEEP;
     const blacklist = new Set(
-      (p.preferences?.blacklist_companies ?? []).map((s) => s.toLowerCase().trim()),
+      (p.preferences?.blacklist_companies ?? []).map((s) =>
+        s.toLowerCase().trim(),
+      ),
     );
 
-    // ---------- 2. Fetch from sources ----------
-    const { jobs: rawJobs, errors } = await fetchAllSources();
-    runErrors = errors;
+    // ---------- 2. Ensure fresh SearchProfile ----------
+    // The SearchProfile is AI-generated from the resume. It contains:
+    //  - searchKeywords for Adzuna queries
+    //  - titlePatterns / antiPatterns for cheap pre-filtering
+    //  - primaryDomain / adjacentDomains for AI relevance filter
+    // Cached for 7 days in profiles.insights.search_profile.
+    const insightsAny = (p.insights ?? {}) as Record<string, unknown>;
+    let searchProfile: SearchProfile | null =
+      (insightsAny.search_profile as SearchProfile | undefined) ?? null;
+
+    if (!isProfileFresh(searchProfile)) {
+      console.log('[ingest] Generating fresh SearchProfile via AI...');
+      try {
+        searchProfile = await generateSearchProfile({
+          resumeText: p.resume_text!,
+          preferences: p.preferences,
+          insights: p.insights,
+        });
+        prefilter.profileGenerated = true;
+
+        // Persist back to profiles.insights.search_profile
+        const updatedInsights = {
+          ...(p.insights ?? {}),
+          search_profile: searchProfile,
+        };
+        await sb
+          .from('profiles')
+          .update({ insights: updatedInsights })
+          .eq('id', p.id);
+
+        console.log(
+          `[ingest] SearchProfile: domain="${searchProfile.primaryDomain}", keywords=${searchProfile.searchKeywords.length}, titlePatterns=${searchProfile.titlePatterns.length}, antiPatterns=${searchProfile.antiPatterns.length}`,
+        );
+      } catch (e) {
+        runErrors.push({
+          source: 'search_profile',
+          error: (e as Error).message,
+        });
+        searchProfile = null;
+      }
+    }
+
+    // ---------- 3. Fetch from sources (using AI-generated keywords) ----------
+    const { jobs: rawJobs, errors } = await fetchAllSources(
+      undefined,
+      searchProfile,
+    );
+    runErrors = [...runErrors, ...errors];
     fetched = rawJobs.length;
 
-    // ---------- 3. Upsert jobs ----------
+    // ---------- 4. Upsert jobs ----------
     const newJobIds = await upsertJobs(rawJobs);
     newJobsCount = newJobIds.length;
 
-    // ---------- 4. Embed jobs missing embeddings ----------
+    // ---------- 5. Embed jobs missing embeddings ----------
     const { data: needEmbed } = await sb
       .from('jobs')
       .select('id, title, company, location, description, tags')
       .is('embedding', null)
       .order('fetched_at', { ascending: false })
-      .limit(120);
+      .limit(300);
 
     for (const j of needEmbed ?? []) {
       try {
@@ -123,38 +190,128 @@ export async function runIngest(opts?: {
         await sb.from('jobs').update({ embedding: vec }).eq('id', j.id);
         embedded++;
       } catch (e) {
-        runErrors.push({ source: 'embed', error: `${j.id}: ${(e as Error).message}` });
+        runErrors.push({
+          source: 'embed',
+          error: `${j.id}: ${(e as Error).message}`,
+        });
       }
     }
 
-    // ---------- 5. Score top similar jobs the profile hasn't seen yet ----------
-    const { data: existingMatches } = await sb
+    // ---------- 6. Build candidate pool (recently fetched, unseen) ----------
+    const oneDayAgo = new Date(
+      Date.now() - 24 * 60 * 60 * 1000,
+    ).toISOString();
+    const { data: recentMatches } = await sb
       .from('matches')
       .select('job_id')
-      .eq('profile_id', p.id);
-    const seen = new Set((existingMatches ?? []).map((m) => m.job_id));
+      .eq('profile_id', p.id)
+      .gte('created_at', oneDayAgo);
+    const recentlySeen = new Set(
+      (recentMatches ?? []).map((m) => m.job_id),
+    );
 
     const { data: candidates } = await sb
       .from('jobs')
       .select('id, title, company, location, description, embedding')
       .not('embedding', 'is', null)
       .order('fetched_at', { ascending: false })
-      .limit(300);
+      .limit(800);
 
-    const resumeVec = p.resume_embedding!;
-    const ranked = (candidates ?? [])
-      .filter((c) => !seen.has(c.id))
+    type Cand = {
+      id: string;
+      title: string;
+      company: string | null;
+      location: string | null;
+      description: string | null;
+      embedding: number[] | null;
+    };
+
+    const eligible = (candidates ?? [])
+      .filter((c) => !recentlySeen.has(c.id))
       .filter(
         (c) => !c.company || !blacklist.has(c.company.toLowerCase().trim()),
       )
-      .map((c) => ({
-        ...c,
-        similarity: cosineSimilarity(resumeVec, c.embedding as number[]),
-      }))
-      .sort((a, b) => b.similarity - a.similarity)
-      .slice(0, SIMILARITY_TOP_N);
+      .map(
+        (c) =>
+          ({
+            id: c.id,
+            title: c.title ?? '',
+            company: c.company,
+            location: c.location,
+            description: c.description,
+            embedding: c.embedding,
+          }) as Cand,
+      );
 
-    // ---------- 6. LLM score ----------
+    // ---------- 7. AI-driven pre-filter (title patterns + AI relevance) ----------
+    let toScore: Cand[] = [];
+
+    if (searchProfile) {
+      // Cheap regex filter using AI-generated patterns
+      const { keep, maybe, drop } = classifyByTitle(eligible, searchProfile);
+      prefilter.titleAccepted = keep.length;
+      prefilter.titleRejected = drop.length;
+      prefilter.titleMaybe = maybe.length;
+
+      console.log(
+        `[ingest] Title pre-filter: ${keep.length} kept, ${maybe.length} maybe, ${drop.length} rejected (out of ${eligible.length})`,
+      );
+
+      // Cap "maybe" to avoid running AI on too many — take the most similar by cosine
+      const resumeVec = p.resume_embedding!;
+      const maybeWithSim = maybe
+        .map((c) => ({
+          ...c,
+          similarity: cosineSimilarity(resumeVec, c.embedding as number[]),
+        }))
+        .sort((a, b) => b.similarity - a.similarity)
+        .slice(0, 60);
+
+      // Run AI relevance filter on the "maybe" set (batched)
+      let aiKeptIds = new Set<string>();
+      if (maybeWithSim.length > 0) {
+        const { relevantIds } = await aiRelevanceFilter({
+          profile: searchProfile,
+          jobs: maybeWithSim,
+        });
+        aiKeptIds = relevantIds;
+        prefilter.aiKept = relevantIds.size;
+        prefilter.aiDropped = maybeWithSim.length - relevantIds.size;
+        console.log(
+          `[ingest] AI relevance filter: ${relevantIds.size}/${maybeWithSim.length} kept`,
+        );
+      }
+
+      // Combine: title-keeps + ai-keeps from "maybe"
+      const finalSet = [
+        ...keep,
+        ...maybeWithSim.filter((c) => aiKeptIds.has(c.id)),
+      ];
+      toScore = finalSet.slice(0, SIMILARITY_TOP_N);
+    } else {
+      // Fallback: no SearchProfile available, use cosine similarity only
+      const resumeVec = p.resume_embedding!;
+      toScore = eligible
+        .map((c) => ({
+          ...c,
+          similarity: cosineSimilarity(resumeVec, c.embedding as number[]),
+        }))
+        .sort(
+          (a, b) =>
+            (b as Cand & { similarity: number }).similarity -
+            (a as Cand & { similarity: number }).similarity,
+        )
+        .slice(0, SIMILARITY_TOP_N);
+    }
+
+    // ---------- 8. Compute similarity for the final scoring set ----------
+    const resumeVec = p.resume_embedding!;
+    const ranked = toScore.map((c) => ({
+      ...c,
+      similarity: cosineSimilarity(resumeVec, c.embedding as number[]),
+    }));
+
+    // ---------- 9. LLM score ----------
     const prefsStr = formatPreferences(p.preferences);
     for (const c of ranked) {
       try {
@@ -167,9 +324,6 @@ export async function runIngest(opts?: {
           jobDescription: c.description,
         });
         scored++;
-        // Persist EVERY scored match. The dashboard applies the min-score
-        // filter at view time, so nothing is lost. `kept` still counts only
-        // matches above threshold for run-summary purposes.
         const { error } = await sb.from('matches').upsert(
           {
             profile_id: p.id,
@@ -183,11 +337,13 @@ export async function runIngest(opts?: {
         );
         if (!error && score >= minScore) kept++;
       } catch (e) {
-        runErrors.push({ source: 'score', error: `${c.id}: ${(e as Error).message}` });
+        runErrors.push({
+          source: 'score',
+          error: `${c.id}: ${(e as Error).message}`,
+        });
       }
     }
   } catch (e) {
-    // Fatal: close run as failed and rethrow
     if (runId) {
       await sb
         .from('ingest_runs')
@@ -199,7 +355,10 @@ export async function runIngest(opts?: {
           embedded,
           scored,
           matches_created: kept,
-          errors: [...runErrors, { source: 'fatal', error: (e as Error).message }],
+          errors: [
+            ...runErrors,
+            { source: 'fatal', error: (e as Error).message },
+          ],
           status: 'failed',
         })
         .eq('id', runId);
@@ -207,7 +366,6 @@ export async function runIngest(opts?: {
     throw e;
   }
 
-  // Close run as success/partial
   if (runId) {
     await sb
       .from('ingest_runs')
@@ -233,6 +391,7 @@ export async function runIngest(opts?: {
     matchesCreated: kept,
     errors: runErrors,
     runId,
+    prefilter,
   };
 }
 
@@ -256,7 +415,10 @@ async function upsertJobs(rawJobs: RawJob[]): Promise<string[]> {
     const chunk = rawJobs.slice(i, i + 100);
     const { data, error } = await sb
       .from('jobs')
-      .upsert(chunk, { onConflict: 'source,source_id', ignoreDuplicates: false })
+      .upsert(chunk, {
+        onConflict: 'source,source_id',
+        ignoreDuplicates: true,
+      })
       .select('id');
     if (error) throw new Error(`Upsert jobs failed: ${error.message}`);
     if (data) ids.push(...data.map((d) => d.id as string));

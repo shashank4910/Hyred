@@ -6,6 +6,79 @@ export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 /**
+ * GET /api/match/[id]/resume
+ *
+ * Extracts keywords from the job description so the keyword picker
+ * can present them to the user. Also returns which keywords are
+ * already present in the user's resume.
+ *
+ * Returns: { keywords: string[], alreadyHave: string[] }
+ */
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+  const sb = supabaseAdmin();
+
+  const { data: match, error: matchErr } = await sb
+    .from('matches')
+    .select(
+      `id,
+       profile:profiles(resume_text),
+       job:jobs(description, tags)`,
+    )
+    .eq('id', id)
+    .single();
+
+  if (matchErr || !match) {
+    return NextResponse.json(
+      { error: matchErr?.message ?? 'Match not found' },
+      { status: 404 },
+    );
+  }
+
+  const profile = match.profile as unknown as { resume_text: string | null };
+  const job = match.job as unknown as {
+    description: string | null;
+    tags: string[] | null;
+  };
+
+  if (!job?.description) {
+    return NextResponse.json({ keywords: [], alreadyHave: [] });
+  }
+
+  const jdKeywords = extractKeywords(job.description.toLowerCase());
+
+  // Also add job tags that aren't already extracted
+  if (job.tags?.length) {
+    for (const tag of job.tags) {
+      const lower = tag.toLowerCase();
+      if (!jdKeywords.some(k => k.toLowerCase() === lower)) {
+        jdKeywords.push(tag);
+      }
+    }
+  }
+
+  const resumeLower = (profile?.resume_text ?? '').toLowerCase();
+  const alreadyHave: string[] = [];
+  const available: string[] = [];
+
+  for (const kw of jdKeywords) {
+    if (resumeLower.includes(kw.toLowerCase())) {
+      alreadyHave.push(kw);
+    } else {
+      available.push(kw);
+    }
+  }
+
+  return NextResponse.json({
+    keywords: [...new Set([...available, ...alreadyHave])],
+    alreadyHave: [...new Set(alreadyHave)],
+  });
+}
+
+/**
  * POST /api/match/[id]/resume
  *
  * Generates an ATS-optimized plain-text resume tailored to the specific
@@ -16,14 +89,28 @@ export const maxDuration = 60;
  *   - Uses a clean, ATS-parseable plain-text format (no tables, columns, graphics)
  *   - NEVER invents fake experience, certifications, or skills
  *
- * Returns: { ok: true, resume: string }
+ * Accepts optional body: { selectedKeywords?: string[] }
+ * If provided, the AI is specifically instructed to incorporate those keywords.
+ *
+ * Returns: { ok: true, resume: string, keywords: {...} }
  */
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
   const sb = supabaseAdmin();
+
+  // Parse optional body
+  let selectedKeywords: string[] = [];
+  try {
+    const body = await req.json();
+    if (Array.isArray(body?.selectedKeywords)) {
+      selectedKeywords = body.selectedKeywords.map(String).slice(0, 30);
+    }
+  } catch {
+    // No body or invalid JSON — that's fine, proceed without selected keywords
+  }
 
   const { data: match, error: matchErr } = await sb
     .from('matches')
@@ -50,6 +137,9 @@ export async function POST(
       phone?: string;
       current_location?: string;
       top_skills?: string[];
+      summary?: string;
+      years_experience?: number;
+      seniority?: string;
     } | null;
   };
   const job = match.job as unknown as {
@@ -83,31 +173,40 @@ export async function POST(
 
   const client = new OpenAI({ apiKey: key });
 
-  const prompt = `You are an expert resume writer who specializes in getting resumes past Applicant Tracking Systems (ATS).
+  // Build keyword injection instructions — ONLY selected keywords, nothing else
+  const keywordInstructions = selectedKeywords.length > 0
+    ? `\n\nUSER-SELECTED KEYWORDS TO ADD:\nThe user has EXPLICITLY chosen these keywords to include. Intelligently embed ONLY these specific keywords into the resume — weave them naturally into existing bullet points, the summary, or the skills section:\n${selectedKeywords.map(k => `  - ${k}`).join('\n')}\n\nFor each selected keyword above, find a natural place to mention it in an existing bullet point or skills. If you cannot truthfully incorporate a keyword based on existing experience, SKIP IT — do not fabricate context.\n`
+    : '\nThe user has NOT selected any additional keywords. Do NOT add any skills, tools, or technologies that are not already in the original resume. Only reformat the content.\n';
 
-Given the candidate's current resume and a target job description, rewrite the resume to maximize ATS compatibility and relevance scoring for THIS specific job.
+  const prompt = `You are an expert resume writer. Your job is to take the candidate's FULL original resume and output it in a clean ATS-friendly format WITH their selected keywords intelligently embedded.
 
-RULES (critical):
-1. NEVER invent fake experience, certifications, degrees, companies, or skills the candidate doesn't have.
-2. DO reorder sections and bullets so the most relevant experience appears first.
-3. DO naturally incorporate keywords from the JD into existing bullet points where truthful.
-4. DO quantify achievements where the original resume already implies them.
-5. DO use a clean plain-text format: no tables, no columns, no graphics, no special characters.
-6. DO include a targeted "Summary" section (2-3 lines) at the top highlighting fit for THIS role.
-7. DO include a "Key Skills" section that mirrors the JD's required skills (only skills the candidate actually has).
-8. Keep the resume to ~1 page worth of text (roughly 400-600 words).
-9. Use the format: SECTION HEADERS IN CAPS, bullet points with "- " prefix.
-10. Contact info at the top: Name, Email, Phone, Location, LinkedIn (if available).
+CRITICAL RULES:
+1. PRESERVE ALL CONTENT from the original resume. Do NOT trim, shorten, or remove any experience, projects, education, or achievements. The output must be at LEAST as long as the input.
+2. NEVER add skills, tools, technologies, certifications, or experiences that are NOT in the original resume.
+3. NEVER add "selenium", "cypress", "playwright", "karate", or ANY tool/technology unless it literally appears in the CANDIDATE'S CURRENT RESUME below.
+4. The ONLY new keywords you may add are the ones listed in "USER-SELECTED KEYWORDS TO ADD" (if any). Weave them smartly into existing bullet points.
+5. Do NOT shorten bullet points. Do NOT summarize sections. Keep ALL details.
+6. You MAY reorder sections/bullets to put the most relevant ones first for the target job.
+7. You MAY rephrase bullets slightly to incorporate selected keywords naturally.
+8. You MAY add a brief "Professional Summary" (2-3 lines) at the top using facts already in the resume.
 
-CANDIDATE'S CURRENT RESUME:
-${profile.resume_text.slice(0, 7000)}
+FORMATTING RULES:
+1. Use clean plain-text: no tables, no columns, no graphics, no special characters.
+2. SECTION HEADERS IN CAPS, bullet points with "- " prefix.
+3. Contact info at the top: Name, Email, Phone, Location (as found in original).
+4. Include a "Key Skills" section listing ALL skills from the original resume + user-selected keywords.
+5. Keep ALL work experiences, ALL bullet points, ALL education, ALL projects/certifications from the original.
+6. The resume can be 1-3 pages — length is NOT a constraint. Completeness is required.
+${keywordInstructions}
+CANDIDATE'S CURRENT RESUME (OUTPUT EVERYTHING — do not trim or shorten):
+${profile.resume_text.slice(0, 12000)}
 
-TARGET JOB:
+TARGET JOB (use ONLY for reordering relevance — do NOT add skills from here):
 Title: ${job.title}
 Company: ${job.company ?? 'Not specified'}
 Location: ${job.location ?? 'Not specified'}
-Description:
-${job.description.slice(0, 5000)}
+Description (first 3000 chars for context):
+${job.description.slice(0, 3000)}
 
 ${job.tags?.length ? `Tags/Keywords: ${job.tags.join(', ')}` : ''}
 
@@ -117,17 +216,18 @@ Email: ${profile.email}
 ${profile.insights?.phone ? `Phone: ${profile.insights.phone}` : ''}
 ${profile.insights?.current_location ? `Location: ${profile.insights.current_location}` : ''}
 
-Output the complete ATS-optimized resume in plain text. No preamble, no explanation — just the resume.`;
+Output the COMPLETE reformatted resume. Include ALL sections, ALL bullet points, ALL experiences. Do not trim. No preamble — just the resume.`;
 
   try {
     const res = await client.chat.completions.create({
       model: 'gpt-4o-mini',
       temperature: 0.4,
+      max_tokens: 4096,
       messages: [
         {
           role: 'system',
           content:
-            'You rewrite resumes to pass ATS systems. Output clean plain text only. Never fabricate experience.',
+            'You reformat existing resumes into clean ATS-friendly plain text. You PRESERVE ALL content — never shorten or trim. You NEVER add new skills or tools unless explicitly listed in user-selected keywords. Output the FULL resume.',
         },
         { role: 'user', content: prompt },
       ],
@@ -143,11 +243,17 @@ Output the complete ATS-optimized resume in plain text. No preamble, no explanat
 
     // --- Keyword analysis: what was injected vs already present ---
     const originalLower = (profile.resume_text ?? '').toLowerCase();
-    const jdLower = (job.description ?? '').toLowerCase();
 
     // Extract meaningful multi-word and single-word terms from the JD
-    // that look like skills/tools/technologies.
-    const jdKeywords = extractKeywords(jdLower);
+    const jdKeywords = extractKeywords((job.description ?? '').toLowerCase());
+
+    // Also consider the user-selected keywords for tracking
+    for (const kw of selectedKeywords) {
+      if (!jdKeywords.some(k => k.toLowerCase() === kw.toLowerCase())) {
+        jdKeywords.push(kw);
+      }
+    }
+
     const added: string[] = [];
     const alreadyHad: string[] = [];
 
@@ -165,9 +271,10 @@ Output the complete ATS-optimized resume in plain text. No preamble, no explanat
       ok: true,
       resume,
       keywords: {
-        added: [...new Set(added)].slice(0, 15),
-        already_had: [...new Set(alreadyHad)].slice(0, 15),
+        added: [...new Set(added)].slice(0, 20),
+        already_had: [...new Set(alreadyHad)].slice(0, 20),
         total_jd_keywords: jdKeywords.length,
+        selected_count: selectedKeywords.length,
       },
     });
   } catch (e) {
@@ -191,14 +298,25 @@ function extractKeywords(jd: string): string[] {
     /\b(?:jmeter|loadrunner|gatling|blazemeter|cavisson|netdynamics)\b/gi,
     /\b(?:kubernetes|docker|jenkins|terraform|ansible|aws|azure|gcp)\b/gi,
     /\b(?:java|python|javascript|typescript|golang|rust|scala|kotlin)\b/gi,
-    /\b(?:spring boot|react|angular|vue|node\.?js|express)\b/gi,
+    /\b(?:spring boot|react|angular|vue|next\.?js|node\.?js|express)\b/gi,
     /\b(?:sql|postgresql|mysql|mongodb|redis|elasticsearch|kafka)\b/gi,
     /\b(?:ci\/cd|devops|microservices|rest api|graphql|grpc)\b/gi,
     /\b(?:agile|scrum|kanban|jira|confluence)\b/gi,
     /\b(?:appdynamics|dynatrace|splunk|grafana|prometheus|datadog|new relic)\b/gi,
     /\b(?:selenium|cypress|playwright|cucumber|karate)\b/gi,
     /\b(?:performance testing|load testing|stress testing|api testing|test automation)\b/gi,
-    /\b(?:communication skills|problem solving|team lead|stakeholder)\b/gi,
+    /\b(?:machine learning|deep learning|data science|nlp|computer vision)\b/gi,
+    /\b(?:figma|sketch|adobe xd|storybook|tailwind|sass|css)\b/gi,
+    /\b(?:git|github|gitlab|bitbucket)\b/gi,
+    /\b(?:linux|unix|windows server|macos)\b/gi,
+    /\b(?:communication skills|problem solving|team lead|stakeholder|cross-functional)\b/gi,
+    /\b(?:s3|ec2|lambda|ecs|fargate|cloudformation|cdk|serverless)\b/gi,
+    /\b(?:oauth|jwt|sso|saml|openid)\b/gi,
+    /\b(?:webpack|vite|babel|eslint|prettier)\b/gi,
+    /\b(?:swift|objective-c|flutter|react native|android|ios)\b/gi,
+    /\b(?:hadoop|spark|airflow|dbt|snowflake|bigquery|redshift)\b/gi,
+    /\b(?:rabbitmq|sqs|sns|pubsub|event-driven)\b/gi,
+    /\b(?:pytorch|tensorflow|scikit-learn|pandas|numpy)\b/gi,
   ];
 
   for (const re of patterns) {
