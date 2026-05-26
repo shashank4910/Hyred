@@ -119,7 +119,7 @@ export async function runIngest(opts?: {
       .select('id, title, company, location, description, tags')
       .is('embedding', null)
       .order('fetched_at', { ascending: false })
-      .limit(120);
+      .limit(200);
 
     for (const j of needEmbed ?? []) {
       try {
@@ -133,22 +133,28 @@ export async function runIngest(opts?: {
     }
 
     // ---------- 5. Score top similar jobs the profile hasn't seen yet ----------
-    const { data: existingMatches } = await sb
+    // Only skip jobs that were scored RECENTLY (within last 7 days).
+    // This allows re-scoring of old jobs that may have been scored with
+    // different criteria or when the user's resume has been updated.
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: recentMatches } = await sb
       .from('matches')
       .select('job_id')
-      .eq('profile_id', p.id);
-    const seen = new Set((existingMatches ?? []).map((m) => m.job_id));
+      .eq('profile_id', p.id)
+      .gte('created_at', sevenDaysAgo);
+    const recentlySeen = new Set((recentMatches ?? []).map((m) => m.job_id));
 
+    // Fetch a large pool of embedded jobs — prioritize newly fetched ones
     const { data: candidates } = await sb
       .from('jobs')
       .select('id, title, company, location, description, embedding')
       .not('embedding', 'is', null)
       .order('fetched_at', { ascending: false })
-      .limit(500);
+      .limit(800);
 
     const resumeVec = p.resume_embedding!;
     const ranked = (candidates ?? [])
-      .filter((c) => !seen.has(c.id))
+      .filter((c) => !recentlySeen.has(c.id))
       .filter(
         (c) => !c.company || !blacklist.has(c.company.toLowerCase().trim()),
       )
@@ -259,9 +265,12 @@ async function upsertJobs(rawJobs: RawJob[]): Promise<string[]> {
   const ids: string[] = [];
   for (let i = 0; i < rawJobs.length; i += 100) {
     const chunk = rawJobs.slice(i, i + 100);
+    // ignoreDuplicates: true — don't update existing jobs on re-fetch.
+    // This prevents fetched_at from being reset on old jobs and ensures
+    // the "most recent" ordering stays meaningful.
     const { data, error } = await sb
       .from('jobs')
-      .upsert(chunk, { onConflict: 'source,source_id', ignoreDuplicates: false })
+      .upsert(chunk, { onConflict: 'source,source_id', ignoreDuplicates: true })
       .select('id');
     if (error) throw new Error(`Upsert jobs failed: ${error.message}`);
     if (data) ids.push(...data.map((d) => d.id as string));
