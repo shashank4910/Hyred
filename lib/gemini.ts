@@ -59,13 +59,19 @@ Description:
 ${(args.jobDescription ?? '').slice(0, 4000)}
 
 Score this match on a scale of 0-100 where:
-  90-100 = excellent fit, candidate should apply immediately
-  75-89  = strong fit, worth applying
-  60-74  = reasonable fit, low priority
-  <60    = poor fit, skip
+  85-100 = excellent fit, most skills match, domain aligns perfectly
+  70-84  = strong fit, many skills overlap, worth applying
+  55-69  = decent fit, some relevant skills, candidate could adapt
+  40-54  = weak fit, few matching skills but adjacent domain
+  <40    = poor fit, completely different domain
 
-Consider: seniority alignment, domain match, required skills, location/remote fit.
-Penalize: heavy mismatch in seniority, irrelevant domain, missing must-have skills.
+SCORING GUIDELINES:
+- If the job requires skills that exist in the candidate's resume, score 70+.
+- If the job is in the same DOMAIN (e.g. both are testing/performance/QA), score at least 60 even if specific tools differ.
+- Tools can be learned — weight domain experience and seniority more than specific tool names.
+- Do NOT heavily penalize for missing 1-2 nice-to-have skills if core experience aligns.
+- Location mismatch alone should NOT drop score below 60 if skills match.
+- Remote jobs should get a small boost for candidates open to remote.
 
 Respond with strict JSON: {"score": <int 0-100>, "reason": "<one or two sentences>"}`;
 

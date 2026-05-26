@@ -39,11 +39,11 @@ export default async function Dashboard({
   }
 
   // Effective min score: explicit ?min= URL param overrides; otherwise use
-  // the user's saved preference; default to 70.
+  // the user's saved preference; default to 50.
   const effectiveMinScore = sp.min
     ? Number(sp.min)
     : Number(
-        (profile.preferences as { min_score?: number } | null)?.min_score ?? 70,
+        (profile.preferences as { min_score?: number } | null)?.min_score ?? 50,
       );
 
   // Status counts

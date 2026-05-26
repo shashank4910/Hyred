@@ -15,7 +15,7 @@ export type IngestResult = {
 };
 
 const SIMILARITY_TOP_N = 50;
-const MIN_SCORE_TO_KEEP = 60;
+const MIN_SCORE_TO_KEEP = 40;
 
 /**
  * Full ingest pipeline:
@@ -132,16 +132,16 @@ export async function runIngest(opts?: {
       }
     }
 
-    // ---------- 5. Score top similar jobs the profile hasn't seen yet ----------
-    // Only skip jobs that were scored RECENTLY (within last 7 days).
-    // This allows re-scoring of old jobs that may have been scored with
-    // different criteria or when the user's resume has been updated.
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    // ---------- 5. Score jobs the profile hasn't seen recently ----------
+    // Only skip jobs scored in the LAST 24 HOURS (not all time).
+    // This prevents re-scoring the exact same jobs on back-to-back runs
+    // while still allowing jobs to be re-evaluated if needed.
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { data: recentMatches } = await sb
       .from('matches')
       .select('job_id')
       .eq('profile_id', p.id)
-      .gte('created_at', sevenDaysAgo);
+      .gte('created_at', oneDayAgo);
     const recentlySeen = new Set((recentMatches ?? []).map((m) => m.job_id));
 
     // Fetch a large pool of embedded jobs — prioritize newly fetched ones
@@ -153,17 +153,40 @@ export async function runIngest(opts?: {
       .limit(800);
 
     const resumeVec = p.resume_embedding!;
-    const ranked = (candidates ?? [])
+
+    // Strategy: Score ALL new jobs from this run (they were fetched because
+    // they matched the user's queries), PLUS the top similar from the broader pool.
+    // This ensures targeted Adzuna results always get scored, even if their
+    // embedding similarity isn't the highest.
+    const newJobIdSet = new Set(newJobIds);
+    const eligible = (candidates ?? [])
       .filter((c) => !recentlySeen.has(c.id))
       .filter(
         (c) => !c.company || !blacklist.has(c.company.toLowerCase().trim()),
-      )
+      );
+
+    // Split: new jobs from this run vs older jobs
+    const fromThisRun = eligible.filter((c) => newJobIdSet.has(c.id));
+    const fromPool = eligible.filter((c) => !newJobIdSet.has(c.id));
+
+    // Sort pool by similarity and take top N
+    const poolRanked = fromPool
       .map((c) => ({
         ...c,
         similarity: cosineSimilarity(resumeVec, c.embedding as number[]),
       }))
       .sort((a, b) => b.similarity - a.similarity)
       .slice(0, SIMILARITY_TOP_N);
+
+    // Combine: ALL new jobs from this run + top similar from pool
+    // New jobs get scored regardless of similarity (they were fetched for a reason)
+    const ranked = [
+      ...fromThisRun.map((c) => ({
+        ...c,
+        similarity: cosineSimilarity(resumeVec, c.embedding as number[]),
+      })),
+      ...poolRanked,
+    ].slice(0, SIMILARITY_TOP_N + fromThisRun.length); // Allow more if we have new jobs
 
     // ---------- 6. LLM score ----------
     const prefsStr = formatPreferences(p.preferences);
