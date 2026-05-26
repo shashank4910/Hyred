@@ -65,12 +65,28 @@ Score this match on a scale of 0-100 where:
   40-54  = weak fit, few matching skills but adjacent domain
   <40    = poor fit, completely different domain
 
-SCORING GUIDELINES:
-- ADJACENT DOMAINS get 70+: a Performance Engineer applying to Test Automation, SDET, or QA Automation roles is a STRONG match (same testing domain).
-- A Performance Engineer applying to "Software Engineer in Test", "QA Lead", "Test Engineer", "Automation Engineer" → score 70-80.
-- A Performance Engineer applying to general "Java Developer" or "Backend Engineer" → score 50-60 (transferable Java skills).
-- If the job title contains ANY of the candidate's domain keywords (testing, performance, automation, QA, SDET, load, stress) → score 70+.
-- Tools can be learned. Weight DOMAIN over specific tools (e.g. JMeter vs Gatling vs LoadRunner are interchangeable).
+SCORING GUIDELINES — READ CAREFULLY:
+
+THE TESTING UMBRELLA (CRITICAL RULE):
+Performance Engineering, QA, SDET, Test Automation, Quality Engineering, Software Engineer in Test, Reliability Engineering — these are NOT different domains. They are sub-specialties of the same TESTING discipline. A senior in one is qualified for the others.
+
+If the candidate's primary experience is in any of these areas, ALL of the following job titles → score 65-80:
+  - Quality Engineer / QA Engineer / QA Lead / QA Automation Engineer / QA Automation Lead
+  - SDET / Software Development Engineer in Test / Software Engineer in Test
+  - Test Automation Engineer / Senior Test Automation Engineer
+  - Test Engineer / Senior Test Engineer / Test Analyst
+  - Quality Assurance Automation Engineer
+  - Reliability Engineer / Site Reliability Engineer
+  - Performance Tester / Performance Test Engineer / Load Testing Engineer
+
+DO NOT say "the candidate's expertise is primarily in performance engineering, while the job focuses on test automation" — THIS IS WRONG REASONING. They are the same domain. Score 65+.
+
+OTHER RULES:
+- The word "performance" is ambiguous. "Performance Marketer", "Investment Performance Analyst", "Asset Performance Manager", "Video Content & Performance Specialist" are FINANCE/MARKETING roles, NOT engineering. Score these <40.
+- "Performance Test Engineer", "Performance Engineer", "Performance Tester" are the ENGINEERING meaning. Score 75-90.
+- Tools are interchangeable: JMeter ≈ Gatling ≈ LoadRunner ≈ Neoload. Don't penalize tool mismatches if the discipline matches.
+- A Performance/Testing engineer applying to general "Java Developer" or "Backend Engineer" → score 50-60 (transferable Java skills, different role).
+- For genuinely different domains (Frontend Dev, Mobile Dev, Sales, Marketing, Product Mgmt, Data Science) → score <40.
 - Do NOT heavily penalize for missing 1-2 nice-to-have skills if core domain aligns.
 - Location mismatch alone should NEVER drop score below 60 if skills match.
 - Remote jobs get a small boost.
