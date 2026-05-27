@@ -23,8 +23,7 @@ from datetime import datetime
 from typing import AsyncGenerator
 
 import httpx
-from browser_use import Agent, Browser, BrowserConfig
-from browser_use.browser.context import BrowserContextConfig
+from browser_use import Agent, Browser, BrowserProfile
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -234,7 +233,7 @@ CANDIDATE INFORMATION:
         # Configure browser (headless for server, visible locally for debugging)
         headless = os.getenv("BROWSER_HEADLESS", "true").lower() == "true"
 
-        browser_config = BrowserConfig(
+        browser_config = BrowserProfile(
             headless=headless,
             extra_chromium_args=[
                 "--no-sandbox",
@@ -242,21 +241,17 @@ CANDIDATE INFORMATION:
                 "--disable-dev-shm-usage",
                 "--disable-gpu",
             ],
-        )
-
-        context_config = BrowserContextConfig(
             wait_for_network_idle_page_load_time=3.0,
             maximum_wait_page_load_time=30.0,
         )
 
         browser = Browser(config=browser_config)
-        context = await browser.new_context(config=context_config)
 
         # Create agent with step callback for live logging
         agent = Agent(
             task=task_prompt,
             llm=llm,
-            browser_context=context,
+            browser=browser,
         )
 
         _log(task_id, "🌍 Opening browser...")
