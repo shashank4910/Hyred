@@ -18,6 +18,7 @@ import {
   FileText,
   Rocket,
   Zap,
+  Bookmark,
 } from 'lucide-react';
 import { STATUS_ORDER } from '@/lib/ui';
 import { KeywordPicker } from './KeywordPicker';
@@ -28,6 +29,7 @@ type Skills = { matched: string[]; missing: string[]; allSkills: string[] } | nu
 export function JobActions({
   matchId,
   status,
+  bookmarked: initialBookmarked,
   coverLetter,
   notes,
   candidateSkills,
@@ -35,6 +37,7 @@ export function JobActions({
 }: {
   matchId: string;
   status: string;
+  bookmarked: boolean;
   coverLetter: string | null;
   notes: string | null;
   candidateSkills: string[];
@@ -42,6 +45,10 @@ export function JobActions({
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
+
+  // Bookmark state
+  const [bookmarked, setBookmarked] = useState(initialBookmarked);
+  const [savingBookmark, setSavingBookmark] = useState(false);
 
   // Cover letter state
   const [letter, setLetter] = useState(coverLetter ?? '');
@@ -155,6 +162,31 @@ export function JobActions({
     }
   }
 
+  async function toggleBookmark() {
+    if (savingBookmark) return;
+    setSavingBookmark(true);
+    const next = !bookmarked;
+    setBookmarked(next);
+    try {
+      const res = await fetch(`/api/match/${matchId}/bookmark`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ bookmarked: next }),
+      });
+      if (!res.ok) {
+        setBookmarked(!next);
+        toast.error('Failed to update bookmark');
+      } else {
+        toast.success(next ? 'Bookmarked!' : 'Bookmark removed');
+      }
+    } catch {
+      setBookmarked(!next);
+      toast.error('Failed to update bookmark');
+    } finally {
+      setSavingBookmark(false);
+    }
+  }
+
   async function saveNotes() {
     setSavingNotes(true);
     try {
@@ -262,26 +294,44 @@ export function JobActions({
               Opens the original posting. Generate your ATS resume + cover letter first.
             </p>
           </div>
-          <a
-            href={applyUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={() => {
-              if (status !== 'applied' && status !== 'interviewing' && status !== 'offer') {
-                fetch(`/api/match/${matchId}/status`, {
-                  method: 'POST',
-                  headers: { 'content-type': 'application/json' },
-                  body: JSON.stringify({ status: 'applied' }),
-                })
-                  .then(() => startTransition(() => router.refresh()))
-                  .catch(() => {});
-              }
-            }}
-            className="btn-primary text-base px-5 py-2.5"
-          >
-            <ExternalLink className="h-4 w-4" />
-            Apply on job site
-          </a>
+          <div className="flex items-center gap-2">
+            {/* Bookmark toggle */}
+            <button
+              onClick={toggleBookmark}
+              disabled={savingBookmark}
+              title={bookmarked ? 'Remove bookmark' : 'Bookmark this job'}
+              className={[
+                'btn',
+                bookmarked ? 'border-amber text-amber bg-amber/10 hover:bg-amber/20' : '',
+              ].join(' ')}
+            >
+              <Bookmark
+                className="h-4 w-4"
+                fill={bookmarked ? 'currentColor' : 'none'}
+              />
+              {bookmarked ? 'Bookmarked' : 'Bookmark'}
+            </button>
+            <a
+              href={applyUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => {
+                if (status !== 'applied' && status !== 'interviewing' && status !== 'offer') {
+                  fetch(`/api/match/${matchId}/status`, {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({ status: 'applied' }),
+                  })
+                    .then(() => startTransition(() => router.refresh()))
+                    .catch(() => {});
+                }
+              }}
+              className="btn-primary text-base px-5 py-2.5"
+            >
+              <ExternalLink className="h-4 w-4" />
+              Apply on job site
+            </a>
+          </div>
         </div>
       </div>
 

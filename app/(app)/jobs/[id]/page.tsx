@@ -24,7 +24,7 @@ export default async function JobMatchPage({
   const { data: match } = await sb
     .from('matches')
     .select(
-      `id, llm_score, similarity, reason, status, cover_letter, notes, applied_at,
+      `id, llm_score, similarity, reason, status, bookmarked, cover_letter, notes, applied_at,
        profile:profiles(insights),
        job:jobs(id, title, company, location, remote, url, source, salary, description, posted_at, tags)`,
     )
@@ -116,6 +116,7 @@ export default async function JobMatchPage({
       <JobActions
         matchId={match.id}
         status={match.status}
+        bookmarked={(match as unknown as { bookmarked: boolean }).bookmarked ?? false}
         coverLetter={match.cover_letter}
         notes={match.notes}
         candidateSkills={profile?.insights?.top_skills ?? []}

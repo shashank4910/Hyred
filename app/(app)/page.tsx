@@ -15,6 +15,7 @@ type SearchParams = {
   source?: string;
   min?: string;
   remote?: string;
+  bookmarked?: string;
 };
 
 export default async function Dashboard({
@@ -24,6 +25,7 @@ export default async function Dashboard({
 }) {
   const sp = await searchParams;
   const status = sp.status ?? 'new';
+  const onlyBookmarked = sp.bookmarked === '1';
 
   const sb = supabaseAdmin();
 
@@ -58,6 +60,13 @@ export default async function Dashboard({
     }),
   );
 
+  // Bookmarked count (cross-status)
+  const { count: bookmarkedCount } = await sb
+    .from('matches')
+    .select('id', { count: 'exact', head: true })
+    .eq('profile_id', profile.id)
+    .eq('bookmarked', true);
+
   // Top-line stats
   const [{ count: totalJobs }, { count: totalMatches }, { data: lastRun }] =
     await Promise.all([
@@ -78,13 +87,18 @@ export default async function Dashboard({
   let query = sb
     .from('matches')
     .select(
-      `id, llm_score, similarity, reason, status, applied_at, created_at,
+      `id, llm_score, similarity, reason, status, bookmarked, applied_at, created_at,
        job:jobs!inner(id, title, company, location, remote, url, source, salary, posted_at, description, tags)`,
     )
     .eq('profile_id', profile.id)
-    .eq('status', status)
     .gte('llm_score', effectiveMinScore)
     .order('llm_score', { ascending: false });
+
+  if (onlyBookmarked) {
+    query = query.eq('bookmarked', true);
+  } else {
+    query = query.eq('status', status);
+  }
 
   if (sp.source) {
     query = query.eq('jobs.source', sp.source);
@@ -103,11 +117,16 @@ export default async function Dashboard({
 
   // Count total matches in this status across ALL scores (so we can tell the
   // user how many are hidden by their min_score filter).
-  const { count: totalInStatus } = await sb
+  let totalInStatusQuery = sb
     .from('matches')
     .select('id', { count: 'exact', head: true })
-    .eq('profile_id', profile.id)
-    .eq('status', status);
+    .eq('profile_id', profile.id);
+  if (onlyBookmarked) {
+    totalInStatusQuery = totalInStatusQuery.eq('bookmarked', true);
+  } else {
+    totalInStatusQuery = totalInStatusQuery.eq('status', status);
+  }
+  const { count: totalInStatus } = await totalInStatusQuery;
   const hiddenBelowThreshold =
     (totalInStatus ?? 0) - ((matches ?? []).length || 0);
 
@@ -163,7 +182,7 @@ export default async function Dashboard({
 
       {/* Filters */}
       <div className="space-y-3">
-        <StatusFilter counts={counts} active={status} />
+        <StatusFilter counts={counts} active={status} bookmarkedCount={bookmarkedCount ?? 0} onlyBookmarked={onlyBookmarked} />
         <MatchFilters />
       </div>
 
@@ -195,6 +214,8 @@ export default async function Dashboard({
                   matchId={m.id}
                   score={m.llm_score}
                   reason={m.reason}
+                  status={m.status}
+                  bookmarked={(m as unknown as { bookmarked: boolean }).bookmarked ?? false}
                   job={job}
                 />
               </li>
