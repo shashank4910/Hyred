@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "ingest": "tsx scripts/ingest.ts",
+    "backfill:jds": "tsx scripts/backfill-jds.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
