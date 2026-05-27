@@ -23,7 +23,7 @@ from datetime import datetime
 from typing import AsyncGenerator
 
 import httpx
-from browser_use import Agent, Browser, BrowserProfile
+from browser_use import Agent, BrowserProfile
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -233,7 +233,7 @@ CANDIDATE INFORMATION:
         # Configure browser (headless for server, visible locally for debugging)
         headless = os.getenv("BROWSER_HEADLESS", "true").lower() == "true"
 
-        browser_config = BrowserProfile(
+        browser_profile = BrowserProfile(
             headless=headless,
             extra_chromium_args=[
                 "--no-sandbox",
@@ -245,25 +245,17 @@ CANDIDATE INFORMATION:
             maximum_wait_page_load_time=30.0,
         )
 
-        browser = Browser(config=browser_config)
-
-        # Create agent with step callback for live logging
+        # Create agent — browser-use latest API: pass browser_profile directly to Agent
         agent = Agent(
             task=task_prompt,
             llm=llm,
-            browser=browser,
+            browser_profile=browser_profile,
         )
 
-        _log(task_id, "🌍 Opening browser...")
+        _log(task_id, "🌍 Opening browser and running agent...")
 
-        # Run agent with step-by-step callbacks
-        result = await agent.run(
-            max_steps=50,
-            on_step_start=lambda step: _log(task_id, f"⚙️  Step {step.step_number}: {step.next_goal or 'Thinking...'}"),
-            on_step_end=lambda step: _log(task_id, f"✅ Done: {_summarise_action(step)}"),
-        )
-
-        await browser.close()
+        # Run agent
+        result = await agent.run(max_steps=50)
 
         # Check if application was successful
         final_result = result.final_result() if hasattr(result, 'final_result') else str(result)
