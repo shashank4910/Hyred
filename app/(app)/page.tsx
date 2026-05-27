@@ -24,7 +24,8 @@ export default async function Dashboard({
   searchParams: Promise<SearchParams>;
 }) {
   const sp = await searchParams;
-  const status = sp.status ?? 'new';
+  // 'inbox' = new + viewed combined (default). Individual statuses are explicit.
+  const status = sp.status ?? 'inbox';
   const onlyBookmarked = sp.bookmarked === '1';
 
   const sb = supabaseAdmin();
@@ -59,6 +60,13 @@ export default async function Dashboard({
       counts[s] = count ?? 0;
     }),
   );
+
+  // Inbox count = new + viewed combined
+  const { count: inboxCount } = await sb
+    .from('matches')
+    .select('id', { count: 'exact', head: true })
+    .eq('profile_id', profile.id)
+    .in('status', ['new', 'viewed']);
 
   // Bookmarked count (cross-status)
   const { count: bookmarkedCount } = await sb
@@ -96,6 +104,8 @@ export default async function Dashboard({
 
   if (onlyBookmarked) {
     query = query.eq('bookmarked', true);
+  } else if (status === 'inbox') {
+    query = query.in('status', ['new', 'viewed']);
   } else {
     query = query.eq('status', status);
   }
@@ -123,6 +133,8 @@ export default async function Dashboard({
     .eq('profile_id', profile.id);
   if (onlyBookmarked) {
     totalInStatusQuery = totalInStatusQuery.eq('bookmarked', true);
+  } else if (status === 'inbox') {
+    totalInStatusQuery = totalInStatusQuery.in('status', ['new', 'viewed']);
   } else {
     totalInStatusQuery = totalInStatusQuery.eq('status', status);
   }
@@ -182,7 +194,7 @@ export default async function Dashboard({
 
       {/* Filters */}
       <div className="space-y-3">
-        <StatusFilter counts={counts} active={status} bookmarkedCount={bookmarkedCount ?? 0} onlyBookmarked={onlyBookmarked} />
+        <StatusFilter counts={counts} active={status} inboxCount={inboxCount ?? 0} bookmarkedCount={bookmarkedCount ?? 0} onlyBookmarked={onlyBookmarked} />
         <MatchFilters />
       </div>
 

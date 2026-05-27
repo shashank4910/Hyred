@@ -2,17 +2,19 @@
 
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Bookmark } from 'lucide-react';
+import { Bookmark, Inbox } from 'lucide-react';
 import { STATUS_ORDER } from '@/lib/ui';
 
 export function StatusFilter({
   counts,
   active,
+  inboxCount,
   bookmarkedCount,
   onlyBookmarked,
 }: {
   counts: Record<string, number>;
   active: string;
+  inboxCount: number;
   bookmarkedCount: number;
   onlyBookmarked: boolean;
 }) {
@@ -32,15 +34,23 @@ export function StatusFilter({
     return `/?${params.toString()}`;
   }
 
+  // Tabs: Inbox first, then every explicit status, then Bookmarked
+  const tabs = [
+    { id: 'inbox', label: 'Inbox', count: inboxCount, icon: <Inbox className="h-3 w-3" /> },
+    ...STATUS_ORDER
+      // skip 'new' and 'viewed' — they're merged into Inbox
+      .filter((s) => s !== 'new' && s !== 'viewed')
+      .map((s) => ({ id: s, label: s, count: counts[s] ?? 0, icon: null })),
+  ];
+
   return (
     <div className="flex flex-wrap gap-2 -mx-1 px-1 overflow-x-auto">
-      {STATUS_ORDER.map((s) => {
-        const isActive = !onlyBookmarked && s === active;
-        const count = counts[s] ?? 0;
+      {tabs.map(({ id, label, count, icon }) => {
+        const isActive = !onlyBookmarked && id === active;
         return (
           <Link
-            key={s}
-            href={hrefFor(s)}
+            key={id}
+            href={hrefFor(id)}
             scroll={false}
             className={
               isActive
@@ -48,7 +58,8 @@ export function StatusFilter({
                 : 'inline-flex items-center gap-1.5 rounded-btn border border-border px-3.5 py-1.5 text-xs text-stone hover:text-ink hover:border-amber/40 hover:bg-amber/5 whitespace-nowrap transition-colors'
             }
           >
-            <span className="capitalize">{s}</span>
+            {icon}
+            <span className="capitalize">{label}</span>
             <span
               className={
                 isActive
