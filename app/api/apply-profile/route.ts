@@ -38,10 +38,16 @@ export async function POST(req: NextRequest) {
 
   if (!profile) return NextResponse.json({ error: 'No profile' }, { status: 404 });
 
+  // Strip client-side fields that should not be written directly
+  // (id is auto-generated, created_at is immutable)
+  const { id: _id, created_at: _ca, ...rest } = body as Record<string, unknown>;
+
   const { error } = await sb
     .from('apply_profiles')
-    .upsert({ ...body, profile_id: profile.id, updated_at: new Date().toISOString() })
-    .eq('profile_id', profile.id);
+    .upsert(
+      { ...rest, profile_id: profile.id, updated_at: new Date().toISOString() },
+      { onConflict: 'profile_id' },
+    );
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });

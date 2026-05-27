@@ -16,6 +16,40 @@ const GENDER_OPTIONS = ['Male', 'Female', 'Non-binary', 'Prefer not to say'];
 const VETERAN_OPTIONS = ['No', 'Yes', 'Prefer not to say'];
 const DISABILITY_OPTIONS = ['No', 'Yes', 'Prefer not to say'];
 
+// ── Pre-filled defaults for first-time load ──────────────────────────────────
+
+const DEFAULTS: Profile = {
+  country: 'India',
+  work_auth_country: 'India',
+  authorized_to_work: true,
+  require_sponsorship: false,
+  willing_to_relocate: false,
+  notice_period: '30 days',
+  preferred_work_type: 'hybrid',
+  willing_to_travel: 'minimal',
+  veteran_status: 'No',
+  disability_status: 'No',
+  current_title: 'Senior Performance Engineer',
+  years_experience: 7,
+  city: 'Noida',
+  state_province: 'Uttar Pradesh',
+  zip_code: '201301',
+  full_name: 'Shashank Singh',
+  email: 'Shashank.srmncr@gmail.com',
+  phone: '+91 8077162893',
+  linkedin_url: 'https://linkedin.com/in/shashank-singh-610155b1',
+  answer_about_yourself:
+    'Senior Performance Engineer with 7.7 years of experience building AI-powered automation agents and enterprise-scale performance testing frameworks across BFSI, Healthcare, Retail, and Media domains. I have engineered agentic AI workflows that reduced test execution time by 94% and built a free JMeter Performance Center adopted by multiple teams at Charles Schwab. I combine deep expertise in LoadRunner, JMeter, and APM tools with hands-on AI development to deliver measurable performance improvements at scale.',
+  answer_why_leave:
+    'I am seeking a role that offers greater scope to apply my growing expertise in AI-driven performance engineering and where I can take on broader technical leadership responsibilities. After 7+ years of consistent growth — from performance tester to building production AI agents — I am ready for a challenge that matches my current capabilities and ambitions.',
+  answer_strengths:
+    'My strongest ability is bridging performance engineering with AI automation — I do not just run load tests, I build intelligent systems around them. I have a track record of turning manual, time-consuming workflows into fully automated pipelines (94% time reduction, 40% defect reduction). I am also strong at translating complex performance data into clear, actionable insights for senior stakeholders and business decisions.',
+  answer_weaknesses:
+    'I tend to invest deeply in building robust, reusable solutions even when a quick fix would suffice in the short term. I am actively working on balancing thoroughness with delivery speed by setting explicit time-boxes for exploration phases before committing to a full build.',
+  answer_salary_expectation:
+    'My expected CTC is in the range of 24–28 LPA, open to discussion based on the overall compensation structure, growth opportunity, and role responsibilities.',
+};
+
 export function ApplyProfileForm() {
   const [form, setForm] = useState<Profile>({});
   const [loading, setLoading] = useState(true);
@@ -25,8 +59,12 @@ export function ApplyProfileForm() {
   useEffect(() => {
     fetch('/api/apply-profile')
       .then(r => r.json())
-      .then(d => { setForm(d ?? {}); setLoading(false); })
-      .catch(() => setLoading(false));
+      .then(d => {
+        // Merge defaults underneath — existing saved values always win
+        setForm({ ...DEFAULTS, ...(d ?? {}) });
+        setLoading(false);
+      })
+      .catch(() => { setForm(DEFAULTS); setLoading(false); });
   }, []);
 
   function set(key: string, value: string | boolean | number | null) {
@@ -207,27 +245,22 @@ export function ApplyProfileForm() {
 
       {/* ── Standard Essay Answers ───────────────────────────── */}
       <Section icon={<BookOpen className="h-4 w-4" />} title="Standard Essay Answers">
-        <p className="text-xs text-stone mb-3">The agent uses these as a base when filling text fields on application forms. Be specific — the AI will adapt them per company.</p>
+        <p className="text-xs text-stone mb-3">The agent uses these as a base when filling text fields on application forms. The AI adapts them per company automatically.</p>
         <div className="space-y-4">
           <Field label="Tell me about yourself (2-3 sentences)">
-            <textarea className="input min-h-[80px]" value={f('answer_about_yourself')} onChange={e => set('answer_about_yourself', e.target.value)}
-              placeholder="Senior Performance Engineer with 7.7 years building enterprise-scale load testing frameworks and AI automation agents across BFSI, Healthcare, and Media domains..." />
+            <textarea className="input min-h-[80px]" value={f('answer_about_yourself')} onChange={e => set('answer_about_yourself', e.target.value)} />
           </Field>
           <Field label="Why are you looking to leave your current role?">
-            <textarea className="input min-h-[70px]" value={f('answer_why_leave')} onChange={e => set('answer_why_leave', e.target.value)}
-              placeholder="I'm seeking a role that offers..." />
+            <textarea className="input min-h-[70px]" value={f('answer_why_leave')} onChange={e => set('answer_why_leave', e.target.value)} />
           </Field>
           <Field label="What are your key strengths?">
-            <textarea className="input min-h-[70px]" value={f('answer_strengths')} onChange={e => set('answer_strengths', e.target.value)}
-              placeholder="Deep expertise in performance engineering, ability to build AI-powered automation..." />
+            <textarea className="input min-h-[70px]" value={f('answer_strengths')} onChange={e => set('answer_strengths', e.target.value)} />
           </Field>
           <Field label="What is your biggest weakness?">
-            <textarea className="input min-h-[60px]" value={f('answer_weaknesses')} onChange={e => set('answer_weaknesses', e.target.value)}
-              placeholder="I sometimes over-invest in perfecting automation frameworks when a simpler solution would suffice..." />
+            <textarea className="input min-h-[60px]" value={f('answer_weaknesses')} onChange={e => set('answer_weaknesses', e.target.value)} />
           </Field>
           <Field label="Salary expectation (one-liner for forms)">
-            <input className="input" value={f('answer_salary_expectation')} onChange={e => set('answer_salary_expectation', e.target.value)}
-              placeholder="24–28 LPA, open to discussion based on overall package" />
+            <input className="input" value={f('answer_salary_expectation')} onChange={e => set('answer_salary_expectation', e.target.value)} />
           </Field>
         </div>
       </Section>
