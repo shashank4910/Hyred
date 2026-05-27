@@ -57,7 +57,7 @@ export function MatchCard({ matchId, score, reason, status, bookmarked: initialB
       href={`/jobs/${matchId}`}
       className={[
         'card-hover block group animate-fade-in relative',
-        isViewed ? 'opacity-55 hover:opacity-100 transition-opacity duration-200' : '',
+        isViewed ? 'opacity-75 hover:opacity-100 transition-opacity duration-200' : '',
       ].join(' ')}
     >
       {/* Seen/Unseen dot indicator */}
@@ -70,8 +70,8 @@ export function MatchCard({ matchId, score, reason, status, bookmarked: initialB
           <div className="flex items-center gap-2 flex-wrap">
             <h3
               className={[
-                'text-body font-semibold truncate group-hover:text-amber-hover transition-colors',
-                isViewed ? 'font-normal text-stone' : 'font-semibold text-ink',
+                'text-body truncate group-hover:text-amber-hover transition-colors',
+                isViewed ? 'font-normal' : 'font-semibold text-ink',
               ].join(' ')}
             >
               {job.title}
