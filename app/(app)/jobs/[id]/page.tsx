@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, MapPin, Building2, Clock } from 'lucide-react';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { ensureFullDescription } from '@/lib/jd-fetcher';
 import { JobActions } from './JobActions';
 import { relativeTime, scoreColorClass, scoreLabel, SOURCE_LABELS } from '@/lib/ui';
 
@@ -51,6 +52,14 @@ export default async function JobMatchPage({
   } | null;
   const colorClass = scoreColorClass(match.llm_score);
   const posted = relativeTime(job.posted_at);
+
+  // Lazy-upgrade: if the stored description is short (Adzuna truncation),
+  // fetch the full JD from the source URL and persist it for future views.
+  const fullDescription = await ensureFullDescription({
+    jobId: job.id,
+    currentDescription: job.description,
+    url: job.url,
+  });
 
   return (
     <div className="space-y-4">
@@ -125,7 +134,7 @@ export default async function JobMatchPage({
       <div className="card">
         <h2 className="font-semibold text-ink mb-2">Job description</h2>
         <pre className="whitespace-pre-wrap text-sm text-stone font-sans leading-relaxed">
-          {job.description ?? 'No description.'}
+          {fullDescription || 'No description.'}
         </pre>
       </div>
     </div>

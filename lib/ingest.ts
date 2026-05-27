@@ -2,6 +2,7 @@ import { supabaseAdmin } from './supabase/server';
 import { fetchAllSources } from './sources';
 import { embed, scoreJob } from './gemini';
 import { cosineSimilarity, jobToEmbeddingText } from './matcher';
+import { ensureFullDescription } from './jd-fetcher';
 import {
   generateSearchProfile,
   isProfileFresh,
@@ -197,7 +198,29 @@ export async function runIngest(opts?: {
       }
     }
 
-    // ---------- 6. Build candidate pool (recently fetched, unseen) ----------
+    // ---------- 6. Upgrade truncated descriptions for new jobs ----------
+    // Adzuna jobs arrive with ~500-char truncated descriptions. Fetch full JDs
+    // from the redirect URLs for new jobs so scoring is accurate.
+    if (newJobIds.length > 0) {
+      const { data: truncated } = await sb
+        .from('jobs')
+        .select('id, description, url')
+        .in('id', newJobIds)
+        .limit(50);
+      for (const j of truncated ?? []) {
+        try {
+          await ensureFullDescription({
+            jobId: j.id,
+            currentDescription: j.description,
+            url: j.url,
+          });
+        } catch {
+          // Non-fatal — scoring will use whatever we have
+        }
+      }
+    }
+
+    // ---------- 7. Build candidate pool (recently fetched, unseen) ----------
     const oneDayAgo = new Date(
       Date.now() - 24 * 60 * 60 * 1000,
     ).toISOString();
