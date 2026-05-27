@@ -80,25 +80,16 @@ create index if not exists idx_apply_profiles_profile_id
   on apply_profiles (profile_id);
 
 -- ── 3. Supabase Storage bucket for resumes ───────────────────
--- Run this separately in the Storage section of the Supabase
--- dashboard, OR execute via the management API.
--- Bucket name: "resumes"  |  Public: true (so agent can GET the URL)
+-- The bucket is created via the Supabase dashboard (Storage tab).
+-- Steps:
+--   1. Go to Storage in Supabase dashboard
+--   2. Click "New bucket"
+--   3. Name: resumes
+--   4. Toggle "Public bucket" ON
+--   5. Click Save
 --
--- SQL equivalent (works in some Supabase versions):
+-- The SQL below creates the bucket programmatically — run it only
+-- if you prefer SQL over the dashboard UI.
 insert into storage.buckets (id, name, public)
 values ('resumes', 'resumes', true)
-on conflict (id) do nothing;
-
--- Allow all authenticated requests to read/write their own files
--- (RLS policy — adjust to taste)
-create policy if not exists "resumes_public_read"
-  on storage.objects for select
-  using (bucket_id = 'resumes');
-
-create policy if not exists "resumes_service_write"
-  on storage.objects for insert
-  with check (bucket_id = 'resumes');
-
-create policy if not exists "resumes_service_update"
-  on storage.objects for update
-  using (bucket_id = 'resumes');
+on conflict (id) do update set public = true;
