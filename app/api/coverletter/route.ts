@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { generateCoverLetter } from '@/lib/gemini';
+import { ensureFullDescription } from '@/lib/jd-fetcher';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -23,7 +24,7 @@ export async function POST(req: NextRequest) {
     .select(
       `id, profile_id, job_id,
        profile:profiles(full_name, resume_text),
-       job:jobs(title, company, description)`,
+       job:jobs(id, title, company, description, url)`,
     )
     .eq('id', body.match_id)
     .single();
@@ -40,9 +41,11 @@ export async function POST(req: NextRequest) {
     resume_text: string | null;
   };
   const job = match.job as unknown as {
+    id: string;
     title: string;
     company: string | null;
     description: string | null;
+    url: string | null;
   };
 
   if (!profile?.resume_text) {
@@ -52,13 +55,22 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Ensure we have the full JD before drafting the cover letter — without
+  // it, the cover letter would only reference the first ~500 chars of the
+  // job intro and miss the actual responsibilities/requirements.
+  const fullDescription = await ensureFullDescription({
+    jobId: job.id,
+    currentDescription: job.description,
+    url: job.url,
+  });
+
   try {
     const coverLetter = await generateCoverLetter({
       resume: profile.resume_text,
       candidateName: profile.full_name,
       jobTitle: job.title,
       jobCompany: job.company,
-      jobDescription: job.description,
+      jobDescription: fullDescription,
     });
 
     await sb

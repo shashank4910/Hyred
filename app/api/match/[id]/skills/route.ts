@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { matchSkills } from '@/lib/gemini';
+import { ensureFullDescription } from '@/lib/jd-fetcher';
 
 export const runtime = 'nodejs';
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 export async function POST(
   _req: NextRequest,
@@ -12,14 +13,13 @@ export async function POST(
   const { id } = await params;
   const sb = supabaseAdmin();
 
-  // Fetch BOTH resume_text and insights — we need the full resume for accurate
-  // matching, not just the distilled top_skills (which is capped at 12).
+  // We need full job + url so we can fetch the complete JD if it's truncated.
   const { data: m } = await sb
     .from('matches')
     .select(
       `id, profile_id, job_id,
        profile:profiles(resume_text, insights),
-       job:jobs(description)`,
+       job:jobs(id, description, url)`,
     )
     .eq('id', id)
     .maybeSingle();
@@ -30,22 +30,40 @@ export async function POST(
     resume_text: string | null;
     insights: { top_skills?: string[] } | null;
   };
-  const job = m.job as unknown as { description: string | null };
+  const job = m.job as unknown as {
+    id: string;
+    description: string | null;
+    url: string | null;
+  };
 
   const topSkills = profile?.insights?.top_skills ?? [];
   const resumeText = profile?.resume_text ?? '';
 
-  // We need either a resume or some skills to compare against
   if (!resumeText && topSkills.length === 0) {
     return NextResponse.json({ matched: [], missing: [], allSkills: [] });
   }
-  if (!job?.description) {
-    return NextResponse.json({ matched: [], missing: [], allSkills: topSkills });
+
+  // CRITICAL: Adzuna's search API truncates JDs to ~500 chars. Before
+  // running skill matching, ensure we have the full description by fetching
+  // from the original posting URL. This persists back to the DB so subsequent
+  // calls are instant.
+  const fullDescription = await ensureFullDescription({
+    jobId: job.id,
+    currentDescription: job.description,
+    url: job.url,
+  });
+
+  if (!fullDescription) {
+    return NextResponse.json({
+      matched: [],
+      missing: [],
+      allSkills: topSkills,
+    });
   }
 
   try {
     const result = await matchSkills({
-      jobDescription: job.description,
+      jobDescription: fullDescription,
       resumeText,
       topSkills,
     });

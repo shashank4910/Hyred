@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { ensureFullDescription } from '@/lib/jd-fetcher';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -26,7 +27,7 @@ export async function GET(
     .select(
       `id,
        profile:profiles(resume_text),
-       job:jobs(description, tags)`,
+       job:jobs(id, description, tags, url)`,
     )
     .eq('id', id)
     .single();
@@ -40,15 +41,24 @@ export async function GET(
 
   const profile = match.profile as unknown as { resume_text: string | null };
   const job = match.job as unknown as {
+    id: string;
     description: string | null;
     tags: string[] | null;
+    url: string | null;
   };
 
-  if (!job?.description) {
+  // Ensure we have the full JD (Adzuna search API truncates to 500 chars).
+  const fullDescription = await ensureFullDescription({
+    jobId: job.id,
+    currentDescription: job.description,
+    url: job.url,
+  });
+
+  if (!fullDescription) {
     return NextResponse.json({ keywords: [], alreadyHave: [] });
   }
 
-  const jdKeywords = extractKeywords(job.description.toLowerCase());
+  const jdKeywords = extractKeywords(fullDescription.toLowerCase());
 
   // Also add job tags that aren't already extracted
   if (job.tags?.length) {
@@ -117,7 +127,7 @@ export async function POST(
     .select(
       `id, profile_id,
        profile:profiles(full_name, email, resume_text, insights),
-       job:jobs(title, company, location, description, tags)`,
+       job:jobs(id, title, company, location, description, tags, url)`,
     )
     .eq('id', id)
     .single();
@@ -143,11 +153,13 @@ export async function POST(
     } | null;
   };
   const job = match.job as unknown as {
+    id: string;
     title: string;
     company: string | null;
     location: string | null;
     description: string | null;
     tags: string[] | null;
+    url: string | null;
   };
 
   if (!profile?.resume_text) {
@@ -156,7 +168,15 @@ export async function POST(
       { status: 400 },
     );
   }
-  if (!job?.description) {
+
+  // Ensure we have the full JD before generating the ATS resume.
+  const fullDescription = await ensureFullDescription({
+    jobId: job.id,
+    currentDescription: job.description,
+    url: job.url,
+  });
+
+  if (!fullDescription) {
     return NextResponse.json(
       { error: 'Job has no description to optimize against' },
       { status: 400 },
@@ -206,7 +226,7 @@ Title: ${job.title}
 Company: ${job.company ?? 'Not specified'}
 Location: ${job.location ?? 'Not specified'}
 Description (first 3000 chars for context):
-${job.description.slice(0, 3000)}
+${fullDescription.slice(0, 3000)}
 
 ${job.tags?.length ? `Tags/Keywords: ${job.tags.join(', ')}` : ''}
 
@@ -245,7 +265,7 @@ Output the COMPLETE reformatted resume. Include ALL sections, ALL bullet points,
     const originalLower = (profile.resume_text ?? '').toLowerCase();
 
     // Extract meaningful multi-word and single-word terms from the JD
-    const jdKeywords = extractKeywords((job.description ?? '').toLowerCase());
+    const jdKeywords = extractKeywords(fullDescription.toLowerCase());
 
     // Also consider the user-selected keywords for tracking
     for (const kw of selectedKeywords) {
