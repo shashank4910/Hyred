@@ -38,11 +38,6 @@ export default async function Dashboard({
     return <EmptyOnboarding />;
   }
 
-  // Effective min score: explicit ?min= URL param overrides; otherwise default to 50.
-  // We do NOT use the user's saved preferences.min_score as a HARD filter on
-  // the dashboard — that's used by the ingest's "Kept" counter only. Showing
-  // a saturated dashboard with all 50+ matches is more useful than silently
-  // hiding everything when the user has set a high threshold.
   const effectiveMinScore = sp.min ? Number(sp.min) : 50;
 
   // Status counts
@@ -101,8 +96,6 @@ export default async function Dashboard({
 
   const { data: matches } = await query.limit(100);
 
-  // Count total matches in this status across ALL scores (so we can tell the
-  // user how many are hidden by their min_score filter).
   const { count: totalInStatus } = await sb
     .from('matches')
     .select('id', { count: 'exact', head: true })
@@ -112,57 +105,36 @@ export default async function Dashboard({
     (totalInStatus ?? 0) - ((matches ?? []).length || 0);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between flex-wrap gap-3">
+    <div className="space-y-8">
+      {/* Header */}
+      <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-heading-sm font-semibold text-ink">
-            Hi{profile.full_name ? `, ${profile.full_name.split(' ')[0]}` : ''}
+            {profile.full_name ? `Hi, ${profile.full_name.split(' ')[0]}` : 'Dashboard'}
           </h1>
           <p className="text-body-sm text-stone mt-1">
-            {counts.new ?? 0} new match{counts.new === 1 ? '' : 'es'} waiting for
-            you.
+            {counts.new ?? 0} new match{counts.new === 1 ? '' : 'es'} waiting for review.
           </p>
         </div>
         <RunIngestButton />
       </div>
 
-      {/* Stats grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatCard
-          label="New matches"
-          value={counts.new ?? 0}
-          icon={<Sparkles className="h-4 w-4" />}
-          accent
-        />
-        <StatCard
-          label="Applied"
-          value={counts.applied ?? 0}
-          icon={<Briefcase className="h-4 w-4" />}
-        />
-        <StatCard
-          label="Total tracked"
-          value={totalMatches ?? 0}
-          icon={<TrendingUp className="h-4 w-4" />}
-        />
+      {/* Stats row */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard label="New matches" value={counts.new ?? 0} icon={<Sparkles className="h-4 w-4" />} accent />
+        <StatCard label="Applied" value={counts.applied ?? 0} icon={<Briefcase className="h-4 w-4" />} />
+        <StatCard label="Total tracked" value={totalMatches ?? 0} icon={<TrendingUp className="h-4 w-4" />} />
         <StatCard
           label="Last scan"
-          value={
-            lastRun?.finished_at
-              ? relativeTime(lastRun.finished_at)
-              : 'Never'
-          }
-          subValue={
-            lastRun?.matches_created != null
-              ? `+${lastRun.matches_created} kept`
-              : undefined
-          }
+          value={lastRun?.finished_at ? relativeTime(lastRun.finished_at) : 'Never'}
+          subValue={lastRun?.matches_created != null ? `+${lastRun.matches_created} kept` : undefined}
           icon={<Clock className="h-4 w-4" />}
           isText
         />
       </div>
 
       {/* Filters */}
-      <div className="space-y-3">
+      <div className="space-y-4">
         <StatusFilter counts={counts} active={status} />
         <MatchFilters />
       </div>
@@ -176,7 +148,7 @@ export default async function Dashboard({
           effectiveMinScore={effectiveMinScore}
         />
       ) : (
-        <ul className="space-y-3">
+        <div className="space-y-4">
           {(matches ?? []).map((m) => {
             const job = m.job as unknown as {
               id: string;
@@ -190,17 +162,16 @@ export default async function Dashboard({
               posted_at: string | null;
             };
             return (
-              <li key={m.id}>
-                <MatchCard
-                  matchId={m.id}
-                  score={m.llm_score}
-                  reason={m.reason}
-                  job={job}
-                />
-              </li>
+              <MatchCard
+                key={m.id}
+                matchId={m.id}
+                score={m.llm_score}
+                reason={m.reason}
+                job={job}
+              />
             );
           })}
-        </ul>
+        </div>
       )}
     </div>
   );
@@ -223,36 +194,31 @@ function StatCard({
 }) {
   return (
     <div className="stat-card">
-      <div className="flex items-center justify-between text-caption text-stone">
-        <span>{label}</span>
+      <div className="flex items-center justify-between">
+        <span className="text-caption text-stone">{label}</span>
         <span className={accent ? 'text-amber' : 'text-shadow-tint'}>{icon}</span>
       </div>
-      <div
-        className={`mt-1.5 ${isText ? 'text-body' : 'text-heading-sm'} font-semibold ${
-          accent ? 'text-amber' : 'text-ink'
-        }`}
-      >
-        {value}
+      <div className={`mt-2 ${isText ? 'text-body font-medium' : 'text-heading-sm font-semibold'} ${accent ? 'text-amber' : 'text-ink'} tabular-nums`}>
+        {typeof value === 'number' ? value.toLocaleString() : value}
       </div>
-      {subValue && <div className="text-caption text-stone mt-0.5">{subValue}</div>}
+      {subValue && <div className="text-caption text-stone mt-1">{subValue}</div>}
     </div>
   );
 }
 
 function EmptyOnboarding() {
   return (
-    <div className="card max-w-xl mx-auto text-center mt-12 space-y-4 py-12">
-      <div className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-amber/10 text-amber mx-auto">
+    <div className="card max-w-lg mx-auto text-center mt-16">
+      <div className="inline-flex h-14 w-14 items-center justify-center rounded-card bg-amber/10 text-amber mx-auto">
         <Sparkles className="h-7 w-7" />
       </div>
-      <h1 className="text-subheading font-semibold text-ink">Welcome to JobRadar</h1>
-      <p className="text-stone text-body-sm max-w-sm mx-auto">
-        Upload your resume so we can start finding matches that fit your
-        experience.
+      <h1 className="text-subheading font-semibold text-ink mt-5">Welcome to JobRadar</h1>
+      <p className="text-body-sm text-stone mt-2 max-w-sm mx-auto">
+        Upload your resume so we can start finding matches that fit your experience.
       </p>
-      <Link href="/onboarding" className="btn-primary">
-        Add my resume
-      </Link>
+      <div className="mt-6">
+        <Link href="/onboarding" className="btn-primary">Get started</Link>
+      </div>
     </div>
   );
 }
@@ -270,46 +236,39 @@ function EmptyMatches({
 }) {
   if (hiddenBelowThreshold > 0) {
     return (
-      <div className="card text-center py-10 space-y-3">
-        <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-sunshine text-amber-hover mx-auto">
+      <div className="card text-center">
+        <div className="inline-flex h-12 w-12 items-center justify-center rounded-card bg-sunshine text-sunset-orange mx-auto">
           <Inbox className="h-5 w-5" />
         </div>
-        <p className="text-sm text-ink">
-          <span className="font-semibold">{hiddenBelowThreshold}</span> match
-          {hiddenBelowThreshold === 1 ? ' is' : 'es are'} hidden because{' '}
-          {hiddenBelowThreshold === 1 ? 'its score is' : 'their scores are'}{' '}
-          below your threshold of{' '}
-          <span className="text-amber font-semibold">{effectiveMinScore}</span>.
+        <p className="text-body-sm text-ink mt-4">
+          <span className="font-medium">{hiddenBelowThreshold}</span> match{hiddenBelowThreshold === 1 ? ' is' : 'es are'} hidden below your score threshold of{' '}
+          <span className="font-medium text-amber">{effectiveMinScore}</span>.
         </p>
-        <p className="text-xs text-stone">
+        <p className="text-caption text-stone mt-2">
           Lower the threshold in your{' '}
-          <Link href="/onboarding" className="text-amber-hover hover:underline font-medium">
-            profile
-          </Link>{' '}
-          to view them, or wait for the next scan to bring fresher jobs.
+          <Link href="/onboarding" className="text-sunset-orange hover:underline">profile</Link>{' '}
+          or wait for fresh jobs.
         </p>
-        <Link
-          href={`/?status=${status}&min=0`}
-          className="btn inline-flex"
-          scroll={false}
-        >
-          Show all scores anyway
-        </Link>
+        <div className="mt-4">
+          <Link href={`/?status=${status}&min=0`} className="btn" scroll={false}>
+            Show all scores
+          </Link>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="card text-center py-12">
-      <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-off-white text-stone mx-auto">
+    <div className="card text-center">
+      <div className="inline-flex h-12 w-12 items-center justify-center rounded-card bg-off-white text-shadow-tint mx-auto">
         <Inbox className="h-5 w-5" />
       </div>
-      <p className="mt-3 text-sm text-ink">
-        No matches in <span className="text-amber font-medium">{status}</span> yet.
+      <p className="text-body-sm text-ink mt-4">
+        No matches in <span className="font-medium text-amber">{status}</span> yet.
       </p>
-      <p className="mt-1 text-xs text-stone">
+      <p className="text-caption text-stone mt-2">
         {totalJobs > 0
-          ? 'Try a different status or run a scan to find more.'
+          ? 'Try a different status tab or run a scan to find more.'
           : 'Click "Run scan" to fetch jobs from job boards.'}
       </p>
     </div>

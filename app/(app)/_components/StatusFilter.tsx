@@ -20,7 +20,7 @@ export function StatusFilter({
   }
 
   return (
-    <div className="flex flex-wrap gap-2 -mx-1 px-1 overflow-x-auto">
+    <div className="flex flex-wrap gap-2">
       {STATUS_ORDER.map((s) => {
         const isActive = s === active;
         const count = counts[s] ?? 0;
@@ -29,20 +29,14 @@ export function StatusFilter({
             key={s}
             href={hrefFor(s)}
             scroll={false}
-            className={
+            className={`inline-flex items-center gap-1.5 rounded-btn px-3 py-[7px] text-body-sm whitespace-nowrap transition-colors ${
               isActive
-                ? 'inline-flex items-center gap-1.5 rounded-btn bg-amber text-ink px-3.5 py-1.5 text-xs font-semibold whitespace-nowrap shadow-sm'
-                : 'inline-flex items-center gap-1.5 rounded-btn border border-border px-3.5 py-1.5 text-xs text-stone hover:text-ink hover:border-amber/40 hover:bg-amber/5 whitespace-nowrap transition-colors'
-            }
+                ? 'bg-amber text-ink font-medium'
+                : 'border border-faded-stone text-stone hover:border-ink hover:text-ink'
+            }`}
           >
             <span className="capitalize">{s}</span>
-            <span
-              className={
-                isActive
-                  ? 'rounded-badge bg-ink/10 px-1.5 py-0.5 text-[10px] font-medium'
-                  : 'rounded-badge bg-off-white px-1.5 py-0.5 text-[10px]'
-              }
-            >
+            <span className={`text-caption tabular-nums ${isActive ? 'text-ink/60' : 'text-shadow-tint'}`}>
               {count}
             </span>
           </Link>

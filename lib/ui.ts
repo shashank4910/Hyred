@@ -10,11 +10,11 @@ export function relativeTime(date: string | null): string {
 }
 
 export function scoreColorClass(score: number | null | undefined): string {
-  if (score == null) return 'score-band-low';
-  if (score >= 90) return 'score-band-90';
-  if (score >= 75) return 'score-band-75';
-  if (score >= 60) return 'score-band-60';
-  return 'score-band-low';
+  if (score == null) return 'score-weak';
+  if (score >= 90) return 'score-excellent';
+  if (score >= 75) return 'score-strong';
+  if (score >= 60) return 'score-decent';
+  return 'score-weak';
 }
 
 export function scoreLabel(score: number | null | undefined): string {

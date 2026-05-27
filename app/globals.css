@@ -2,95 +2,133 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
 
 :root {
   color-scheme: light;
 }
 
-html,
-body {
+html, body {
   background: #f8f7f5;
   color: #261b07;
-  -webkit-font-smoothing: antialiased;
 }
 
 *::selection {
-  background: rgba(249, 166, 0, 0.2);
+  background: rgba(249, 166, 0, 0.15);
 }
 
-/* Subtle scrollbars */
-*::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-*::-webkit-scrollbar-track {
-  background: transparent;
-}
-*::-webkit-scrollbar-thumb {
-  background: #e3dfd5;
-  border-radius: 999px;
-  border: 2px solid #f8f7f5;
-}
-*::-webkit-scrollbar-thumb:hover {
-  background: #aca89f;
-}
+/* Scrollbars */
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: #e3dfd5; border-radius: 999px; }
+*::-webkit-scrollbar-thumb:hover { background: #aca89f; }
 
 @layer components {
-  .btn {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-btn border border-border bg-pearl px-3 py-1.5 text-sm font-medium text-ink hover:border-amber-hover hover:text-amber-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-elevated;
-  }
+  /* ===== BUTTONS ===== */
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-btn bg-amber px-4 py-2 text-sm font-semibold text-ink hover:bg-amber-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
-  }
-  .btn-ghost {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-btn px-3 py-1.5 text-sm font-medium text-stone hover:text-ink hover:bg-faded-stone/40 transition-colors;
-  }
-  .input {
-    @apply w-full rounded-field border border-border bg-pearl px-3 py-2 text-sm text-ink placeholder:text-shadow-tint focus:outline-none focus:border-amber focus:ring-1 focus:ring-amber/30 transition-colors;
-  }
-  .card {
-    @apply rounded-card border border-border bg-pearl p-5 shadow-card;
-  }
-  .card-hover {
-    @apply rounded-card border border-border bg-pearl p-5 shadow-card transition-all hover:shadow-elevated hover:border-amber/40;
-  }
-  .badge {
-    @apply inline-flex items-center rounded-badge bg-off-white text-ink px-2 py-0.5 text-xs font-medium;
-  }
-  .badge-primary {
-    @apply inline-flex items-center rounded-badge bg-sunshine text-ink px-2 py-0.5 text-xs font-medium;
-  }
-  .badge-grape {
-    @apply inline-flex items-center rounded-badge bg-grape text-ink px-2 py-0.5 text-xs font-medium;
-  }
-  .stat-card {
-    @apply rounded-card border border-border bg-pearl p-4 shadow-card;
+    @apply inline-flex items-center justify-center gap-2 font-medium text-body-sm text-ink
+      bg-amber rounded-btn px-[17.5px] py-[7px]
+      hover:bg-sunset-orange transition-colors
+      disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
-  /* Score color bands — warm palette */
-  .score-band-90 {
-    @apply text-emerald-600;
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 font-medium text-body-sm text-ink
+      bg-transparent border border-ink rounded-btn px-[12.25px] py-[7px]
+      hover:bg-off-white transition-colors
+      disabled:opacity-50 disabled:cursor-not-allowed;
   }
-  .score-band-75 {
-    @apply text-amber;
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 font-medium text-body-sm text-stone
+      bg-transparent rounded-btn px-3 py-[7px]
+      hover:text-ink hover:bg-off-white transition-colors;
   }
-  .score-band-60 {
-    @apply text-orange-500;
+
+  /* ===== CARDS ===== */
+  .card {
+    @apply bg-pearl rounded-card shadow-card p-8;
   }
-  .score-band-low {
-    @apply text-stone;
+
+  .card-interactive {
+    @apply bg-pearl rounded-card shadow-card p-8
+      transition-shadow hover:shadow-elevated cursor-pointer;
   }
+
+  .card-compact {
+    @apply bg-pearl rounded-card shadow-card p-5;
+  }
+
+  /* ===== INPUTS ===== */
+  .input {
+    @apply w-full rounded-field border border-faded-stone bg-pearl
+      px-3 py-2 text-body-sm text-ink
+      placeholder:text-shadow-tint
+      focus:outline-none focus:border-amber focus:ring-1 focus:ring-amber/30
+      transition-colors;
+  }
+
+  /* ===== BADGES ===== */
+  .badge {
+    @apply inline-flex items-center rounded-badge bg-off-white text-ink
+      px-1.5 py-[3px] text-caption font-medium;
+  }
+
+  .badge-accent {
+    @apply inline-flex items-center rounded-badge bg-grape text-ink
+      px-1.5 py-[3.8px] text-caption font-medium;
+  }
+
+  .badge-warm {
+    @apply inline-flex items-center rounded-badge bg-sunshine text-ink
+      px-1.5 py-[3px] text-caption font-medium;
+  }
+
+  /* ===== STAT CARD ===== */
+  .stat-card {
+    @apply bg-pearl rounded-card shadow-card p-6;
+  }
+
+  /* ===== TABLE ===== */
+  .table-container {
+    @apply w-full overflow-x-auto;
+  }
+
+  .table-container table {
+    @apply w-full text-body-sm;
+  }
+
+  .table-container thead tr {
+    @apply border-b border-faded-stone;
+  }
+
+  .table-container th {
+    @apply py-3 px-4 text-left text-caption font-medium text-stone uppercase tracking-wide;
+  }
+
+  .table-container td {
+    @apply py-3 px-4 text-ink border-b border-faded-stone/50;
+  }
+
+  .table-container tbody tr:last-child td {
+    @apply border-b-0;
+  }
+
+  .table-container tbody tr:hover {
+    @apply bg-off-white/60;
+  }
+
+  /* ===== SCORE BANDS ===== */
+  .score-excellent { @apply text-emerald-600; }
+  .score-strong { @apply text-amber; }
+  .score-decent { @apply text-orange-500; }
+  .score-weak { @apply text-shadow-tint; }
 }
 
-/* Skeleton shimmer — light theme */
+/* Skeleton shimmer */
 @keyframes shimmer {
-  0% {
-    background-position: -400px 0;
-  }
-  100% {
-    background-position: 400px 0;
-  }
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
 }
 .skeleton {
   background: linear-gradient(90deg, #e3dfd5 0%, #f8f7f5 50%, #e3dfd5 100%);

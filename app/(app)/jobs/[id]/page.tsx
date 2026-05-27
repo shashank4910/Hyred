@@ -53,8 +53,7 @@ export default async function JobMatchPage({
   const colorClass = scoreColorClass(match.llm_score);
   const posted = relativeTime(job.posted_at);
 
-  // Lazy-upgrade: if the stored description is short (Adzuna truncation),
-  // fetch the full JD from the source URL and persist it for future views.
+  // Lazy-upgrade truncated descriptions
   const fullDescription = await ensureFullDescription({
     jobId: job.id,
     currentDescription: job.description,
@@ -62,66 +61,66 @@ export default async function JobMatchPage({
   });
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <Link
         href="/"
-        className="inline-flex items-center gap-1.5 text-sm text-stone hover:text-amber-hover transition-colors"
+        className="inline-flex items-center gap-2 text-body-sm text-stone hover:text-ink transition-colors"
       >
-        <ArrowLeft className="h-4 w-4" /> All matches
+        <ArrowLeft className="h-4 w-4" /> Back to matches
       </Link>
 
+      {/* Job header card */}
       <div className="card">
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start justify-between gap-6">
           <div className="min-w-0 flex-1">
-            <h1 className="text-heading-sm font-semibold text-ink leading-tight">{job.title}</h1>
-            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-sm text-stone">
+            <h1 className="text-heading-sm font-semibold text-ink">{job.title}</h1>
+            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-body-sm text-stone">
               {job.company && (
-                <span className="inline-flex items-center gap-1">
-                  <Building2 className="h-3.5 w-3.5" />
+                <span className="inline-flex items-center gap-1.5">
+                  <Building2 className="h-4 w-4 text-shadow-tint" />
                   {job.company}
                 </span>
               )}
               {(job.location || job.remote) && (
-                <span className="inline-flex items-center gap-1">
-                  <MapPin className="h-3.5 w-3.5" />
+                <span className="inline-flex items-center gap-1.5">
+                  <MapPin className="h-4 w-4 text-shadow-tint" />
                   {job.location || 'Remote'}
                 </span>
               )}
               {posted && (
-                <span className="inline-flex items-center gap-1">
-                  <Clock className="h-3.5 w-3.5" />
+                <span className="inline-flex items-center gap-1.5">
+                  <Clock className="h-4 w-4 text-shadow-tint" />
                   Posted {posted}
                 </span>
               )}
             </div>
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-4 flex flex-wrap gap-2">
               <span className="badge">{SOURCE_LABELS[job.source] ?? job.source}</span>
-              {job.salary && <span className="badge-primary">{job.salary}</span>}
+              {job.salary && <span className="badge-warm">{job.salary}</span>}
               {(job.tags ?? []).slice(0, 8).map((t) => (
-                <span key={t} className="badge">
-                  {t}
-                </span>
+                <span key={t} className="badge">{t}</span>
               ))}
             </div>
           </div>
           <div className="text-right shrink-0">
-            <div className={`text-4xl font-bold ${colorClass}`}>
+            <div className={`text-heading font-semibold tabular-nums ${colorClass}`}>
               {match.llm_score ?? '–'}
             </div>
-            <div className="text-xs text-stone uppercase tracking-wide font-medium">
+            <div className="text-caption text-shadow-tint uppercase tracking-wide mt-1">
               {scoreLabel(match.llm_score)}
             </div>
           </div>
         </div>
 
         {match.reason && (
-          <p className="mt-4 text-sm border-l-2 border-amber/50 pl-3 text-stone">
-            <span className="text-shadow-tint">Why this matched: </span>
-            {match.reason}
-          </p>
+          <div className="mt-6 border-l-2 border-amber pl-4">
+            <p className="text-caption text-shadow-tint uppercase tracking-wide mb-1">Why this matched</p>
+            <p className="text-body-sm text-stone">{match.reason}</p>
+          </div>
         )}
       </div>
 
+      {/* Actions */}
       <JobActions
         matchId={match.id}
         status={match.status}
@@ -131,11 +130,14 @@ export default async function JobMatchPage({
         applyUrl={job.url}
       />
 
+      {/* Job description */}
       <div className="card">
-        <h2 className="font-semibold text-ink mb-2">Job description</h2>
-        <pre className="whitespace-pre-wrap text-sm text-stone font-sans leading-relaxed">
-          {fullDescription || 'No description.'}
-        </pre>
+        <h2 className="text-body font-semibold text-ink mb-4">Job description</h2>
+        <div className="prose-sm">
+          <pre className="whitespace-pre-wrap text-body-sm text-stone font-sans leading-relaxed m-0">
+            {fullDescription || 'No description available.'}
+          </pre>
+        </div>
       </div>
     </div>
   );

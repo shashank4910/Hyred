@@ -15,7 +15,6 @@ export function MatchFilters() {
   const minScore = sp.get('min') ?? '';
   const remote = sp.get('remote') ?? '';
 
-  // Debounced search
   useEffect(() => {
     const id = setTimeout(() => {
       const params = new URLSearchParams(sp.toString());
@@ -37,13 +36,13 @@ export function MatchFilters() {
   const hasFilters = q || source || minScore || remote;
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <div className="relative flex-1 min-w-[200px] max-w-md">
-        <Search className="absolute left-3 top-2.5 h-4 w-4 text-shadow-tint" />
+    <div className="flex flex-wrap items-center gap-3">
+      <div className="relative flex-1 min-w-[220px] max-w-md">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-shadow-tint" />
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search title, company, skills..."
+          placeholder="Search title, company..."
           className="input pl-9"
         />
       </div>
@@ -51,20 +50,18 @@ export function MatchFilters() {
       <select
         value={source}
         onChange={(e) => setParam('source', e.target.value)}
-        className="input w-auto"
+        className="input w-auto min-w-[130px]"
       >
         <option value="">All sources</option>
         {SOURCES.map((s) => (
-          <option key={s} value={s}>
-            {SOURCE_LABELS[s] ?? s}
-          </option>
+          <option key={s} value={s}>{SOURCE_LABELS[s] ?? s}</option>
         ))}
       </select>
 
       <select
         value={minScore}
         onChange={(e) => setParam('min', e.target.value)}
-        className="input w-auto"
+        className="input w-auto min-w-[100px]"
       >
         <option value="">Any score</option>
         <option value="60">60+</option>
@@ -76,7 +73,7 @@ export function MatchFilters() {
       <select
         value={remote}
         onChange={(e) => setParam('remote', e.target.value)}
-        className="input w-auto"
+        className="input w-auto min-w-[120px]"
       >
         <option value="">Any location</option>
         <option value="1">Remote only</option>
@@ -93,8 +90,7 @@ export function MatchFilters() {
           }}
           className="btn-ghost"
         >
-          <X className="h-3.5 w-3.5" />
-          Clear
+          <X className="h-3.5 w-3.5" /> Clear
         </button>
       )}
     </div>

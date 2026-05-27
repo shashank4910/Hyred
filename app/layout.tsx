@@ -22,6 +22,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               color: '#261b07',
               border: '1px solid #e3dfd5',
               boxShadow: '0px 4px 8px 0px rgba(38,27,7,0.06)',
+              borderRadius: '8px',
+              fontSize: '14px',
             },
           }}
         />

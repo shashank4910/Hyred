@@ -26,15 +26,9 @@ export default async function StatsPage() {
   ] = await Promise.all([
     sb.from('jobs').select('id', { count: 'exact', head: true }),
     sb.from('matches').select('id', { count: 'exact', head: true }),
-    sb
-      .from('matches')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'applied'),
-    sb
-      .from('ingest_runs')
-      .select(
-        'id, started_at, finished_at, duration_ms, fetched, new_jobs, embedded, scored, matches_created, errors, status, triggered_by',
-      )
+    sb.from('matches').select('id', { count: 'exact', head: true }).eq('status', 'applied'),
+    sb.from('ingest_runs')
+      .select('id, started_at, finished_at, duration_ms, fetched, new_jobs, embedded, scored, matches_created, errors, status, triggered_by')
       .order('started_at', { ascending: false })
       .limit(20),
     sb.from('jobs').select('source'),
@@ -45,165 +39,146 @@ export default async function StatsPage() {
     bySource[r.source as string] = (bySource[r.source as string] ?? 0) + 1;
   }
 
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div>
         <h1 className="text-heading-sm font-semibold text-ink">Stats</h1>
-        <p className="text-body-sm text-stone mt-1">
-          Pipeline activity and source coverage.
-        </p>
+        <p className="text-body-sm text-stone mt-1">Pipeline activity and source coverage.</p>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <BigStat label="Jobs in DB" value={totalJobs ?? 0} icon={<Database className="h-4 w-4" />} />
-        <BigStat label="Total matches" value={totalMatches ?? 0} icon={<Briefcase className="h-4 w-4" />} />
-        <BigStat label="Applied" value={appliedCount ?? 0} icon={<CheckCircle2 className="h-4 w-4" />} accent />
-        <BigStat label="Sources active" value={Object.keys(bySource).length} icon={<Activity className="h-4 w-4" />} />
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard label="Jobs in DB" value={totalJobs ?? 0} icon={<Database className="h-4 w-4" />} />
+        <StatCard label="Total matches" value={totalMatches ?? 0} icon={<Briefcase className="h-4 w-4" />} />
+        <StatCard label="Applied" value={appliedCount ?? 0} icon={<CheckCircle2 className="h-4 w-4" />} accent />
+        <StatCard label="Sources active" value={Object.keys(bySource).length} icon={<Activity className="h-4 w-4" />} />
       </div>
 
-      <section className="card">
-        <h2 className="font-semibold text-ink mb-3">Jobs by source</h2>
+      {/* Jobs by source */}
+      <div className="card">
+        <h2 className="text-body font-semibold text-ink mb-5">Jobs by source</h2>
         {Object.keys(bySource).length === 0 ? (
-          <p className="text-sm text-stone">No jobs yet. Run a scan.</p>
+          <p className="text-body-sm text-stone">No jobs yet. Run a scan.</p>
         ) : (
-          <ul className="space-y-2.5">
+          <div className="space-y-3">
             {Object.entries(bySource)
               .sort((a, b) => b[1] - a[1])
               .map(([source, count]) => {
                 const total = totalJobs ?? 1;
                 const pct = (count / total) * 100;
                 return (
-                  <li key={source}>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-ink">{SOURCE_LABELS[source] ?? source}</span>
-                      <span className="text-stone">
-                        {count.toLocaleString()} ({pct.toFixed(0)}%)
-                      </span>
+                  <div key={source}>
+                    <div className="flex items-center justify-between text-body-sm mb-1">
+                      <span className="text-ink font-medium">{SOURCE_LABELS[source] ?? source}</span>
+                      <span className="text-stone tabular-nums">{count.toLocaleString()} ({pct.toFixed(0)}%)</span>
                     </div>
-                    <div className="mt-1 h-1.5 rounded-full bg-off-white overflow-hidden">
-                      <div className="h-full bg-amber rounded-full" style={{ width: `${pct}%` }} />
+                    <div className="h-2 rounded-badge bg-off-white overflow-hidden">
+                      <div className="h-full bg-amber rounded-badge transition-all" style={{ width: `${pct}%` }} />
                     </div>
-                  </li>
+                  </div>
                 );
               })}
-          </ul>
+          </div>
         )}
-      </section>
+      </div>
 
-
-      <section className="card">
-        <h2 className="font-semibold text-ink mb-1 flex items-center gap-2">
-          <Clock className="h-4 w-4 text-amber" /> Recent ingest runs
-        </h2>
-        <p className="text-xs text-stone mb-3">
-          Pipeline time = fetch + embed + score + persist. GitHub Actions
-          adds ~20–30s overhead for checkout, setup-node, and npm install.
+      {/* Ingest runs table */}
+      <div className="card">
+        <div className="flex items-center gap-2 mb-1">
+          <Clock className="h-4 w-4 text-amber" />
+          <h2 className="text-body font-semibold text-ink">Recent ingest runs</h2>
+        </div>
+        <p className="text-caption text-stone mb-5">
+          Pipeline time excludes GitHub Actions overhead (checkout, setup, npm install).
         </p>
+
         {(runs ?? []).length === 0 ? (
-          <p className="text-sm text-stone">No runs yet.</p>
+          <p className="text-body-sm text-stone">No runs yet.</p>
         ) : (
-          <div className="overflow-x-auto -mx-5 px-5">
-            <table className="w-full text-sm min-w-[640px]">
+          <div className="table-container">
+            <table>
               <thead>
-                <tr className="text-stone text-xs border-b border-border">
-                  <th className="py-2 text-left font-medium">When</th>
-                  <th className="py-2 text-left font-medium">Status</th>
-                  <th className="py-2 text-right font-medium">Fetched</th>
-                  <th className="py-2 text-right font-medium">New</th>
-                  <th className="py-2 text-right font-medium">Scored</th>
-                  <th className="py-2 text-right font-medium">Kept</th>
-                  <th className="py-2 text-right font-medium" title="Pipeline execution time">Pipeline time</th>
-                  <th className="py-2 text-left font-medium">Trigger</th>
+                <tr>
+                  <th>When</th>
+                  <th>Status</th>
+                  <th className="text-right">Fetched</th>
+                  <th className="text-right">New</th>
+                  <th className="text-right">Scored</th>
+                  <th className="text-right">Kept</th>
+                  <th className="text-right">Duration</th>
+                  <th>Trigger</th>
                 </tr>
               </thead>
               <tbody>
                 {(runs ?? []).map((r) => (
-                  <tr key={r.id} className="border-b border-faded-stone/50 last:border-0">
-                    <td className="py-2 text-xs text-stone">{relativeTime(r.started_at)}</td>
-                    <td className="py-2"><RunStatus status={r.status} errors={r.errors} /></td>
-                    <td className="py-2 text-right tabular-nums text-ink">{r.fetched}</td>
-                    <td className="py-2 text-right tabular-nums text-ink">{r.new_jobs}</td>
-                    <td className="py-2 text-right tabular-nums text-ink">{r.scored}</td>
-                    <td className="py-2 text-right tabular-nums text-amber font-medium">{r.matches_created}</td>
-                    <td className="py-2 text-right tabular-nums text-stone">
+                  <tr key={r.id}>
+                    <td className="text-stone whitespace-nowrap">{relativeTime(r.started_at)}</td>
+                    <td><RunStatus status={r.status} errors={r.errors} /></td>
+                    <td className="text-right tabular-nums">{r.fetched}</td>
+                    <td className="text-right tabular-nums">{r.new_jobs}</td>
+                    <td className="text-right tabular-nums">{r.scored}</td>
+                    <td className="text-right tabular-nums font-medium text-amber">{r.matches_created}</td>
+                    <td className="text-right tabular-nums text-stone">
                       {r.duration_ms ? `${(r.duration_ms / 1000).toFixed(1)}s` : '—'}
                     </td>
-                    <td className="py-2 text-xs text-stone">{r.triggered_by}</td>
+                    <td className="text-stone">{r.triggered_by}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
-      </section>
+      </div>
     </div>
   );
 }
 
-
-function BigStat({
-  label,
-  value,
-  icon,
-  accent,
+function StatCard({
+  label, value, icon, accent,
 }: {
-  label: string;
-  value: number;
-  icon: React.ReactNode;
-  accent?: boolean;
+  label: string; value: number; icon: React.ReactNode; accent?: boolean;
 }) {
   return (
     <div className="stat-card">
-      <div className="flex items-center justify-between text-caption text-stone">
-        <span>{label}</span>
+      <div className="flex items-center justify-between">
+        <span className="text-caption text-stone">{label}</span>
         <span className={accent ? 'text-amber' : 'text-shadow-tint'}>{icon}</span>
       </div>
-      <div className={`mt-1.5 text-heading-sm font-semibold ${accent ? 'text-amber' : 'text-ink'}`}>
+      <div className={`mt-2 text-heading-sm font-semibold tabular-nums ${accent ? 'text-amber' : 'text-ink'}`}>
         {value.toLocaleString()}
       </div>
     </div>
   );
 }
 
-function RunStatus({
-  status,
-  errors,
-}: {
-  status: string;
-  errors: { source: string; error: string }[] | null;
-}) {
+function RunStatus({ status, errors }: { status: string; errors: { source: string; error: string }[] | null }) {
   if (status === 'success') {
     return (
-      <span className="inline-flex items-center gap-1 text-xs text-emerald-600 font-medium">
-        <CheckCircle2 className="h-3.5 w-3.5" />
-        success
+      <span className="inline-flex items-center gap-1.5 text-caption font-medium text-emerald-600">
+        <CheckCircle2 className="h-3.5 w-3.5" /> Success
       </span>
     );
   }
   if (status === 'partial') {
     return (
       <span
-        className="inline-flex items-center gap-1 text-xs text-amber-hover font-medium"
+        className="inline-flex items-center gap-1.5 text-caption font-medium text-sunset-orange"
         title={(errors ?? []).map((e) => `${e.source}: ${e.error}`).join('\n')}
       >
-        <AlertTriangle className="h-3.5 w-3.5" />
-        partial ({(errors ?? []).length})
+        <AlertTriangle className="h-3.5 w-3.5" /> Partial ({(errors ?? []).length})
       </span>
     );
   }
   if (status === 'failed') {
     return (
-      <span className="inline-flex items-center gap-1 text-xs text-warning-red font-medium">
-        <XCircle className="h-3.5 w-3.5" />
-        failed
+      <span className="inline-flex items-center gap-1.5 text-caption font-medium text-warning-red">
+        <XCircle className="h-3.5 w-3.5" /> Failed
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 text-xs text-stone">
-      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-      running
+    <span className="inline-flex items-center gap-1.5 text-caption text-stone">
+      <Loader2 className="h-3.5 w-3.5 animate-spin" /> Running
     </span>
   );
 }

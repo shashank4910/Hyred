@@ -34,7 +34,7 @@ export function LoginForm({ next }: { next?: string }) {
   return (
     <form onSubmit={submit} className="card space-y-4">
       <div className="relative">
-        <Lock className="absolute left-3 top-2.5 h-4 w-4 text-shadow-tint" />
+        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-shadow-tint" />
         <input
           type="password"
           autoFocus
@@ -47,7 +47,7 @@ export function LoginForm({ next }: { next?: string }) {
           onChange={(e) => setPassword(e.target.value)}
         />
       </div>
-      {error && <p className="text-xs text-warning-red">{error}</p>}
+      {error && <p className="text-caption text-warning-red">{error}</p>}
       <button type="submit" disabled={loading} className="btn-primary w-full">
         {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Sign in'}
       </button>

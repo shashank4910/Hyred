@@ -15,12 +15,11 @@ export default async function OnboardingPage() {
     .maybeSingle();
 
   return (
-    <div className="space-y-4">
+    <div className="max-w-3xl mx-auto space-y-6">
       <div>
         <h1 className="text-heading-sm font-semibold text-ink">Your profile</h1>
         <p className="text-body-sm text-stone mt-1">
-          Upload your resume — we&apos;ll embed it once and use it to score every
-          job. Update any time and we re-index automatically.
+          Upload your resume — we&apos;ll embed it and use it to score every job.
         </p>
       </div>
       <OnboardingForm

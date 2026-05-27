@@ -24,7 +24,6 @@ import { KeywordPicker } from './KeywordPicker';
 
 type Skills = { matched: string[]; missing: string[]; allSkills: string[] } | null;
 
-
 export function JobActions({
   matchId,
   status,
@@ -43,21 +42,17 @@ export function JobActions({
   const router = useRouter();
   const [, startTransition] = useTransition();
 
-  // Cover letter state
   const [letter, setLetter] = useState(coverLetter ?? '');
   const [editing, setEditing] = useState(false);
   const [generating, setGenerating] = useState(false);
 
-  // Notes state
   const [notesValue, setNotesValue] = useState(notes ?? '');
   const [savingNotes, setSavingNotes] = useState(false);
   const [notesDirty, setNotesDirty] = useState(false);
 
-  // Skills state
   const [skills, setSkills] = useState<Skills>(null);
   const [analyzingSkills, setAnalyzingSkills] = useState(false);
 
-  // ATS Resume state
   const [atsResume, setAtsResume] = useState('');
   const [generatingResume, setGeneratingResume] = useState(false);
   const [resumeCopied, setResumeCopied] = useState(false);
@@ -68,33 +63,27 @@ export function JobActions({
     selected_count?: number;
   } | null>(null);
 
-  // Keyword picker state
   const [jdKeywords, setJdKeywords] = useState<string[]>([]);
   const [alreadyHaveKeywords, setAlreadyHaveKeywords] = useState<string[]>([]);
   const [selectedKeywords, setSelectedKeywords] = useState<string[]>([]);
   const [loadingKeywords, setLoadingKeywords] = useState(false);
   const [keywordsLoaded, setKeywordsLoaded] = useState(false);
 
+  const [editingResume, setEditingResume] = useState(false);
+  const [editedResume, setEditedResume] = useState('');
 
-  // Load skills if we have any candidate skills
   useEffect(() => {
     if (!candidateSkills.length) return;
     let cancelled = false;
     setAnalyzingSkills(true);
     fetch(`/api/match/${matchId}/skills`, { method: 'POST' })
       .then((r) => r.json())
-      .then((d) => {
-        if (cancelled) return;
-        if (d?.matched != null) setSkills(d as Skills);
-      })
+      .then((d) => { if (!cancelled && d?.matched != null) setSkills(d as Skills); })
       .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setAnalyzingSkills(false);
-      });
+      .finally(() => { if (!cancelled) setAnalyzingSkills(false); });
     return () => { cancelled = true; };
   }, [matchId, candidateSkills.length]);
 
-  // Load JD keywords for the keyword picker
   useEffect(() => {
     let cancelled = false;
     setLoadingKeywords(true);
@@ -114,152 +103,92 @@ export function JobActions({
     return () => { cancelled = true; };
   }, [matchId]);
 
-
   async function generate() {
     setGenerating(true);
     const id = toast.loading('Drafting cover letter...');
     try {
-      const res = await fetch(`/api/coverletter`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ match_id: matchId }),
-      });
+      const res = await fetch('/api/coverletter', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ match_id: matchId }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed');
       setLetter(data.cover_letter);
       toast.success('Cover letter ready', { id });
       startTransition(() => router.refresh());
-    } catch (e) {
-      toast.error((e as Error).message, { id });
-    } finally {
-      setGenerating(false);
-    }
+    } catch (e) { toast.error((e as Error).message, { id }); }
+    finally { setGenerating(false); }
   }
 
-  async function setStatus(next: string) {
+  async function setStatusFn(next: string) {
     const id = toast.loading('Updating...');
     try {
-      const res = await fetch(`/api/match/${matchId}/status`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ status: next }),
-      });
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        throw new Error(d.error || 'Failed');
-      }
+      const res = await fetch(`/api/match/${matchId}/status`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status: next }) });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed'); }
       toast.success(`Marked as ${next}`, { id });
       startTransition(() => router.refresh());
-    } catch (e) {
-      toast.error((e as Error).message, { id });
-    }
+    } catch (e) { toast.error((e as Error).message, { id }); }
   }
 
   async function saveNotes() {
     setSavingNotes(true);
     try {
-      const res = await fetch(`/api/match/${matchId}/notes`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ notes: notesValue }),
-      });
+      const res = await fetch(`/api/match/${matchId}/notes`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ notes: notesValue }) });
       if (!res.ok) throw new Error('Failed');
       toast.success('Notes saved');
       setNotesDirty(false);
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      setSavingNotes(false);
-    }
+    } catch (e) { toast.error((e as Error).message); }
+    finally { setSavingNotes(false); }
   }
 
-  async function copy() {
-    await navigator.clipboard.writeText(letter);
-    toast.success('Copied to clipboard');
-  }
-
-  function download() {
+  async function copyLetter() { await navigator.clipboard.writeText(letter); toast.success('Copied'); }
+  function downloadLetter() {
     const blob = new Blob([letter], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'cover-letter.txt';
-    a.click();
+    const a = document.createElement('a'); a.href = url; a.download = 'cover-letter.txt'; a.click();
     URL.revokeObjectURL(url);
   }
-
-
-  // Resume editing state
-  const [editingResume, setEditingResume] = useState(false);
-  const [editedResume, setEditedResume] = useState('');
 
   async function generateAtsResume() {
     setGeneratingResume(true);
     const id = toast.loading('Generating ATS-optimized resume...');
     try {
-      const res = await fetch(`/api/match/${matchId}/resume`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          selectedKeywords: selectedKeywords.length > 0 ? selectedKeywords : undefined,
-        }),
-      });
+      const res = await fetch(`/api/match/${matchId}/resume`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ selectedKeywords: selectedKeywords.length > 0 ? selectedKeywords : undefined }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed');
-      setAtsResume(data.resume);
-      setEditedResume(data.resume);
-      setEditingResume(true);
+      setAtsResume(data.resume); setEditedResume(data.resume); setEditingResume(true);
       if (data.keywords) setKeywords(data.keywords);
-      toast.success('ATS resume ready — review & edit before exporting!', { id });
-    } catch (e) {
-      toast.error((e as Error).message, { id });
-    } finally {
-      setGeneratingResume(false);
-    }
+      toast.success('ATS resume ready', { id });
+    } catch (e) { toast.error((e as Error).message, { id }); }
+    finally { setGeneratingResume(false); }
   }
 
-  async function copyResume() {
-    await navigator.clipboard.writeText(editedResume || atsResume);
-    setResumeCopied(true);
-    toast.success('Resume copied to clipboard');
-    setTimeout(() => setResumeCopied(false), 2000);
-  }
-
+  async function copyResume() { await navigator.clipboard.writeText(editedResume || atsResume); setResumeCopied(true); toast.success('Copied'); setTimeout(() => setResumeCopied(false), 2000); }
   function downloadResumeTxt() {
     const text = editedResume || atsResume;
     const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'resume-ats-optimized.txt';
-    a.click();
+    const a = document.createElement('a'); a.href = url; a.download = 'resume-ats-optimized.txt'; a.click();
     URL.revokeObjectURL(url);
   }
-
   async function downloadResumePdf() {
-    const id = toast.loading('Generating beautiful PDF...');
+    const id = toast.loading('Generating PDF...');
     try {
       const { generateBeautifulPdf } = await import('@/lib/pdf-resume');
       const doc = generateBeautifulPdf(editedResume || atsResume);
       doc.save('resume-ats-optimized.pdf');
-      toast.success('PDF downloaded!', { id });
-    } catch (e) {
-      toast.error(`PDF generation failed: ${(e as Error).message}`, { id });
-    }
+      toast.success('PDF downloaded', { id });
+    } catch (e) { toast.error(`PDF failed: ${(e as Error).message}`, { id }); }
   }
 
-
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {/* Apply CTA */}
-      <div className="card border-amber/30 bg-gradient-to-r from-amber/5 to-transparent">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+      <div className="card border-l-4 border-l-amber">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
-            <h2 className="font-semibold text-ink flex items-center gap-2">
+            <h2 className="text-body font-semibold text-ink flex items-center gap-2">
               <Rocket className="h-4 w-4 text-amber" /> Ready to apply?
             </h2>
-            <p className="text-xs text-stone mt-0.5">
-              Opens the original posting. Generate your ATS resume + cover letter first.
+            <p className="text-caption text-stone mt-1">
+              Opens the original posting. Generate your resume + cover letter first.
             </p>
           </div>
           <a
@@ -268,35 +197,28 @@ export function JobActions({
             rel="noopener noreferrer"
             onClick={() => {
               if (status !== 'applied' && status !== 'interviewing' && status !== 'offer') {
-                fetch(`/api/match/${matchId}/status`, {
-                  method: 'POST',
-                  headers: { 'content-type': 'application/json' },
-                  body: JSON.stringify({ status: 'applied' }),
-                })
-                  .then(() => startTransition(() => router.refresh()))
-                  .catch(() => {});
+                fetch(`/api/match/${matchId}/status`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status: 'applied' }) })
+                  .then(() => startTransition(() => router.refresh())).catch(() => {});
               }
             }}
-            className="btn-primary text-base px-5 py-2.5"
+            className="btn-primary whitespace-nowrap"
           >
-            <ExternalLink className="h-4 w-4" />
-            Apply on job site
+            <ExternalLink className="h-4 w-4" /> Apply now
           </a>
         </div>
       </div>
 
-      {/* Status tracker */}
-      <div className="card">
+      {/* Status */}
+      <div className="card-compact">
         <div className="flex flex-wrap gap-2">
           {STATUS_ORDER.map((s) => (
             <button
               key={s}
               disabled={s === status}
-              onClick={() => setStatus(s)}
-              className={
-                s === status
-                  ? 'rounded-btn bg-amber text-ink px-3 py-1.5 text-xs font-semibold'
-                  : 'rounded-btn border border-border px-3 py-1.5 text-xs text-stone hover:text-ink hover:border-amber/40 hover:bg-amber/5 transition-colors'
+              onClick={() => setStatusFn(s)}
+              className={s === status
+                ? 'rounded-btn bg-amber text-ink px-3 py-[7px] text-caption font-medium capitalize'
+                : 'rounded-btn border border-faded-stone px-3 py-[7px] text-caption text-stone capitalize hover:border-ink hover:text-ink transition-colors'
               }
             >
               {s}
@@ -305,360 +227,160 @@ export function JobActions({
         </div>
       </div>
 
-
-      {/* Skill match panel */}
+      {/* Skills */}
       {candidateSkills.length > 0 && (
-        <div className="card space-y-3">
-          <h2 className="font-semibold text-ink flex items-center gap-2">
+        <div className="card">
+          <h2 className="text-body font-semibold text-ink flex items-center gap-2 mb-4">
             <Sparkles className="h-4 w-4 text-amber" /> Skill match
           </h2>
           {analyzingSkills && !skills && (
-            <div className="space-y-2">
-              <div className="skeleton h-4 w-2/3" />
-              <div className="skeleton h-4 w-1/2" />
-            </div>
+            <div className="space-y-2"><div className="skeleton h-4 w-2/3" /><div className="skeleton h-4 w-1/2" /></div>
           )}
           {skills && (
-            <>
-              {skills.matched.length > 0 ? (
+            <div className="space-y-4">
+              {skills.matched.length > 0 && (
                 <div>
-                  <div className="text-xs text-stone mb-1.5">
-                    JD requirements found in your resume (
-                    {skills.matched.length}/
-                    {skills.matched.length + skills.missing.length})
-                  </div>
+                  <p className="text-caption text-stone mb-2">Found in your resume ({skills.matched.length}/{skills.matched.length + skills.missing.length})</p>
                   <div className="flex flex-wrap gap-1.5">
                     {skills.matched.map((s) => (
-                      <span
-                        key={s}
-                        className="inline-flex items-center gap-1 rounded-badge bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 text-xs"
-                      >
-                        <CheckCircle2 className="h-3 w-3" />
-                        {s}
+                      <span key={s} className="inline-flex items-center gap-1 rounded-badge bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-[3px] text-caption">
+                        <CheckCircle2 className="h-3 w-3" />{s}
                       </span>
                     ))}
                   </div>
                 </div>
-              ) : (
-                <p className="text-xs text-stone">
-                  No direct matches found in the JD. Score may rely on adjacent experience.
-                </p>
               )}
               {skills.missing.length > 0 && (
                 <div>
-                  <div className="text-xs text-stone mb-1.5">
-                    JD requirements not clearly present in your resume
-                  </div>
+                  <p className="text-caption text-stone mb-2">Not found in resume</p>
                   <div className="flex flex-wrap gap-1.5">
                     {skills.missing.map((s) => (
-                      <span
-                        key={s}
-                        className="inline-flex items-center gap-1 rounded-badge border border-warning-red/30 bg-red-50 text-warning-red px-2 py-0.5 text-xs"
-                      >
-                        <XCircle className="h-3 w-3" />
-                        {s}
+                      <span key={s} className="inline-flex items-center gap-1 rounded-badge border border-warning-red/30 bg-red-50 text-warning-red px-2 py-[3px] text-caption">
+                        <XCircle className="h-3 w-3" />{s}
                       </span>
                     ))}
                   </div>
                 </div>
               )}
-            </>
+            </div>
           )}
         </div>
       )}
 
-
       {/* Cover letter */}
       <div className="card">
-        <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-          <h2 className="font-semibold text-ink flex items-center gap-2">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+          <h2 className="text-body font-semibold text-ink flex items-center gap-2">
             <Pencil className="h-4 w-4 text-amber" /> Cover letter
           </h2>
           <div className="flex gap-2 flex-wrap">
             {letter && (
               <>
-                <button onClick={copy} className="btn">
-                  <Copy className="h-3.5 w-3.5" /> Copy
-                </button>
-                <button onClick={download} className="btn">
-                  <Download className="h-3.5 w-3.5" /> Download
-                </button>
-                <button onClick={() => setEditing((v) => !v)} className="btn">
-                  {editing ? 'Done' : 'Edit'}
-                </button>
+                <button onClick={copyLetter} className="btn"><Copy className="h-3.5 w-3.5" /> Copy</button>
+                <button onClick={downloadLetter} className="btn"><Download className="h-3.5 w-3.5" /> Download</button>
+                <button onClick={() => setEditing((v) => !v)} className="btn">{editing ? 'Done' : 'Edit'}</button>
               </>
             )}
             <button onClick={generate} disabled={generating} className="btn-primary">
-              {generating ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : letter ? (
-                <RotateCw className="h-3.5 w-3.5" />
-              ) : (
-                <Sparkles className="h-3.5 w-3.5" />
-              )}
+              {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : letter ? <RotateCw className="h-3.5 w-3.5" /> : <Sparkles className="h-3.5 w-3.5" />}
               {generating ? 'Drafting...' : letter ? 'Regenerate' : 'Generate'}
             </button>
           </div>
         </div>
-        {generating && !letter && (
-          <div className="space-y-2">
-            <div className="skeleton h-4 w-full" />
-            <div className="skeleton h-4 w-11/12" />
-            <div className="skeleton h-4 w-10/12" />
-            <div className="skeleton h-4 w-3/4" />
-          </div>
-        )}
+        {generating && !letter && <div className="space-y-2"><div className="skeleton h-4 w-full" /><div className="skeleton h-4 w-11/12" /><div className="skeleton h-4 w-3/4" /></div>}
         {letter ? (
           editing ? (
-            <textarea
-              value={letter}
-              onChange={(e) => setLetter(e.target.value)}
-              className="input min-h-[260px] font-sans text-sm leading-relaxed"
-            />
+            <textarea value={letter} onChange={(e) => setLetter(e.target.value)} className="input min-h-[260px] font-sans text-body-sm leading-relaxed" />
           ) : (
-            <pre className="whitespace-pre-wrap text-sm text-stone font-sans leading-relaxed">
-              {letter}
-            </pre>
+            <pre className="whitespace-pre-wrap text-body-sm text-stone font-sans leading-relaxed">{letter}</pre>
           )
-        ) : (
-          !generating && (
-            <p className="text-sm text-stone">
-              Click <span className="text-amber font-medium">Generate</span> to draft a
-              tailored cover letter using your resume and this JD.
-            </p>
-          )
-        )}
+        ) : (!generating && <p className="text-body-sm text-stone">Click <span className="text-amber font-medium">Generate</span> to draft a tailored cover letter.</p>)}
       </div>
 
-
-      {/* ATS-Optimized Resume */}
+      {/* ATS Resume */}
       <div className="card">
-        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-          <h2 className="font-semibold text-ink flex items-center gap-2">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+          <h2 className="text-body font-semibold text-ink flex items-center gap-2">
             <FileText className="h-4 w-4 text-amber" /> ATS Resume
           </h2>
           <div className="flex gap-2 flex-wrap">
             {atsResume && (
               <>
-                <button onClick={copyResume} className="btn">
-                  <Copy className="h-3.5 w-3.5" /> {resumeCopied ? 'Copied!' : 'Copy'}
-                </button>
-                <button onClick={downloadResumeTxt} className="btn">
-                  <Download className="h-3.5 w-3.5" /> .txt
-                </button>
-                <button onClick={downloadResumePdf} className="btn-primary">
-                  <Download className="h-3.5 w-3.5" /> PDF
-                </button>
+                <button onClick={copyResume} className="btn"><Copy className="h-3.5 w-3.5" /> {resumeCopied ? 'Copied!' : 'Copy'}</button>
+                <button onClick={downloadResumeTxt} className="btn"><Download className="h-3.5 w-3.5" /> .txt</button>
+                <button onClick={downloadResumePdf} className="btn-primary"><Download className="h-3.5 w-3.5" /> PDF</button>
               </>
             )}
             {!atsResume && (
               <button onClick={generateAtsResume} disabled={generatingResume} className="btn-primary">
-                {generatingResume ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Sparkles className="h-3.5 w-3.5" />
-                )}
+                {generatingResume ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
                 {generatingResume ? 'Generating...' : 'Generate ATS Resume'}
               </button>
             )}
           </div>
         </div>
 
-        {/* Keyword Picker — shown before generation */}
         {!atsResume && !generatingResume && (
           <div className="space-y-4">
-            {loadingKeywords && !keywordsLoaded && (
-              <div className="space-y-2">
-                <div className="skeleton h-4 w-1/3" />
-                <div className="flex gap-2">
-                  <div className="skeleton h-7 w-20 rounded-full" />
-                  <div className="skeleton h-7 w-24 rounded-full" />
-                  <div className="skeleton h-7 w-16 rounded-full" />
-                  <div className="skeleton h-7 w-28 rounded-full" />
-                  <div className="skeleton h-7 w-20 rounded-full" />
-                </div>
-              </div>
-            )}
+            {loadingKeywords && !keywordsLoaded && <div className="space-y-2"><div className="skeleton h-4 w-1/3" /><div className="flex gap-2"><div className="skeleton h-7 w-20" /><div className="skeleton h-7 w-24" /><div className="skeleton h-7 w-16" /></div></div>}
             {keywordsLoaded && jdKeywords.length > 0 && (
-              <div className="border border-border rounded-card p-3 bg-off-white">
-                <KeywordPicker
-                  keywords={jdKeywords}
-                  alreadyHave={alreadyHaveKeywords}
-                  selected={selectedKeywords}
-                  onSelectionChange={setSelectedKeywords}
-                />
+              <div className="border border-faded-stone rounded-card p-5 bg-off-white">
+                <KeywordPicker keywords={jdKeywords} alreadyHave={alreadyHaveKeywords} selected={selectedKeywords} onSelectionChange={setSelectedKeywords} />
               </div>
             )}
-            {keywordsLoaded && jdKeywords.length === 0 && (
-              <p className="text-sm text-stone">
-                Click <span className="text-amber font-medium">Generate ATS Resume</span> to create a version optimized for this job&apos;s ATS keywords.
-              </p>
-            )}
+            {keywordsLoaded && jdKeywords.length === 0 && <p className="text-body-sm text-stone">Click <span className="text-amber font-medium">Generate ATS Resume</span> to create an optimized version.</p>}
           </div>
         )}
 
+        {generatingResume && !atsResume && <div className="space-y-2 mt-3"><div className="skeleton h-4 w-full" /><div className="skeleton h-4 w-11/12" /><div className="skeleton h-4 w-3/4" /></div>}
 
-        {/* Loading skeleton */}
-        {generatingResume && !atsResume && (
-          <div className="space-y-2 mt-3">
-            <div className="skeleton h-4 w-full" />
-            <div className="skeleton h-4 w-11/12" />
-            <div className="skeleton h-4 w-10/12" />
-            <div className="skeleton h-4 w-9/12" />
-            <div className="skeleton h-4 w-3/4" />
-          </div>
-        )}
-
-        {/* Generated resume — editable preview */}
         {atsResume && (
-          <div className="space-y-3">
-            {/* Keyword analysis */}
+          <div className="space-y-4">
             {keywords && (
-              <div className="space-y-2 border-b border-border pb-3">
-                <div className="text-xs font-medium text-stone flex items-center gap-1.5">
-                  <Zap className="h-3.5 w-3.5 text-amber" />
-                  Keywords analysis ({keywords.total_jd_keywords} detected in JD
-                  {keywords.selected_count ? `, ${keywords.selected_count} prioritized` : ''})
-                </div>
+              <div className="space-y-3 border-b border-faded-stone pb-4">
+                <p className="text-caption text-stone flex items-center gap-1.5"><Zap className="h-3.5 w-3.5 text-amber" /> {keywords.total_jd_keywords} keywords detected{keywords.selected_count ? `, ${keywords.selected_count} prioritized` : ''}</p>
                 {keywords.added.length > 0 && (
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wide text-amber-hover mb-1 font-medium">
-                      + Woven into your resume ({keywords.added.length})
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {keywords.added.map((kw) => (
-                        <span key={kw} className="inline-flex items-center gap-0.5 rounded-badge bg-amber/10 text-amber-hover px-2 py-0.5 text-xs font-medium">
-                          + {kw}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {keywords.already_had.length > 0 && (
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wide text-stone mb-1">
-                      Already in your resume ({keywords.already_had.length})
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {keywords.already_had.map((kw) => (
-                        <span key={kw} className="inline-flex items-center gap-0.5 rounded-badge border border-border px-2 py-0.5 text-xs text-stone">
-                          <CheckCircle2 className="h-2.5 w-2.5" /> {kw}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
+                  <div className="flex flex-wrap gap-1.5">{keywords.added.map((kw) => <span key={kw} className="badge-warm">+ {kw}</span>)}</div>
                 )}
               </div>
             )}
-
-
-            {/* Action bar: Edit / Preview toggle */}
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setEditingResume(true)}
-                  className={editingResume
-                    ? 'text-xs font-medium text-amber border-b border-amber pb-0.5'
-                    : 'text-xs text-stone hover:text-ink'
-                  }
-                >
-                  <Pencil className="h-3 w-3 inline mr-1" />
-                  Edit
-                </button>
-                <button
-                  onClick={() => {
-                    setEditingResume(false);
-                    setAtsResume(editedResume);
-                  }}
-                  className={!editingResume
-                    ? 'text-xs font-medium text-amber border-b border-amber pb-0.5'
-                    : 'text-xs text-stone hover:text-ink'
-                  }
-                >
-                  <FileText className="h-3 w-3 inline mr-1" />
-                  Preview
-                </button>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex gap-3">
+                <button onClick={() => setEditingResume(true)} className={editingResume ? 'text-caption font-medium text-amber border-b border-amber pb-0.5' : 'text-caption text-stone hover:text-ink'}><Pencil className="h-3 w-3 inline mr-1" />Edit</button>
+                <button onClick={() => { setEditingResume(false); setAtsResume(editedResume); }} className={!editingResume ? 'text-caption font-medium text-amber border-b border-amber pb-0.5' : 'text-caption text-stone hover:text-ink'}><FileText className="h-3 w-3 inline mr-1" />Preview</button>
               </div>
-              <button
-                onClick={() => {
-                  setAtsResume('');
-                  setEditedResume('');
-                  setKeywords(null);
-                  setEditingResume(false);
-                }}
-                className="btn text-xs"
-              >
-                <RotateCw className="h-3 w-3" />
-                Regenerate
-              </button>
+              <button onClick={() => { setAtsResume(''); setEditedResume(''); setKeywords(null); setEditingResume(false); }} className="btn-ghost text-caption"><RotateCw className="h-3 w-3" /> Regenerate</button>
             </div>
-
-            {/* Editable textarea or read-only preview */}
             {editingResume ? (
-              <div className="space-y-2">
-                <textarea
-                  value={editedResume}
-                  onChange={(e) => setEditedResume(e.target.value)}
-                  className="input min-h-[420px] font-mono text-sm leading-relaxed resize-y"
-                  placeholder="Edit your resume here..."
-                />
-                <div className="flex items-center justify-between">
-                  <p className="text-[11px] text-stone">
-                    Edit anything above — your changes will be used when exporting PDF or copying.
-                  </p>
-                  <button
-                    onClick={() => {
-                      setAtsResume(editedResume);
-                      setEditingResume(false);
-                      toast.success('Changes saved');
-                    }}
-                    className="btn-primary text-xs"
-                  >
-                    <Save className="h-3 w-3" />
-                    Save & Preview
-                  </button>
+              <div className="space-y-3">
+                <textarea value={editedResume} onChange={(e) => setEditedResume(e.target.value)} className="input min-h-[400px] font-mono text-body-sm leading-relaxed resize-y" />
+                <div className="flex justify-end">
+                  <button onClick={() => { setAtsResume(editedResume); setEditingResume(false); toast.success('Saved'); }} className="btn-primary text-caption"><Save className="h-3 w-3" /> Save & Preview</button>
                 </div>
               </div>
             ) : (
-              <div className="space-y-2">
-                <pre className="whitespace-pre-wrap text-sm text-stone font-sans leading-relaxed bg-off-white border border-border rounded-card p-3 max-h-[420px] overflow-y-auto">
-                  {editedResume || atsResume}
-                </pre>
-                <div className="flex items-center gap-1.5 text-xs text-stone">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                  Tailored for this job. Click Edit to make changes, then export as PDF.
-                </div>
-              </div>
+              <pre className="whitespace-pre-wrap text-body-sm text-stone font-sans leading-relaxed bg-off-white border border-faded-stone rounded-card p-5 max-h-[420px] overflow-y-auto">{editedResume || atsResume}</pre>
             )}
           </div>
         )}
       </div>
 
-
       {/* Notes */}
       <div className="card">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="font-semibold text-ink flex items-center gap-2">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-body font-semibold text-ink flex items-center gap-2">
             <StickyNote className="h-4 w-4 text-amber" /> Notes
           </h2>
           {notesDirty && (
             <button onClick={saveNotes} disabled={savingNotes} className="btn-primary">
-              {savingNotes ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Save className="h-3.5 w-3.5" />
-              )}
-              Save
+              {savingNotes ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Save
             </button>
           )}
         </div>
         <textarea
           className="input min-h-[120px]"
           value={notesValue}
-          onChange={(e) => {
-            setNotesValue(e.target.value);
-            setNotesDirty(true);
-          }}
+          onChange={(e) => { setNotesValue(e.target.value); setNotesDirty(true); }}
           placeholder="Recruiter contact, interview prep, follow-up dates..."
         />
       </div>
