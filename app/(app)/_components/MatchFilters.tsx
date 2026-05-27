@@ -39,7 +39,7 @@ export function MatchFilters() {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <div className="relative flex-1 min-w-[200px] max-w-md">
-        <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted" />
+        <Search className="absolute left-3 top-2.5 h-4 w-4 text-shadow-tint" />
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}

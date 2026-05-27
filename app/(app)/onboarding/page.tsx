@@ -17,8 +17,8 @@ export default async function OnboardingPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold">Your profile</h1>
-        <p className="text-sm text-muted">
+        <h1 className="text-heading-sm font-semibold text-ink">Your profile</h1>
+        <p className="text-body-sm text-stone mt-1">
           Upload your resume — we&apos;ll embed it once and use it to score every
           job. Update any time and we re-index automatically.
         </p>

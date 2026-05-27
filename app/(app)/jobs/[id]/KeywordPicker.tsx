@@ -1,16 +1,12 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { CheckCircle2, Circle, Search, Zap, RotateCcw } from 'lucide-react';
+import { CheckCircle2, Circle, Search, Zap } from 'lucide-react';
 
 type KeywordPickerProps = {
-  /** All keywords extracted from the JD */
   keywords: string[];
-  /** Keywords already in the user's resume */
   alreadyHave: string[];
-  /** Callback when selection changes */
   onSelectionChange: (selected: string[]) => void;
-  /** Currently selected keywords */
   selected: string[];
 };
 
@@ -69,20 +65,18 @@ export function KeywordPicker({
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
-          <Zap className="h-4 w-4 text-primary" />
-          <span className="text-sm font-medium">
-            Keyword Picker
-          </span>
-          <span className="text-xs text-muted">
+          <Zap className="h-4 w-4 text-amber" />
+          <span className="text-sm font-medium text-ink">Keyword Picker</span>
+          <span className="text-xs text-stone">
             ({selectedCount}/{totalAvailable} selected)
           </span>
         </div>
         <div className="flex gap-2">
-          <button onClick={selectAll} className="text-xs text-primary hover:underline">
+          <button onClick={selectAll} className="text-xs text-amber-hover hover:underline font-medium">
             Select all
           </button>
-          <span className="text-muted text-xs">|</span>
-          <button onClick={selectNone} className="text-xs text-muted hover:text-fg">
+          <span className="text-stone text-xs">|</span>
+          <button onClick={selectNone} className="text-xs text-stone hover:text-ink">
             Clear
           </button>
         </div>
@@ -90,7 +84,7 @@ export function KeywordPicker({
 
       {/* Search */}
       <div className="relative">
-        <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted" />
+        <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-shadow-tint" />
         <input
           type="text"
           value={search}
@@ -100,10 +94,11 @@ export function KeywordPicker({
         />
       </div>
 
+
       {/* Available keywords to add */}
       {filtered.available.length > 0 && (
         <div>
-          <div className="text-[10px] uppercase tracking-wide text-primary mb-1.5">
+          <div className="text-[10px] uppercase tracking-wide text-amber-hover mb-1.5 font-medium">
             Add to your resume ({filtered.available.length} from JD)
           </div>
           <div className="flex flex-wrap gap-1.5">
@@ -114,16 +109,16 @@ export function KeywordPicker({
                   key={kw}
                   onClick={() => toggle(kw)}
                   className={`
-                    inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium
+                    inline-flex items-center gap-1 rounded-badge px-2.5 py-1 text-xs font-medium
                     transition-all duration-150 cursor-pointer
                     ${isSelected
-                      ? 'bg-primary/20 text-primary border border-primary/40 shadow-sm shadow-primary/10'
-                      : 'bg-surface border border-border text-muted hover:border-primary/30 hover:text-fg'
+                      ? 'bg-amber/15 text-ink border border-amber/40 shadow-sm'
+                      : 'bg-pearl border border-border text-stone hover:border-amber/30 hover:text-ink'
                     }
                   `}
                 >
                   {isSelected ? (
-                    <CheckCircle2 className="h-3 w-3" />
+                    <CheckCircle2 className="h-3 w-3 text-amber" />
                   ) : (
                     <Circle className="h-3 w-3" />
                   )}
@@ -138,16 +133,16 @@ export function KeywordPicker({
       {/* Already in resume */}
       {filtered.existing.length > 0 && (
         <div>
-          <div className="text-[10px] uppercase tracking-wide text-muted mb-1.5">
+          <div className="text-[10px] uppercase tracking-wide text-stone mb-1.5">
             Already in your resume ({filtered.existing.length})
           </div>
           <div className="flex flex-wrap gap-1.5">
             {filtered.existing.map((kw) => (
               <span
                 key={kw}
-                className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-surface/40 px-2.5 py-1 text-xs text-muted/70"
+                className="inline-flex items-center gap-1 rounded-badge border border-faded-stone bg-off-white px-2.5 py-1 text-xs text-shadow-tint"
               >
-                <CheckCircle2 className="h-3 w-3 text-primary/50" />
+                <CheckCircle2 className="h-3 w-3 text-emerald-500" />
                 {kw}
               </span>
             ))}
@@ -156,12 +151,12 @@ export function KeywordPicker({
       )}
 
       {filtered.available.length === 0 && filtered.existing.length === 0 && (
-        <p className="text-xs text-muted py-2">No keywords match your search.</p>
+        <p className="text-xs text-stone py-2">No keywords match your search.</p>
       )}
 
       {/* Helper text */}
       {selectedCount > 0 && (
-        <div className="flex items-center gap-1.5 text-xs text-primary/80 bg-primary/5 border border-primary/20 rounded-lg px-3 py-2">
+        <div className="flex items-center gap-1.5 text-xs text-amber-hover bg-amber/5 border border-amber/20 rounded-btn px-3 py-2">
           <Zap className="h-3.5 w-3.5 shrink-0" />
           <span>
             {selectedCount} keyword{selectedCount > 1 ? 's' : ''} will be woven into your resume naturally (without fabricating experience).

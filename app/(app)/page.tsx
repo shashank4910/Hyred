@@ -115,10 +115,10 @@ export default async function Dashboard({
     <div className="space-y-6">
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">
-            Hi{profile.full_name ? `, ${profile.full_name.split(' ')[0]}` : ''} 👋
+          <h1 className="text-heading-sm font-semibold text-ink">
+            Hi{profile.full_name ? `, ${profile.full_name.split(' ')[0]}` : ''}
           </h1>
-          <p className="text-sm text-muted">
+          <p className="text-body-sm text-stone mt-1">
             {counts.new ?? 0} new match{counts.new === 1 ? '' : 'es'} waiting for
             you.
           </p>
@@ -176,7 +176,7 @@ export default async function Dashboard({
           effectiveMinScore={effectiveMinScore}
         />
       ) : (
-        <ul className="space-y-2.5">
+        <ul className="space-y-3">
           {(matches ?? []).map((m) => {
             const job = m.job as unknown as {
               id: string;
@@ -223,30 +223,30 @@ function StatCard({
 }) {
   return (
     <div className="stat-card">
-      <div className="flex items-center justify-between text-xs text-muted">
+      <div className="flex items-center justify-between text-caption text-stone">
         <span>{label}</span>
-        <span className={accent ? 'text-primary' : ''}>{icon}</span>
+        <span className={accent ? 'text-amber' : 'text-shadow-tint'}>{icon}</span>
       </div>
       <div
-        className={`mt-1 ${isText ? 'text-base' : 'text-2xl'} font-semibold ${
-          accent ? 'text-primary' : 'text-fg'
+        className={`mt-1.5 ${isText ? 'text-body' : 'text-heading-sm'} font-semibold ${
+          accent ? 'text-amber' : 'text-ink'
         }`}
       >
         {value}
       </div>
-      {subValue && <div className="text-xs text-muted mt-0.5">{subValue}</div>}
+      {subValue && <div className="text-caption text-stone mt-0.5">{subValue}</div>}
     </div>
   );
 }
 
 function EmptyOnboarding() {
   return (
-    <div className="card max-w-xl mx-auto text-center mt-12 space-y-3">
-      <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary mx-auto">
-        <Sparkles className="h-6 w-6" />
+    <div className="card max-w-xl mx-auto text-center mt-12 space-y-4 py-12">
+      <div className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-amber/10 text-amber mx-auto">
+        <Sparkles className="h-7 w-7" />
       </div>
-      <h1 className="text-xl font-semibold">Welcome to JobRadar</h1>
-      <p className="text-muted text-sm">
+      <h1 className="text-subheading font-semibold text-ink">Welcome to JobRadar</h1>
+      <p className="text-stone text-body-sm max-w-sm mx-auto">
         Upload your resume so we can start finding matches that fit your
         experience.
       </p>
@@ -268,24 +268,22 @@ function EmptyMatches({
   hiddenBelowThreshold: number;
   effectiveMinScore: number;
 }) {
-  // If we have lower-scored matches that are filtered out, surface that
-  // clearly and link to /onboarding to lower the threshold.
   if (hiddenBelowThreshold > 0) {
     return (
       <div className="card text-center py-10 space-y-3">
-        <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/10 text-amber-300 mx-auto">
+        <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-sunshine text-amber-hover mx-auto">
           <Inbox className="h-5 w-5" />
         </div>
-        <p className="text-sm">
+        <p className="text-sm text-ink">
           <span className="font-semibold">{hiddenBelowThreshold}</span> match
           {hiddenBelowThreshold === 1 ? ' is' : 'es are'} hidden because{' '}
           {hiddenBelowThreshold === 1 ? 'its score is' : 'their scores are'}{' '}
           below your threshold of{' '}
-          <span className="text-primary font-semibold">{effectiveMinScore}</span>.
+          <span className="text-amber font-semibold">{effectiveMinScore}</span>.
         </p>
-        <p className="text-xs text-muted">
+        <p className="text-xs text-stone">
           Lower the threshold in your{' '}
-          <Link href="/onboarding" className="text-primary hover:underline">
+          <Link href="/onboarding" className="text-amber-hover hover:underline font-medium">
             profile
           </Link>{' '}
           to view them, or wait for the next scan to bring fresher jobs.
@@ -303,13 +301,13 @@ function EmptyMatches({
 
   return (
     <div className="card text-center py-12">
-      <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-surface text-muted mx-auto">
+      <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-off-white text-stone mx-auto">
         <Inbox className="h-5 w-5" />
       </div>
-      <p className="mt-3 text-sm">
-        No matches in <span className="text-primary">{status}</span> yet.
+      <p className="mt-3 text-sm text-ink">
+        No matches in <span className="text-amber font-medium">{status}</span> yet.
       </p>
-      <p className="mt-1 text-xs text-muted">
+      <p className="mt-1 text-xs text-stone">
         {totalJobs > 0
           ? 'Try a different status or run a scan to find more.'
           : 'Click "Run scan" to fetch jobs from job boards.'}
