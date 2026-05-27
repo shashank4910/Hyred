@@ -1,0 +1,79 @@
+name: Backfill JDs
+
+# Manually triggered workflow that fetches full job descriptions for
+# truncated Adzuna jobs in the database, then re-embeds and re-scores
+# the upgraded jobs against the configured profile.
+#
+# See scripts/backfill-jds.ts for behavior details.
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Max number of jobs to process'
+        required: false
+        default: '100'
+        type: string
+      source_prefix:
+        description: 'Source prefix filter (e.g. adzuna_)'
+        required: false
+        default: 'adzuna_'
+        type: string
+      threshold:
+        description: 'Truncation threshold in chars (jobs shorter than this are upgraded)'
+        required: false
+        default: '1000'
+        type: string
+      concurrency:
+        description: 'Parallel JD fetches'
+        required: false
+        default: '4'
+        type: string
+      dry_run:
+        description: 'Skip DB writes (preview only)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      rescore:
+        description: 'Re-embed and re-score upgraded jobs'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install deps
+        run: npm ci --no-audit --no-fund
+
+      - name: Run backfill
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
+          ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
+          INGEST_PROFILE_EMAIL: ${{ secrets.INGEST_PROFILE_EMAIL }}
+          BACKFILL_LIMIT: ${{ inputs.limit }}
+          BACKFILL_SOURCE_PREFIX: ${{ inputs.source_prefix }}
+          BACKFILL_THRESHOLD: ${{ inputs.threshold }}
+          BACKFILL_CONCURRENCY: ${{ inputs.concurrency }}
+          BACKFILL_DRY_RUN: ${{ inputs.dry_run }}
+          BACKFILL_RESCORE: ${{ inputs.rescore }}
+        run: npm run backfill:jds
