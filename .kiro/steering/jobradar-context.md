@@ -6,7 +6,7 @@
 
 ## 1. What is JobRadar?
 
-A **personalized AI-powered job-search dashboard** built by Shashank (Senior Performance Engineer, India, 7+ years). Single-user for now, designed for multi-user/public later.
+A **personalized AI-powered job-search dashboard** built by Shashank (Senior Performance Engineer, India, 7+ years). Single-user for now, designed for multi-user/public later. UI uses a warm light theme (Runway-inspired: off-white canvas, amber CTA, Inter typography).
 
 **Core flow:** Fetches jobs from multiple sources → AI-scores against resume → surfaces relevant matches → generates tailored ATS resumes + cover letters per job.
 
@@ -49,9 +49,10 @@ A **personalized AI-powered job-search dashboard** built by Shashank (Senior Per
 2. Fetch jobs using AI-generated searchKeywords
 3. Upsert jobs (ignoreDuplicates: true)
 4. Embed new jobs
-5. AI pre-filter: titlePatterns → antiPatterns → AI relevance batch
-6. LLM-score filtered candidates
-7. Persist matches
+5. Upgrade truncated JDs — call ensureFullDescription() for new jobs (added May 27)
+6. AI pre-filter: titlePatterns → antiPatterns → AI relevance batch
+7. LLM-score filtered candidates
+8. Persist matches
 ```
 
 ### On-demand (job detail page)
@@ -80,8 +81,10 @@ app/api/match/[id]/skills/route.ts  ← Skill match API
 app/api/match/[id]/resume/route.ts  ← ATS resume API
 app/api/coverletter/route.ts        ← Cover letter API
 
-scripts/ingest.ts           ← Cron entry point
-scripts/backfill-jds.ts     ← One-time backfill script
+scripts/ingest.ts                    ← Cron entry point
+scripts/backfill-jds.ts             ← Bulk backfill: fetch full JDs + re-embed + re-score (manual trigger)
+.github/workflows/ingest.yml        ← Cron schedule (every 6h)
+.github/workflows/backfill-jds.yml  ← workflow_dispatch for bulk JD backfill (inputs: limit, dry_run, rescore etc.)
 ```
 
 ---
@@ -110,6 +113,9 @@ Invariants: matched ⊆ jdRequirements, missing ⊆ jdRequirements, no resume-on
 | Strong keywords (JMeter) missing from matched | Prompt was too strict about not including co-occurring items | Worked example + "co-occurrence is irrelevant" rule |
 | ATS resume adds fake skills | LLM was inventing experience | Strict "ONLY use original resume" rules |
 | Cron showing 0 but code was fixed | Feature branch not merged — cron runs from main | Always verify deployed commit hash |
+| `status='viewed'` makes jobs vanish | Job detail page does `status='viewed'` but `'viewed'` is not in `STATUS_ORDER` — job disappears from all tabs | **Not fixed yet.** Plan: add `viewed_at timestamptz` column, stop changing status on open, reset existing `viewed` rows to `new` |
+| JD descriptions truncated in DB | `ensureFullDescription()` existed in `lib/jd-fetcher.ts` but was never called | Called it in job detail page (lazy upgrade) AND in ingest pipeline step 6 (upgrade before scoring) |
+| Adzuna `posted_at` unreliable | `created` = when Adzuna indexed, not when company posted | Weakest source for freshness; Remotive/RemoteOK/Arbeitnow are more reliable |
 
 ---
 
@@ -143,4 +149,51 @@ This file should be updated every 2-3 significant conversations. Add:
 - Changes to architecture
 - New "NEVER do" / "ALWAYS do" rules learned
 
-Last updated: May 27, 2026 (end of initial build session)
+Last updated: May 27, 2026 (session 2: backfill + JD fix + UI redesign + status='viewed' bug identified)
+
+---
+
+## 11. Session 2 Log — May 27, 2026
+
+### Built & Merged (on `main`)
+
+**Backfill JDs script + workflow**
+- `scripts/backfill-jds.ts` — paginates Adzuna jobs with short descriptions, fetches full JDs, persists, re-embeds, re-scores
+- `.github/workflows/backfill-jds.yml` — `workflow_dispatch` with inputs: `limit`, `source_prefix`, `threshold`, `concurrency`, `dry_run`, `rescore`
+- PR #8 — merged
+
+**Fixed truncated JD bug end-to-end**
+- Root cause: `ensureFullDescription()` in `lib/jd-fetcher.ts` was never called anywhere
+- Fix 1: `app/(app)/jobs/[id]/page.tsx` — lazy upgrade on first view, persisted to DB for future loads
+- Fix 2: `lib/ingest.ts` step 6 — upgrade all newly upserted jobs before scoring so AI gets full text
+- Merged as part of PR #10
+
+**UI redesign — Runway warm light theme**
+- Off-white `#f8f7f5` canvas, pearl `#ffffff` cards, ink `#261b07` text, amber `#f9a600` primary CTA
+- Inter font, exact letter-spacing type scale, 12px card / 8px button / 6px badge radii
+- Merged as PR #10 (v1 only — see below)
+
+### Built but NOT yet on `main`
+
+**UI v2 + v3** (branch `ui-redesign-runway`, commits `886fef4` + `342a084`)
+- Disciplined amber to primary CTA only (was overused on every icon and badge in v1)
+- Removed decorative colored icons from section headings
+- Fixed range slider CSS (browser default rendered right-side track black)
+- Neutral skill chips instead of yellow `badge-warm`
+- Hairline-border cards instead of shadow-heavy cards
+- **Reason not merged:** PR #10 merged before these follow-up commits were pushed
+
+### Identified but not yet built
+
+**Viewed dimming + Bookmarks**
+- User wants: unseen cards look prominent, already-opened cards appear dimmed
+- User wants: bookmark icon on each card, independent of application status
+- Root bug uncovered: `status='viewed'` makes jobs disappear from all tabs (not in `STATUS_ORDER`)
+- Plan: `viewed_at timestamptz` + `bookmarked boolean` columns on `matches`; stamp `viewed_at` on open instead of changing status; dim cards where `viewed_at != null`; reset existing `viewed` rows to `new`
+
+### Answered (user questions)
+
+**"How old is this job?" — source of `posted_at`**
+- Adzuna → `j.created` (weakest — Adzuna index date, not company post date)
+- Remotive → `j.publication_date`, RemoteOK → `j.date`, Arbeitnow → `j.created_at × 1000`, HN → `it.created_at`
+- Display: `date-fns formatDistanceToNow(posted_at)` vs current time
