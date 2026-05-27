@@ -273,62 +273,96 @@ export async function matchSkills(args: {
   const client = getClient();
 
   const resumeBlock = resumeText
-    ? `\nFULL RESUME (source of truth for what the candidate has):\n${resumeText.slice(0, 6000)}\n`
+    ? `\nCANDIDATE RESUME (used only for STEP 2 — checking each JD requirement against the resume):\n${resumeText.slice(0, 6000)}\n`
     : '';
 
   const topSkillsBlock = topSkills.length
-    ? `\nDISTILLED TOP SKILLS (already extracted from resume, for reference):\n${topSkills.join(', ')}\n`
+    ? `\nCANDIDATE'S DISTILLED TOP SKILLS (already extracted from resume, for reference in STEP 2):\n${topSkills.join(', ')}\n`
     : '';
 
   const jdText = args.jobDescription.slice(0, 5000);
 
-  const userPrompt = `Compare a job description (JD) against a candidate's resume.
+  const userPrompt = `You compare a job description (JD) against a candidate's resume.
 
-YOU MUST FOLLOW THIS EXACT 3-STEP PROCESS:
+================================================================
+JOB DESCRIPTION (this is the SOURCE for STEP 1):
+================================================================
+${jdText}
+${resumeBlock}${topSkillsBlock}
+================================================================
+INSTRUCTIONS — follow this EXACT 3-step process:
+================================================================
 
 ==================== STEP 1: jdRequirements ====================
-Extract a list of the 8-12 most important skills, tools, technologies, methodologies, or concepts that THE JD ITSELF EXPLICITLY ASKS FOR.
+Read the JD above and extract 8-12 of the MOST IMPORTANT and MOST SPECIFIC skills, tools, technologies, methodologies, or concepts the JD asks for.
 
-CRITICAL RULES for jdRequirements:
-- Every item MUST be something the JD literally mentions or directly implies.
-- DO NOT include anything from the resume that the JD doesn't ask for.
-- Example: if the resume mentions "Cavisson NetStorm" but the JD never mentions it, "Cavisson NetStorm" must NOT appear in jdRequirements.
-- Use the JD's own wording (or close paraphrase).
-- Items can be specific tools ("JMeter", "Kubernetes") or domain concepts ("performance testing", "framework design").
+YOU MUST INCLUDE:
+✓ EVERY specific tool/technology named in the JD (e.g. "JMeter", "LoadRunner", "BlazeMeter", "Splunk", "Kubernetes", "AppDynamics", "Dynatrace")
+✓ EVERY concrete practice/activity named (e.g. "performance testing", "load testing", "stress testing", "framework design", "script preparation", "capacity planning", "root cause analysis")
+✓ EVERY methodology if specifically called out (e.g. "agile", "ci/cd", "devops")
+
+PRIORITY ORDER for inclusion:
+1. Specific tool names (highest priority — these are unambiguous)
+2. Specific testing/engineering activities
+3. Domain concepts
+4. Generic soft skills (lowest priority — only if JD strongly emphasizes them)
+
+CRITICAL — DO NOT FILTER OUT KEYWORDS BECAUSE THEY ALSO APPEAR IN THE RESUME:
+The fact that an item happens to also be in the candidate's resume is COMPLETELY IRRELEVANT for STEP 1.
+The ONLY criterion for inclusion is: "Does the JD text mention this item?"
+If the JD mentions "JMeter", you MUST include "JMeter" — even if (especially if!) the resume also has it. That overlap is what we WANT to detect in STEP 2.
+
+WHAT NOT TO INCLUDE:
+✗ Items that appear ONLY in the resume but NOT in the JD (e.g. if the resume mentions "Cavisson NetStorm" and the JD doesn't, do not include it)
+✗ Generic boilerplate not emphasized by the JD ("team player", "communication" — only include if central to the JD)
 
 ==================== STEP 2: matched / missing ====================
 For EACH item in jdRequirements (and ONLY those items), classify:
-
-  matched   = the resume covers this requirement (literal mention, synonym, equivalent activity, or same-category tool)
-  missing   = the resume does NOT cover this requirement
+  matched = the resume covers this requirement (literal mention, synonym, equivalent activity, or same-category tool)
+  missing = the resume does NOT cover this requirement
 
 Synonym rules (count as MATCHED):
-  - JD says "load testing", resume says "performance testing" → MATCHED (same discipline)
-  - JD says "framework design", resume says "designed test framework" → MATCHED (same activity)
-  - JD says "Gatling", resume says "JMeter" → MATCHED (both load testing tools)
+  - JD "load testing" + resume "performance testing/stress testing" → MATCHED (same discipline)
+  - JD "framework design" + resume "designed test framework" → MATCHED (same activity)
+  - JD "Gatling" + resume "JMeter" → MATCHED (same tool category)
 
-Default to MATCHED when in doubt. Only mark MISSING if you've thoroughly searched the resume and the requirement is genuinely absent.
+Default to MATCHED when in doubt. Only mark MISSING if the resume genuinely lacks any equivalent.
 
 ==================== STEP 3: OUTPUT ====================
 Return strict JSON with ALL THREE fields:
 {
-  "jdRequirements": [<8-12 items extracted from the JD only>],
-  "matched":        [<subset of jdRequirements that ARE in the resume>],
-  "missing":        [<subset of jdRequirements NOT in the resume>]
+  "jdRequirements": [<8-12 items extracted from JD>],
+  "matched":        [<subset of jdRequirements present in resume>],
+  "missing":        [<subset of jdRequirements absent from resume>]
 }
 
-INVARIANTS YOU MUST UPHOLD:
-1. matched ⊆ jdRequirements   (every matched item is in jdRequirements)
-2. missing  ⊆ jdRequirements   (every missing item is in jdRequirements)
-3. matched ∪ missing = jdRequirements   (every JD requirement is classified as exactly one)
-4. matched ∩ missing = ∅        (an item cannot be both matched and missing)
-5. NO item from the resume that isn't in the JD may appear in any list
+INVARIANTS:
+1. matched ⊆ jdRequirements
+2. missing  ⊆ jdRequirements
+3. matched ∪ missing = jdRequirements (every requirement classified)
+4. matched ∩ missing = ∅
+5. No resume-only item appears anywhere
 
-If you violate these invariants, your output is wrong.
+================================================================
+WORKED EXAMPLE — STUDY THIS CAREFULLY:
+================================================================
+JD: "Senior Performance Engineer needed. Must have hands-on JMeter, LoadRunner, BlazeMeter. Experience in load testing, performance testing, and root cause analysis required. Familiarity with Splunk, AppDynamics, capacity planning, and script preparation is a plus. CI/CD experience needed."
 
-${resumeBlock}${topSkillsBlock}
-JOB DESCRIPTION:
-${jdText}`;
+Resume mentions: JMeter, LoadRunner, BlazeMeter, Cavisson NetStorm, AppDynamics, Dynatrace, Splunk, performance testing, load testing, capacity planning, script preparation, root cause analysis, jenkins, ci/cd
+
+CORRECT OUTPUT:
+{
+  "jdRequirements": ["JMeter", "LoadRunner", "BlazeMeter", "load testing", "performance testing", "root cause analysis", "Splunk", "AppDynamics", "capacity planning", "script preparation", "CI/CD"],
+  "matched": ["JMeter", "LoadRunner", "BlazeMeter", "load testing", "performance testing", "root cause analysis", "Splunk", "AppDynamics", "capacity planning", "script preparation", "CI/CD"],
+  "missing": []
+}
+
+KEY POINTS FROM THE EXAMPLE:
+- "JMeter", "LoadRunner", "BlazeMeter" are in jdRequirements EVEN THOUGH they're also in the resume. Their presence in the resume is exactly what makes them MATCHED.
+- "Cavisson NetStorm" and "Dynatrace" are NOT in jdRequirements because the JD doesn't mention them — even though the resume does.
+- All JD-mentioned tools become matched because the resume covers them.
+
+Now produce your JSON output for the actual JD and resume above.`;
 
   const res = await client.chat.completions.create({
     model: CHAT_MODEL,
@@ -338,7 +372,7 @@ ${jdText}`;
       {
         role: 'system',
         content:
-          'You compare a candidate resume against a job description. You ONLY classify items the JD asks for. You NEVER include resume-only skills the JD does not mention. Output JSON only.',
+          'You compare a candidate resume against a job description. Your jdRequirements list MUST include every concrete tool, technology, and named skill the JD asks for — INCLUDING ones that also happen to be in the resume (especially those, since their presence is what makes them matched). NEVER include items that are only in the resume. Output JSON only.',
       },
       { role: 'user', content: userPrompt },
     ],
