@@ -324,8 +324,9 @@ export function JobActions({
               {skills.matched.length > 0 ? (
                 <div>
                   <div className="text-xs text-muted mb-1.5">
-                    Your skills mentioned in this JD ({skills.matched.length}/
-                    {skills.allSkills.length})
+                    JD requirements found in your resume (
+                    {skills.matched.length}/
+                    {skills.matched.length + skills.missing.length})
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {skills.matched.map((s) => (
@@ -349,7 +350,7 @@ export function JobActions({
               {skills.missing.length > 0 && (
                 <div>
                   <div className="text-xs text-muted mb-1.5">
-                    Skills the JD asks for that you may not have listed
+                    JD requirements not clearly present in your resume
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {skills.missing.map((s) => (
