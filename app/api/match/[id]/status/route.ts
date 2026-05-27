@@ -6,7 +6,6 @@ export const runtime = 'nodejs';
 const ALLOWED = new Set([
   'new',
   'viewed',
-  'saved',
   'applied',
   'rejected',
   'interviewing',

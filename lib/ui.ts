@@ -36,7 +36,7 @@ export const SOURCE_LABELS: Record<string, string> = {
 
 export const STATUS_ORDER = [
   'new',
-  'saved',
+  'viewed',
   'applied',
   'interviewing',
   'offer',
