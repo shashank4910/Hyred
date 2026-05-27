@@ -13,7 +13,7 @@ export default function Loading() {
           </div>
         ))}
       </div>
-      <div className="space-y-2.5">
+      <div className="space-y-3">
         {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className="card space-y-2">
             <div className="skeleton h-5 w-2/3" />

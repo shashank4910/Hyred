@@ -31,16 +31,16 @@ export function StatusFilter({
             scroll={false}
             className={
               isActive
-                ? 'inline-flex items-center gap-1.5 rounded-full bg-primary text-bg px-3 py-1 text-xs font-semibold whitespace-nowrap'
-                : 'inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1 text-xs text-muted hover:text-primary hover:border-primary/40 whitespace-nowrap'
+                ? 'inline-flex items-center gap-1.5 rounded-btn bg-amber text-ink px-3.5 py-1.5 text-xs font-semibold whitespace-nowrap shadow-sm'
+                : 'inline-flex items-center gap-1.5 rounded-btn border border-border px-3.5 py-1.5 text-xs text-stone hover:text-ink hover:border-amber/40 hover:bg-amber/5 whitespace-nowrap transition-colors'
             }
           >
             <span className="capitalize">{s}</span>
             <span
               className={
                 isActive
-                  ? 'rounded-full bg-bg/20 px-1.5 text-[10px]'
-                  : 'rounded-full bg-surface px-1.5 text-[10px]'
+                  ? 'rounded-badge bg-ink/10 px-1.5 py-0.5 text-[10px] font-medium'
+                  : 'rounded-badge bg-off-white px-1.5 py-0.5 text-[10px]'
               }
             >
               {count}

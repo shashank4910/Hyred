@@ -2,19 +2,21 @@
 @tailwind components;
 @tailwind utilities;
 
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 html,
 body {
-  background: #0b0d10;
-  color: #e6ebf2;
+  background: #f8f7f5;
+  color: #261b07;
   -webkit-font-smoothing: antialiased;
 }
 
 *::selection {
-  background: rgba(124, 255, 178, 0.25);
+  background: rgba(249, 166, 0, 0.2);
 }
 
 /* Subtle scrollbars */
@@ -26,59 +28,62 @@ body {
   background: transparent;
 }
 *::-webkit-scrollbar-thumb {
-  background: #252b33;
+  background: #e3dfd5;
   border-radius: 999px;
-  border: 2px solid #0b0d10;
+  border: 2px solid #f8f7f5;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: #3a4250;
+  background: #aca89f;
 }
 
 @layer components {
   .btn {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium text-fg hover:border-primary/40 hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-btn border border-border bg-pearl px-3 py-1.5 text-sm font-medium text-ink hover:border-amber-hover hover:text-amber-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-elevated;
   }
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-semibold text-bg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-btn bg-amber px-4 py-2 text-sm font-semibold text-ink hover:bg-amber-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
   }
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-muted hover:text-primary hover:bg-surface transition-colors;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-btn px-3 py-1.5 text-sm font-medium text-stone hover:text-ink hover:bg-faded-stone/40 transition-colors;
   }
   .input {
-    @apply w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-fg placeholder:text-muted focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/30 transition-colors;
+    @apply w-full rounded-field border border-border bg-pearl px-3 py-2 text-sm text-ink placeholder:text-shadow-tint focus:outline-none focus:border-amber focus:ring-1 focus:ring-amber/30 transition-colors;
   }
   .card {
-    @apply rounded-xl border border-border bg-surface p-4;
+    @apply rounded-card border border-border bg-pearl p-5 shadow-card;
   }
   .card-hover {
-    @apply rounded-xl border border-border bg-surface p-4 transition-all hover:border-primary/30 hover:bg-surface-hover;
+    @apply rounded-card border border-border bg-pearl p-5 shadow-card transition-all hover:shadow-elevated hover:border-amber/40;
   }
   .badge {
-    @apply inline-flex items-center rounded-full border border-border bg-surface/60 px-2 py-0.5 text-xs text-muted;
+    @apply inline-flex items-center rounded-badge bg-off-white text-ink px-2 py-0.5 text-xs font-medium;
   }
   .badge-primary {
-    @apply inline-flex items-center rounded-full bg-primary/15 text-primary px-2 py-0.5 text-xs font-medium;
+    @apply inline-flex items-center rounded-badge bg-sunshine text-ink px-2 py-0.5 text-xs font-medium;
+  }
+  .badge-grape {
+    @apply inline-flex items-center rounded-badge bg-grape text-ink px-2 py-0.5 text-xs font-medium;
   }
   .stat-card {
-    @apply rounded-xl border border-border bg-gradient-to-br from-surface to-surface/40 p-4;
+    @apply rounded-card border border-border bg-pearl p-4 shadow-card;
   }
 
-  /* Score color bands */
+  /* Score color bands — warm palette */
   .score-band-90 {
-    @apply text-emerald-400;
+    @apply text-emerald-600;
   }
   .score-band-75 {
-    @apply text-primary;
+    @apply text-amber;
   }
   .score-band-60 {
-    @apply text-amber-400;
+    @apply text-orange-500;
   }
   .score-band-low {
-    @apply text-muted;
+    @apply text-stone;
   }
 }
 
-/* Skeleton shimmer */
+/* Skeleton shimmer — light theme */
 @keyframes shimmer {
   0% {
     background-position: -400px 0;
@@ -88,7 +93,7 @@ body {
   }
 }
 .skeleton {
-  background: linear-gradient(90deg, #14181d 0%, #1d242c 50%, #14181d 100%);
+  background: linear-gradient(90deg, #e3dfd5 0%, #f8f7f5 50%, #e3dfd5 100%);
   background-size: 800px 100%;
   animation: shimmer 1.4s infinite linear;
   border-radius: 6px;

@@ -24,6 +24,7 @@ import { KeywordPicker } from './KeywordPicker';
 
 type Skills = { matched: string[]; missing: string[]; allSkills: string[] } | null;
 
+
 export function JobActions({
   matchId,
   status,
@@ -74,6 +75,7 @@ export function JobActions({
   const [loadingKeywords, setLoadingKeywords] = useState(false);
   const [keywordsLoaded, setKeywordsLoaded] = useState(false);
 
+
   // Load skills if we have any candidate skills
   useEffect(() => {
     if (!candidateSkills.length) return;
@@ -89,9 +91,7 @@ export function JobActions({
       .finally(() => {
         if (!cancelled) setAnalyzingSkills(false);
       });
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [matchId, candidateSkills.length]);
 
   // Load JD keywords for the keyword picker
@@ -105,19 +105,15 @@ export function JobActions({
         if (d?.keywords) {
           setJdKeywords(d.keywords);
           setAlreadyHaveKeywords(d.alreadyHave ?? []);
-          // Start with nothing selected — user must explicitly pick
           setSelectedKeywords([]);
           setKeywordsLoaded(true);
         }
       })
       .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setLoadingKeywords(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+      .finally(() => { if (!cancelled) setLoadingKeywords(false); });
+    return () => { cancelled = true; };
   }, [matchId]);
+
 
   async function generate() {
     setGenerating(true);
@@ -192,6 +188,7 @@ export function JobActions({
     URL.revokeObjectURL(url);
   }
 
+
   // Resume editing state
   const [editingResume, setEditingResume] = useState(false);
   const [editedResume, setEditedResume] = useState('');
@@ -211,7 +208,7 @@ export function JobActions({
       if (!res.ok) throw new Error(data.error || 'Failed');
       setAtsResume(data.resume);
       setEditedResume(data.resume);
-      setEditingResume(true); // Open in edit/preview mode by default
+      setEditingResume(true);
       if (data.keywords) setKeywords(data.keywords);
       toast.success('ATS resume ready — review & edit before exporting!', { id });
     } catch (e) {
@@ -251,16 +248,17 @@ export function JobActions({
     }
   }
 
+
   return (
     <div className="space-y-3">
-      {/* Apply CTA — big, prominent, impossible to miss */}
-      <div className="card border-primary/30 bg-gradient-to-r from-primary/5 to-transparent">
+      {/* Apply CTA */}
+      <div className="card border-amber/30 bg-gradient-to-r from-amber/5 to-transparent">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div>
-            <h2 className="font-semibold flex items-center gap-2">
-              <Rocket className="h-4 w-4 text-primary" /> Ready to apply?
+            <h2 className="font-semibold text-ink flex items-center gap-2">
+              <Rocket className="h-4 w-4 text-amber" /> Ready to apply?
             </h2>
-            <p className="text-xs text-muted mt-0.5">
+            <p className="text-xs text-stone mt-0.5">
               Opens the original posting. Generate your ATS resume + cover letter first.
             </p>
           </div>
@@ -279,7 +277,7 @@ export function JobActions({
                   .catch(() => {});
               }
             }}
-            className="btn-primary text-base px-5 py-2.5 shadow-lg shadow-primary/20"
+            className="btn-primary text-base px-5 py-2.5"
           >
             <ExternalLink className="h-4 w-4" />
             Apply on job site
@@ -297,8 +295,8 @@ export function JobActions({
               onClick={() => setStatus(s)}
               className={
                 s === status
-                  ? 'rounded-full bg-primary text-bg px-3 py-1 text-xs font-semibold'
-                  : 'rounded-full border border-border px-3 py-1 text-xs text-muted hover:text-primary hover:border-primary/40'
+                  ? 'rounded-btn bg-amber text-ink px-3 py-1.5 text-xs font-semibold'
+                  : 'rounded-btn border border-border px-3 py-1.5 text-xs text-stone hover:text-ink hover:border-amber/40 hover:bg-amber/5 transition-colors'
               }
             >
               {s}
@@ -307,11 +305,12 @@ export function JobActions({
         </div>
       </div>
 
+
       {/* Skill match panel */}
       {candidateSkills.length > 0 && (
         <div className="card space-y-3">
-          <h2 className="font-semibold flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-primary" /> Skill match
+          <h2 className="font-semibold text-ink flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-amber" /> Skill match
           </h2>
           {analyzingSkills && !skills && (
             <div className="space-y-2">
@@ -323,7 +322,7 @@ export function JobActions({
             <>
               {skills.matched.length > 0 ? (
                 <div>
-                  <div className="text-xs text-muted mb-1.5">
+                  <div className="text-xs text-stone mb-1.5">
                     JD requirements found in your resume (
                     {skills.matched.length}/
                     {skills.matched.length + skills.missing.length})
@@ -332,7 +331,7 @@ export function JobActions({
                     {skills.matched.map((s) => (
                       <span
                         key={s}
-                        className="inline-flex items-center gap-1 rounded-full bg-primary/15 text-primary px-2 py-0.5 text-xs"
+                        className="inline-flex items-center gap-1 rounded-badge bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 text-xs"
                       >
                         <CheckCircle2 className="h-3 w-3" />
                         {s}
@@ -341,22 +340,20 @@ export function JobActions({
                   </div>
                 </div>
               ) : (
-                <p className="text-xs text-muted">
-                  No direct matches found in the JD. Score may rely on adjacent
-                  experience.
+                <p className="text-xs text-stone">
+                  No direct matches found in the JD. Score may rely on adjacent experience.
                 </p>
               )}
-
               {skills.missing.length > 0 && (
                 <div>
-                  <div className="text-xs text-muted mb-1.5">
+                  <div className="text-xs text-stone mb-1.5">
                     JD requirements not clearly present in your resume
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {skills.missing.map((s) => (
                       <span
                         key={s}
-                        className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-300 px-2 py-0.5 text-xs"
+                        className="inline-flex items-center gap-1 rounded-badge border border-warning-red/30 bg-red-50 text-warning-red px-2 py-0.5 text-xs"
                       >
                         <XCircle className="h-3 w-3" />
                         {s}
@@ -370,11 +367,12 @@ export function JobActions({
         </div>
       )}
 
+
       {/* Cover letter */}
       <div className="card">
         <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-          <h2 className="font-semibold flex items-center gap-2">
-            <Pencil className="h-4 w-4 text-primary" /> Cover letter
+          <h2 className="font-semibold text-ink flex items-center gap-2">
+            <Pencil className="h-4 w-4 text-amber" /> Cover letter
           </h2>
           <div className="flex gap-2 flex-wrap">
             {letter && (
@@ -385,19 +383,12 @@ export function JobActions({
                 <button onClick={download} className="btn">
                   <Download className="h-3.5 w-3.5" /> Download
                 </button>
-                <button
-                  onClick={() => setEditing((v) => !v)}
-                  className="btn"
-                >
+                <button onClick={() => setEditing((v) => !v)} className="btn">
                   {editing ? 'Done' : 'Edit'}
                 </button>
               </>
             )}
-            <button
-              onClick={generate}
-              disabled={generating}
-              className="btn-primary"
-            >
+            <button onClick={generate} disabled={generating} className="btn-primary">
               {generating ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : letter ? (
@@ -425,25 +416,26 @@ export function JobActions({
               className="input min-h-[260px] font-sans text-sm leading-relaxed"
             />
           ) : (
-            <pre className="whitespace-pre-wrap text-sm text-fg/90 font-sans leading-relaxed">
+            <pre className="whitespace-pre-wrap text-sm text-stone font-sans leading-relaxed">
               {letter}
             </pre>
           )
         ) : (
           !generating && (
-            <p className="text-sm text-muted">
-              Click <span className="text-primary">Generate</span> to draft a
+            <p className="text-sm text-stone">
+              Click <span className="text-amber font-medium">Generate</span> to draft a
               tailored cover letter using your resume and this JD.
             </p>
           )
         )}
       </div>
 
+
       {/* ATS-Optimized Resume */}
       <div className="card">
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-          <h2 className="font-semibold flex items-center gap-2">
-            <FileText className="h-4 w-4 text-primary" /> ATS Resume
+          <h2 className="font-semibold text-ink flex items-center gap-2">
+            <FileText className="h-4 w-4 text-amber" /> ATS Resume
           </h2>
           <div className="flex gap-2 flex-wrap">
             {atsResume && (
@@ -460,11 +452,7 @@ export function JobActions({
               </>
             )}
             {!atsResume && (
-              <button
-                onClick={generateAtsResume}
-                disabled={generatingResume}
-                className="btn-primary"
-              >
+              <button onClick={generateAtsResume} disabled={generatingResume} className="btn-primary">
                 {generatingResume ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
@@ -476,7 +464,7 @@ export function JobActions({
           </div>
         </div>
 
-        {/* Keyword Picker — shown before generation or for regeneration */}
+        {/* Keyword Picker — shown before generation */}
         {!atsResume && !generatingResume && (
           <div className="space-y-4">
             {loadingKeywords && !keywordsLoaded && (
@@ -491,9 +479,8 @@ export function JobActions({
                 </div>
               </div>
             )}
-
             {keywordsLoaded && jdKeywords.length > 0 && (
-              <div className="border border-border rounded-lg p-3 bg-bg/40">
+              <div className="border border-border rounded-card p-3 bg-off-white">
                 <KeywordPicker
                   keywords={jdKeywords}
                   alreadyHave={alreadyHaveKeywords}
@@ -502,14 +489,14 @@ export function JobActions({
                 />
               </div>
             )}
-
             {keywordsLoaded && jdKeywords.length === 0 && (
-              <p className="text-sm text-muted">
-                Click <span className="text-primary">Generate ATS Resume</span> to create a version of your resume optimized for this job&apos;s ATS keywords. Never fabricates experience — only reorders and emphasizes what you already have.
+              <p className="text-sm text-stone">
+                Click <span className="text-amber font-medium">Generate ATS Resume</span> to create a version optimized for this job&apos;s ATS keywords.
               </p>
             )}
           </div>
         )}
+
 
         {/* Loading skeleton */}
         {generatingResume && !atsResume && (
@@ -528,22 +515,19 @@ export function JobActions({
             {/* Keyword analysis */}
             {keywords && (
               <div className="space-y-2 border-b border-border pb-3">
-                <div className="text-xs font-medium text-muted flex items-center gap-1.5">
-                  <Zap className="h-3.5 w-3.5 text-primary" />
+                <div className="text-xs font-medium text-stone flex items-center gap-1.5">
+                  <Zap className="h-3.5 w-3.5 text-amber" />
                   Keywords analysis ({keywords.total_jd_keywords} detected in JD
                   {keywords.selected_count ? `, ${keywords.selected_count} prioritized` : ''})
                 </div>
                 {keywords.added.length > 0 && (
                   <div>
-                    <div className="text-[10px] uppercase tracking-wide text-primary mb-1">
+                    <div className="text-[10px] uppercase tracking-wide text-amber-hover mb-1 font-medium">
                       + Woven into your resume ({keywords.added.length})
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {keywords.added.map((kw) => (
-                        <span
-                          key={kw}
-                          className="inline-flex items-center gap-0.5 rounded-full bg-primary/15 text-primary px-2 py-0.5 text-xs font-medium"
-                        >
+                        <span key={kw} className="inline-flex items-center gap-0.5 rounded-badge bg-amber/10 text-amber-hover px-2 py-0.5 text-xs font-medium">
                           + {kw}
                         </span>
                       ))}
@@ -552,15 +536,12 @@ export function JobActions({
                 )}
                 {keywords.already_had.length > 0 && (
                   <div>
-                    <div className="text-[10px] uppercase tracking-wide text-muted mb-1">
+                    <div className="text-[10px] uppercase tracking-wide text-stone mb-1">
                       Already in your resume ({keywords.already_had.length})
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {keywords.already_had.map((kw) => (
-                        <span
-                          key={kw}
-                          className="inline-flex items-center gap-0.5 rounded-full border border-border px-2 py-0.5 text-xs text-muted"
-                        >
+                        <span key={kw} className="inline-flex items-center gap-0.5 rounded-badge border border-border px-2 py-0.5 text-xs text-stone">
                           <CheckCircle2 className="h-2.5 w-2.5" /> {kw}
                         </span>
                       ))}
@@ -570,14 +551,15 @@ export function JobActions({
               </div>
             )}
 
-            {/* Action bar: Edit / Preview toggle + Export buttons */}
+
+            {/* Action bar: Edit / Preview toggle */}
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setEditingResume(true)}
                   className={editingResume
-                    ? 'text-xs font-medium text-primary border-b border-primary pb-0.5'
-                    : 'text-xs text-muted hover:text-fg'
+                    ? 'text-xs font-medium text-amber border-b border-amber pb-0.5'
+                    : 'text-xs text-stone hover:text-ink'
                   }
                 >
                   <Pencil className="h-3 w-3 inline mr-1" />
@@ -586,11 +568,11 @@ export function JobActions({
                 <button
                   onClick={() => {
                     setEditingResume(false);
-                    setAtsResume(editedResume); // save edits
+                    setAtsResume(editedResume);
                   }}
                   className={!editingResume
-                    ? 'text-xs font-medium text-primary border-b border-primary pb-0.5'
-                    : 'text-xs text-muted hover:text-fg'
+                    ? 'text-xs font-medium text-amber border-b border-amber pb-0.5'
+                    : 'text-xs text-stone hover:text-ink'
                   }
                 >
                   <FileText className="h-3 w-3 inline mr-1" />
@@ -621,7 +603,7 @@ export function JobActions({
                   placeholder="Edit your resume here..."
                 />
                 <div className="flex items-center justify-between">
-                  <p className="text-[11px] text-muted">
+                  <p className="text-[11px] text-stone">
                     Edit anything above — your changes will be used when exporting PDF or copying.
                   </p>
                   <button
@@ -639,11 +621,11 @@ export function JobActions({
               </div>
             ) : (
               <div className="space-y-2">
-                <pre className="whitespace-pre-wrap text-sm text-fg/90 font-sans leading-relaxed bg-bg/50 border border-border rounded-lg p-3 max-h-[420px] overflow-y-auto">
+                <pre className="whitespace-pre-wrap text-sm text-stone font-sans leading-relaxed bg-off-white border border-border rounded-card p-3 max-h-[420px] overflow-y-auto">
                   {editedResume || atsResume}
                 </pre>
-                <div className="flex items-center gap-1.5 text-xs text-muted">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
+                <div className="flex items-center gap-1.5 text-xs text-stone">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
                   Tailored for this job. Click Edit to make changes, then export as PDF.
                 </div>
               </div>
@@ -652,18 +634,15 @@ export function JobActions({
         )}
       </div>
 
+
       {/* Notes */}
       <div className="card">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="font-semibold flex items-center gap-2">
-            <StickyNote className="h-4 w-4 text-primary" /> Notes
+          <h2 className="font-semibold text-ink flex items-center gap-2">
+            <StickyNote className="h-4 w-4 text-amber" /> Notes
           </h2>
           {notesDirty && (
-            <button
-              onClick={saveNotes}
-              disabled={savingNotes}
-              className="btn-primary"
-            >
+            <button onClick={saveNotes} disabled={savingNotes} className="btn-primary">
               {savingNotes ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
