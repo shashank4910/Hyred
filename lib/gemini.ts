@@ -1,12 +1,14 @@
 /**
- * AI helpers — powered by Google Gemini 2.0 Flash.
+ * AI helpers — OpenAI (gpt-4o-mini) as primary, Gemini 2.0 Flash as fallback.
  *
- * All previous OpenAI calls have been migrated to Gemini 2.0 Flash.
- * Embeddings use text-embedding-004 (768 dims — note: Supabase vector
- * column must be updated if it was 1536 for OpenAI; keep 768 going forward).
+ * All chat-based calls try OpenAI first (if OPENAI_API_KEY is set) and fall
+ * back to Gemini on failure or missing key.
+ * Embeddings remain Gemini text-embedding-004 (768 dims) since the DB schema
+ * is configured for those dimensions.
  */
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import OpenAI from 'openai';
 import type { ResumeInsights } from './types';
 
 const CHAT_MODEL = 'gemini-2.0-flash';
@@ -18,12 +20,38 @@ function getClient(): GoogleGenerativeAI {
   return new GoogleGenerativeAI(key);
 }
 
+function getOpenAIClient(): OpenAI | null {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) return null;
+  return new OpenAI({ apiKey: key });
+}
+
 async function chat(
   systemPrompt: string,
   userPrompt: string,
   temperature = 0.3,
   jsonMode = false,
 ): Promise<string> {
+  // Try OpenAI first (more reliable, already paid)
+  const openaiClient = getOpenAIClient();
+  if (openaiClient) {
+    try {
+      const res = await openaiClient.chat.completions.create({
+        model: 'gpt-4o-mini',
+        temperature,
+        ...(jsonMode ? { response_format: { type: 'json_object' as const } } : {}),
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+      });
+      return (res.choices[0]?.message?.content ?? '').trim();
+    } catch (e) {
+      console.warn('OpenAI failed, falling back to Gemini:', (e as Error).message);
+    }
+  }
+
+  // Fallback to Gemini
   const genAI = getClient();
   const model = genAI.getGenerativeModel({
     model: CHAT_MODEL,
