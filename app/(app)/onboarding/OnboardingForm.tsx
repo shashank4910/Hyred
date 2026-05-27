@@ -109,40 +109,40 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
       {/* Resume upload */}
       <div className="card">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-body font-semibold text-ink flex items-center gap-2"><FileText className="h-4 w-4 text-amber" /> Resume</h2>
-          {analyzing && <span className="text-caption text-amber flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Analyzing</span>}
+          <h2 className="section-title">Resume</h2>
+          {analyzing && <span className="text-caption text-stone flex items-center gap-1.5"><Loader2 className="h-3 w-3 animate-spin" /> Analyzing</span>}
         </div>
         <div
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}
           onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFile(e.dataTransfer.files[0]); }}
           onClick={() => !analyzing && fileInputRef.current?.click()}
-          className={`rounded-card border-2 border-dashed p-8 text-center cursor-pointer transition-colors ${analyzing ? 'border-amber/60 bg-amber/5' : dragOver ? 'border-amber bg-amber/5' : 'border-faded-stone hover:border-amber/40'}`}
+          className={`rounded-card border-2 border-dashed p-8 text-center cursor-pointer transition-colors ${analyzing ? 'border-shadow-tint bg-off-white' : dragOver ? 'border-ink bg-off-white' : 'border-faded-stone hover:border-shadow-tint hover:bg-off-white'}`}
         >
           <input ref={fileInputRef} type="file" accept=".pdf,.docx,.txt" onChange={(e) => handleFile(e.target.files?.[0] ?? null)} className="hidden" />
           {resumeFile ? (
             <div className="flex items-center justify-center gap-2 text-body-sm">
-              <FileText className="h-4 w-4 text-amber" />
+              <FileText className="h-4 w-4 text-stone" />
               <span className="text-ink truncate">{resumeFile.name}</span>
               <span className="text-caption text-stone">({(resumeFile.size / 1024).toFixed(0)}KB)</span>
               {!analyzing && <button onClick={(e) => { e.stopPropagation(); setResumeFile(null); setParsedText(''); }} className="text-stone hover:text-warning-red"><X className="h-4 w-4" /></button>}
             </div>
           ) : (
             <div>
-              <Upload className="h-6 w-6 mx-auto text-shadow-tint mb-2" />
-              <p className="text-body-sm text-ink">Drop your resume or <span className="text-amber font-medium">browse</span></p>
-              <p className="text-caption text-stone mt-1">.pdf, .docx, .txt · max 5MB</p>
+              <Upload className="h-5 w-5 mx-auto text-shadow-tint mb-3" strokeWidth={1.5} />
+              <p className="text-body-sm text-ink">Drop your resume or <span className="text-ink font-medium underline underline-offset-4 decoration-stone">browse</span></p>
+              <p className="text-caption text-stone mt-1.5">.pdf, .docx, .txt · max 5MB</p>
             </div>
           )}
         </div>
         {initial.resumeChars > 0 && !resumeFile && (
-          <p className="text-caption text-stone mt-3 flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> Resume on file ({initial.resumeChars.toLocaleString()} chars)</p>
+          <p className="text-caption text-stone mt-3 flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> Resume on file ({initial.resumeChars.toLocaleString()} chars)</p>
         )}
       </div>
 
       {/* About you */}
       <div className="card">
-        <h2 className="text-body font-semibold text-ink mb-5">About you</h2>
+        <h2 className="section-title mb-5">About you</h2>
         <div className="grid sm:grid-cols-2 gap-4">
           <Field label="Email" ai={aiFields.has('email')}><input className="input" value={email} onChange={(e) => { setEmail(e.target.value); clearAi('email'); }} type="email" placeholder="you@example.com" required /></Field>
           <Field label="Full name" ai={aiFields.has('fullName')}><input className="input" value={fullName} onChange={(e) => { setFullName(e.target.value); clearAi('fullName'); }} placeholder="Your name" /></Field>
@@ -151,16 +151,16 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
 
       {/* Preferences */}
       <div className="card">
-        <h2 className="text-body font-semibold text-ink mb-5">Job preferences</h2>
+        <h2 className="section-title mb-5">Job preferences</h2>
         <div className="grid sm:grid-cols-2 gap-4">
           <Field label="Target roles" hint="Comma separated" ai={aiFields.has('roles')}><input className="input" value={roles} onChange={(e) => { setRoles(e.target.value); clearAi('roles'); }} placeholder="SRE Lead, Platform Engineer" /></Field>
           <Field label="Locations" hint="Comma separated" ai={aiFields.has('locations')}><input className="input" value={locations} onChange={(e) => { setLocations(e.target.value); clearAi('locations'); }} placeholder="India, Remote" /></Field>
           <Field label="Exclude keywords"><input className="input" value={excludeKeywords} onChange={(e) => setExcludeKeywords(e.target.value)} placeholder="Junior, Intern" /></Field>
           <Field label="Blacklist companies"><input className="input" value={blacklist} onChange={(e) => setBlacklist(e.target.value)} placeholder="Company A, Company B" /></Field>
         </div>
-        <div className="grid sm:grid-cols-2 gap-4 mt-4 items-end">
-          <Field label={`Min score: ${minScore}`}><input type="range" min={50} max={95} step={5} value={minScore} onChange={(e) => setMinScore(Number(e.target.value))} className="w-full accent-amber" /></Field>
-          <label className="flex items-center gap-2 text-body-sm text-ink cursor-pointer"><input type="checkbox" checked={remoteOnly} onChange={(e) => setRemoteOnly(e.target.checked)} className="accent-amber h-4 w-4" /> Remote only</label>
+        <div className="grid sm:grid-cols-2 gap-6 mt-5 items-end">
+          <Field label={`Min score: ${minScore}`}><input type="range" min={50} max={95} step={5} value={minScore} onChange={(e) => setMinScore(Number(e.target.value))} className="w-full" /></Field>
+          <label className="flex items-center gap-2 text-body-sm text-ink cursor-pointer"><input type="checkbox" checked={remoteOnly} onChange={(e) => setRemoteOnly(e.target.checked)} className="accent-ink h-4 w-4" /> Remote only</label>
         </div>
       </div>
 
@@ -177,31 +177,37 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
 function Field({ label, hint, ai, children }: { label: string; hint?: string; ai?: boolean; children: React.ReactNode }) {
   return (
     <div>
-      <div className="flex items-center justify-between mb-1">
-        <label className="text-caption text-stone font-medium">{label}</label>
-        {ai && <span className="text-caption text-amber flex items-center gap-0.5"><Sparkles className="h-2.5 w-2.5" /> AI</span>}
+      <div className="flex items-center justify-between mb-1.5">
+        <label className="text-caption text-stone font-medium uppercase tracking-wide">{label}</label>
+        {ai && <span className="text-caption text-stone flex items-center gap-0.5"><Sparkles className="h-2.5 w-2.5" /> AI</span>}
       </div>
       {children}
-      {hint && <p className="text-caption text-stone mt-1">{hint}</p>}
+      {hint && <p className="text-caption text-stone mt-1.5">{hint}</p>}
     </div>
   );
 }
 
 function InsightsPanel({ insights, onReanalyze, analyzing }: { insights: ResumeInsights; onReanalyze: () => void; analyzing: boolean }) {
   return (
-    <div className="card border-l-4 border-l-amber">
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-        <h2 className="text-body font-semibold text-sunset-orange flex items-center gap-2"><Sparkles className="h-4 w-4" /> Resume insights</h2>
-        <button onClick={onReanalyze} disabled={analyzing} className="btn">{analyzing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />} Re-analyze</button>
+    <div className="rounded-card border border-faded-stone bg-off-white p-8">
+      <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
+        <div>
+          <h2 className="section-title">Resume insights</h2>
+          <p className="text-caption text-stone mt-1">Auto-extracted from your resume.</p>
+        </div>
+        <button onClick={onReanalyze} disabled={analyzing} className="btn">{analyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />} Re-analyze</button>
       </div>
-      {insights.summary && <p className="text-body-sm text-ink mb-4">{insights.summary}</p>}
-      <div className="grid sm:grid-cols-3 gap-3">
+      {insights.summary && <p className="text-body-sm text-ink leading-relaxed mb-5">{insights.summary}</p>}
+      <div className="grid sm:grid-cols-3 gap-3 mb-5">
         {insights.years_experience != null && <KV label="Experience" value={`${insights.years_experience} years`} />}
         {insights.seniority && <KV label="Seniority" value={insights.seniority} />}
         {insights.current_location && <KV label="Location" value={insights.current_location} />}
       </div>
       {insights.top_skills?.length ? (
-        <div className="mt-4"><p className="text-caption text-stone mb-2">Skills</p><div className="flex flex-wrap gap-1.5">{insights.top_skills.map(s => <span key={s} className="badge-warm">{s}</span>)}</div></div>
+        <div>
+          <p className="text-caption text-stone uppercase tracking-wide mb-2 font-medium">Skills</p>
+          <div className="flex flex-wrap gap-1.5">{insights.top_skills.map(s => <span key={s} className="badge">{s}</span>)}</div>
+        </div>
       ) : null}
     </div>
   );
@@ -209,9 +215,9 @@ function InsightsPanel({ insights, onReanalyze, analyzing }: { insights: ResumeI
 
 function KV({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-btn border border-faded-stone bg-off-white px-3 py-2">
-      <div className="text-caption text-stone">{label}</div>
-      <div className="text-body-sm font-medium text-ink capitalize">{value}</div>
+    <div className="rounded-btn border border-faded-stone bg-pearl px-3 py-2.5">
+      <div className="text-caption text-stone uppercase tracking-wide">{label}</div>
+      <div className="text-body-sm font-medium text-ink capitalize mt-0.5">{value}</div>
     </div>
   );
 }

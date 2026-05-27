@@ -31,12 +31,12 @@ export function StatusFilter({
             scroll={false}
             className={`inline-flex items-center gap-1.5 rounded-btn px-3 py-[7px] text-body-sm whitespace-nowrap transition-colors ${
               isActive
-                ? 'bg-amber text-ink font-medium'
+                ? 'bg-ink text-off-white font-medium'
                 : 'border border-faded-stone text-stone hover:border-ink hover:text-ink'
             }`}
           >
             <span className="capitalize">{s}</span>
-            <span className={`text-caption tabular-nums ${isActive ? 'text-ink/60' : 'text-shadow-tint'}`}>
+            <span className={`text-caption tabular-nums ${isActive ? 'text-off-white/60' : 'text-shadow-tint'}`}>
               {count}
             </span>
           </Link>

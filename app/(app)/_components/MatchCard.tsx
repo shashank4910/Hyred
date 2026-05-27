@@ -29,7 +29,7 @@ export function MatchCard({ matchId, score, reason, job }: Props) {
         {/* Left content */}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-3 flex-wrap">
-            <h3 className="text-body font-semibold text-ink group-hover:text-sunset-orange transition-colors truncate">
+            <h3 className="text-body font-semibold text-ink group-hover:text-stone transition-colors truncate">
               {job.title}
             </h3>
             <span className="badge">{SOURCE_LABELS[job.source] ?? job.source}</span>
@@ -55,7 +55,7 @@ export function MatchCard({ matchId, score, reason, job }: Props) {
               </span>
             )}
             {job.salary && (
-              <span className="font-medium text-sunset-orange">{job.salary}</span>
+              <span className="font-medium text-ink">{job.salary}</span>
             )}
           </div>
 

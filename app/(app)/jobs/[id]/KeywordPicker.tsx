@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { CheckCircle2, Circle, Search, Zap } from 'lucide-react';
+import { CheckCircle2, Circle, Search } from 'lucide-react';
 
 type KeywordPickerProps = {
   keywords: string[];
@@ -42,12 +42,11 @@ export function KeywordPicker({ keywords, alreadyHave, onSelectionChange, select
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
-          <Zap className="h-4 w-4 text-amber" />
           <span className="text-body-sm font-medium text-ink">Keyword Picker</span>
           <span className="text-caption text-stone">({selected.length}/{available.length} selected)</span>
         </div>
         <div className="flex gap-3">
-          <button onClick={() => onSelectionChange([...available])} className="text-caption text-sunset-orange hover:underline font-medium">Select all</button>
+          <button onClick={() => onSelectionChange([...available])} className="text-caption text-ink underline underline-offset-4 decoration-stone hover:decoration-ink font-medium">Select all</button>
           <button onClick={() => onSelectionChange([])} className="text-caption text-stone hover:text-ink">Clear</button>
         </div>
       </div>
@@ -64,8 +63,8 @@ export function KeywordPicker({ keywords, alreadyHave, onSelectionChange, select
             {filtered.available.map((kw) => {
               const isSelected = selected.includes(kw);
               return (
-                <button key={kw} onClick={() => toggle(kw)} className={`inline-flex items-center gap-1 rounded-badge px-2 py-[3px] text-caption font-medium transition-all ${isSelected ? 'bg-amber/15 text-ink border border-amber/40' : 'bg-pearl border border-faded-stone text-stone hover:border-ink hover:text-ink'}`}>
-                  {isSelected ? <CheckCircle2 className="h-3 w-3 text-amber" /> : <Circle className="h-3 w-3" />}
+                <button key={kw} onClick={() => toggle(kw)} className={`inline-flex items-center gap-1 rounded-badge px-2 py-[3px] text-caption font-medium transition-all ${isSelected ? 'bg-ink text-off-white border border-ink' : 'bg-pearl border border-faded-stone text-stone hover:border-ink hover:text-ink'}`}>
+                  {isSelected ? <CheckCircle2 className="h-3 w-3" /> : <Circle className="h-3 w-3" />}
                   {kw}
                 </button>
               );
@@ -92,8 +91,7 @@ export function KeywordPicker({ keywords, alreadyHave, onSelectionChange, select
       )}
 
       {selected.length > 0 && (
-        <div className="flex items-center gap-2 text-caption text-amber bg-amber/5 border border-amber/20 rounded-btn px-3 py-2">
-          <Zap className="h-3.5 w-3.5 shrink-0" />
+        <div className="flex items-center gap-2 text-caption text-stone bg-off-white border border-faded-stone rounded-btn px-3 py-2">
           {selected.length} keyword{selected.length > 1 ? 's' : ''} will be woven into your resume naturally.
         </div>
       )}

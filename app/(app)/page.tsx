@@ -4,7 +4,6 @@ import { StatusFilter } from './_components/StatusFilter';
 import { RunIngestButton } from './_components/RunIngestButton';
 import { MatchFilters } from './_components/MatchFilters';
 import { MatchCard } from './_components/MatchCard';
-import { Inbox, Sparkles, TrendingUp, Briefcase, Clock } from 'lucide-react';
 import { relativeTime, STATUS_ORDER } from '@/lib/ui';
 
 export const dynamic = 'force-dynamic';
@@ -121,14 +120,13 @@ export default async function Dashboard({
 
       {/* Stats row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="New matches" value={counts.new ?? 0} icon={<Sparkles className="h-4 w-4" />} accent />
-        <StatCard label="Applied" value={counts.applied ?? 0} icon={<Briefcase className="h-4 w-4" />} />
-        <StatCard label="Total tracked" value={totalMatches ?? 0} icon={<TrendingUp className="h-4 w-4" />} />
+        <StatCard label="New matches" value={counts.new ?? 0} accent />
+        <StatCard label="Applied" value={counts.applied ?? 0} />
+        <StatCard label="Total tracked" value={totalMatches ?? 0} />
         <StatCard
           label="Last scan"
           value={lastRun?.finished_at ? relativeTime(lastRun.finished_at) : 'Never'}
           subValue={lastRun?.matches_created != null ? `+${lastRun.matches_created} kept` : undefined}
-          icon={<Clock className="h-4 w-4" />}
           isText
         />
       </div>
@@ -180,24 +178,19 @@ export default async function Dashboard({
 function StatCard({
   label,
   value,
-  icon,
   accent,
   isText,
   subValue,
 }: {
   label: string;
   value: string | number;
-  icon: React.ReactNode;
   accent?: boolean;
   isText?: boolean;
   subValue?: string;
 }) {
   return (
     <div className="stat-card">
-      <div className="flex items-center justify-between">
-        <span className="text-caption text-stone">{label}</span>
-        <span className={accent ? 'text-amber' : 'text-shadow-tint'}>{icon}</span>
-      </div>
+      <div className="text-caption text-stone uppercase tracking-wide">{label}</div>
       <div className={`mt-2 ${isText ? 'text-body font-medium' : 'text-heading-sm font-semibold'} ${accent ? 'text-amber' : 'text-ink'} tabular-nums`}>
         {typeof value === 'number' ? value.toLocaleString() : value}
       </div>
@@ -209,10 +202,7 @@ function StatCard({
 function EmptyOnboarding() {
   return (
     <div className="card max-w-lg mx-auto text-center mt-16">
-      <div className="inline-flex h-14 w-14 items-center justify-center rounded-card bg-amber/10 text-amber mx-auto">
-        <Sparkles className="h-7 w-7" />
-      </div>
-      <h1 className="text-subheading font-semibold text-ink mt-5">Welcome to JobRadar</h1>
+      <h1 className="text-subheading font-semibold text-ink">Welcome to JobRadar</h1>
       <p className="text-body-sm text-stone mt-2 max-w-sm mx-auto">
         Upload your resume so we can start finding matches that fit your experience.
       </p>
@@ -237,16 +227,13 @@ function EmptyMatches({
   if (hiddenBelowThreshold > 0) {
     return (
       <div className="card text-center">
-        <div className="inline-flex h-12 w-12 items-center justify-center rounded-card bg-sunshine text-sunset-orange mx-auto">
-          <Inbox className="h-5 w-5" />
-        </div>
-        <p className="text-body-sm text-ink mt-4">
+        <p className="text-body-sm text-ink">
           <span className="font-medium">{hiddenBelowThreshold}</span> match{hiddenBelowThreshold === 1 ? ' is' : 'es are'} hidden below your score threshold of{' '}
-          <span className="font-medium text-amber">{effectiveMinScore}</span>.
+          <span className="font-medium">{effectiveMinScore}</span>.
         </p>
         <p className="text-caption text-stone mt-2">
           Lower the threshold in your{' '}
-          <Link href="/onboarding" className="text-sunset-orange hover:underline">profile</Link>{' '}
+          <Link href="/onboarding" className="text-ink underline underline-offset-4 decoration-stone hover:decoration-ink">profile</Link>{' '}
           or wait for fresh jobs.
         </p>
         <div className="mt-4">
@@ -260,11 +247,8 @@ function EmptyMatches({
 
   return (
     <div className="card text-center">
-      <div className="inline-flex h-12 w-12 items-center justify-center rounded-card bg-off-white text-shadow-tint mx-auto">
-        <Inbox className="h-5 w-5" />
-      </div>
-      <p className="text-body-sm text-ink mt-4">
-        No matches in <span className="font-medium text-amber">{status}</span> yet.
+      <p className="text-body-sm text-ink">
+        No matches in <span className="font-medium">{status}</span> yet.
       </p>
       <p className="text-caption text-stone mt-2">
         {totalJobs > 0

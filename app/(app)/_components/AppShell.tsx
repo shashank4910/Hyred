@@ -46,10 +46,10 @@ export function AppShell({
       <aside className="hidden md:flex md:w-[240px] flex-col border-r border-faded-stone bg-pearl">
         <div className="p-6 pb-4">
           <Link href="/" className="flex items-center gap-2.5">
-            <span className="inline-flex h-8 w-8 items-center justify-center rounded-btn bg-amber/10">
-              <Radar className="h-4 w-4 text-amber" />
+            <span className="inline-flex h-7 w-7 items-center justify-center rounded-btn border border-faded-stone">
+              <Radar className="h-3.5 w-3.5 text-ink" strokeWidth={2.25} />
             </span>
-            <span className="text-body font-semibold text-ink">JobRadar</span>
+            <span className="text-body font-semibold text-ink tracking-tight">JobRadar</span>
           </Link>
         </div>
 
@@ -62,11 +62,11 @@ export function AppShell({
                 href={href}
                 className={`flex items-center gap-2.5 rounded-btn px-3 py-2 text-body-sm transition-colors ${
                   active
-                    ? 'bg-amber/10 text-ink font-medium'
+                    ? 'bg-off-white text-ink font-medium'
                     : 'text-stone hover:text-ink hover:bg-off-white'
                 }`}
               >
-                <Icon className={`h-[18px] w-[18px] ${active ? 'text-amber' : ''}`} />
+                <Icon className="h-[18px] w-[18px]" strokeWidth={1.75} />
                 {label}
               </Link>
             );
@@ -95,7 +95,7 @@ export function AppShell({
       <div className="md:hidden fixed top-0 inset-x-0 z-30 border-b border-faded-stone bg-pearl">
         <div className="flex items-center justify-between px-4 py-3">
           <Link href="/" className="flex items-center gap-2">
-            <Radar className="h-4 w-4 text-amber" />
+            <Radar className="h-4 w-4 text-ink" strokeWidth={2.25} />
             <span className="text-body-sm font-semibold text-ink">JobRadar</span>
           </Link>
           <button
@@ -116,10 +116,10 @@ export function AppShell({
                   href={href}
                   onClick={() => setMobileOpen(false)}
                   className={`flex items-center gap-2.5 rounded-btn px-3 py-2 text-body-sm ${
-                    active ? 'bg-amber/10 text-ink font-medium' : 'text-stone'
+                    active ? 'bg-off-white text-ink font-medium' : 'text-stone'
                   }`}
                 >
-                  <Icon className="h-[18px] w-[18px]" />
+                  <Icon className="h-[18px] w-[18px]" strokeWidth={1.75} />
                   {label}
                 </Link>
               );

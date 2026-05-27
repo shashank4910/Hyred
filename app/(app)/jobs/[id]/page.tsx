@@ -113,7 +113,7 @@ export default async function JobMatchPage({
         </div>
 
         {match.reason && (
-          <div className="mt-6 border-l-2 border-amber pl-4">
+          <div className="mt-6 border-l-2 border-faded-stone pl-4">
             <p className="text-caption text-shadow-tint uppercase tracking-wide mb-1">Why this matched</p>
             <p className="text-body-sm text-stone">{match.reason}</p>
           </div>

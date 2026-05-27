@@ -24,7 +24,7 @@ html, body {
 *::-webkit-scrollbar-thumb:hover { background: #aca89f; }
 
 @layer components {
-  /* ===== BUTTONS ===== */
+  /* ===== BUTTONS — amber reserved for primary CTA only ===== */
   .btn-primary {
     @apply inline-flex items-center justify-center gap-2 font-medium text-body-sm text-ink
       bg-amber rounded-btn px-[17.5px] py-[7px]
@@ -34,62 +34,62 @@ html, body {
 
   .btn {
     @apply inline-flex items-center justify-center gap-2 font-medium text-body-sm text-ink
-      bg-transparent border border-ink rounded-btn px-[12.25px] py-[7px]
-      hover:bg-off-white transition-colors
+      bg-pearl border border-faded-stone rounded-btn px-[12.25px] py-[7px]
+      hover:border-ink hover:bg-off-white transition-colors
       disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
   .btn-ghost {
     @apply inline-flex items-center justify-center gap-2 font-medium text-body-sm text-stone
       bg-transparent rounded-btn px-3 py-[7px]
-      hover:text-ink hover:bg-off-white transition-colors;
+      hover:text-ink transition-colors;
   }
 
-  /* ===== CARDS ===== */
+  /* ===== CARDS — hairline border + flat pearl, no overpowering shadow ===== */
   .card {
-    @apply bg-pearl rounded-card shadow-card p-8;
+    @apply bg-pearl rounded-card border border-faded-stone p-8;
   }
 
   .card-interactive {
-    @apply bg-pearl rounded-card shadow-card p-8
-      transition-shadow hover:shadow-elevated cursor-pointer;
+    @apply bg-pearl rounded-card border border-faded-stone p-6
+      transition-all hover:border-shadow-tint cursor-pointer;
   }
 
   .card-compact {
-    @apply bg-pearl rounded-card shadow-card p-5;
+    @apply bg-pearl rounded-card border border-faded-stone p-5;
   }
 
-  /* ===== INPUTS ===== */
+  /* ===== INPUTS — quieter focus state ===== */
   .input {
     @apply w-full rounded-field border border-faded-stone bg-pearl
-      px-3 py-2 text-body-sm text-ink
+      px-3 py-[9px] text-body-sm text-ink
       placeholder:text-shadow-tint
-      focus:outline-none focus:border-amber focus:ring-1 focus:ring-amber/30
+      focus:outline-none focus:border-ink focus:ring-0
       transition-colors;
   }
 
-  /* ===== BADGES ===== */
+  /* ===== BADGES — neutral by default ===== */
   .badge {
-    @apply inline-flex items-center rounded-badge bg-off-white text-ink
-      px-1.5 py-[3px] text-caption font-medium;
+    @apply inline-flex items-center rounded-badge border border-faded-stone bg-pearl
+      text-stone px-2 py-[3px] text-caption font-medium;
   }
 
   .badge-accent {
     @apply inline-flex items-center rounded-badge bg-grape text-ink
-      px-1.5 py-[3.8px] text-caption font-medium;
+      px-2 py-[3.8px] text-caption font-medium;
   }
 
   .badge-warm {
     @apply inline-flex items-center rounded-badge bg-sunshine text-ink
-      px-1.5 py-[3px] text-caption font-medium;
+      px-2 py-[3px] text-caption font-medium;
   }
 
-  /* ===== STAT CARD ===== */
+  /* ===== STAT CARD — flat with hairline border ===== */
   .stat-card {
-    @apply bg-pearl rounded-card shadow-card p-6;
+    @apply bg-pearl rounded-card border border-faded-stone p-5;
   }
 
-  /* ===== TABLE ===== */
+  /* ===== TABLE — substantial, data-app feel ===== */
   .table-container {
     @apply w-full overflow-x-auto;
   }
@@ -98,16 +98,16 @@ html, body {
     @apply w-full text-body-sm;
   }
 
-  .table-container thead tr {
-    @apply border-b border-faded-stone;
+  .table-container thead {
+    @apply border-b border-ink;
   }
 
   .table-container th {
-    @apply py-3 px-4 text-left text-caption font-medium text-stone uppercase tracking-wide;
+    @apply py-3 px-4 text-left text-caption font-semibold text-ink uppercase tracking-wide;
   }
 
   .table-container td {
-    @apply py-3 px-4 text-ink border-b border-faded-stone/50;
+    @apply py-3 px-4 text-ink border-b border-faded-stone;
   }
 
   .table-container tbody tr:last-child td {
@@ -115,7 +115,12 @@ html, body {
   }
 
   .table-container tbody tr:hover {
-    @apply bg-off-white/60;
+    @apply bg-off-white;
+  }
+
+  /* ===== SECTION TITLE — Runway-style, no decorative icon ===== */
+  .section-title {
+    @apply text-body font-semibold text-ink;
   }
 
   /* ===== SCORE BANDS ===== */
@@ -123,6 +128,35 @@ html, body {
   .score-strong { @apply text-amber; }
   .score-decent { @apply text-orange-500; }
   .score-weak { @apply text-shadow-tint; }
+
+  /* ===== RANGE SLIDER — match Runway's quiet aesthetic ===== */
+  input[type='range'] {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    background: #e3dfd5;
+    border-radius: 999px;
+    outline: none;
+  }
+  input[type='range']::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #261b07;
+    cursor: pointer;
+    border: 2px solid #ffffff;
+    box-shadow: 0 1px 2px rgba(38, 27, 7, 0.2);
+  }
+  input[type='range']::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #261b07;
+    cursor: pointer;
+    border: 2px solid #ffffff;
+  }
 }
 
 /* Skeleton shimmer */

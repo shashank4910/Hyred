@@ -5,10 +5,6 @@ import {
   AlertTriangle,
   XCircle,
   Loader2,
-  Clock,
-  Activity,
-  Database,
-  Briefcase,
 } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
@@ -40,7 +36,7 @@ export default async function StatsPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-10">
       <div>
         <h1 className="text-heading-sm font-semibold text-ink">Stats</h1>
         <p className="text-body-sm text-stone mt-1">Pipeline activity and source coverage.</p>
@@ -48,19 +44,22 @@ export default async function StatsPage() {
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Jobs in DB" value={totalJobs ?? 0} icon={<Database className="h-4 w-4" />} />
-        <StatCard label="Total matches" value={totalMatches ?? 0} icon={<Briefcase className="h-4 w-4" />} />
-        <StatCard label="Applied" value={appliedCount ?? 0} icon={<CheckCircle2 className="h-4 w-4" />} accent />
-        <StatCard label="Sources active" value={Object.keys(bySource).length} icon={<Activity className="h-4 w-4" />} />
+        <StatCard label="Jobs in DB" value={totalJobs ?? 0} />
+        <StatCard label="Total matches" value={totalMatches ?? 0} />
+        <StatCard label="Applied" value={appliedCount ?? 0} accent />
+        <StatCard label="Sources active" value={Object.keys(bySource).length} />
       </div>
 
       {/* Jobs by source */}
       <div className="card">
-        <h2 className="text-body font-semibold text-ink mb-5">Jobs by source</h2>
+        <div className="flex items-baseline justify-between mb-6">
+          <h2 className="section-title">Jobs by source</h2>
+          <span className="text-caption text-stone">{(totalJobs ?? 0).toLocaleString()} total</span>
+        </div>
         {Object.keys(bySource).length === 0 ? (
           <p className="text-body-sm text-stone">No jobs yet. Run a scan.</p>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-4">
             {Object.entries(bySource)
               .sort((a, b) => b[1] - a[1])
               .map(([source, count]) => {
@@ -68,12 +67,14 @@ export default async function StatsPage() {
                 const pct = (count / total) * 100;
                 return (
                   <div key={source}>
-                    <div className="flex items-center justify-between text-body-sm mb-1">
-                      <span className="text-ink font-medium">{SOURCE_LABELS[source] ?? source}</span>
-                      <span className="text-stone tabular-nums">{count.toLocaleString()} ({pct.toFixed(0)}%)</span>
+                    <div className="flex items-center justify-between text-body-sm mb-2">
+                      <span className="text-ink">{SOURCE_LABELS[source] ?? source}</span>
+                      <span className="text-stone tabular-nums">
+                        {count.toLocaleString()} <span className="text-shadow-tint">({pct.toFixed(0)}%)</span>
+                      </span>
                     </div>
-                    <div className="h-2 rounded-badge bg-off-white overflow-hidden">
-                      <div className="h-full bg-amber rounded-badge transition-all" style={{ width: `${pct}%` }} />
+                    <div className="h-1 rounded-badge bg-off-white overflow-hidden">
+                      <div className="h-full bg-ink rounded-badge transition-all" style={{ width: `${pct}%` }} />
                     </div>
                   </div>
                 );
@@ -84,11 +85,11 @@ export default async function StatsPage() {
 
       {/* Ingest runs table */}
       <div className="card">
-        <div className="flex items-center gap-2 mb-1">
-          <Clock className="h-4 w-4 text-amber" />
-          <h2 className="text-body font-semibold text-ink">Recent ingest runs</h2>
+        <div className="mb-1 flex items-baseline justify-between">
+          <h2 className="section-title">Recent ingest runs</h2>
+          <span className="text-caption text-stone">{(runs ?? []).length} runs</span>
         </div>
-        <p className="text-caption text-stone mb-5">
+        <p className="text-caption text-stone mb-6">
           Pipeline time excludes GitHub Actions overhead (checkout, setup, npm install).
         </p>
 
@@ -117,7 +118,7 @@ export default async function StatsPage() {
                     <td className="text-right tabular-nums">{r.fetched}</td>
                     <td className="text-right tabular-nums">{r.new_jobs}</td>
                     <td className="text-right tabular-nums">{r.scored}</td>
-                    <td className="text-right tabular-nums font-medium text-amber">{r.matches_created}</td>
+                    <td className="text-right tabular-nums font-medium">{r.matches_created}</td>
                     <td className="text-right tabular-nums text-stone">
                       {r.duration_ms ? `${(r.duration_ms / 1000).toFixed(1)}s` : '—'}
                     </td>
@@ -134,16 +135,13 @@ export default async function StatsPage() {
 }
 
 function StatCard({
-  label, value, icon, accent,
+  label, value, accent,
 }: {
-  label: string; value: number; icon: React.ReactNode; accent?: boolean;
+  label: string; value: number; accent?: boolean;
 }) {
   return (
     <div className="stat-card">
-      <div className="flex items-center justify-between">
-        <span className="text-caption text-stone">{label}</span>
-        <span className={accent ? 'text-amber' : 'text-shadow-tint'}>{icon}</span>
-      </div>
+      <div className="text-caption text-stone uppercase tracking-wide">{label}</div>
       <div className={`mt-2 text-heading-sm font-semibold tabular-nums ${accent ? 'text-amber' : 'text-ink'}`}>
         {value.toLocaleString()}
       </div>
@@ -154,7 +152,7 @@ function StatCard({
 function RunStatus({ status, errors }: { status: string; errors: { source: string; error: string }[] | null }) {
   if (status === 'success') {
     return (
-      <span className="inline-flex items-center gap-1.5 text-caption font-medium text-emerald-600">
+      <span className="inline-flex items-center gap-1.5 text-caption text-emerald-700">
         <CheckCircle2 className="h-3.5 w-3.5" /> Success
       </span>
     );
@@ -162,7 +160,7 @@ function RunStatus({ status, errors }: { status: string; errors: { source: strin
   if (status === 'partial') {
     return (
       <span
-        className="inline-flex items-center gap-1.5 text-caption font-medium text-sunset-orange"
+        className="inline-flex items-center gap-1.5 text-caption text-sunset-orange"
         title={(errors ?? []).map((e) => `${e.source}: ${e.error}`).join('\n')}
       >
         <AlertTriangle className="h-3.5 w-3.5" /> Partial ({(errors ?? []).length})
@@ -171,7 +169,7 @@ function RunStatus({ status, errors }: { status: string; errors: { source: strin
   }
   if (status === 'failed') {
     return (
-      <span className="inline-flex items-center gap-1.5 text-caption font-medium text-warning-red">
+      <span className="inline-flex items-center gap-1.5 text-caption text-warning-red">
         <XCircle className="h-3.5 w-3.5" /> Failed
       </span>
     );

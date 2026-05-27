@@ -12,12 +12,7 @@ import {
   XCircle,
   ExternalLink,
   Save,
-  StickyNote,
   RotateCw,
-  Pencil,
-  FileText,
-  Rocket,
-  Zap,
 } from 'lucide-react';
 import { STATUS_ORDER } from '@/lib/ui';
 import { KeywordPicker } from './KeywordPicker';
@@ -181,31 +176,25 @@ export function JobActions({
   return (
     <div className="space-y-4">
       {/* Apply CTA */}
-      <div className="card border-l-4 border-l-amber">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-body font-semibold text-ink flex items-center gap-2">
-              <Rocket className="h-4 w-4 text-amber" /> Ready to apply?
-            </h2>
-            <p className="text-caption text-stone mt-1">
-              Opens the original posting. Generate your resume + cover letter first.
-            </p>
-          </div>
-          <a
-            href={applyUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={() => {
-              if (status !== 'applied' && status !== 'interviewing' && status !== 'offer') {
-                fetch(`/api/match/${matchId}/status`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status: 'applied' }) })
-                  .then(() => startTransition(() => router.refresh())).catch(() => {});
-              }
-            }}
-            className="btn-primary whitespace-nowrap"
-          >
-            <ExternalLink className="h-4 w-4" /> Apply now
-          </a>
+      <div className="card flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="section-title">Ready to apply?</h2>
+          <p className="text-caption text-stone mt-1">Opens the original posting. Generate your resume + cover letter first.</p>
         </div>
+        <a
+          href={applyUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={() => {
+            if (status !== 'applied' && status !== 'interviewing' && status !== 'offer') {
+              fetch(`/api/match/${matchId}/status`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status: 'applied' }) })
+                .then(() => startTransition(() => router.refresh())).catch(() => {});
+            }
+          }}
+          className="btn-primary whitespace-nowrap"
+        >
+          <ExternalLink className="h-4 w-4" /> Apply now
+        </a>
       </div>
 
       {/* Status */}
@@ -217,7 +206,7 @@ export function JobActions({
               disabled={s === status}
               onClick={() => setStatusFn(s)}
               className={s === status
-                ? 'rounded-btn bg-amber text-ink px-3 py-[7px] text-caption font-medium capitalize'
+                ? 'rounded-btn bg-ink text-off-white px-3 py-[7px] text-caption font-medium capitalize'
                 : 'rounded-btn border border-faded-stone px-3 py-[7px] text-caption text-stone capitalize hover:border-ink hover:text-ink transition-colors'
               }
             >
@@ -230,9 +219,7 @@ export function JobActions({
       {/* Skills */}
       {candidateSkills.length > 0 && (
         <div className="card">
-          <h2 className="text-body font-semibold text-ink flex items-center gap-2 mb-4">
-            <Sparkles className="h-4 w-4 text-amber" /> Skill match
-          </h2>
+          <h2 className="section-title mb-4">Skill match</h2>
           {analyzingSkills && !skills && (
             <div className="space-y-2"><div className="skeleton h-4 w-2/3" /><div className="skeleton h-4 w-1/2" /></div>
           )}
@@ -270,9 +257,7 @@ export function JobActions({
       {/* Cover letter */}
       <div className="card">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-          <h2 className="text-body font-semibold text-ink flex items-center gap-2">
-            <Pencil className="h-4 w-4 text-amber" /> Cover letter
-          </h2>
+          <h2 className="section-title">Cover letter</h2>
           <div className="flex gap-2 flex-wrap">
             {letter && (
               <>
@@ -294,15 +279,13 @@ export function JobActions({
           ) : (
             <pre className="whitespace-pre-wrap text-body-sm text-stone font-sans leading-relaxed">{letter}</pre>
           )
-        ) : (!generating && <p className="text-body-sm text-stone">Click <span className="text-amber font-medium">Generate</span> to draft a tailored cover letter.</p>)}
+        ) : (!generating && <p className="text-body-sm text-stone">Click Generate to draft a tailored cover letter.</p>)}
       </div>
 
       {/* ATS Resume */}
       <div className="card">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-          <h2 className="text-body font-semibold text-ink flex items-center gap-2">
-            <FileText className="h-4 w-4 text-amber" /> ATS Resume
-          </h2>
+          <h2 className="section-title">ATS Resume</h2>
           <div className="flex gap-2 flex-wrap">
             {atsResume && (
               <>
@@ -328,7 +311,7 @@ export function JobActions({
                 <KeywordPicker keywords={jdKeywords} alreadyHave={alreadyHaveKeywords} selected={selectedKeywords} onSelectionChange={setSelectedKeywords} />
               </div>
             )}
-            {keywordsLoaded && jdKeywords.length === 0 && <p className="text-body-sm text-stone">Click <span className="text-amber font-medium">Generate ATS Resume</span> to create an optimized version.</p>}
+            {keywordsLoaded && jdKeywords.length === 0 && <p className="text-body-sm text-stone">Click Generate ATS Resume to create an optimized version.</p>}
           </div>
         )}
 
@@ -338,7 +321,7 @@ export function JobActions({
           <div className="space-y-4">
             {keywords && (
               <div className="space-y-3 border-b border-faded-stone pb-4">
-                <p className="text-caption text-stone flex items-center gap-1.5"><Zap className="h-3.5 w-3.5 text-amber" /> {keywords.total_jd_keywords} keywords detected{keywords.selected_count ? `, ${keywords.selected_count} prioritized` : ''}</p>
+                <p className="text-caption text-stone">{keywords.total_jd_keywords} keywords detected{keywords.selected_count ? `, ${keywords.selected_count} prioritized` : ''}</p>
                 {keywords.added.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">{keywords.added.map((kw) => <span key={kw} className="badge-warm">+ {kw}</span>)}</div>
                 )}
@@ -346,8 +329,8 @@ export function JobActions({
             )}
             <div className="flex items-center justify-between gap-3">
               <div className="flex gap-3">
-                <button onClick={() => setEditingResume(true)} className={editingResume ? 'text-caption font-medium text-amber border-b border-amber pb-0.5' : 'text-caption text-stone hover:text-ink'}><Pencil className="h-3 w-3 inline mr-1" />Edit</button>
-                <button onClick={() => { setEditingResume(false); setAtsResume(editedResume); }} className={!editingResume ? 'text-caption font-medium text-amber border-b border-amber pb-0.5' : 'text-caption text-stone hover:text-ink'}><FileText className="h-3 w-3 inline mr-1" />Preview</button>
+                <button onClick={() => setEditingResume(true)} className={editingResume ? 'text-caption font-medium text-ink border-b border-ink pb-0.5' : 'text-caption text-stone hover:text-ink'}>Edit</button>
+                <button onClick={() => { setEditingResume(false); setAtsResume(editedResume); }} className={!editingResume ? 'text-caption font-medium text-ink border-b border-ink pb-0.5' : 'text-caption text-stone hover:text-ink'}>Preview</button>
               </div>
               <button onClick={() => { setAtsResume(''); setEditedResume(''); setKeywords(null); setEditingResume(false); }} className="btn-ghost text-caption"><RotateCw className="h-3 w-3" /> Regenerate</button>
             </div>
@@ -368,9 +351,7 @@ export function JobActions({
       {/* Notes */}
       <div className="card">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-body font-semibold text-ink flex items-center gap-2">
-            <StickyNote className="h-4 w-4 text-amber" /> Notes
-          </h2>
+          <h2 className="section-title">Notes</h2>
           {notesDirty && (
             <button onClick={saveNotes} disabled={savingNotes} className="btn-primary">
               {savingNotes ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Save
