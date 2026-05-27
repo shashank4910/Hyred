@@ -23,7 +23,8 @@ from datetime import datetime
 from typing import AsyncGenerator
 
 import httpx
-from browser_use import Agent, BrowserProfile
+from browser_use import Agent
+from browser_use.browser import Browser, BrowserConfig
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -233,23 +234,21 @@ CANDIDATE INFORMATION:
         # Configure browser (headless for server, visible locally for debugging)
         headless = os.getenv("BROWSER_HEADLESS", "true").lower() == "true"
 
-        browser_profile = BrowserProfile(
-            headless=headless,
-            extra_chromium_args=[
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-            ],
-            wait_for_network_idle_page_load_time=3.0,
-            maximum_wait_page_load_time=30.0,
-        )
-
-        # Create agent — browser-use latest API: pass browser_profile directly to Agent
+        # Create agent — minimal config, let browser-use handle defaults
         agent = Agent(
             task=task_prompt,
             llm=llm,
-            browser_profile=browser_profile,
+            browser=Browser(
+                config=BrowserConfig(
+                    headless=headless,
+                    extra_chromium_args=[
+                        "--no-sandbox",
+                        "--disable-setuid-sandbox",
+                        "--disable-dev-shm-usage",
+                        "--disable-gpu",
+                    ],
+                )
+            ),
         )
 
         _log(task_id, "🌍 Opening browser and running agent...")
