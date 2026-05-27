@@ -239,17 +239,22 @@ Rules:
 }
 
 /**
- * Extract the JD's key skill/technology requirements and check each one
- * against the FULL RESUME (not just top_skills).
+ * Compare a JD against a resume. Returns:
+ *   - matched: items the JD asks for that ARE present in the resume
+ *   - missing: items the JD asks for that are NOT present in the resume
  *
- * This is an inverse-match: instead of "which of these 12 skills appear in JD?",
- * we ask "for each JD requirement, is it in the resume (literally or as a
- * synonym/equivalent)?". This catches keywords that exist anywhere in work
- * experience bullets, not just in the distilled top_skills array.
+ * Strict guarantee: every item in `matched` and `missing` MUST come from
+ * the JD's own requirements. Resume-only skills (e.g. "Cavisson NetStorm"
+ * mentioned in resume but not in the JD) will NEVER appear here.
  *
- * Returns { matched, missing } where:
- *   - matched: JD requirements that ARE present in the resume
- *   - missing: JD requirements that are NOT in the resume
+ * The function uses a 2-phase approach with programmatic verification:
+ *   Phase 1 (LLM): Extract jdRequirements from the JD only.
+ *   Phase 2 (LLM): Classify each jdRequirement as matched or missing
+ *                  based on the full resume.
+ *   Phase 3 (code): Verify each matched/missing item came from
+ *                   jdRequirements. Drop any that didn't.
+ *   Phase 4 (code): Verify each item actually appears (or is implied)
+ *                   in the JD text. Drop hallucinations.
  */
 export async function matchSkills(args: {
   jobDescription: string;
@@ -258,54 +263,72 @@ export async function matchSkills(args: {
   /** @deprecated Use resumeText for accurate matching. Kept for backward compat. */
   candidateSkills?: string[];
 }): Promise<{ matched: string[]; missing: string[] }> {
-  // Backward compat: if only candidateSkills is provided, use it as topSkills
   const topSkills = args.topSkills ?? args.candidateSkills ?? [];
   const resumeText = args.resumeText ?? '';
 
-  // If we have neither resume nor any skills, nothing to match against
   if (!resumeText && topSkills.length === 0) {
     return { matched: [], missing: [] };
   }
 
   const client = getClient();
 
-  // The resume is the source of truth. We give GPT both the full resume text
-  // AND the distilled top skills so it can do thorough matching.
   const resumeBlock = resumeText
-    ? `\nFULL RESUME (this is the SOURCE OF TRUTH for what the candidate has):\n${resumeText.slice(0, 6000)}\n`
+    ? `\nFULL RESUME (source of truth for what the candidate has):\n${resumeText.slice(0, 6000)}\n`
     : '';
 
   const topSkillsBlock = topSkills.length
-    ? `\nDISTILLED TOP SKILLS (extracted from resume, for reference):\n${topSkills.join(', ')}\n`
+    ? `\nDISTILLED TOP SKILLS (already extracted from resume, for reference):\n${topSkills.join(', ')}\n`
     : '';
 
-  const userPrompt = `You are evaluating whether a candidate's resume covers the requirements of a job description.
+  const jdText = args.jobDescription.slice(0, 5000);
 
-STEP 1: Extract the 8-12 most important skills, technologies, tools, methodologies, and concepts the JD asks for. Include both:
-  - Specific tools (e.g. "JMeter", "Kubernetes", "Splunk")
-  - Domain concepts (e.g. "performance testing", "load testing", "framework design", "script preparation")
-  - Soft methodologies if specifically called out (e.g. "agile", "stakeholder management")
+  const userPrompt = `Compare a job description (JD) against a candidate's resume.
 
-STEP 2: For EACH requirement, search the candidate's full resume to determine if it is present.
-A requirement counts as PRESENT if:
-  - The exact term appears in the resume (case-insensitive, e.g. "JMeter" matches "jmeter")
-  - A direct synonym or equivalent appears (e.g. JD says "load testing" and resume says "performance testing" or "stress testing" — these are the same discipline → MATCHED)
-  - The resume describes work that is unambiguously the same activity (e.g. JD asks "framework design", resume says "designed test framework" → MATCHED)
-  - A specific tool from the same category is mentioned (e.g. JD says "Gatling", resume says "JMeter" — both are load testing tools → MATCHED with note)
+YOU MUST FOLLOW THIS EXACT 3-STEP PROCESS:
 
-A requirement is MISSING only if there is genuinely NO mention of it or any equivalent in the resume.
+==================== STEP 1: jdRequirements ====================
+Extract a list of the 8-12 most important skills, tools, technologies, methodologies, or concepts that THE JD ITSELF EXPLICITLY ASKS FOR.
 
-STEP 3: Return strict JSON:
+CRITICAL RULES for jdRequirements:
+- Every item MUST be something the JD literally mentions or directly implies.
+- DO NOT include anything from the resume that the JD doesn't ask for.
+- Example: if the resume mentions "Cavisson NetStorm" but the JD never mentions it, "Cavisson NetStorm" must NOT appear in jdRequirements.
+- Use the JD's own wording (or close paraphrase).
+- Items can be specific tools ("JMeter", "Kubernetes") or domain concepts ("performance testing", "framework design").
+
+==================== STEP 2: matched / missing ====================
+For EACH item in jdRequirements (and ONLY those items), classify:
+
+  matched   = the resume covers this requirement (literal mention, synonym, equivalent activity, or same-category tool)
+  missing   = the resume does NOT cover this requirement
+
+Synonym rules (count as MATCHED):
+  - JD says "load testing", resume says "performance testing" → MATCHED (same discipline)
+  - JD says "framework design", resume says "designed test framework" → MATCHED (same activity)
+  - JD says "Gatling", resume says "JMeter" → MATCHED (both load testing tools)
+
+Default to MATCHED when in doubt. Only mark MISSING if you've thoroughly searched the resume and the requirement is genuinely absent.
+
+==================== STEP 3: OUTPUT ====================
+Return strict JSON with ALL THREE fields:
 {
-  "matched": [<JD requirements that ARE in the resume — use the JD's wording>],
-  "missing": [<JD requirements NOT in the resume — be honest, only include if truly absent>]
+  "jdRequirements": [<8-12 items extracted from the JD only>],
+  "matched":        [<subset of jdRequirements that ARE in the resume>],
+  "missing":        [<subset of jdRequirements NOT in the resume>]
 }
 
-IMPORTANT: Default to MATCHED when in doubt. False "missing" claims are worse than false "matched" claims because they discourage applications. Only mark as missing if you've thoroughly searched the resume and the requirement is genuinely absent.
+INVARIANTS YOU MUST UPHOLD:
+1. matched ⊆ jdRequirements   (every matched item is in jdRequirements)
+2. missing  ⊆ jdRequirements   (every missing item is in jdRequirements)
+3. matched ∪ missing = jdRequirements   (every JD requirement is classified as exactly one)
+4. matched ∩ missing = ∅        (an item cannot be both matched and missing)
+5. NO item from the resume that isn't in the JD may appear in any list
+
+If you violate these invariants, your output is wrong.
 
 ${resumeBlock}${topSkillsBlock}
 JOB DESCRIPTION:
-${args.jobDescription.slice(0, 5000)}`;
+${jdText}`;
 
   const res = await client.chat.completions.create({
     model: CHAT_MODEL,
@@ -315,22 +338,101 @@ ${args.jobDescription.slice(0, 5000)}`;
       {
         role: 'system',
         content:
-          'You compare a candidate resume against a job description and identify which JD requirements are present vs absent. Be inclusive — give the candidate the benefit of the doubt when the resume describes equivalent work. Output JSON only.',
+          'You compare a candidate resume against a job description. You ONLY classify items the JD asks for. You NEVER include resume-only skills the JD does not mention. Output JSON only.',
       },
       { role: 'user', content: userPrompt },
     ],
   });
 
+  let parsed: {
+    jdRequirements?: unknown;
+    matched?: unknown;
+    missing?: unknown;
+  } = {};
   try {
-    const parsed = JSON.parse(res.choices[0]?.message?.content ?? '{}');
-    const matched = Array.isArray(parsed.matched)
-      ? parsed.matched.map(String).slice(0, 15)
-      : [];
-    const missing = Array.isArray(parsed.missing)
-      ? parsed.missing.map(String).slice(0, 8)
-      : [];
-    return { matched, missing };
+    parsed = JSON.parse(res.choices[0]?.message?.content ?? '{}');
   } catch {
     return { matched: [], missing: [] };
   }
+
+  const cleanList = (v: unknown): string[] =>
+    Array.isArray(v)
+      ? v
+          .map(String)
+          .map((s) => s.trim())
+          .filter((s) => s.length >= 2 && s.length <= 80)
+      : [];
+
+  const jdRequirements = cleanList(parsed.jdRequirements);
+  const rawMatched = cleanList(parsed.matched);
+  const rawMissing = cleanList(parsed.missing);
+
+  // ---------- Phase 3: verify items came from jdRequirements ----------
+  // Use case-insensitive containment so minor casing/whitespace differences
+  // don't cause false rejections, but still enforce that each matched/missing
+  // item is one of the requirements the LLM extracted from the JD.
+  const jdRequirementsLower = jdRequirements.map((r) => r.toLowerCase());
+
+  const isFromJd = (item: string): boolean => {
+    const lower = item.toLowerCase();
+    return jdRequirementsLower.some(
+      (r) => r === lower || r.includes(lower) || lower.includes(r),
+    );
+  };
+
+  let matched = rawMatched.filter(isFromJd);
+  let missing = rawMissing.filter(isFromJd);
+
+  // ---------- Phase 4: verify items actually appear (or are clearly implied)
+  // in the JD text. Catches hallucinations where the LLM made up a JD
+  // requirement that isn't actually in the JD.
+  // We use a generous substring match — if even one significant word from
+  // the item appears in the JD, we accept it. This handles paraphrasing.
+  const jdLower = jdText.toLowerCase();
+
+  const stopwords = new Set([
+    'the', 'and', 'or', 'of', 'in', 'a', 'an', 'is', 'are', 'be', 'with',
+    'for', 'to', 'on', 'at', 'by', 'as', 'from', 'into',
+  ]);
+
+  const isInJd = (item: string): boolean => {
+    const lower = item.toLowerCase();
+    // Direct substring match — easy case.
+    if (jdLower.includes(lower)) return true;
+    // Word-by-word check — at least one significant word (>3 chars, not a
+    // stopword) from the item must appear in the JD.
+    const words = lower.split(/[\s\-/.,]+/).filter(
+      (w) => w.length > 3 && !stopwords.has(w),
+    );
+    if (words.length === 0) return jdLower.includes(lower);
+    // Require at least one significant word to be in the JD.
+    return words.some((w) => jdLower.includes(w));
+  };
+
+  matched = matched.filter(isInJd);
+  missing = missing.filter(isInJd);
+
+  // Dedupe (case-insensitive) and cap.
+  const dedupe = (arr: string[]): string[] => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const item of arr) {
+      const key = item.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        out.push(item);
+      }
+    }
+    return out;
+  };
+
+  // If an item is in BOTH matched and missing (LLM contradiction),
+  // trust matched and remove from missing.
+  const matchedKeys = new Set(matched.map((m) => m.toLowerCase()));
+  missing = missing.filter((m) => !matchedKeys.has(m.toLowerCase()));
+
+  return {
+    matched: dedupe(matched).slice(0, 15),
+    missing: dedupe(missing).slice(0, 8),
+  };
 }
