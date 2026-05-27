@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { ArrowLeft, MapPin, Building2, Clock } from 'lucide-react';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { JobActions } from './JobActions';
+import { AutoApplyButton } from './AutoApplyButton';
 import { relativeTime, scoreColorClass, scoreLabel, SOURCE_LABELS } from '@/lib/ui';
 
 export const dynamic = 'force-dynamic';
@@ -122,6 +123,21 @@ export default async function JobMatchPage({
         candidateSkills={profile?.insights?.top_skills ?? []}
         applyUrl={job.url}
       />
+
+      {/* Auto Apply — AI agent applies on your behalf */}
+      <div className="card border-amber/20 bg-gradient-to-r from-amber/5 to-transparent">
+        <h2 className="font-semibold text-ink flex items-center gap-2 mb-1">
+          <span className="text-amber">⚡</span> Auto Apply
+        </h2>
+        <p className="text-xs text-stone mb-3">
+          The AI agent will open the company&apos;s career page, fill the form using your
+          Application Profile, upload your ATS resume, and submit — while you watch it live.
+        </p>
+        <AutoApplyButton
+          matchId={match.id}
+          agentUrl={process.env.NEXT_PUBLIC_APPLY_AGENT_URL ?? null}
+        />
+      </div>
 
       <div className="card">
         <h2 className="font-semibold text-ink mb-2">Job description</h2>

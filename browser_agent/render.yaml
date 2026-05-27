@@ -1,0 +1,17 @@
+# Render deployment config for the JobRadar Apply Agent
+# Deploy as a Web Service on Render.com (free tier)
+# Add UptimeRobot to ping /health every 5 minutes to keep it alive
+
+services:
+  - type: web
+    name: jobradar-apply-agent
+    runtime: docker
+    dockerfilePath: ./browser_agent/Dockerfile
+    plan: free
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false   # Set in Render dashboard — never commit the real key
+      - key: BROWSER_HEADLESS
+        value: "true"
+    healthCheckPath: /health
+    autoDeploy: true

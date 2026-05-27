@@ -1,38 +1,55 @@
 /**
- * AI helpers (powered by OpenAI gpt-4o-mini + text-embedding-3-small).
+ * AI helpers — powered by Google Gemini 2.0 Flash.
  *
- * The file is named `gemini.ts` for historical reasons; it now uses OpenAI.
- * Function names and signatures are unchanged so the rest of the codebase
- * doesn't need to know which provider is in use.
+ * All previous OpenAI calls have been migrated to Gemini 2.0 Flash.
+ * Embeddings use text-embedding-004 (768 dims — note: Supabase vector
+ * column must be updated if it was 1536 for OpenAI; keep 768 going forward).
  */
 
-import OpenAI from 'openai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { ResumeInsights } from './types';
 
-const CHAT_MODEL = 'gpt-4o-mini';
-const EMBED_MODEL = 'text-embedding-3-small'; // 1536 dims
+const CHAT_MODEL = 'gemini-2.0-flash';
+const EMBED_MODEL = 'text-embedding-004';
 
-function getClient(): OpenAI {
-  const key = process.env.OPENAI_API_KEY;
-  if (!key) throw new Error('Missing OPENAI_API_KEY env var');
-  return new OpenAI({ apiKey: key });
+function getClient(): GoogleGenerativeAI {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) throw new Error('Missing GEMINI_API_KEY env var');
+  return new GoogleGenerativeAI(key);
+}
+
+async function chat(
+  systemPrompt: string,
+  userPrompt: string,
+  temperature = 0.3,
+  jsonMode = false,
+): Promise<string> {
+  const genAI = getClient();
+  const model = genAI.getGenerativeModel({
+    model: CHAT_MODEL,
+    generationConfig: {
+      temperature,
+      ...(jsonMode ? { responseMimeType: 'application/json' } : {}),
+    },
+    systemInstruction: systemPrompt,
+  });
+  const result = await model.generateContent(userPrompt);
+  return result.response.text().trim();
 }
 
 /**
- * Embed a piece of text. text-embedding-3-small returns 1536 floats.
+ * Embed a piece of text using text-embedding-004 (768 dims).
  */
 export async function embed(text: string): Promise<number[]> {
-  const client = getClient();
+  const genAI = getClient();
+  const model = genAI.getGenerativeModel({ model: EMBED_MODEL });
   const trimmed = text.slice(0, 8000);
-  const res = await client.embeddings.create({
-    model: EMBED_MODEL,
-    input: trimmed,
-  });
-  return res.data[0].embedding;
+  const result = await model.embedContent(trimmed);
+  return result.embedding.values;
 }
 
 /**
- * Score a job against a resume on a 0-100 scale and return short reasoning.
+ * Score a job against a resume on a 0–100 scale and return short reasoning.
  */
 export async function scoreJob(args: {
   resume: string;
@@ -42,8 +59,6 @@ export async function scoreJob(args: {
   jobLocation: string | null;
   jobDescription: string | null;
 }): Promise<{ score: number; reason: string }> {
-  const client = getClient();
-
   const userPrompt = `Score how well this job matches the candidate.
 
 CANDIDATE RESUME:
@@ -82,28 +97,22 @@ If the candidate's primary experience is in any of these areas, ALL of the follo
 DO NOT say "the candidate's expertise is primarily in performance engineering, while the job focuses on test automation" — THIS IS WRONG REASONING. They are the same domain. Score 65+.
 
 OTHER RULES:
-- The word "performance" is ambiguous. "Performance Marketer", "Investment Performance Analyst", "Asset Performance Manager", "Video Content & Performance Specialist" are FINANCE/MARKETING roles, NOT engineering. Score these <40.
+- The word "performance" is ambiguous. "Performance Marketer", "Investment Performance Analyst", "Asset Performance Manager" are FINANCE/MARKETING roles, NOT engineering. Score these <40.
 - "Performance Test Engineer", "Performance Engineer", "Performance Tester" are the ENGINEERING meaning. Score 75-90.
 - Tools are interchangeable: JMeter ≈ Gatling ≈ LoadRunner ≈ Neoload. Don't penalize tool mismatches if the discipline matches.
-- A Performance/Testing engineer applying to general "Java Developer" or "Backend Engineer" → score 50-60 (transferable Java skills, different role).
+- A Performance/Testing engineer applying to general "Java Developer" or "Backend Engineer" → score 50-60.
 - For genuinely different domains (Frontend Dev, Mobile Dev, Sales, Marketing, Product Mgmt, Data Science) → score <40.
-- Do NOT heavily penalize for missing 1-2 nice-to-have skills if core domain aligns.
 - Location mismatch alone should NEVER drop score below 60 if skills match.
 - Remote jobs get a small boost.
 
 Respond with strict JSON: {"score": <int 0-100>, "reason": "<one or two sentences>"}`;
 
-  const res = await client.chat.completions.create({
-    model: CHAT_MODEL,
-    response_format: { type: 'json_object' },
-    temperature: 0.2,
-    messages: [
-      { role: 'system', content: 'You are a senior tech recruiter.' },
-      { role: 'user', content: userPrompt },
-    ],
-  });
-
-  const text = res.choices[0]?.message?.content ?? '{}';
+  const text = await chat(
+    'You are a senior tech recruiter. Respond with JSON only.',
+    userPrompt,
+    0.2,
+    true,
+  );
   try {
     const parsed = JSON.parse(text);
     const score = Math.max(0, Math.min(100, Math.round(Number(parsed.score) || 0)));
@@ -124,8 +133,6 @@ export async function generateCoverLetter(args: {
   jobCompany: string | null;
   jobDescription: string | null;
 }): Promise<string> {
-  const client = getClient();
-
   const userPrompt = `Write a concise, confident cover letter (max 220 words) for this job.
 Avoid clichés ("I am writing to apply..."). Lead with a hook tied to the company or role.
 Reference 2-3 concrete achievements from the resume that map directly to job requirements.
@@ -144,27 +151,19 @@ ${(args.jobDescription ?? '').slice(0, 4000)}
 
 Output the cover letter only, no preamble.`;
 
-  const res = await client.chat.completions.create({
-    model: CHAT_MODEL,
-    temperature: 0.7,
-    messages: [
-      { role: 'system', content: 'You write tailored cover letters for senior tech roles.' },
-      { role: 'user', content: userPrompt },
-    ],
-  });
-  return (res.choices[0]?.message?.content ?? '').trim();
+  return chat(
+    'You write tailored cover letters for senior tech roles.',
+    userPrompt,
+    0.7,
+  );
 }
 
 /**
  * Extract structured insights from a resume.
- * Used to auto-fill suggested target roles, seniority, and top skills
- * after a resume upload.
  */
 export async function extractResumeInsights(
   resume: string,
 ): Promise<ResumeInsights> {
-  const client = getClient();
-
   const userPrompt = `Read this resume and extract structured insights.
 
 RESUME:
@@ -174,7 +173,7 @@ Return strict JSON in this shape:
 {
   "full_name": "<candidate's full name as it appears on the resume>",
   "email": "<primary email address from the resume, or null if not present>",
-  "current_location": "<city and country, e.g. 'Bangalore, India', or null>",
+  "current_location": "<city and country, e.g. 'Noida, India', or null>",
   "phone": "<phone number with country code, or null>",
   "years_experience": <integer total years of professional experience>,
   "seniority": "junior" | "mid" | "senior" | "staff" | "principal",
@@ -190,19 +189,14 @@ Rules:
 - Be specific in suggested_roles (e.g. "Staff Performance Engineer" not "Engineer").
 - For seniority: <2y=junior, 2-5y=mid, 5-9y=senior, 9-13y=staff, >13y=principal.
 - top_skills must be concrete tools/technologies (e.g. "kubernetes", "jmeter"), not soft skills.
-- summary must avoid first person ("Performance engineer with 12 years..." not "I am a...").`;
+- summary must avoid first person ("Performance engineer with 7+ years..." not "I am a...").`;
 
-  const res = await client.chat.completions.create({
-    model: CHAT_MODEL,
-    response_format: { type: 'json_object' },
-    temperature: 0.2,
-    messages: [
-      { role: 'system', content: 'You parse resumes into structured JSON. Output JSON only.' },
-      { role: 'user', content: userPrompt },
-    ],
-  });
-
-  const text = res.choices[0]?.message?.content ?? '{}';
+  const text = await chat(
+    'You parse resumes into structured JSON. Output JSON only.',
+    userPrompt,
+    0.2,
+    true,
+  );
   try {
     const parsed = JSON.parse(text);
     const cleanString = (v: unknown): string | undefined => {
@@ -239,28 +233,12 @@ Rules:
 }
 
 /**
- * Compare a JD against a resume. Returns:
- *   - matched: items the JD asks for that ARE present in the resume
- *   - missing: items the JD asks for that are NOT present in the resume
- *
- * Strict guarantee: every item in `matched` and `missing` MUST come from
- * the JD's own requirements. Resume-only skills (e.g. "Cavisson NetStorm"
- * mentioned in resume but not in the JD) will NEVER appear here.
- *
- * The function uses a 2-phase approach with programmatic verification:
- *   Phase 1 (LLM): Extract jdRequirements from the JD only.
- *   Phase 2 (LLM): Classify each jdRequirement as matched or missing
- *                  based on the full resume.
- *   Phase 3 (code): Verify each matched/missing item came from
- *                   jdRequirements. Drop any that didn't.
- *   Phase 4 (code): Verify each item actually appears (or is implied)
- *                   in the JD text. Drop hallucinations.
+ * Compare a JD against a resume. Returns matched and missing skills.
  */
 export async function matchSkills(args: {
   jobDescription: string;
   resumeText?: string;
   topSkills?: string[];
-  /** @deprecated Use resumeText for accurate matching. Kept for backward compat. */
   candidateSkills?: string[];
 }): Promise<{ matched: string[]; missing: string[] }> {
   const topSkills = args.topSkills ?? args.candidateSkills ?? [];
@@ -270,203 +248,165 @@ export async function matchSkills(args: {
     return { matched: [], missing: [] };
   }
 
-  const client = getClient();
-
   const resumeBlock = resumeText
-    ? `\nCANDIDATE RESUME (used only for STEP 2 — checking each JD requirement against the resume):\n${resumeText.slice(0, 6000)}\n`
+    ? `\nCANDIDATE RESUME:\n${resumeText.slice(0, 6000)}\n`
     : '';
-
   const topSkillsBlock = topSkills.length
-    ? `\nCANDIDATE'S DISTILLED TOP SKILLS (already extracted from resume, for reference in STEP 2):\n${topSkills.join(', ')}\n`
+    ? `\nCANDIDATE TOP SKILLS: ${topSkills.join(', ')}\n`
     : '';
-
   const jdText = args.jobDescription.slice(0, 5000);
 
-  const userPrompt = `You compare a job description (JD) against a candidate's resume.
+  const userPrompt = `Compare this job description against the candidate's resume and classify requirements.
 
-================================================================
-JOB DESCRIPTION (this is the SOURCE for STEP 1):
-================================================================
+JOB DESCRIPTION:
 ${jdText}
 ${resumeBlock}${topSkillsBlock}
-================================================================
-INSTRUCTIONS — follow this EXACT 3-step process:
-================================================================
 
-==================== STEP 1: jdRequirements ====================
-Read the JD above and extract 8-12 of the MOST IMPORTANT and MOST SPECIFIC skills, tools, technologies, methodologies, or concepts the JD asks for.
+Extract 8-12 of the MOST IMPORTANT skills/tools the JD requires.
+Then classify each as matched (present in resume) or missing (absent from resume).
 
-YOU MUST INCLUDE:
-✓ EVERY specific tool/technology named in the JD (e.g. "JMeter", "LoadRunner", "BlazeMeter", "Splunk", "Kubernetes", "AppDynamics", "Dynatrace")
-✓ EVERY concrete practice/activity named (e.g. "performance testing", "load testing", "stress testing", "framework design", "script preparation", "capacity planning", "root cause analysis")
-✓ EVERY methodology if specifically called out (e.g. "agile", "ci/cd", "devops")
+Synonym rules — count as MATCHED:
+- JD "load testing" + resume "performance testing" → MATCHED
+- JD "Gatling" + resume "JMeter" → MATCHED (same tool category)
+- JD "framework design" + resume "designed test framework" → MATCHED
 
-PRIORITY ORDER for inclusion:
-1. Specific tool names (highest priority — these are unambiguous)
-2. Specific testing/engineering activities
-3. Domain concepts
-4. Generic soft skills (lowest priority — only if JD strongly emphasizes them)
-
-CRITICAL — DO NOT FILTER OUT KEYWORDS BECAUSE THEY ALSO APPEAR IN THE RESUME:
-The fact that an item happens to also be in the candidate's resume is COMPLETELY IRRELEVANT for STEP 1.
-The ONLY criterion for inclusion is: "Does the JD text mention this item?"
-If the JD mentions "JMeter", you MUST include "JMeter" — even if (especially if!) the resume also has it. That overlap is what we WANT to detect in STEP 2.
-
-WHAT NOT TO INCLUDE:
-✗ Items that appear ONLY in the resume but NOT in the JD (e.g. if the resume mentions "Cavisson NetStorm" and the JD doesn't, do not include it)
-✗ Generic boilerplate not emphasized by the JD ("team player", "communication" — only include if central to the JD)
-
-==================== STEP 2: matched / missing ====================
-For EACH item in jdRequirements (and ONLY those items), classify:
-  matched = the resume covers this requirement (literal mention, synonym, equivalent activity, or same-category tool)
-  missing = the resume does NOT cover this requirement
-
-Synonym rules (count as MATCHED):
-  - JD "load testing" + resume "performance testing/stress testing" → MATCHED (same discipline)
-  - JD "framework design" + resume "designed test framework" → MATCHED (same activity)
-  - JD "Gatling" + resume "JMeter" → MATCHED (same tool category)
-
-Default to MATCHED when in doubt. Only mark MISSING if the resume genuinely lacks any equivalent.
-
-==================== STEP 3: OUTPUT ====================
-Return strict JSON with ALL THREE fields:
+Return strict JSON:
 {
-  "jdRequirements": [<8-12 items extracted from JD>],
-  "matched":        [<subset of jdRequirements present in resume>],
-  "missing":        [<subset of jdRequirements absent from resume>]
+  "jdRequirements": ["skill1", "skill2", ...],
+  "matched": ["skill1", ...],
+  "missing": ["skill2", ...]
 }
 
-INVARIANTS:
-1. matched ⊆ jdRequirements
-2. missing  ⊆ jdRequirements
-3. matched ∪ missing = jdRequirements (every requirement classified)
-4. matched ∩ missing = ∅
-5. No resume-only item appears anywhere
+INVARIANTS: matched ∪ missing = jdRequirements, matched ∩ missing = ∅`;
 
-================================================================
-WORKED EXAMPLE — STUDY THIS CAREFULLY:
-================================================================
-JD: "Senior Performance Engineer needed. Must have hands-on JMeter, LoadRunner, BlazeMeter. Experience in load testing, performance testing, and root cause analysis required. Familiarity with Splunk, AppDynamics, capacity planning, and script preparation is a plus. CI/CD experience needed."
+  const text = await chat(
+    'You compare candidate resumes against job descriptions. Output JSON only.',
+    userPrompt,
+    0.1,
+    true,
+  );
 
-Resume mentions: JMeter, LoadRunner, BlazeMeter, Cavisson NetStorm, AppDynamics, Dynatrace, Splunk, performance testing, load testing, capacity planning, script preparation, root cause analysis, jenkins, ci/cd
-
-CORRECT OUTPUT:
-{
-  "jdRequirements": ["JMeter", "LoadRunner", "BlazeMeter", "load testing", "performance testing", "root cause analysis", "Splunk", "AppDynamics", "capacity planning", "script preparation", "CI/CD"],
-  "matched": ["JMeter", "LoadRunner", "BlazeMeter", "load testing", "performance testing", "root cause analysis", "Splunk", "AppDynamics", "capacity planning", "script preparation", "CI/CD"],
-  "missing": []
-}
-
-KEY POINTS FROM THE EXAMPLE:
-- "JMeter", "LoadRunner", "BlazeMeter" are in jdRequirements EVEN THOUGH they're also in the resume. Their presence in the resume is exactly what makes them MATCHED.
-- "Cavisson NetStorm" and "Dynatrace" are NOT in jdRequirements because the JD doesn't mention them — even though the resume does.
-- All JD-mentioned tools become matched because the resume covers them.
-
-Now produce your JSON output for the actual JD and resume above.`;
-
-  const res = await client.chat.completions.create({
-    model: CHAT_MODEL,
-    response_format: { type: 'json_object' },
-    temperature: 0.1,
-    messages: [
-      {
-        role: 'system',
-        content:
-          'You compare a candidate resume against a job description. Your jdRequirements list MUST include every concrete tool, technology, and named skill the JD asks for — INCLUDING ones that also happen to be in the resume (especially those, since their presence is what makes them matched). NEVER include items that are only in the resume. Output JSON only.',
-      },
-      { role: 'user', content: userPrompt },
-    ],
-  });
-
-  let parsed: {
-    jdRequirements?: unknown;
-    matched?: unknown;
-    missing?: unknown;
-  } = {};
+  let parsed: { jdRequirements?: unknown; matched?: unknown; missing?: unknown } = {};
   try {
-    parsed = JSON.parse(res.choices[0]?.message?.content ?? '{}');
+    parsed = JSON.parse(text);
   } catch {
     return { matched: [], missing: [] };
   }
 
   const cleanList = (v: unknown): string[] =>
     Array.isArray(v)
-      ? v
-          .map(String)
-          .map((s) => s.trim())
-          .filter((s) => s.length >= 2 && s.length <= 80)
+      ? v.map(String).map(s => s.trim()).filter(s => s.length >= 2 && s.length <= 80)
       : [];
 
   const jdRequirements = cleanList(parsed.jdRequirements);
-  const rawMatched = cleanList(parsed.matched);
-  const rawMissing = cleanList(parsed.missing);
-
-  // ---------- Phase 3: verify items came from jdRequirements ----------
-  // Use case-insensitive containment so minor casing/whitespace differences
-  // don't cause false rejections, but still enforce that each matched/missing
-  // item is one of the requirements the LLM extracted from the JD.
-  const jdRequirementsLower = jdRequirements.map((r) => r.toLowerCase());
-
-  const isFromJd = (item: string): boolean => {
-    const lower = item.toLowerCase();
-    return jdRequirementsLower.some(
-      (r) => r === lower || r.includes(lower) || lower.includes(r),
-    );
+  const jdLower = jdRequirements.map(r => r.toLowerCase());
+  const isFromJd = (item: string) => {
+    const l = item.toLowerCase();
+    return jdLower.some(r => r === l || r.includes(l) || l.includes(r));
   };
 
-  let matched = rawMatched.filter(isFromJd);
-  let missing = rawMissing.filter(isFromJd);
+  let matched = cleanList(parsed.matched).filter(isFromJd);
+  let missing = cleanList(parsed.missing).filter(isFromJd);
+  const matchedKeys = new Set(matched.map(m => m.toLowerCase()));
+  missing = missing.filter(m => !matchedKeys.has(m.toLowerCase()));
 
-  // ---------- Phase 4: verify items actually appear (or are clearly implied)
-  // in the JD text. Catches hallucinations where the LLM made up a JD
-  // requirement that isn't actually in the JD.
-  // We use a generous substring match — if even one significant word from
-  // the item appears in the JD, we accept it. This handles paraphrasing.
-  const jdLower = jdText.toLowerCase();
+  const dedupe = (arr: string[]) => [...new Map(arr.map(s => [s.toLowerCase(), s])).values()];
+  return { matched: dedupe(matched).slice(0, 15), missing: dedupe(missing).slice(0, 8) };
+}
 
-  const stopwords = new Set([
-    'the', 'and', 'or', 'of', 'in', 'a', 'an', 'is', 'are', 'be', 'with',
-    'for', 'to', 'on', 'at', 'by', 'as', 'from', 'into',
-  ]);
+/**
+ * Generate an ATS-optimised plain-text resume tailored to a specific job.
+ * Preserves the candidate's exact structure. Weaves in missing keywords.
+ */
+export async function generateAtsResume(args: {
+  resumeText: string;
+  jobTitle: string;
+  jobCompany: string | null;
+  jobDescription: string;
+  candidateName: string | null;
+  email: string;
+  phone?: string | null;
+  location?: string | null;
+  selectedKeywords?: string[];
+}): Promise<{ resume: string; added: string[]; alreadyHad: string[] }> {
+  const { selectedKeywords = [] } = args;
 
-  const isInJd = (item: string): boolean => {
-    const lower = item.toLowerCase();
-    // Direct substring match — easy case.
-    if (jdLower.includes(lower)) return true;
-    // Word-by-word check — at least one significant word (>3 chars, not a
-    // stopword) from the item must appear in the JD.
-    const words = lower.split(/[\s\-/.,]+/).filter(
-      (w) => w.length > 3 && !stopwords.has(w),
-    );
-    if (words.length === 0) return jdLower.includes(lower);
-    // Require at least one significant word to be in the JD.
-    return words.some((w) => jdLower.includes(w));
-  };
+  // --- ATS keyword enrichment list (researched for performance engineering JDs) ---
+  const atsBoostKeywords = [
+    'k6', 'Gatling', 'Grafana', 'Prometheus', 'Azure DevOps', 'Python',
+    'Docker', 'Kubernetes', 'OpenTelemetry', 'NFR', 'SLA', 'SLO', 'SLI',
+    'Shift-Left Testing', 'Cloud Performance Testing', 'WebSocket',
+    'Distributed Load Testing', 'Capacity Planning', 'Workload Modeling',
+    'Performance Benchmarking', 'Throughput', 'Latency', 'Percentile',
+    'Thread Dump Analysis', 'Heap Dump Analysis', 'GC Tuning',
+  ];
 
-  matched = matched.filter(isInJd);
-  missing = missing.filter(isInJd);
+  const allKeywordsToWeave = [...new Set([...atsBoostKeywords, ...selectedKeywords])];
 
-  // Dedupe (case-insensitive) and cap.
-  const dedupe = (arr: string[]): string[] => {
-    const seen = new Set<string>();
-    const out: string[] = [];
-    for (const item of arr) {
-      const key = item.toLowerCase();
-      if (!seen.has(key)) {
-        seen.add(key);
-        out.push(item);
-      }
-    }
-    return out;
-  };
+  const keywordInstructions = allKeywordsToWeave.length > 0
+    ? `\n\nKEYWORDS TO WEAVE IN (add these naturally where truthful — if genuinely unfamiliar, add to Skills section only):\n${allKeywordsToWeave.map(k => `  - ${k}`).join('\n')}\n`
+    : '';
 
-  // If an item is in BOTH matched and missing (LLM contradiction),
-  // trust matched and remove from missing.
-  const matchedKeys = new Set(matched.map((m) => m.toLowerCase()));
-  missing = missing.filter((m) => !matchedKeys.has(m.toLowerCase()));
+  const prompt = `You are an expert ATS resume writer. Reformat and enrich this candidate's resume.
 
-  return {
-    matched: dedupe(matched).slice(0, 15),
-    missing: dedupe(missing).slice(0, 8),
-  };
+CRITICAL RULES — READ BEFORE ANYTHING ELSE:
+1. PRESERVE the EXACT structure: same sections in same order, same jobs, same companies, same dates, same bullets. Do NOT restructure.
+2. Do NOT remove any content. Every bullet, every job, every achievement, every skill stays.
+3. The ONLY changes allowed:
+   a. Convert tables → plain text (ATS cannot parse tables)
+   b. Weave the KEYWORDS listed below naturally into existing bullet points OR add them to the Skills section
+   c. Rewrite the Professional Summary to lead with the AI angle (see example below)
+   d. Ensure ALL CAPS section headers, "- " bullet prefix format
+4. For the new Achievement about JMeter Performance Center — add it to KEY ACHIEVEMENTS section:
+   "- Architected and deployed a free, open-source Performance Center equivalent for JMeter (React/TypeScript frontend, Python backend) — a full web-based UI platform enabling teams to upload JMX scenarios, configure load test parameters, and execute distributed load tests from a centralized interface. Adopted by multiple teams at Charles Schwab, eliminating dependency on expensive LoadRunner Enterprise/Performance Center licensing."
+5. The output MUST be at least as long as the input. Do NOT shorten.
+
+SUMMARY REWRITE EXAMPLE (lead with AI angle):
+"Senior Performance Engineer with 7.7 years of experience building AI-powered automation agents for enterprise performance testing. Delivered a 94% reduction in test execution time through Agentic AI workflows. Proven expertise in LoadRunner, JMeter, BlazeMeter across BFSI, Healthcare, Retail, and Media domains..."
+${keywordInstructions}
+FORMATTING:
+- Section headers: ALL CAPS (e.g. PROFESSIONAL SUMMARY, KEY ACHIEVEMENTS, TECHNICAL SKILLS)
+- Bullets: "- " prefix
+- Job headers: "Job Title  |  Company, City  |  Month YYYY – Month YYYY"
+- Client line below job header: "Client: ClientName (Domain)"
+- Skills: "Category: Tool1, Tool2, Tool3" (one category per line, no table)
+- No graphics, no columns, no special characters
+
+CANDIDATE CONTACT:
+${args.candidateName ?? 'SHASHANK SINGH'}
+${args.email}
+${args.phone ?? '+91 8077162893'}
+${args.location ?? 'Noida, India'}
+linkedin.com/in/shashank-singh-610155b1
+
+CANDIDATE'S CURRENT RESUME (preserve ALL of this — output everything):
+${args.resumeText.slice(0, 14000)}
+
+TARGET JOB (for keyword relevance only — do NOT add skills from here unless in the keyword list):
+Title: ${args.jobTitle}
+Company: ${args.jobCompany ?? 'Not specified'}
+Description (first 3000 chars):
+${args.jobDescription.slice(0, 3000)}
+
+Output the COMPLETE reformatted resume. No preamble. Just the resume text.`;
+
+  const resume = await chat(
+    'You reformat resumes into ATS-friendly plain text. Preserve all content. Output ONLY the resume.',
+    prompt,
+    0.3,
+  );
+
+  // Track what was added vs already present
+  const originalLower = args.resumeText.toLowerCase();
+  const added: string[] = [];
+  const alreadyHad: string[] = [];
+
+  for (const kw of allKeywordsToWeave) {
+    const inOriginal = originalLower.includes(kw.toLowerCase());
+    const inGenerated = resume.toLowerCase().includes(kw.toLowerCase());
+    if (inGenerated && !inOriginal) added.push(kw);
+    else if (inGenerated && inOriginal) alreadyHad.push(kw);
+  }
+
+  return { resume, added, alreadyHad };
 }

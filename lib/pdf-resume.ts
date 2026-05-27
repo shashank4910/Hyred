@@ -1,392 +1,373 @@
 /**
- * Beautiful PDF Resume Generator
+ * PDF Resume Generator — matches Shashank Singh's exact resume structure.
  *
- * Parses the ATS plain-text resume (which uses SECTION HEADERS IN CAPS
- * and "- " bullet points) into a professionally designed PDF using jsPDF.
+ * Structure (in order):
+ *  1. Header:       Name (large bold) + Title + Contact line
+ *  2. PROFESSIONAL SUMMARY  — paragraph text
+ *  3. KEY ACHIEVEMENTS      — bullet list
+ *  4. TECHNICAL SKILLS      — "Category: Tool1, Tool2, ..." lines
+ *  5. CERTIFICATIONS        — bullet list
+ *  6. PROFESSIONAL EXPERIENCE — per role:
+ *       Job Title  |  Company, City  |  Date Range   (bold header row)
+ *       Client: ClientName (Domain)                  (italic subline)
+ *       - bullet
+ *       - bullet
+ *  7. EDUCATION             — single line
  *
- * Features:
- * - Clean two-tone header with name + contact info
- * - Accent-colored section dividers
- * - Proper typography hierarchy
- * - Skill tags rendered as pill badges
- * - Consistent spacing and margins
- * - Fits nicely on 1-2 pages
+ * Input: plain-text resume produced by generateAtsResume() which uses
+ *   ALL CAPS section headers and "- " bullet prefixes.
  */
 
 import { jsPDF } from 'jspdf';
 
-// ─── Design Tokens ──────────────────────────────────────────────────────────
-
-const COLORS = {
-  primary: [34, 139, 96] as RGB,       // Teal/green accent
-  primaryLight: [235, 250, 244] as RGB, // Very light green for header bg
-  heading: [20, 24, 29] as RGB,         // Near-black for headings
-  body: [45, 55, 72] as RGB,            // Dark gray for body text
-  muted: [107, 114, 128] as RGB,        // Gray for secondary text
-  accent: [34, 139, 96] as RGB,         // Same as primary for bullets
-  white: [255, 255, 255] as RGB,
-  headerBg: [24, 30, 38] as RGB,        // Dark header background
-  headerText: [255, 255, 255] as RGB,   // White text on dark header
-  tagBg: [235, 250, 244] as RGB,        // Light green for skill tags
-  tagText: [34, 139, 96] as RGB,        // Green text for skill tags
-  divider: [229, 231, 235] as RGB,      // Light gray divider
-};
+// ─── Design tokens ────────────────────────────────────────────────────────────
 
 type RGB = [number, number, number];
 
-const FONTS = {
-  heading: 'helvetica',
-  body: 'helvetica',
+const C = {
+  headerBg:    [15, 23, 42]   as RGB,  // deep navy
+  accent:      [234, 179, 8]  as RGB,  // amber — matches JobRadar brand
+  accentLight: [254, 243, 199] as RGB,  // very light amber for skill tag bg
+  white:       [255, 255, 255] as RGB,
+  ink:         [15, 23, 42]   as RGB,  // near-black body text
+  stone:       [100, 116, 139] as RGB,  // muted secondary text
+  divider:     [226, 232, 240] as RGB,  // light rule colour
 };
 
-const LAYOUT = {
-  pageWidth: 595.28,  // A4 pt
-  pageHeight: 841.89, // A4 pt
-  marginLeft: 48,
-  marginRight: 48,
-  marginTop: 48,
-  marginBottom: 56,
-  headerHeight: 80,
-  sectionGap: 16,
-  lineHeight: 14,
-  bulletIndent: 12,
+const L = {
+  pageW:   595.28,  // A4 pt
+  pageH:   841.89,
+  mL:      44,      // left margin
+  mR:      44,      // right margin
+  mBottom: 52,
+  headerH: 88,      // height of the top header band
+  lineH:   13.5,    // standard line height
+  bulletX: 52,      // indent for bullet text (after dot)
 };
 
-// ─── Parser ─────────────────────────────────────────────────────────────────
+const contentW = L.pageW - L.mL - L.mR;
 
-type ResumeSection = {
-  title: string;
-  lines: string[];
-};
+// ─── Plain-text parser ────────────────────────────────────────────────────────
 
-type ParsedResume = {
+interface Section { title: string; lines: string[] }
+interface ParsedResume {
   name: string;
-  contactLines: string[];
-  sections: ResumeSection[];
-};
+  titleLine: string;
+  contactLine: string;
+  sections: Section[];
+}
 
-function parseResumeText(text: string): ParsedResume {
-  const lines = text.split('\n');
+function parse(text: string): ParsedResume {
+  const raw = text.split('\n');
   let name = '';
-  const contactLines: string[] = [];
-  const sections: ResumeSection[] = [];
-  let currentSection: ResumeSection | null = null;
-  let inHeader = true;
+  let titleLine = '';
+  let contactLine = '';
+  const sections: Section[] = [];
+  let cur: Section | null = null;
+  let headerDone = false;
+  let headerLinesSeen = 0;
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
+  for (const rawLine of raw) {
+    const line = rawLine.trimEnd();
+    const trimmed = line.trim();
 
-    // Skip empty lines at the very start
-    if (i === 0 && !line) continue;
+    if (!headerDone) {
+      if (!trimmed) continue;
+      if (!name) { name = trimmed; continue; }
+      if (!titleLine) { titleLine = trimmed; continue; }
+      if (!contactLine) { contactLine = trimmed; headerLinesSeen++; continue; }
+      // Extra header lines (e.g. second contact row) until we hit a section header
+      if (!isSectionHeader(trimmed)) { headerLinesSeen++; continue; }
+      headerDone = true;
+    }
 
-    // First non-empty line is typically the name
-    if (!name && line && inHeader) {
-      name = line;
+    if (isSectionHeader(trimmed)) {
+      cur = { title: trimmed, lines: [] };
+      sections.push(cur);
       continue;
     }
 
-    // Contact info lines (email, phone, location, linkedin) before first section
-    if (inHeader) {
-      if (isSectionHeader(line)) {
-        inHeader = false;
-        currentSection = { title: cleanSectionTitle(line), lines: [] };
-        sections.push(currentSection);
-        continue;
-      }
-      if (line) {
-        contactLines.push(line);
-      }
-      continue;
-    }
-
-    // Section headers (ALL CAPS lines with 3+ chars)
-    if (isSectionHeader(line)) {
-      currentSection = { title: cleanSectionTitle(line), lines: [] };
-      sections.push(currentSection);
-      continue;
-    }
-
-    // Content lines
-    if (currentSection && line) {
-      currentSection.lines.push(line);
-    }
+    if (cur && trimmed) cur.lines.push(trimmed);
   }
 
-  return { name, contactLines, sections };
+  return { name, titleLine, contactLine, sections };
 }
 
 function isSectionHeader(line: string): boolean {
-  const trimmed = line.trim();
-  if (trimmed.length < 3) return false;
-  // ALL CAPS with possible spaces, ampersands, slashes
-  return /^[A-Z\s&\/\-]+$/.test(trimmed) && trimmed.length >= 3;
+  const t = line.trim();
+  if (t.length < 3 || t.length > 60) return false;
+  // All uppercase letters, spaces, ampersands, slashes, hyphens
+  return /^[A-Z][A-Z\s&\/\-]+$/.test(t);
 }
 
-function cleanSectionTitle(line: string): string {
-  return line.trim().replace(/[-=]+$/g, '').trim();
-}
-
-// ─── PDF Generator ──────────────────────────────────────────────────────────
+// ─── PDF builder ──────────────────────────────────────────────────────────────
 
 export function generateBeautifulPdf(resumeText: string): jsPDF {
-  const parsed = parseResumeText(resumeText);
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
-  const contentWidth = LAYOUT.pageWidth - LAYOUT.marginLeft - LAYOUT.marginRight;
+  const parsed = parse(resumeText);
+  let y = 0;
 
-  let y = LAYOUT.marginTop;
+  // ── 1. Header band ──────────────────────────────────────────────────────────
+  doc.setFillColor(...C.headerBg);
+  doc.rect(0, 0, L.pageW, L.headerH, 'F');
 
-  // ─── Header Block ──────────────────────────────────────────────────────
-  // Dark header background
-  doc.setFillColor(...COLORS.headerBg);
-  doc.rect(0, 0, LAYOUT.pageWidth, LAYOUT.headerHeight + 20, 'F');
-
-  // Accent bar at top
-  doc.setFillColor(...COLORS.primary);
-  doc.rect(0, 0, LAYOUT.pageWidth, 4, 'F');
+  // Amber accent bar at very top
+  doc.setFillColor(...C.accent);
+  doc.rect(0, 0, L.pageW, 4, 'F');
 
   // Name
-  doc.setFont(FONTS.heading, 'bold');
-  doc.setFontSize(22);
-  doc.setTextColor(...COLORS.headerText);
-  y = 42;
-  doc.text(parsed.name || 'Resume', LAYOUT.marginLeft, y);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(21);
+  doc.setTextColor(...C.white);
+  y = 32;
+  doc.text(parsed.name || 'Resume', L.mL, y);
 
-  // Contact info - single line or two lines
-  doc.setFont(FONTS.body, 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(200, 210, 220);
-  y += 22;
-
-  const contactStr = parsed.contactLines.join('  |  ');
-  if (contactStr.length > 90) {
-    // Split into two lines
-    const mid = Math.ceil(parsed.contactLines.length / 2);
-    const line1 = parsed.contactLines.slice(0, mid).join('  |  ');
-    const line2 = parsed.contactLines.slice(mid).join('  |  ');
-    doc.text(line1, LAYOUT.marginLeft, y);
-    y += 13;
-    doc.text(line2, LAYOUT.marginLeft, y);
-  } else {
-    doc.text(contactStr, LAYOUT.marginLeft, y);
+  // Title (if present)
+  if (parsed.titleLine) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(...C.accent);
+    y += 17;
+    doc.text(parsed.titleLine, L.mL, y);
   }
 
-  y = LAYOUT.headerHeight + 20 + 20; // Below header with some padding
-
-  // ─── Body Sections ─────────────────────────────────────────────────────
-  for (let si = 0; si < parsed.sections.length; si++) {
-    const section = parsed.sections[si];
-
-    // Check if we need a new page
-    if (y > LAYOUT.pageHeight - LAYOUT.marginBottom - 60) {
-      doc.addPage();
-      y = LAYOUT.marginTop;
-    }
-
-    // Section divider
-    if (si > 0) {
-      y += 6;
-    }
-
-    // Section header with accent line
-    doc.setFillColor(...COLORS.primary);
-    doc.rect(LAYOUT.marginLeft, y, contentWidth, 1.5, 'F');
-    y += 12;
-
-    doc.setFont(FONTS.heading, 'bold');
-    doc.setFontSize(10.5);
-    doc.setTextColor(...COLORS.heading);
-    doc.text(section.title, LAYOUT.marginLeft, y);
-    y += 16;
-
-    // Section content
-    const isSkillsSection = /skill|tech|competenc/i.test(section.title);
-
-    if (isSkillsSection) {
-      // Render skills as tags/pills
-      y = renderSkillTags(doc, section.lines, y, contentWidth);
+  // Contact line
+  if (parsed.contactLine) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(180, 195, 215);
+    y += 15;
+    // Split if too long
+    const parts = parsed.contactLine.split(/\s*[•|]\s*/);
+    if (parts.length > 3) {
+      const half = Math.ceil(parts.length / 2);
+      doc.text(parts.slice(0, half).join('   •   '), L.mL, y);
+      y += 11;
+      doc.text(parts.slice(half).join('   •   '), L.mL, y);
     } else {
-      y = renderSectionContent(doc, section.lines, y, contentWidth);
+      doc.text(parsed.contactLine, L.mL, y);
+    }
+  }
+
+  y = L.headerH + 16;
+
+  // ── 2. Body sections ────────────────────────────────────────────────────────
+  for (let si = 0; si < parsed.sections.length; si++) {
+    const sec = parsed.sections[si];
+    const isLast = si === parsed.sections.length - 1;
+
+    // Page break check (leave room for section header + at least 2 lines)
+    if (y > L.pageH - L.mBottom - 50) {
+      doc.addPage();
+      y = 28;
     }
 
-    y += LAYOUT.sectionGap;
+    y = renderSectionHeader(doc, sec.title, y);
+
+    if (/SKILL|TECH|COMPETENC/i.test(sec.title)) {
+      y = renderSkillsSection(doc, sec.lines, y);
+    } else if (/EXPERIENCE|EMPLOYMENT|WORK HIST/i.test(sec.title)) {
+      y = renderExperienceSection(doc, sec.lines, y);
+    } else {
+      y = renderBulletSection(doc, sec.lines, y);
+    }
+
+    if (!isLast) y += 6;
   }
 
   return doc;
 }
 
-function renderSkillTags(
-  doc: jsPDF,
-  lines: string[],
-  startY: number,
-  contentWidth: number,
-): number {
-  let y = startY;
+// ─── Section header ────────────────────────────────────────────────────────────
 
-  // Combine all lines into skills
-  const allSkills: string[] = [];
-  for (const line of lines) {
-    const cleaned = line.replace(/^[-•*]\s*/, '');
-    // Split by commas, pipes, or "•"
-    const parts = cleaned.split(/[,|•]+/).map(s => s.trim()).filter(Boolean);
-    allSkills.push(...parts);
-  }
+function renderSectionHeader(doc: jsPDF, title: string, y: number): number {
+  // Amber rule
+  doc.setFillColor(...C.accent);
+  doc.rect(L.mL, y, contentW, 1.5, 'F');
+  y += 11;
 
-  if (allSkills.length === 0) {
-    // Fallback: render as regular text
-    return renderSectionContent(doc, lines, startY, contentWidth);
-  }
-
-  // Render as pill tags
-  const tagHeight = 17;
-  const tagPaddingX = 8;
-  const tagGapX = 6;
-  const tagGapY = 6;
-  let x = LAYOUT.marginLeft;
-  const maxX = LAYOUT.marginLeft + contentWidth;
-
-  doc.setFont(FONTS.body, 'normal');
-  doc.setFontSize(8.5);
-
-  for (const skill of allSkills) {
-    const textWidth = doc.getTextWidth(skill);
-    const tagWidth = textWidth + tagPaddingX * 2;
-
-    // Wrap to next line if doesn't fit
-    if (x + tagWidth > maxX) {
-      x = LAYOUT.marginLeft;
-      y += tagHeight + tagGapY;
-
-      // Check page break
-      if (y > LAYOUT.pageHeight - LAYOUT.marginBottom - 30) {
-        doc.addPage();
-        y = LAYOUT.marginTop;
-      }
-    }
-
-    // Draw tag background (rounded rect)
-    doc.setFillColor(...COLORS.tagBg);
-    doc.roundedRect(x, y - 11, tagWidth, tagHeight, 3, 3, 'F');
-
-    // Draw tag border
-    doc.setDrawColor(...COLORS.primary);
-    doc.setLineWidth(0.5);
-    doc.roundedRect(x, y - 11, tagWidth, tagHeight, 3, 3, 'S');
-
-    // Draw tag text
-    doc.setTextColor(...COLORS.tagText);
-    doc.text(skill, x + tagPaddingX, y + 1);
-
-    x += tagWidth + tagGapX;
-  }
-
-  y += tagHeight + 4;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(...C.ink);
+  doc.text(title, L.mL, y);
+  y += 13;
   return y;
 }
 
-function renderSectionContent(
-  doc: jsPDF,
-  lines: string[],
-  startY: number,
-  contentWidth: number,
-): number {
+// ─── Generic bullet / paragraph section ───────────────────────────────────────
+
+function renderBulletSection(doc: jsPDF, lines: string[], startY: number): number {
   let y = startY;
-
   for (const line of lines) {
-    // Check page break
-    if (y > LAYOUT.pageHeight - LAYOUT.marginBottom - 20) {
-      doc.addPage();
-      y = LAYOUT.marginTop;
-    }
-
+    y = checkPageBreak(doc, y, 20);
     const isBullet = /^[-•*]\s/.test(line);
-    const isSubheading = isJobTitleLine(line);
+    const text = isBullet ? line.replace(/^[-•*]\s*/, '') : line;
 
-    if (isSubheading) {
-      // Job title / company line — bold, slightly larger
-      y += 4;
-      doc.setFont(FONTS.heading, 'bold');
-      doc.setFontSize(9.5);
-      doc.setTextColor(...COLORS.heading);
+    if (isBullet) {
+      // Amber dot
+      doc.setFillColor(...C.accent);
+      doc.circle(L.mL + 3.5, y - 2.8, 2, 'F');
 
-      const wrappedLines = doc.splitTextToSize(line, contentWidth);
-      for (const wl of wrappedLines) {
-        if (y > LAYOUT.pageHeight - LAYOUT.marginBottom - 20) {
-          doc.addPage();
-          y = LAYOUT.marginTop;
-        }
-        doc.text(wl, LAYOUT.marginLeft, y);
-        y += LAYOUT.lineHeight;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(...C.ink);
+      const wrapped = doc.splitTextToSize(text, contentW - 14);
+      for (let i = 0; i < wrapped.length; i++) {
+        y = checkPageBreak(doc, y, 14);
+        doc.text(wrapped[i], L.bulletX, y);
+        y += L.lineH;
       }
       y += 2;
-    } else if (isBullet) {
-      // Bullet point
-      const text = line.replace(/^[-•*]\s*/, '');
-      const bulletX = LAYOUT.marginLeft + 4;
-      const textX = LAYOUT.marginLeft + LAYOUT.bulletIndent;
-      const bulletWidth = contentWidth - LAYOUT.bulletIndent;
-
-      // Draw accent bullet dot
-      doc.setFillColor(...COLORS.accent);
-      doc.circle(bulletX + 1.5, y - 3, 2, 'F');
-
-      // Draw text
-      doc.setFont(FONTS.body, 'normal');
-      doc.setFontSize(9);
-      doc.setTextColor(...COLORS.body);
-
-      const wrappedLines = doc.splitTextToSize(text, bulletWidth);
-      for (let i = 0; i < wrappedLines.length; i++) {
-        if (y > LAYOUT.pageHeight - LAYOUT.marginBottom - 20) {
-          doc.addPage();
-          y = LAYOUT.marginTop;
-        }
-        doc.text(wrappedLines[i], i === 0 ? textX : textX, y);
-        y += LAYOUT.lineHeight - 1;
-      }
-      y += 3;
     } else {
-      // Regular text line (dates, descriptions)
-      doc.setFont(FONTS.body, 'normal');
+      // Plain paragraph / cert name / education line
+      doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
-
-      // Check if it looks like a date/duration line
-      if (/\d{4}|present|current/i.test(line) && line.length < 60) {
-        doc.setTextColor(...COLORS.muted);
-        doc.setFontSize(8.5);
-      } else {
-        doc.setTextColor(...COLORS.body);
-      }
-
-      const wrappedLines = doc.splitTextToSize(line, contentWidth);
-      for (const wl of wrappedLines) {
-        if (y > LAYOUT.pageHeight - LAYOUT.marginBottom - 20) {
-          doc.addPage();
-          y = LAYOUT.marginTop;
-        }
-        doc.text(wl, LAYOUT.marginLeft, y);
-        y += LAYOUT.lineHeight - 1;
+      doc.setTextColor(...C.ink);
+      const wrapped = doc.splitTextToSize(text, contentW);
+      for (const wl of wrapped) {
+        y = checkPageBreak(doc, y, 14);
+        doc.text(wl, L.mL, y);
+        y += L.lineH;
       }
       y += 2;
     }
   }
-
   return y;
 }
 
-/**
- * Heuristic: detect job title / company lines
- * e.g. "Senior Engineer — Google (2020–2024)"
- * or "Performance Engineer | Company Name"
- */
+// ─── Technical skills section ─────────────────────────────────────────────────
+// Expects lines like: "Performance Testing: JMeter, LoadRunner, Gatling"
+
+function renderSkillsSection(doc: jsPDF, lines: string[], startY: number): number {
+  let y = startY;
+  for (const line of lines) {
+    y = checkPageBreak(doc, y, 16);
+    const colonIdx = line.indexOf(':');
+    if (colonIdx > 0) {
+      const category = line.slice(0, colonIdx).trim();
+      const tools = line.slice(colonIdx + 1).trim();
+
+      // Category label (bold amber)
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(...C.accent);
+      const catW = doc.getTextWidth(category + ': ');
+      doc.text(category + ':', L.mL, y);
+
+      // Tools value (normal ink) — wrap if overflows
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(...C.ink);
+      const toolsWrapped = doc.splitTextToSize(tools, contentW - catW - 2);
+      for (let i = 0; i < toolsWrapped.length; i++) {
+        y = checkPageBreak(doc, y, 14);
+        doc.text(toolsWrapped[i], L.mL + catW + 2, y);
+        if (i < toolsWrapped.length - 1) y += L.lineH - 1;
+      }
+      y += L.lineH;
+    } else {
+      // Fallback — render as plain line
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(...C.ink);
+      doc.text(line.replace(/^[-•*]\s*/, ''), L.mL, y);
+      y += L.lineH;
+    }
+  }
+  return y;
+}
+
+// ─── Professional Experience section ──────────────────────────────────────────
+// Detects job header lines (contain | or — separating title from company)
+// and client lines ("Client: ...") to render them with special styling.
+
+function renderExperienceSection(doc: jsPDF, lines: string[], startY: number): number {
+  let y = startY;
+
+  for (const line of lines) {
+    y = checkPageBreak(doc, y, 20);
+    const isBullet = /^[-•*]\s/.test(line);
+    const isClient = /^client:/i.test(line);
+    const isJobHeader = !isBullet && !isClient && isJobTitleLine(line);
+
+    if (isJobHeader) {
+      // Extra space before each new role
+      y += 4;
+      y = checkPageBreak(doc, y, 22);
+
+      // Light background row for job header
+      doc.setFillColor(248, 250, 252);
+      doc.rect(L.mL - 4, y - 10, contentW + 8, 14, 'F');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9.5);
+      doc.setTextColor(...C.ink);
+      const wrapped = doc.splitTextToSize(line, contentW);
+      for (const wl of wrapped) {
+        y = checkPageBreak(doc, y, 14);
+        doc.text(wl, L.mL, y);
+        y += 13;
+      }
+
+    } else if (isClient) {
+      // Client line in italic amber
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(8.5);
+      doc.setTextColor(...C.accent);
+      const wrapped = doc.splitTextToSize(line, contentW);
+      for (const wl of wrapped) {
+        y = checkPageBreak(doc, y, 12);
+        doc.text(wl, L.mL, y);
+        y += 11;
+      }
+      y += 2;
+
+    } else if (isBullet) {
+      const text = line.replace(/^[-•*]\s*/, '');
+      doc.setFillColor(...C.accent);
+      doc.circle(L.mL + 3.5, y - 2.8, 2, 'F');
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(...C.ink);
+      const wrapped = doc.splitTextToSize(text, contentW - 14);
+      for (let i = 0; i < wrapped.length; i++) {
+        y = checkPageBreak(doc, y, 14);
+        doc.text(wrapped[i], L.bulletX, y);
+        y += L.lineH;
+      }
+      y += 1.5;
+
+    } else {
+      // Plain line
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(...C.stone);
+      const wrapped = doc.splitTextToSize(line, contentW);
+      for (const wl of wrapped) {
+        y = checkPageBreak(doc, y, 13);
+        doc.text(wl, L.mL, y);
+        y += L.lineH;
+      }
+    }
+  }
+  return y;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function isJobTitleLine(line: string): boolean {
-  // Contains a dash/pipe separating title from company, or has date range
-  const hasCompanyPatterns =
-    /[—–|]/.test(line) ||
-    /\(\d{4}/.test(line) ||
-    /\d{4}\s*[-–]\s*(present|\d{4})/i.test(line);
+  if (/^[-•*]\s/.test(line)) return false;
+  return (
+    /[|—–]/.test(line) ||
+    /\d{4}\s*[-–]\s*(present|current|\d{4})/i.test(line) ||
+    /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b.{0,30}\d{4}/i.test(line)
+  );
+}
 
-  const isBullet = /^[-•*]\s/.test(line);
-  const isShort = line.length < 120;
-
-  return !isBullet && isShort && hasCompanyPatterns;
+function checkPageBreak(doc: jsPDF, y: number, neededHeight: number): number {
+  if (y + neededHeight > L.pageH - L.mBottom) {
+    doc.addPage();
+    return 28;
+  }
+  return y;
 }

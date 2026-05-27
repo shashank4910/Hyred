@@ -12,13 +12,15 @@ import {
   X,
   Radar,
   Link2,
+  Rocket,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const NAV = [
   { href: '/', label: 'Matches', icon: LayoutDashboard },
   { href: '/import', label: 'Import URL', icon: Link2 },
-  { href: '/onboarding', label: 'Profile', icon: User },
+  { href: '/onboarding', label: 'Resume', icon: User },
+  { href: '/apply-profile', label: 'Apply Profile', icon: Rocket },
   { href: '/stats', label: 'Stats', icon: BarChart3 },
 ];
 
