@@ -239,45 +239,95 @@ Rules:
 }
 
 /**
- * Given a job description and a list of candidate skills, return which
- * skills are mentioned in the JD. Used for the skill-match visualization.
+ * Extract the JD's key skill/technology requirements and check each one
+ * against the FULL RESUME (not just top_skills).
+ *
+ * This is an inverse-match: instead of "which of these 12 skills appear in JD?",
+ * we ask "for each JD requirement, is it in the resume (literally or as a
+ * synonym/equivalent)?". This catches keywords that exist anywhere in work
+ * experience bullets, not just in the distilled top_skills array.
+ *
+ * Returns { matched, missing } where:
+ *   - matched: JD requirements that ARE present in the resume
+ *   - missing: JD requirements that are NOT in the resume
  */
 export async function matchSkills(args: {
   jobDescription: string;
-  candidateSkills: string[];
+  resumeText?: string;
+  topSkills?: string[];
+  /** @deprecated Use resumeText for accurate matching. Kept for backward compat. */
+  candidateSkills?: string[];
 }): Promise<{ matched: string[]; missing: string[] }> {
-  if (!args.candidateSkills.length) return { matched: [], missing: [] };
+  // Backward compat: if only candidateSkills is provided, use it as topSkills
+  const topSkills = args.topSkills ?? args.candidateSkills ?? [];
+  const resumeText = args.resumeText ?? '';
+
+  // If we have neither resume nor any skills, nothing to match against
+  if (!resumeText && topSkills.length === 0) {
+    return { matched: [], missing: [] };
+  }
 
   const client = getClient();
 
-  const userPrompt = `Given a job description and a list of candidate skills, identify which candidate skills are mentioned or strongly implied by the JD, and which key skills the JD asks for that the candidate is missing.
+  // The resume is the source of truth. We give GPT both the full resume text
+  // AND the distilled top skills so it can do thorough matching.
+  const resumeBlock = resumeText
+    ? `\nFULL RESUME (this is the SOURCE OF TRUTH for what the candidate has):\n${resumeText.slice(0, 6000)}\n`
+    : '';
 
-CANDIDATE SKILLS:
-${args.candidateSkills.join(', ')}
+  const topSkillsBlock = topSkills.length
+    ? `\nDISTILLED TOP SKILLS (extracted from resume, for reference):\n${topSkills.join(', ')}\n`
+    : '';
 
-JOB DESCRIPTION:
-${args.jobDescription.slice(0, 4000)}
+  const userPrompt = `You are evaluating whether a candidate's resume covers the requirements of a job description.
 
-Return strict JSON:
+STEP 1: Extract the 8-12 most important skills, technologies, tools, methodologies, and concepts the JD asks for. Include both:
+  - Specific tools (e.g. "JMeter", "Kubernetes", "Splunk")
+  - Domain concepts (e.g. "performance testing", "load testing", "framework design", "script preparation")
+  - Soft methodologies if specifically called out (e.g. "agile", "stakeholder management")
+
+STEP 2: For EACH requirement, search the candidate's full resume to determine if it is present.
+A requirement counts as PRESENT if:
+  - The exact term appears in the resume (case-insensitive, e.g. "JMeter" matches "jmeter")
+  - A direct synonym or equivalent appears (e.g. JD says "load testing" and resume says "performance testing" or "stress testing" — these are the same discipline → MATCHED)
+  - The resume describes work that is unambiguously the same activity (e.g. JD asks "framework design", resume says "designed test framework" → MATCHED)
+  - A specific tool from the same category is mentioned (e.g. JD says "Gatling", resume says "JMeter" — both are load testing tools → MATCHED with note)
+
+A requirement is MISSING only if there is genuinely NO mention of it or any equivalent in the resume.
+
+STEP 3: Return strict JSON:
 {
-  "matched": [<candidate skills that appear in the JD>],
-  "missing": [<up to 6 important skills the JD asks for that aren't in the candidate's list>]
-}`;
+  "matched": [<JD requirements that ARE in the resume — use the JD's wording>],
+  "missing": [<JD requirements NOT in the resume — be honest, only include if truly absent>]
+}
+
+IMPORTANT: Default to MATCHED when in doubt. False "missing" claims are worse than false "matched" claims because they discourage applications. Only mark as missing if you've thoroughly searched the resume and the requirement is genuinely absent.
+
+${resumeBlock}${topSkillsBlock}
+JOB DESCRIPTION:
+${args.jobDescription.slice(0, 5000)}`;
 
   const res = await client.chat.completions.create({
     model: CHAT_MODEL,
     response_format: { type: 'json_object' },
     temperature: 0.1,
-    messages: [{ role: 'user', content: userPrompt }],
+    messages: [
+      {
+        role: 'system',
+        content:
+          'You compare a candidate resume against a job description and identify which JD requirements are present vs absent. Be inclusive — give the candidate the benefit of the doubt when the resume describes equivalent work. Output JSON only.',
+      },
+      { role: 'user', content: userPrompt },
+    ],
   });
 
   try {
     const parsed = JSON.parse(res.choices[0]?.message?.content ?? '{}');
     const matched = Array.isArray(parsed.matched)
-      ? parsed.matched.map(String).filter((s: string) => args.candidateSkills.includes(s))
+      ? parsed.matched.map(String).slice(0, 15)
       : [];
     const missing = Array.isArray(parsed.missing)
-      ? parsed.missing.slice(0, 6).map(String)
+      ? parsed.missing.map(String).slice(0, 8)
       : [];
     return { matched, missing };
   } catch {
