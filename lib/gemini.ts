@@ -421,20 +421,24 @@ function normalizeAscii(s: string): string {
  * Clean a job-listing title down to a recruiter-presentable role title.
  * The JD's listing title is full of noise that should never reach the
  * candidate's resume - department codes (CX, RX), version numbers (II, III),
- * year ranges, location pipes, hiring tail words, parenthetical departments.
+ * year ranges, location pipes, hiring tail words, parenthetical departments,
+ * dash-separated designations ("- Assistant Manager"), and slash-separated
+ * specializations ("/ Backend").
  * If the parenthetical contents look like a real role (engineer / tester /
  * developer / etc.), prefer the parenthetical because it's usually the
  * better-formed title (e.g. "Tester II, Product (Performance Tester)" =>
  * "Performance Tester").
  *
  * Examples:
- *   "Specialist Performance Engineer, CX"       -> "Specialist Performance Engineer"
- *   "Tester II, Product (Performance Tester)"   -> "Performance Tester"
- *   "Sr Performance Engineer - 5-8 yrs - Pune"  -> "Sr Performance Engineer"
- *   "Performance Tester | Bangalore | Hybrid"   -> "Performance Tester"
- *   "Senior SDET (BFSI)"                        -> "Senior SDET"
- *   "QA Engineer III"                           -> "QA Engineer"
- *   ""                                          -> "Senior Performance Engineer" (fallback)
+ *   "Specialist Performance Engineer, CX"                       -> "Specialist Performance Engineer"
+ *   "Tester II, Product (Performance Tester)"                   -> "Performance Tester"
+ *   "Senior Performance Testing Engineer - Assistant Manager"   -> "Senior Performance Testing Engineer"
+ *   "Performance Engineer / Backend"                            -> "Performance Engineer"
+ *   "Sr Performance Engineer - 5-8 yrs - Pune"                  -> "Sr Performance Engineer"
+ *   "Performance Tester | Bangalore | Hybrid"                   -> "Performance Tester"
+ *   "Senior SDET (BFSI)"                                        -> "Senior SDET"
+ *   "QA Engineer III"                                           -> "QA Engineer"
+ *   ""                                                          -> "Senior Performance Engineer" (fallback)
  */
 function cleanJdTitle(raw: string): string {
   const ROLE_RE = /\b(engineer|tester|developer|analyst|architect|consultant|specialist|sdet|sre|administrator|coordinator|lead|manager|designer|technician|scientist|programmer)\b/i;
@@ -453,7 +457,30 @@ function cleanJdTitle(raw: string): string {
   // 2. Strip everything after the first comma (department/location).
   t = t.split(',')[0].trim();
 
-  // 3. Strip year ranges ("- 4 to 8 years", "- 5-8 yrs").
+  // 2.5. Strip " - " and " / " separators with everything after them, IF
+  //      the part BEFORE the separator already contains a role keyword.
+  //      The role-keyword guard prevents us from accidentally stripping the
+  //      actual role (e.g. "Senior - Performance Engineer" stays untouched
+  //      because "Senior" alone has no role keyword).
+  //      Catches noise like:
+  //        "Senior Performance Testing Engineer - Assistant Manager"
+  //          -> "Senior Performance Testing Engineer"
+  //        "QA Engineer / Backend" -> "QA Engineer"
+  //        "Performance Tester - Banking" -> "Performance Tester"
+  for (const sep of [' - ', ' / ']) {
+    const idx = t.indexOf(sep);
+    if (idx > 0) {
+      const before = t.slice(0, idx).trim();
+      if (ROLE_RE.test(before)) {
+        t = before;
+        break;
+      }
+    }
+  }
+
+  // 3. Strip year ranges ("- 4 to 8 years", "- 5-8 yrs"). Largely redundant
+  //    after step 2.5 but kept as a safety net for "Engineer- 5 yrs" without
+  //    the surrounding spaces that step 2.5 requires.
   t = t.replace(/\s*-\s*\d.*$/i, '').trim();
 
   // 4. Strip pipe-separated trail (location, work mode).
@@ -639,7 +666,7 @@ CRITICAL RULES:
 
 ROLE TITLE ALIGNMENT (important for ATS scoring - the candidate explicitly asked for this):
 - Set the candidate's CURRENT (most recent) role title in PROFESSIONAL EXPERIENCE to: ${targetCurrentRoleTitle}
-- The title above has ALREADY been cleaned of department codes (CX, RX), version numbers (II, III), parenthetical noise, year ranges, and location/hiring tails. Use it EXACTLY AS GIVEN. Do NOT append anything from the original JD posting like ", CX", ", Product", "II", "WFH", or any parenthetical - those would tip off a recruiter that the title was machine-pasted from a job listing.
+- The title above has ALREADY been cleaned of department codes (CX, RX), version numbers (II, III), parenthetical noise, year ranges, location/hiring tails, and dash-separated designations (e.g. "- Assistant Manager", "- Senior Manager", "- Vice President", "/ Backend"). Use it EXACTLY AS GIVEN. Do NOT append anything from the original JD posting like ", CX", ", Product", "II", "WFH", "- Assistant Manager", or any parenthetical - those would tip off a recruiter that the title was machine-pasted from a job listing.
 - This replaces whatever current-role title is in the candidate's input resume. The candidate's actual responsibilities are unchanged - only the title label is aligned with the JD's wording so the ATS title-match component scores higher.
 - Past roles (every role except the most recent one) MUST keep their original titles from the input resume. Do not change historical titles.
 - Use the exact same cleaned title as a tagline on line 2 of the contact block (described below).
