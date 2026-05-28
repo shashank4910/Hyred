@@ -343,8 +343,92 @@ INVARIANTS: matched ∪ missing = jdRequirements, matched ∩ missing = ∅`;
 }
 
 /**
+ * Extract ATS-relevant keywords from a specific job description using the LLM.
+ * Used as Pass 1 of the two-pass ATS resume generation: we first identify
+ * what THIS specific JD is asking for, then we tailor the resume around those
+ * keywords. This is what makes the resume genuinely "tailored per JD" rather
+ * than "padded with a static perf-eng keyword list".
+ */
+export async function extractJdKeywords(args: {
+  jobTitle: string;
+  jobDescription: string;
+}): Promise<string[]> {
+  if (!args.jobDescription || args.jobDescription.length < 50) return [];
+
+  const userPrompt = `Extract the ATS-relevant keywords from this job description.
+
+ATS keywords are the specific tools, technologies, frameworks, methodologies,
+certifications, and named processes an automated resume scanner would search
+for. Skip vague soft-skill phrases ("strong communicator", "team player",
+"self-starter").
+
+JOB TITLE: ${args.jobTitle}
+
+JOB DESCRIPTION:
+${args.jobDescription.slice(0, 7000)}
+
+RULES:
+- Use the EXACT phrasing from the JD whenever possible (e.g., if the JD says
+  "JMeter" return "JMeter", not "Apache JMeter"; if it says "load testing"
+  return "load testing", not "performance testing").
+- Include tool/framework names: JMeter, Kubernetes, Splunk, Dynatrace, etc.
+- Include methodologies: Shift-Left Testing, TDD, Agile, etc.
+- Include certifications when explicitly mentioned: PMP, AWS Certified, etc.
+- Include named domain abbreviations: NFR, SLA, SLO, BFSI, etc.
+- Each keyword: 1-3 words max.
+- Order by importance: most-mentioned + must-have requirements first.
+- Skip generic words: "communication", "leadership", "passion", "ownership".
+- Aim for 18-25 keywords. Fewer is fine if the JD is short.
+
+Return strict JSON: {"keywords": ["keyword1", "keyword2", ...]}`;
+
+  const text = await chat(
+    'You extract ATS keywords from job descriptions. Output JSON only.',
+    userPrompt,
+    0.1,
+    true,
+  );
+
+  try {
+    const parsed = JSON.parse(text);
+    const list: unknown[] = Array.isArray(parsed.keywords) ? parsed.keywords : [];
+    const cleaned: string[] = list
+      .map((v) => String(v).trim())
+      .filter((s) => s.length >= 2 && s.length <= 60);
+    return [...new Set(cleaned)].slice(0, 25);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Replace common non-ASCII characters with ASCII equivalents. Older ATS
+ * parsers (Taleo, iCIMS) sometimes choke on smart quotes, em-dashes, and
+ * unicode bullets. Defense-in-depth on top of the prompt's "ASCII only" rule.
+ */
+function normalizeAscii(s: string): string {
+  return s
+    .replace(/[\u2014\u2013]/g, '-')          // em-dash, en-dash
+    .replace(/[\u2018\u2019\u201A\u201B]/g, "'") // smart single quotes
+    .replace(/[\u201C\u201D\u201E\u201F]/g, '"') // smart double quotes
+    .replace(/[\u2022\u25CF\u25E6\u2043\u00B7]/g, '-') // bullet variants
+    .replace(/\u00A0/g, ' ')                  // non-breaking space
+    .replace(/\u2026/g, '...')                // ellipsis
+    .replace(/[\u200B-\u200D\uFEFF]/g, '');   // zero-width chars
+}
+
+/**
  * Generate an ATS-optimised plain-text resume tailored to a specific job.
- * Preserves the candidate's exact structure. Weaves in missing keywords.
+ *
+ * Two-pass design:
+ *   1. extractJdKeywords() reads the JD and returns the keywords that matter
+ *      for THIS job (not a static list).
+ *   2. The resume prompt is built around those JD keywords, with conditional
+ *      directives (AI summary only if JD mentions AI; JMeter Performance
+ *      Center bullet only for performance/test/QA roles).
+ *
+ * Returns an honest ATS Match Score (% of JD keywords actually present in
+ * the generated resume) so the user can see whether to regenerate.
  */
 export async function generateAtsResume(args: {
   resumeText: string;
@@ -356,85 +440,146 @@ export async function generateAtsResume(args: {
   phone?: string | null;
   location?: string | null;
   selectedKeywords?: string[];
-}): Promise<{ resume: string; added: string[]; alreadyHad: string[] }> {
+  jdKeywords?: string[]; // optional: caller can supply pre-extracted keywords
+}): Promise<{
+  resume: string;
+  ats_match_score: number;
+  jd_keywords: string[];
+  added: string[];
+  alreadyHad: string[];
+  missing: string[];
+}> {
   const { selectedKeywords = [] } = args;
 
-  // --- ATS keyword enrichment list (researched for performance engineering JDs) ---
-  const atsBoostKeywords = [
-    'k6', 'Gatling', 'Grafana', 'Prometheus', 'Azure DevOps', 'Python',
-    'Docker', 'Kubernetes', 'OpenTelemetry', 'NFR', 'SLA', 'SLO', 'SLI',
-    'Shift-Left Testing', 'Cloud Performance Testing', 'WebSocket',
-    'Distributed Load Testing', 'Capacity Planning', 'Workload Modeling',
-    'Performance Benchmarking', 'Throughput', 'Latency', 'Percentile',
-    'Thread Dump Analysis', 'Heap Dump Analysis', 'GC Tuning',
-  ];
+  // ── Pass 1: extract JD-specific keywords (unless caller already did) ────────
+  const jdKeywords = args.jdKeywords?.length
+    ? args.jdKeywords
+    : await extractJdKeywords({
+        jobTitle: args.jobTitle,
+        jobDescription: args.jobDescription,
+      });
 
-  const allKeywordsToWeave = [...new Set([...atsBoostKeywords, ...selectedKeywords])];
+  // Combine JD keywords with anything the user manually ticked in the picker.
+  // JD keywords come first because they're what the ATS will actually score on.
+  const allKeywords = [...new Set([...jdKeywords, ...selectedKeywords])];
 
-  const keywordInstructions = allKeywordsToWeave.length > 0
-    ? `\n\nKEYWORDS TO WEAVE IN (add these naturally where truthful — if genuinely unfamiliar, add to Skills section only):\n${allKeywordsToWeave.map(k => `  - ${k}`).join('\n')}\n`
+  // ── Conditional directives based on JD content ──────────────────────────────
+  const jdLower = args.jobDescription.toLowerCase();
+  const titleLower = args.jobTitle.toLowerCase();
+
+  const isAiRole =
+    /\b(ai|artificial intelligence|ml|machine learning|llm|gpt|agentic|automation agent|copilot|generative ai|prompt engineer)\b/.test(jdLower) ||
+    /\b(ai|ml|llm|agentic|generative ai)\b/.test(titleLower);
+
+  const isPerfOrTestRole =
+    /\b(perf|performance|sdet|qa\b|quality engineer|test automat|reliability eng|sre|load test|stress test)\b/.test(jdLower) ||
+    /\b(perf|performance|sdet|qa|quality|test|sre|tester)\b/.test(titleLower);
+
+  const summaryDirective = isAiRole
+    ? 'This JD mentions AI/ML/automation, so it is appropriate to highlight the candidate\'s AI agent work in the Professional Summary. Lead with the strongest technical specialization that the JD asks for, then bring in the AI/automation angle as supporting evidence.'
+    : 'Lead the Professional Summary with the candidate\'s core technical specialization that maps directly to this JD (e.g. "Senior Performance Engineer with 7.7 years..."). Do NOT lead with AI/automation unless the JD explicitly asks for AI/ML/agentic work.';
+
+  const jmeterAchievementClause = isPerfOrTestRole
+    ? `e. INCLUDE this real achievement in KEY ACHIEVEMENTS (or create that section right after PROFESSIONAL SUMMARY if it does not exist):
+   "- Architected and deployed a free, open-source Performance Center equivalent for JMeter (React/TypeScript frontend, Python backend) - a full web-based UI platform enabling teams to upload JMX scenarios, configure load test parameters, and execute distributed load tests from a centralized interface. Adopted by multiple teams at Charles Schwab, eliminating dependency on expensive LoadRunner Enterprise/Performance Center licensing."`
     : '';
 
-  const prompt = `You are an expert ATS resume writer. Reformat and enrich this candidate's resume.
+  const keywordsBlock = allKeywords.length > 0
+    ? `
 
-CRITICAL RULES — READ BEFORE ANYTHING ELSE:
-1. PRESERVE the EXACT structure: same sections in same order, same jobs, same companies, same dates, same bullets. Do NOT restructure.
-2. Do NOT remove any content. Every bullet, every job, every achievement, every skill stays.
-3. The ONLY changes allowed:
-   a. Convert tables → plain text (ATS cannot parse tables)
-   b. Weave the KEYWORDS listed below naturally into existing bullet points OR add them to the Skills section
-   c. Rewrite the Professional Summary to lead with the AI angle (see example below)
-   d. Ensure ALL CAPS section headers, "- " bullet prefix format
-4. For the new Achievement about JMeter Performance Center — add it to KEY ACHIEVEMENTS section:
-   "- Architected and deployed a free, open-source Performance Center equivalent for JMeter (React/TypeScript frontend, Python backend) — a full web-based UI platform enabling teams to upload JMX scenarios, configure load test parameters, and execute distributed load tests from a centralized interface. Adopted by multiple teams at Charles Schwab, eliminating dependency on expensive LoadRunner Enterprise/Performance Center licensing."
-5. The output MUST be at least as long as the input. Do NOT shorten.
+TARGET JD KEYWORDS (extracted from THIS specific JD - incorporate them where truthful):
+${allKeywords.map(k => `  - ${k}`).join('\n')}
 
-SUMMARY REWRITE EXAMPLE (lead with AI angle):
-"Senior Performance Engineer with 7.7 years of experience building AI-powered automation agents for enterprise performance testing. Delivered a 94% reduction in test execution time through Agentic AI workflows. Proven expertise in LoadRunner, JMeter, BlazeMeter across BFSI, Healthcare, Retail, and Media domains..."
-${keywordInstructions}
-FORMATTING:
-- Section headers: ALL CAPS (e.g. PROFESSIONAL SUMMARY, KEY ACHIEVEMENTS, TECHNICAL SKILLS)
-- Bullets: "- " prefix
-- Job headers: "Job Title  |  Company, City  |  Month YYYY – Month YYYY"
-- Client line below job header: "Client: ClientName (Domain)"
-- Skills: "Category: Tool1, Tool2, Tool3" (one category per line, no table)
-- No graphics, no columns, no special characters
+KEYWORD RULES:
+- Where the candidate has equivalent real experience, use the EXACT phrasing from this list (e.g. write "JMeter" not "Apache JMeter performance tool"; if the JD says "load testing", use that phrase even if the candidate normally writes "performance testing").
+- For TECHNICAL SKILLS: reorder entries so JD-priority tools appear FIRST in their category line.
+- For tools the candidate has never used, list them ONLY in TECHNICAL SKILLS (do NOT invent fake bullets in Experience).
+- Do NOT fabricate experience. Truthfulness is the highest priority - even higher than keyword density.
+`
+    : '';
 
-CANDIDATE CONTACT:
+  const prompt = `You are an expert ATS resume writer. Tailor this resume to pass the ATS scanner for the target job below.
+
+PRIMARY GOAL: maximize the overlap between the resume's vocabulary and the TARGET JD KEYWORDS, without fabricating any experience.
+
+CRITICAL RULES:
+1. PRESERVE every real fact: same companies, same dates, same roles, same achievements. Never invent jobs, dates, or numbers.
+2. Keep all sections from the input resume. You MAY reorder entries inside TECHNICAL SKILLS to surface JD-priority tools first.
+3. Output must be plain ASCII. No em-dashes, no smart quotes, no unicode bullets, no emojis, no graphics, no tables, no columns.
+4. Allowed transformations:
+   a. Convert any tables to "Category: Tool1, Tool2, Tool3" plain-text lines.
+   b. Weave TARGET JD KEYWORDS naturally into existing bullets where the candidate truthfully has that experience.
+   c. Rewrite the Professional Summary per the directive below.
+   d. Reorder Skills entries inside TECHNICAL SKILLS to put JD-priority tools first.${jmeterAchievementClause ? '\n   ' + jmeterAchievementClause : ''}
+
+PROFESSIONAL SUMMARY DIRECTIVE:
+${summaryDirective}
+
+FORMAT (these patterns are what ATS parsers expect):
+- Section headers: ALL CAPS, alone on a line. Use exactly these names where applicable: PROFESSIONAL SUMMARY, KEY ACHIEVEMENTS, TECHNICAL SKILLS, CERTIFICATIONS, PROFESSIONAL EXPERIENCE, EDUCATION.
+- Every bullet starts with "- " (hyphen + space). Never use "*" or any unicode bullet symbol.
+- Job header: "Job Title  |  Company, City  |  Month YYYY - Month YYYY" (straight hyphen between dates).
+- Optional client subline directly under job header: "Client: ClientName (Domain)".
+- Skills lines: "Category: Tool1, Tool2, Tool3" - one category per line, no tables.
+- One blank line between sections. No blank line between job header and its bullets.
+${keywordsBlock}
+CANDIDATE CONTACT BLOCK (place at the very top, one item per line, in this exact order):
 ${args.candidateName ?? 'SHASHANK SINGH'}
 ${args.email}
 ${args.phone ?? '+91 8077162893'}
 ${args.location ?? 'Noida, India'}
 linkedin.com/in/shashank-singh-610155b1
 
-CANDIDATE'S CURRENT RESUME (preserve ALL of this — output everything):
+CANDIDATE'S CURRENT RESUME (this is the only source of truth - never add experience that is not here):
 ${args.resumeText.slice(0, 14000)}
 
-TARGET JOB (for keyword relevance only — do NOT add skills from here unless in the keyword list):
+TARGET JOB:
 Title: ${args.jobTitle}
 Company: ${args.jobCompany ?? 'Not specified'}
-Description (first 3000 chars):
-${args.jobDescription.slice(0, 3000)}
+Description:
+${args.jobDescription.slice(0, 5000)}
 
-Output the COMPLETE reformatted resume. No preamble. Just the resume text.`;
+Output the complete tailored resume in plain ASCII text. No preamble, no explanation, no markdown fences. Start with the candidate's name on the first line.`;
 
-  const resume = await chat(
-    'You reformat resumes into ATS-friendly plain text. Preserve all content. Output ONLY the resume.',
+  const raw = await chat(
+    'You reformat resumes into ATS-friendly plain ASCII text. Preserve all real content. Never fabricate experience. Output ONLY the resume.',
     prompt,
-    0.3,
+    0.25,
   );
 
-  // Track what was added vs already present
+  // Defense-in-depth ASCII normalization in case the model slipped a unicode char in.
+  const resume = normalizeAscii(raw);
+
+  // ── ATS Match Score: % of JD keywords actually present in the resume ────────
+  const resumeLower = resume.toLowerCase();
   const originalLower = args.resumeText.toLowerCase();
+
   const added: string[] = [];
   const alreadyHad: string[] = [];
+  const missing: string[] = [];
 
-  for (const kw of allKeywordsToWeave) {
+  for (const kw of jdKeywords) {
+    const inResume = resumeLower.includes(kw.toLowerCase());
     const inOriginal = originalLower.includes(kw.toLowerCase());
-    const inGenerated = resume.toLowerCase().includes(kw.toLowerCase());
-    if (inGenerated && !inOriginal) added.push(kw);
-    else if (inGenerated && inOriginal) alreadyHad.push(kw);
+    if (inResume) {
+      if (inOriginal) alreadyHad.push(kw);
+      else added.push(kw);
+    } else {
+      missing.push(kw);
+    }
   }
 
-  return { resume, added, alreadyHad };
+  const present = added.length + alreadyHad.length;
+  const ats_match_score = jdKeywords.length > 0
+    ? Math.round((present / jdKeywords.length) * 100)
+    : 0;
+
+  return {
+    resume,
+    ats_match_score,
+    jd_keywords: jdKeywords,
+    added,
+    alreadyHad,
+    missing,
+  };
 }

@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { ensureFullDescription } from '@/lib/jd-fetcher';
-import { generateAtsResume } from '@/lib/gemini';
+import { generateAtsResume, extractJdKeywords } from '@/lib/gemini';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
 
 /**
  * GET /api/match/[id]/resume
- * Returns keywords from the JD split into "already have" vs "available to add".
+ * Returns the JD-extracted ATS keywords split into "already in resume" vs
+ * "available to add". Uses the same LLM-based extraction as the generator
+ * so the picker and the generator always agree on what THIS specific JD
+ * is asking for.
  */
 export async function GET(
   _req: NextRequest,
@@ -19,7 +22,7 @@ export async function GET(
 
   const { data: match, error } = await sb
     .from('matches')
-    .select(`id, profile:profiles(resume_text), job:jobs(id, description, tags, url)`)
+    .select(`id, profile:profiles(resume_text), job:jobs(id, title, description, tags, url)`)
     .eq('id', id)
     .single();
 
@@ -29,7 +32,7 @@ export async function GET(
 
   const profile = match.profile as unknown as { resume_text: string | null };
   const job = match.job as unknown as {
-    id: string; description: string | null; tags: string[] | null; url: string | null;
+    id: string; title: string; description: string | null; tags: string[] | null; url: string | null;
   };
 
   const fullDescription = await ensureFullDescription({
@@ -38,19 +41,22 @@ export async function GET(
 
   if (!fullDescription) return NextResponse.json({ keywords: [], alreadyHave: [] });
 
-  const jdKeywords = extractKeywords(fullDescription.toLowerCase());
-  if (job.tags?.length) {
-    for (const tag of job.tags) {
-      const lower = tag.toLowerCase();
-      if (!jdKeywords.some(k => k.toLowerCase() === lower)) jdKeywords.push(tag);
-    }
-  }
+  // LLM-based extraction — same function the generator uses
+  const jdKeywords = await extractJdKeywords({
+    jobTitle: job.title,
+    jobDescription: fullDescription,
+  });
+
+  // Fall back to the job's existing tags if the LLM returned nothing
+  const finalKeywords = jdKeywords.length > 0
+    ? jdKeywords
+    : (job.tags ?? []);
 
   const resumeLower = (profile?.resume_text ?? '').toLowerCase();
   const alreadyHave: string[] = [];
   const available: string[] = [];
 
-  for (const kw of jdKeywords) {
+  for (const kw of finalKeywords) {
     if (resumeLower.includes(kw.toLowerCase())) alreadyHave.push(kw);
     else available.push(kw);
   }
@@ -63,7 +69,8 @@ export async function GET(
 
 /**
  * POST /api/match/[id]/resume
- * Generates an ATS-optimised resume for this job match using Gemini 2.0 Flash.
+ * Generates an ATS-tailored resume for this job match.
+ * Two-pass: first extracts JD keywords, then rebuilds the resume around them.
  * Saves the plain-text result to matches.tailored_resume_text.
  * Accepts optional body: { selectedKeywords?: string[] }
  */
@@ -120,8 +127,8 @@ export async function POST(
     return NextResponse.json({ error: 'No job description to optimise against' }, { status: 400 });
   }
 
-  // Generate ATS resume via Gemini
-  const { resume, added, alreadyHad } = await generateAtsResume({
+  // Two-pass ATS-tailored generation
+  const result = await generateAtsResume({
     resumeText: profile.resume_text,
     jobTitle: job.title,
     jobCompany: job.company,
@@ -133,51 +140,26 @@ export async function POST(
     selectedKeywords,
   });
 
-  if (!resume || resume.length < 200) {
+  if (!result.resume || result.resume.length < 200) {
     return NextResponse.json({ error: 'Generated resume too short' }, { status: 500 });
   }
 
-  // Save plain-text resume to DB (tailored_resume_text column)
+  // Save plain-text resume to DB
   await sb
     .from('matches')
-    .update({ tailored_resume_text: resume })
+    .update({ tailored_resume_text: result.resume })
     .eq('id', id);
 
   return NextResponse.json({
     ok: true,
-    resume,
+    resume: result.resume,
     keywords: {
-      added: [...new Set(added)].slice(0, 20),
-      already_had: [...new Set(alreadyHad)].slice(0, 20),
-      total_jd_keywords: extractKeywords(fullDescription.toLowerCase()).length,
+      added: [...new Set(result.added)].slice(0, 25),
+      already_had: [...new Set(result.alreadyHad)].slice(0, 25),
+      missing: [...new Set(result.missing)].slice(0, 25),
+      total_jd_keywords: result.jd_keywords.length,
       selected_count: selectedKeywords.length,
+      ats_match_score: result.ats_match_score,
     },
   });
-}
-
-function extractKeywords(jd: string): string[] {
-  const keywords = new Set<string>();
-  const patterns = [
-    /\b(?:jmeter|loadrunner|gatling|blazemeter|k6|cavisson|netdynamics|locust|neoload)\b/gi,
-    /\b(?:kubernetes|docker|jenkins|terraform|ansible|aws|azure|gcp|azure devops)\b/gi,
-    /\b(?:java|python|javascript|typescript|golang|rust|scala|groovy)\b/gi,
-    /\b(?:spring boot|react|angular|vue|next\.?js|node\.?js)\b/gi,
-    /\b(?:sql|postgresql|mysql|mongodb|redis|elasticsearch|kafka)\b/gi,
-    /\b(?:ci\/cd|devops|microservices|rest api|graphql|grpc|shift-left)\b/gi,
-    /\b(?:agile|scrum|kanban|jira|confluence)\b/gi,
-    /\b(?:appdynamics|dynatrace|splunk|grafana|prometheus|datadog|new relic|opentelemetry)\b/gi,
-    /\b(?:performance testing|load testing|stress testing|endurance testing|scalability testing)\b/gi,
-    /\b(?:capacity planning|workload modeling|root cause analysis|nfr|sla|slo|sli)\b/gi,
-    /\b(?:jprofile?r|jvisualvm|eclipse mat|fiddler|chrome devtools|awr)\b/gi,
-    /\b(?:postman|soapui|swagger)\b/gi,
-    /\b(?:git|github|gitlab|bitbucket)\b/gi,
-    /\b(?:distributed load testing|cloud performance testing|websocket|http\/2)\b/gi,
-    /\b(?:thread dump|heap dump|gc tuning|memory leak|throughput|latency|percentile)\b/gi,
-    /\b(?:rancher|rally|octane)\b/gi,
-  ];
-  for (const re of patterns) {
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(jd)) !== null) keywords.add(m[0].trim());
-  }
-  return [...keywords];
 }

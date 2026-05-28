@@ -71,8 +71,10 @@ export function JobActions({
   const [keywords, setKeywords] = useState<{
     added: string[];
     already_had: string[];
+    missing: string[];
     total_jd_keywords: number;
     selected_count?: number;
+    ats_match_score: number;
   } | null>(null);
 
   // Keyword picker state
@@ -565,6 +567,35 @@ export function JobActions({
             {/* Keyword analysis */}
             {keywords && (
               <div className="space-y-2 border-b border-border pb-3">
+                {/* ATS Match Score — the headline number */}
+                {(() => {
+                  const score = keywords.ats_match_score ?? 0;
+                  const tone =
+                    score >= 80 ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                    : score >= 60 ? 'bg-amber/10 border-amber/30 text-amber-hover'
+                    : 'bg-red-50 border-warning-red/30 text-warning-red';
+                  const label =
+                    score >= 80 ? 'Strong'
+                    : score >= 60 ? 'Decent'
+                    : 'Weak';
+                  return (
+                    <div className={`flex items-center justify-between rounded-card border px-3 py-2 ${tone}`}>
+                      <div className="flex items-center gap-2">
+                        <Zap className="h-4 w-4" />
+                        <div>
+                          <div className="text-xs font-semibold leading-tight">
+                            ATS Match Score: {score}% ({label})
+                          </div>
+                          <div className="text-[10px] opacity-80 leading-tight">
+                            {keywords.added.length + keywords.already_had.length} of {keywords.total_jd_keywords} JD keywords present in your resume
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-2xl font-bold tabular-nums">{score}</div>
+                    </div>
+                  );
+                })()}
+
                 <div className="text-xs font-medium text-stone flex items-center gap-1.5">
                   <Zap className="h-3.5 w-3.5 text-amber" />
                   Keywords analysis ({keywords.total_jd_keywords} detected in JD
@@ -593,6 +624,20 @@ export function JobActions({
                       {keywords.already_had.map((kw) => (
                         <span key={kw} className="inline-flex items-center gap-0.5 rounded-badge border border-border px-2 py-0.5 text-xs text-stone">
                           <CheckCircle2 className="h-2.5 w-2.5" /> {kw}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {keywords.missing && keywords.missing.length > 0 && (
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-warning-red mb-1 font-medium">
+                      Missing from your resume ({keywords.missing.length}) - consider adding via Keyword Picker before regenerating
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {keywords.missing.map((kw) => (
+                        <span key={kw} className="inline-flex items-center gap-0.5 rounded-badge border border-warning-red/30 bg-red-50 text-warning-red px-2 py-0.5 text-xs">
+                          <XCircle className="h-2.5 w-2.5" /> {kw}
                         </span>
                       ))}
                     </div>
