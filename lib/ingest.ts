@@ -183,16 +183,39 @@ export async function runIngest(opts?: {
       .order('fetched_at', { ascending: false })
       .limit(300);
 
+    // Defensive early-bail. If the very first embed call fails with what
+    // looks like a config error (missing API key, invalid key, model not
+    // available), we abort the entire embed phase with ONE descriptive
+    // error rather than letting all ~300 jobs each push their own
+    // identical error into runErrors. That keeps ingest_runs.errors
+    // small and the dashboard's "partial (N)" count meaningful.
+    let embedAborted: string | null = null;
+
     for (const j of needEmbed ?? []) {
+      if (embedAborted) break;
       try {
         const text = jobToEmbeddingText(j);
         const vec = await embed(text);
         await sb.from('jobs').update({ embedding: vec }).eq('id', j.id);
         embedded++;
       } catch (e) {
+        const msg = (e as Error).message || String(e);
+        // First failure: decide whether this is a fatal config error
+        // (abort the loop) or a transient one (keep going).
+        const isConfigError =
+          embedded === 0 &&
+          /missing\s+\w+_API_KEY|invalid api key|api key not valid|unauthor|forbid/i.test(msg);
+        if (isConfigError) {
+          embedAborted = msg;
+          runErrors.push({
+            source: 'embed',
+            error: `Embed phase aborted on first job (${needEmbed?.length ?? 0} pending). Config error: ${msg}`,
+          });
+          break;
+        }
         runErrors.push({
           source: 'embed',
-          error: `${j.id}: ${(e as Error).message}`,
+          error: `${j.id}: ${msg}`,
         });
       }
     }
