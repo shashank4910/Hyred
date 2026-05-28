@@ -14,6 +14,7 @@ export function MatchFilters() {
   const source = sp.get('source') ?? '';
   const minScore = sp.get('min') ?? '';
   const remote = sp.get('remote') ?? '';
+  const sort = sp.get('sort') ?? 'newest';
 
   // Debounced search
   useEffect(() => {
@@ -34,7 +35,7 @@ export function MatchFilters() {
     router.replace(`/?${params.toString()}`, { scroll: false });
   }
 
-  const hasFilters = q || source || minScore || remote;
+  const hasFilters = q || source || minScore || remote || (sort && sort !== 'newest');
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -80,6 +81,19 @@ export function MatchFilters() {
       >
         <option value="">Any location</option>
         <option value="1">Remote only</option>
+      </select>
+
+      <select
+        value={sort}
+        onChange={(e) => setParam('sort', e.target.value === 'newest' ? '' : e.target.value)}
+        className="input w-auto"
+        title="Sort matches"
+      >
+        <option value="newest">Newest first</option>
+        <option value="posted">Original posted date</option>
+        <option value="score">Best score</option>
+        <option value="activity">Recent activity</option>
+        <option value="oldest">Oldest first</option>
       </select>
 
       {hasFilters && (

@@ -16,7 +16,21 @@ type SearchParams = {
   min?: string;
   remote?: string;
   bookmarked?: string;
+  /**
+   * Sort mode for the matches list. Default is "newest" so the freshest jobs
+   * (most recently fetched by JobRadar) sit at the top - the standard job-board
+   * expectation.
+   *  - newest   : jobs.fetched_at desc  (default)
+   *  - posted   : jobs.posted_at desc nulls last, then fetched_at desc
+   *  - score    : matches.llm_score desc, then fetched_at desc
+   *  - activity : matches.updated_at desc (recent bookmark/notes/status edits)
+   *  - oldest   : jobs.fetched_at asc
+   */
+  sort?: 'newest' | 'posted' | 'score' | 'activity' | 'oldest';
 };
+
+type SortMode = NonNullable<SearchParams['sort']>;
+const VALID_SORTS: SortMode[] = ['newest', 'posted', 'score', 'activity', 'oldest'];
 
 export default async function Dashboard({
   searchParams,
@@ -27,6 +41,9 @@ export default async function Dashboard({
   // 'inbox' = new + viewed combined (default). Individual statuses are explicit.
   const status = sp.status ?? 'inbox';
   const onlyBookmarked = sp.bookmarked === '1';
+  const sort: SortMode = (VALID_SORTS as readonly string[]).includes(sp.sort ?? '')
+    ? (sp.sort as SortMode)
+    : 'newest';
 
   const sb = supabaseAdmin();
 
@@ -95,12 +112,41 @@ export default async function Dashboard({
   let query = sb
     .from('matches')
     .select(
-      `id, llm_score, similarity, reason, status, bookmarked, applied_at, created_at,
-       job:jobs!inner(id, title, company, location, remote, url, source, salary, posted_at, description, tags)`,
+      `id, llm_score, similarity, reason, status, bookmarked, applied_at, created_at, updated_at,
+       job:jobs!inner(id, title, company, location, remote, url, source, salary, posted_at, fetched_at, description, tags)`,
     )
     .eq('profile_id', profile.id)
-    .gte('llm_score', effectiveMinScore)
-    .order('llm_score', { ascending: false });
+    .gte('llm_score', effectiveMinScore);
+
+  // Apply sort mode. Defaults to 'newest' which puts the freshest jobs (most
+  // recently fetched by JobRadar) at the top - the typical job-board UX. Each
+  // mode adds a secondary sort so results are deterministic when the primary
+  // key has duplicates or NULLs.
+  switch (sort) {
+    case 'posted':
+      // Original posting date from the source. Many sources return null here,
+      // so jobs without posted_at fall to the bottom (nullsFirst:false) and we
+      // tiebreak on fetched_at so they're not in arbitrary order.
+      query = query
+        .order('posted_at', { foreignTable: 'jobs', ascending: false, nullsFirst: false })
+        .order('fetched_at', { foreignTable: 'jobs', ascending: false });
+      break;
+    case 'score':
+      query = query
+        .order('llm_score', { ascending: false })
+        .order('fetched_at', { foreignTable: 'jobs', ascending: false });
+      break;
+    case 'activity':
+      query = query.order('updated_at', { ascending: false });
+      break;
+    case 'oldest':
+      query = query.order('fetched_at', { foreignTable: 'jobs', ascending: true });
+      break;
+    case 'newest':
+    default:
+      query = query.order('fetched_at', { foreignTable: 'jobs', ascending: false });
+      break;
+  }
 
   if (onlyBookmarked) {
     query = query.eq('bookmarked', true);
@@ -219,6 +265,7 @@ export default async function Dashboard({
               source: string;
               salary: string | null;
               posted_at: string | null;
+              fetched_at: string | null;
             };
             return (
               <li key={m.id}>

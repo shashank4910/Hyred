@@ -20,13 +20,18 @@ type Props = {
     salary: string | null;
     source: string;
     posted_at: string | null;
-    fetched_at?: string;
+    fetched_at?: string | null;
   };
 };
 
 export function MatchCard({ matchId, score, reason, status, bookmarked: initialBookmarked, job }: Props) {
   const colorClass = scoreColorClass(score);
-  const posted = relativeTime(job.posted_at);
+  // Prefer the source's posted_at when available; fall back to fetched_at
+  // (when JobRadar first saw the job) so every card always shows a date.
+  // Many sources don't expose a posted_at value, but fetched_at is always set
+  // and is a good proxy for freshness within a small window.
+  const posted = relativeTime(job.posted_at) ?? relativeTime(job.fetched_at ?? null);
+  const postedLabel = job.posted_at ? 'posted' : 'added';
   const isViewed = status === 'viewed' || (status !== 'new');
   const [bookmarked, setBookmarked] = useState(initialBookmarked);
   const [saving, setSaving] = useState(false);
@@ -97,9 +102,12 @@ export function MatchCard({ matchId, score, reason, status, bookmarked: initialB
               </span>
             )}
             {posted && (
-              <span className="inline-flex items-center gap-1">
+              <span className="inline-flex items-center gap-1" title={postedLabel === 'added' ? 'Added to JobRadar (source did not provide a posted date)' : 'Posted on the source'}>
                 <Clock className="h-3 w-3" />
                 {posted}
+                {postedLabel === 'added' && (
+                  <span className="text-[9px] uppercase tracking-wide text-shadow-tint">added</span>
+                )}
               </span>
             )}
             {job.salary && (
