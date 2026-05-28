@@ -66,12 +66,12 @@ export function AutoApplyButton({ matchId, agentUrl }: { matchId: string; agentU
           } else if (payload.type === 'status') {
             if (payload.status === 'done') {
               setStatus('done');
-              addLog('✅ Application submitted!');
+              addLog('🎉 Application submitted successfully!');
               sse.close();
               router.refresh();
             } else if (payload.status === 'failed') {
               setStatus('failed');
-              addLog(`❌ Failed: ${payload.error ?? 'Unknown error'}`);
+              addLog(`❌ ${payload.error ?? 'Unknown error'}`);
               sse.close();
             }
           }
@@ -97,7 +97,7 @@ export function AutoApplyButton({ matchId, agentUrl }: { matchId: string; agentU
       const data = await res.json() as { status: string; error?: string };
       if (data.status === 'done') {
         setStatus('done');
-        addLog('✅ Application submitted!');
+        addLog('🎉 Application submitted successfully!');
         router.refresh();
       } else if (data.status === 'failed') {
         setStatus('failed');

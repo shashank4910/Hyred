@@ -1,8 +1,9 @@
 """
 JobRadar Auto-Apply Agent
 =========================
-FastAPI service that uses Browser Use + Gemini 2.0 Flash to automatically
-apply for jobs on behalf of the user.
+FastAPI service that uses Browser Use + an LLM (OpenAI gpt-4o-mini primary,
+Gemini 2.0 Flash fallback) to automatically apply for jobs on behalf of the
+user.
 
 Deploy on Render free tier. Keep alive with UptimeRobot (free) pinging
 /health every 5 minutes so the service never sleeps.
@@ -29,6 +30,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
 load_dotenv()
@@ -176,22 +178,94 @@ def _log(task_id: str, message: str):
     tasks[task_id]["logs"].append(message)
 
 
+def _make_step_callback(task_id: str):
+    """
+    Return an async callback compatible with browser-use 0.1.40's
+    register_new_step_callback. Pipes per-step agent decisions into the SSE
+    feed so the user can SEE what the agent is doing in real time. Without
+    this, the UI only shows boot messages and we have no way to diagnose
+    silent failures (memory kills, login walls, captchas, etc.).
+
+    Signature: async (browser_state, agent_output, step_number) -> None
+    """
+    async def _cb(_browser_state, agent_output, step_number: int):
+        try:
+            state = getattr(agent_output, "current_state", None)
+            next_goal = getattr(state, "next_goal", None) if state else None
+            eval_prev = getattr(state, "evaluation_previous_goal", None) if state else None
+
+            # Step header — concise so we don't flood the UI
+            header = f"📍 Step {step_number}"
+            if next_goal:
+                header += f": {str(next_goal)[:160]}"
+            _log(task_id, header)
+
+            # Surface "Failed" evaluations explicitly so users know the agent
+            # is struggling (vs. silently looping).
+            if eval_prev and "fail" in str(eval_prev).lower():
+                _log(task_id, f"   ⚠️ {str(eval_prev)[:200]}")
+
+            # One short summary of the first action the agent picked.
+            actions = getattr(agent_output, "action", None) or []
+            if actions:
+                first = actions[0]
+                action_dump = first.model_dump(exclude_unset=True) if hasattr(first, "model_dump") else {}
+                if action_dump:
+                    # action_dump looks like {"click_element": {...}} —
+                    # show the action name + a short value preview.
+                    name, payload = next(iter(action_dump.items()))
+                    preview = str(payload)[:120] if payload else ""
+                    _log(task_id, f"   🛠️  {name}{f': {preview}' if preview else ''}")
+        except Exception as e:
+            # Never let the callback break the agent loop.
+            print(f"[{task_id[:8]}] step-callback warning: {e}")
+
+    return _cb
+
+
 async def _run_apply(task_id: str, req: ApplyRequest):
     tasks[task_id]["status"] = "running"
     _log(task_id, f"🚀 Starting application for: {req.job_title} at {req.company or 'company'}")
     _log(task_id, f"🌐 Target URL: {req.job_url}")
 
     try:
+        # Mirror the Next.js app: OpenAI gpt-4o-mini as primary (paid, reliable),
+        # Gemini 2.0 Flash as fallback (free tier, quota burns fast).
+        # LLM_PROVIDER=gemini forces fallback ordering for testing.
+        provider_pref = (os.getenv("LLM_PROVIDER", "openai") or "openai").lower()
+        openai_key = os.getenv("OPENAI_API_KEY")
         gemini_key = os.getenv("GEMINI_API_KEY")
-        if not gemini_key:
-            raise ValueError("GEMINI_API_KEY not set in environment")
 
-        # Build the LLM
-        llm = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash",
-            google_api_key=gemini_key,
-            temperature=0.2,
-        )
+        llm = None
+        llm_name = ""
+
+        def _build_openai():
+            return ChatOpenAI(
+                model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+                api_key=openai_key,
+                temperature=0.2,
+            ), "OpenAI gpt-4o-mini"
+
+        def _build_gemini():
+            return ChatGoogleGenerativeAI(
+                model=os.getenv("GEMINI_MODEL", "gemini-2.0-flash"),
+                google_api_key=gemini_key,
+                temperature=0.2,
+            ), "Gemini 2.0 Flash"
+
+        order = ("openai", "gemini") if provider_pref != "gemini" else ("gemini", "openai")
+        for choice in order:
+            if choice == "openai" and openai_key:
+                llm, llm_name = _build_openai()
+                break
+            if choice == "gemini" and gemini_key:
+                llm, llm_name = _build_gemini()
+                break
+
+        if llm is None:
+            raise ValueError(
+                "No LLM configured. Set OPENAI_API_KEY (preferred) or GEMINI_API_KEY in environment."
+            )
 
         # Build context string with all candidate info
         candidate_context = _build_candidate_context(req)
@@ -230,7 +304,7 @@ CANDIDATE INFORMATION:
 {f'COVER LETTER:{chr(10)}{req.cover_letter}' if req.cover_letter else 'No cover letter provided — skip cover letter fields.'}
 """
 
-        _log(task_id, "🤖 Initialising Gemini 2.0 Flash agent...")
+        _log(task_id, f"🤖 Initialising {llm_name} agent...")
 
         # browser-use 0.1.40 defaults to HEADED mode and does NOT honour any
         # env var. The only way to run on a headless server (Render, Docker)
@@ -255,6 +329,7 @@ CANDIDATE INFORMATION:
             task=task_prompt,
             llm=llm,
             browser=browser,
+            register_new_step_callback=_make_step_callback(task_id),
         )
 
         _log(task_id, f"🌍 Opening browser (headless={headless}) and running agent...")
@@ -271,19 +346,52 @@ CANDIDATE INFORMATION:
 
         # Check if application was successful
         final_result = result.final_result() if hasattr(result, 'final_result') else str(result)
+
+        # Capture how many steps actually ran — useful for diagnosing silent
+        # failures (e.g. memory kills, login walls) where agent.run() returns
+        # an empty history without raising.
+        steps_taken = 0
+        try:
+            history = result.history if hasattr(result, 'history') else []
+            steps_taken = len(history)
+        except Exception:
+            pass
+
+        if final_result is None or final_result == "":
+            # Agent ran but never produced a final answer. NOT a success —
+            # usually means it gave up, hit max_steps, browser was killed,
+            # or there was a login wall. Mark as failed so the UI does not
+            # claim "submitted" when nothing actually happened.
+            err = (
+                f"Agent produced no final result after {steps_taken} step(s). "
+                "Likely causes: page never loaded, browser killed, login wall, "
+                "or LLM rate-limit. Check Render logs for details."
+            )
+            _log(task_id, f"❌ {err}")
+            tasks[task_id]["status"] = "failed"
+            tasks[task_id]["error"] = err
+            await _notify_jobradar(task_id, req, False, None, err)
+            return
+
         success = _check_success(final_result)
 
         if success:
-            _log(task_id, "🎉 Application submitted successfully!")
+            _log(task_id, f"🎉 Application submitted successfully! ({steps_taken} steps)")
             tasks[task_id]["status"] = "done"
             tasks[task_id]["result"] = final_result
-        else:
-            _log(task_id, f"⚠️  Agent finished but success unclear. Result: {str(final_result)[:200]}")
-            tasks[task_id]["status"] = "done"
-            tasks[task_id]["result"] = str(final_result)
+            await _notify_jobradar(task_id, req, True, final_result)
+            return
 
-        # Notify JobRadar to update match status
-        await _notify_jobradar(task_id, req, success, final_result)
+        # Agent finished with output but no clear success signal — treat as
+        # failed so the UI does not lie. Show the actual result snippet so the
+        # user can decide whether to retry.
+        snippet = str(final_result)[:300]
+        err = f"Could not confirm submission. Agent said: {snippet}"
+        _log(task_id, f"⚠️  {err}")
+        tasks[task_id]["status"] = "failed"
+        tasks[task_id]["error"] = err
+        tasks[task_id]["result"] = str(final_result)
+        await _notify_jobradar(task_id, req, False, str(final_result), err)
 
     except Exception as e:
         error_msg = str(e)
