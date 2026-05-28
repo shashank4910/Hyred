@@ -570,10 +570,13 @@ FORMAT (these patterns are what ATS parsers expect):
 ${keywordsBlock}
 CANDIDATE CONTACT BLOCK (place at the very top, one item per line, in this exact order):
 ${args.candidateName ?? 'SHASHANK SINGH'}
+${targetCurrentRoleTitle}
 ${args.email}
 ${args.phone ?? '+91 8077162893'}
 ${args.location ?? 'Noida, India'}
 linkedin.com/in/shashank-singh-610155b1
+
+LINE 2 IS THE TITLE TAGLINE: the second line of the contact block is the candidate's CURRENT role title (the JD-aligned title from ROLE TITLE ALIGNMENT above). It must appear immediately under the name, BEFORE the email line. The PDF renderer treats this as the title tagline below the name. Do not omit it.
 
 CANDIDATE'S CURRENT RESUME (this is the only source of truth - never add experience that is not here):
 ${args.resumeText.slice(0, 14000)}
