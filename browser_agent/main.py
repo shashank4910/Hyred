@@ -24,7 +24,6 @@ from typing import AsyncGenerator
 
 import httpx
 from browser_use import Agent
-from browser_use.browser import Browser, BrowserConfig
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -42,6 +41,9 @@ tasks: dict[str, dict] = {}
 async def lifespan(app: FastAPI):
     # Install playwright browsers on startup if not already present
     os.system("playwright install chromium --with-deps 2>/dev/null || true")
+    # Set chromium args for headless server environment
+    os.environ["BROWSER_USE_HEADLESS"] = os.getenv("BROWSER_HEADLESS", "true")
+    os.environ["PLAYWRIGHT_CHROMIUM_ARGS"] = "--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --disable-gpu"
     yield
 
 app = FastAPI(title="JobRadar Apply Agent", lifespan=lifespan)
@@ -231,24 +233,13 @@ CANDIDATE INFORMATION:
 
         _log(task_id, "🤖 Initialising Gemini 2.0 Flash agent...")
 
-        # Configure browser (headless for server, visible locally for debugging)
-        headless = os.getenv("BROWSER_HEADLESS", "true").lower() == "true"
+        # browser-use v0.1.40: just pass task + llm, library handles browser internally
+        # Headless mode is controlled by env: BROWSER_USE_HEADLESS=true
+        os.environ["BROWSER_USE_HEADLESS"] = os.getenv("BROWSER_HEADLESS", "true")
 
-        # Create agent — minimal config, let browser-use handle defaults
         agent = Agent(
             task=task_prompt,
             llm=llm,
-            browser=Browser(
-                config=BrowserConfig(
-                    headless=headless,
-                    extra_chromium_args=[
-                        "--no-sandbox",
-                        "--disable-setuid-sandbox",
-                        "--disable-dev-shm-usage",
-                        "--disable-gpu",
-                    ],
-                )
-            ),
         )
 
         _log(task_id, "🌍 Opening browser and running agent...")
