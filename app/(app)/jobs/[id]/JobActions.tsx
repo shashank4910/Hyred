@@ -252,6 +252,67 @@ export function JobActions({
     }
   }
 
+  // In-place regenerate: keeps the existing resume visible until the new one
+  // arrives. Used after the user clicks missing-keyword chips to add them to
+  // selectedKeywords, then clicks "Regenerate" without losing context.
+  async function regenerateInPlace(extraKeywords?: string[]) {
+    setGeneratingResume(true);
+    const merged = extraKeywords && extraKeywords.length > 0
+      ? [...new Set([...selectedKeywords, ...extraKeywords])]
+      : selectedKeywords;
+    if (extraKeywords && extraKeywords.length > 0) {
+      setSelectedKeywords(merged);
+    }
+    const id = toast.loading(
+      merged.length > 0
+        ? `Regenerating with ${merged.length} prioritized keyword${merged.length > 1 ? 's' : ''}...`
+        : 'Regenerating ATS resume...',
+    );
+    try {
+      const res = await fetch(`/api/match/${matchId}/resume`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          selectedKeywords: merged.length > 0 ? merged : undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed');
+      setAtsResume(data.resume);
+      setEditedResume(data.resume);
+      if (data.keywords) setKeywords(data.keywords);
+      const newScore = data.keywords?.ats_match_score ?? 0;
+      const oldScore = keywords?.ats_match_score ?? 0;
+      const delta = newScore - oldScore;
+      const sign = delta > 0 ? '+' : '';
+      toast.success(
+        `Regenerated. ATS Match Score: ${newScore}%${oldScore > 0 ? ` (${sign}${delta})` : ''}`,
+        { id },
+      );
+    } catch (e) {
+      toast.error((e as Error).message, { id });
+    } finally {
+      setGeneratingResume(false);
+    }
+  }
+
+  // One-click: stage all currently-missing keywords and regenerate.
+  async function addAllMissingAndRegenerate() {
+    if (!keywords?.missing?.length) return;
+    await regenerateInPlace(keywords.missing);
+  }
+
+  // Clicking a single missing chip stages it for the next regenerate.
+  function stageMissingKeyword(kw: string) {
+    if (selectedKeywords.includes(kw)) {
+      setSelectedKeywords(prev => prev.filter(k => k !== kw));
+      toast(`Removed "${kw}" from priorities`);
+    } else {
+      setSelectedKeywords(prev => [...prev, kw]);
+      toast.success(`"${kw}" prioritized for next regenerate`);
+    }
+  }
+
   async function copyResume() {
     await navigator.clipboard.writeText(editedResume || atsResume);
     setResumeCopied(true);
@@ -579,7 +640,7 @@ export function JobActions({
                     : score >= 60 ? 'Decent'
                     : 'Weak';
                   return (
-                    <div className={`flex items-center justify-between rounded-card border px-3 py-2 ${tone}`}>
+                    <div className={`relative flex items-center justify-between rounded-card border px-3 py-2 ${tone}`}>
                       <div className="flex items-center gap-2">
                         <Zap className="h-4 w-4" />
                         <div>
@@ -592,6 +653,14 @@ export function JobActions({
                         </div>
                       </div>
                       <div className="text-2xl font-bold tabular-nums">{score}</div>
+                      {generatingResume && (
+                        <div className="absolute inset-0 flex items-center justify-center rounded-card bg-white/70 backdrop-blur-sm">
+                          <div className="flex items-center gap-2 text-xs font-medium text-ink">
+                            <Loader2 className="h-4 w-4 animate-spin text-amber" />
+                            Regenerating with prioritized keywords...
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })()}
@@ -631,16 +700,73 @@ export function JobActions({
                 )}
                 {keywords.missing && keywords.missing.length > 0 && (
                   <div>
-                    <div className="text-[10px] uppercase tracking-wide text-warning-red mb-1 font-medium">
-                      Missing from your resume ({keywords.missing.length}) - consider adding via Keyword Picker before regenerating
+                    <div className="flex items-center justify-between flex-wrap gap-2 mb-1.5">
+                      <div className="text-[10px] uppercase tracking-wide text-warning-red font-medium">
+                        Missing from your resume ({keywords.missing.length}) - click to add
+                      </div>
+                      <button
+                        onClick={addAllMissingAndRegenerate}
+                        disabled={generatingResume}
+                        className="text-[11px] font-semibold text-amber-hover hover:text-ink underline-offset-2 hover:underline disabled:opacity-50"
+                      >
+                        {generatingResume ? 'Regenerating...' : '+ Add all & regenerate'}
+                      </button>
                     </div>
                     <div className="flex flex-wrap gap-1.5">
-                      {keywords.missing.map((kw) => (
-                        <span key={kw} className="inline-flex items-center gap-0.5 rounded-badge border border-warning-red/30 bg-red-50 text-warning-red px-2 py-0.5 text-xs">
-                          <XCircle className="h-2.5 w-2.5" /> {kw}
-                        </span>
-                      ))}
+                      {keywords.missing.map((kw) => {
+                        const isStaged = selectedKeywords.includes(kw);
+                        return (
+                          <button
+                            key={kw}
+                            type="button"
+                            onClick={() => stageMissingKeyword(kw)}
+                            disabled={generatingResume}
+                            title={isStaged ? 'Click to remove from priorities' : 'Click to prioritize for next regenerate'}
+                            className={[
+                              'inline-flex items-center gap-1 rounded-badge px-2 py-0.5 text-xs transition-all duration-150 cursor-pointer',
+                              'disabled:cursor-wait disabled:opacity-60',
+                              isStaged
+                                ? 'bg-amber/15 text-ink border border-amber/50 font-semibold shadow-sm'
+                                : 'border border-warning-red/30 bg-red-50 text-warning-red hover:bg-amber/10 hover:border-amber/40 hover:text-ink',
+                            ].join(' ')}
+                          >
+                            {isStaged ? (
+                              <>
+                                <CheckCircle2 className="h-2.5 w-2.5 text-amber" />
+                                {kw}
+                                <span className="text-[9px] uppercase tracking-wide opacity-70">staged</span>
+                              </>
+                            ) : (
+                              <>
+                                <XCircle className="h-2.5 w-2.5" />
+                                {kw}
+                              </>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
+                    {selectedKeywords.length > 0 && (
+                      <div className="mt-2 flex items-center justify-between gap-2 rounded-btn bg-amber/10 border border-amber/30 px-3 py-2">
+                        <div className="text-[11px] text-ink">
+                          <span className="font-semibold">{selectedKeywords.length}</span>{' '}
+                          keyword{selectedKeywords.length > 1 ? 's' : ''} staged. They will be marked
+                          [USER PRIORITY] in the prompt and forced into TECHNICAL SKILLS at minimum.
+                        </div>
+                        <button
+                          onClick={() => regenerateInPlace()}
+                          disabled={generatingResume}
+                          className="btn-primary text-xs whitespace-nowrap"
+                        >
+                          {generatingResume ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <RotateCw className="h-3 w-3" />
+                          )}
+                          Regenerate
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -675,16 +801,16 @@ export function JobActions({
                 </button>
               </div>
               <button
-                onClick={() => {
-                  setAtsResume('');
-                  setEditedResume('');
-                  setKeywords(null);
-                  setEditingResume(false);
-                }}
+                onClick={() => regenerateInPlace()}
+                disabled={generatingResume}
                 className="btn text-xs"
               >
-                <RotateCw className="h-3 w-3" />
-                Regenerate
+                {generatingResume ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <RotateCw className="h-3 w-3" />
+                )}
+                {generatingResume ? 'Regenerating...' : 'Regenerate'}
               </button>
             </div>
 
