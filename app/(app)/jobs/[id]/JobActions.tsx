@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition, useEffect } from 'react';
+import { useState, useTransition, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
@@ -85,6 +85,32 @@ export function JobActions({
   const [excludedKeywords, setExcludedKeywords] = useState<string[]>([]);
   const [loadingKeywords, setLoadingKeywords] = useState(false);
   const [keywordsLoaded, setKeywordsLoaded] = useState(false);
+
+  // Free-text input for custom keywords. Lets the user type ANY keyword
+  // (including ones that didn't make it into either the matchSkills or the
+  // extractJdKeywords output) and stage it for the next regenerate.
+  const [customKeyword, setCustomKeyword] = useState('');
+
+  // Unified missing-keywords list. The Skill Match section (matchSkills) and
+  // the ATS keyword analysis (extractJdKeywords) sometimes return slightly
+  // different sets - a JD term like "non-functional requirements" may be
+  // flagged as missing in one but not the other. Merging them here ensures
+  // every flagged-missing keyword has an actionable add chip.
+  const allMissingKeywords = useMemo(() => {
+    const fromKeywords = keywords?.missing ?? [];
+    const fromSkills = skills?.missing ?? [];
+    const seen = new Set<string>();
+    const merged: string[] = [];
+    for (const kw of [...fromKeywords, ...fromSkills]) {
+      const t = kw.trim();
+      if (!t) continue;
+      const lower = t.toLowerCase();
+      if (seen.has(lower)) continue;
+      seen.add(lower);
+      merged.push(t);
+    }
+    return merged;
+  }, [keywords?.missing, skills?.missing]);
 
 
   // Load skills if we have any candidate skills
@@ -302,10 +328,44 @@ export function JobActions({
     }
   }
 
-  // One-click: stage all currently-missing keywords and regenerate.
+  // One-click: stage all currently-missing keywords (merged from both
+  // skills.missing and keywords.missing) and regenerate.
   async function addAllMissingAndRegenerate() {
-    if (!keywords?.missing?.length) return;
-    await regenerateInPlace(keywords.missing);
+    if (!allMissingKeywords.length) return;
+    await regenerateInPlace(allMissingKeywords);
+  }
+
+  // User-typed custom keyword: stage it for inclusion (selectedKeywords) and
+  // unstage from exclusion if previously excluded. Lets the user force-add
+  // any keyword the auto-extractors missed.
+  function addCustomKeyword() {
+    const t = customKeyword.trim();
+    if (!t) return;
+    if (selectedKeywords.some(k => k.toLowerCase() === t.toLowerCase())) {
+      toast(`"${t}" is already prioritized for next regenerate`);
+      setCustomKeyword('');
+      return;
+    }
+    setExcludedKeywords(prev => prev.filter(k => k.toLowerCase() !== t.toLowerCase()));
+    setSelectedKeywords(prev => [...prev, t]);
+    setCustomKeyword('');
+    toast.success(`"${t}" added - will be forced into resume on next regenerate`);
+  }
+
+  // User-typed custom keyword: stage it for exclusion. Lets the user force-
+  // remove any term that snuck in but they don't want.
+  function excludeCustomKeyword() {
+    const t = customKeyword.trim();
+    if (!t) return;
+    if (excludedKeywords.some(k => k.toLowerCase() === t.toLowerCase())) {
+      toast(`"${t}" is already staged for removal`);
+      setCustomKeyword('');
+      return;
+    }
+    setSelectedKeywords(prev => prev.filter(k => k.toLowerCase() !== t.toLowerCase()));
+    setExcludedKeywords(prev => [...prev, t]);
+    setCustomKeyword('');
+    toast.success(`"${t}" staged for removal on next regenerate`);
   }
 
   // Clicking a single missing chip stages it for the next regenerate.
@@ -484,18 +544,41 @@ export function JobActions({
               {skills.missing.length > 0 && (
                 <div>
                   <div className="text-xs text-stone mb-1.5">
-                    JD requirements not clearly present in your resume
+                    JD requirements not clearly present in your resume - click to stage for next ATS regenerate
                   </div>
                   <div className="flex flex-wrap gap-1.5">
-                    {skills.missing.map((s) => (
-                      <span
-                        key={s}
-                        className="inline-flex items-center gap-1 rounded-badge border border-warning-red/30 bg-red-50 text-warning-red px-2 py-0.5 text-xs"
-                      >
-                        <XCircle className="h-3 w-3" />
-                        {s}
-                      </span>
-                    ))}
+                    {skills.missing.map((s) => {
+                      const isStaged = selectedKeywords.some(k => k.toLowerCase() === s.toLowerCase());
+                      return (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => stageMissingKeyword(s)}
+                          disabled={generatingResume}
+                          title={isStaged ? 'Click to remove from priorities' : 'Click to prioritize for next regenerate'}
+                          className={[
+                            'inline-flex items-center gap-1 rounded-badge px-2 py-0.5 text-xs transition-all duration-150 cursor-pointer',
+                            'disabled:cursor-wait disabled:opacity-60',
+                            isStaged
+                              ? 'bg-amber/15 text-ink border border-amber/50 font-semibold shadow-sm'
+                              : 'border border-warning-red/30 bg-red-50 text-warning-red hover:bg-amber/10 hover:border-amber/40 hover:text-ink',
+                          ].join(' ')}
+                        >
+                          {isStaged ? (
+                            <>
+                              <CheckCircle2 className="h-3 w-3 text-amber" />
+                              {s}
+                              <span className="text-[9px] uppercase tracking-wide opacity-70">staged</span>
+                            </>
+                          ) : (
+                            <>
+                              <XCircle className="h-3 w-3" />
+                              {s}
+                            </>
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -772,11 +855,11 @@ export function JobActions({
                     </div>
                   </div>
                 )}
-                {keywords.missing && keywords.missing.length > 0 && (
+                {allMissingKeywords.length > 0 && (
                   <div>
                     <div className="flex items-center justify-between flex-wrap gap-2 mb-1.5">
                       <div className="text-[10px] uppercase tracking-wide text-warning-red font-medium">
-                        Missing from your resume ({keywords.missing.length}) - click to add
+                        Missing from your resume ({allMissingKeywords.length}) - click to add
                       </div>
                       <button
                         onClick={addAllMissingAndRegenerate}
@@ -787,7 +870,7 @@ export function JobActions({
                       </button>
                     </div>
                     <div className="flex flex-wrap gap-1.5">
-                      {keywords.missing.map((kw) => {
+                      {allMissingKeywords.map((kw) => {
                         const isStaged = selectedKeywords.includes(kw);
                         return (
                           <button
@@ -854,6 +937,53 @@ export function JobActions({
                     )}
                   </div>
                 )}
+
+                {/* Custom-keyword free-text input.
+                    Always rendered after generation so the user can force-add
+                    or force-remove ANY keyword - including ones that the auto-
+                    extractors (matchSkills + extractJdKeywords) missed. */}
+                <div className="mt-3 rounded-card border border-border bg-off-white p-3">
+                  <div className="text-[10px] uppercase tracking-wide text-stone mb-1.5 font-medium">
+                    Custom keyword - type any keyword the auto-detection missed
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="text"
+                      value={customKeyword}
+                      onChange={(e) => setCustomKeyword(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          addCustomKeyword();
+                        }
+                      }}
+                      disabled={generatingResume}
+                      placeholder="e.g. non-functional requirements, NFR, AppDynamics..."
+                      className="input flex-1 min-w-[180px] py-1.5 text-xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={addCustomKeyword}
+                      disabled={generatingResume || !customKeyword.trim()}
+                      className="btn-primary text-xs disabled:opacity-50"
+                      title="Force-include this keyword on next regenerate"
+                    >
+                      + Add
+                    </button>
+                    <button
+                      type="button"
+                      onClick={excludeCustomKeyword}
+                      disabled={generatingResume || !customKeyword.trim()}
+                      className="btn text-xs border-warning-red/30 text-warning-red hover:bg-red-50 disabled:opacity-50"
+                      title="Force-remove this keyword on next regenerate"
+                    >
+                      <XCircle className="h-3 w-3" /> Remove
+                    </button>
+                  </div>
+                  <div className="text-[10px] text-stone mt-1.5">
+                    Type a keyword and press Enter or click Add. Use Remove to force the model to drop a keyword that's currently in the resume.
+                  </div>
+                </div>
               </div>
             )}
 
