@@ -88,7 +88,8 @@ browser_agent/requirements.txt ← Pinned: browser-use==0.1.40
 
 scripts/ingest.ts                    ← Cron entry point
 scripts/backfill-jds.ts             ← Backfill: fetch full JDs + re-embed + re-score existing jobs
-.github/workflows/ingest.yml        ← Cron schedule (every 6h)
+scripts/clear-embeddings.sql        ← (Session 4, NOT YET COMMITTED) Wipe stale 768-dim vectors so next ingest re-embeds with OpenAI 1536-dim
+.github/workflows/ingest.yml        ← Cron schedule (every 6h). MUST pass GEMINI_API_KEY (still needed until embeddings migration ships)
 .github/workflows/backfill-jds.yml  ← Manual workflow_dispatch for bulk JD backfill
 ```
 
@@ -118,6 +119,12 @@ scripts/backfill-jds.ts             ← Backfill: fetch full JDs + re-embed + re
 | `ignoreDuplicates: false` on upsert | Re-fetched jobs got their `fetched_at` reset, pushing them to top and displacing new jobs | Use `ignoreDuplicates: true` |
 | `status='viewed'` makes jobs vanish | Job detail page sets `status='viewed'`, but `'viewed'` is not in `STATUS_ORDER`. The job disappears from every tab. | Fix: add `viewed_at timestamptz` column, stop changing status on open, just stamp `viewed_at`. Reset existing `viewed` rows back to `new`. |
 | Adzuna `posted_at` is unreliable | `created` field reflects when Adzuna indexed the job, not when the company posted it | Show exact date in tooltip; trust Remotive/RemoteOK more than Adzuna for freshness |
+| Pushing to a closed/merged PR's branch | Two important commits sat dangling on a closed branch for two test cycles; Render kept deploying old main; user got frustrated | Always check PR state with `github_list_pull_requests` BEFORE pushing. If closed/merged, branch off latest main and open a NEW PR. |
+| Trusting local `git fetch` in this sandbox | Auth header issues silently fail the fetch; local git cache lies about remote state | Verify deployed state by fetching `raw.githubusercontent.com/{repo}/main/{path}` directly |
+| `BROWSER_USE_HEADLESS` env var | Fabricated from earlier guessing; does not exist in `browser-use==0.1.40` source | Verify env-var/API names by reading the pinned version's source on GitHub. v0.1.40 needs explicit `Browser(BrowserConfig(headless=True, extra_chromium_args=[...]))` into `Agent(browser=...)`. |
+| `text-embedding-004` deprecated (Google, 2026-01-14) | Ingest fails with `404 Not Found ... models/text-embedding-004`. `@google/generative-ai` SDK also EOL 2025-08-31. | Switch to OpenAI `text-embedding-3-small` (1536 dims, ~$1.30/mo). DB columns are JSONB so dimension change is non-breaking; cosine similarity returns 0 on length mismatch so old vectors are silently ignored. |
+| ATS parsers see one giant paragraph instead of bullets | PDF used graphical amber circles only — no text bullet character. Workday/Greenhouse/Lever/Taleo/iCIMS extracted bullet content as a single blob. | Render real `- ` text characters in the PDF text stream; ASCII-only output for legacy parsers. |
+| LLM prefixes resume output with the word "Resume" | Navy header band rendered "Resume" as the candidate's name | Parser skips any leading `Resume / RESUME / Curriculum Vitae / CV / PROFILE` label before treating the next line as the name. Also call `doc.setProperties({ title, author, creator })` so PDF viewers show candidate name. |
 
 ---
 
@@ -139,7 +146,7 @@ When a feature seems broken:
 | Operation | Cost | Frequency |
 |---|---|---|
 | Generate SearchProfile | ~$0.005 | Once per 7 days |
-| Embed a job | ~$0.00002 | Per new job |
+| Embed a job (OpenAI text-embedding-3-small, 1536 dims, post-Session-4 migration) | ~$0.00002 | Per new job (~$1.30/mo at current volume) |
 | AI relevance filter (batch of 15) | ~$0.001 | Per cron run (2-4 batches) |
 | LLM score a job | ~$0.001 | Per scored job (30-80/run) |
 | Skill match (per job detail view) | ~$0.002 | On demand |
@@ -158,7 +165,125 @@ When a feature seems broken:
 - New "pitfalls" or rules learned
 - Changes to the file map
 
-**Last updated:** May 28, 2026 (session 3: bookmark/seen-unseen, ATS resume engine, auto-apply agent, Gemini→OpenAI migration)
+**Last updated:** May 28, 2026 evening (session 4: two-pass JD-tailored ATS resume + ATS Match Score, parser-safe PDF, clickable add/remove keyword chips, custom-keyword input, default sort by freshness with 5 sort modes, ingest GEMINI_API_KEY wiring + early-bail, browser-use v0.1.40 headless via Browser(BrowserConfig(...)), OpenAI primary for the agent. Embeddings migration to OpenAI text-embedding-3-small drafted but NOT yet pushed.)
+
+---
+
+## Session 4 — What Was Built & Fixed (May 28, 2026, evening)
+
+This was a long session focused on (a) making the ATS resume actually pass scanners, (b) cleaning up the resume PDF's visual + semantic correctness, (c) fixing two production-impacting ingest bugs, (d) adding sort controls. **All PRs #14 through #24 listed below are MERGED to main.** Section "Open issues" at the bottom lists what is still pending after this session.
+
+### Resume / ATS pipeline (PRs #14-#22, all merged)
+
+The previous resume generator produced essentially the same generic perf-eng resume regardless of JD. Rebuilt as a two-pass JD-tailored pipeline with measurable score and per-keyword controls.
+
+- **Two-pass generation** (`lib/gemini.ts → extractJdKeywords()` + `generateAtsResume()`):
+  1. First LLM call extracts 18-25 ATS-relevant keywords from THIS specific JD. Uses exact phrasing from the JD, skips soft-skill noise.
+  2. Second LLM call generates the resume around those keywords, with conditional directives (AI-angle summary only when JD mentions AI/ML; JMeter Performance Center bullet only for perf/test/QA roles).
+- **Strict keyword scope rule:** the model can only introduce new tools that are EITHER in the extracted JD-keyword list OR already in the candidate's existing resume. The JD text is for relevance context only — explicitly NOT a source of new keywords. Stops the model from sneaking in arbitrary JD vocab.
+- **Client name privacy:** "Charles Schwab" (or any client name) is allowed in EXACTLY one place — the `Client: ClientName (Domain)` subline directly under the relevant job header in PROFESSIONAL EXPERIENCE. Hardcoded JMeter Performance Center bullet was reworded to "adopted by multiple teams across the organization" (was "at Charles Schwab"). New CRITICAL RULE 4 in the prompt enforces this.
+- **Role title alignment:** new `cleanJdTitle()` strips JD-listing noise — year ranges (`- 4 to 8 years`), location pipes (`| Pune | Banking`), parenthetical departments (`(BFSI)`, `(WFH)`), `at Company X`, hiring-tail words (opening / WFH / hybrid / immediate joiner), trailing Roman numerals (II, III, IV), trailing 1-3 letter ALL-CAPS dept codes (CX, RX) under a role-keyword guard so `AI Engineer` survives, and `' - {text}' / ' / {text}'` suffixes (e.g. `Senior Performance Testing Engineer - Assistant Manager` → `Senior Performance Testing Engineer`). If a JD title has a parenthetical containing a real role keyword (`Tester II, Product (Performance Tester)`), the parenthetical wins. Fallback: `Senior Performance Engineer`. Past role titles in PROFESSIONAL EXPERIENCE stay untouched — only the most recent role gets aligned.
+- **ATS Match Score:** server computes `(JD keywords present in generated resume) / (total JD keywords)` and returns it. UI shows it as a green/amber/red banded card (≥80 / ≥60 / <60).
+- **Add/remove keyword UX:**
+  - Missing keywords (red chips) are clickable → stage for next regenerate. Becomes amber "staged" badge.
+  - Present keywords (Woven + Already had) are clickable → stage for REMOVAL. Chip flips red+strikethrough with "remove" badge.
+  - "+ Add all & regenerate" button stages every missing keyword in one click.
+  - User-staged keywords get marked `[USER PRIORITY]` in the prompt, with an explicit rule that they MUST appear in the final resume (in TECHNICAL SKILLS at minimum, even if the candidate has no direct experience — Skills is by convention a familiarity list).
+  - Excluded keywords get an `EXCLUDED KEYWORDS` block in the prompt: "MUST NOT appear ANYWHERE; if currently in the input resume, REMOVE every occurrence and rephrase the surrounding sentence." Exclusion overrides JD priority.
+  - **Free-text custom-keyword input** (always visible after generation): type any keyword, click "+ Add" or "- Remove" to force-include / force-exclude. Catches cases where matchSkills() flagged a term but extractJdKeywords() didn't (e.g. `non-functional requirements`).
+  - **Skill Match red chips** at the top of the page are also clickable now — same staging behavior as the chips lower in the keyword analysis.
+  - Unified missing list: merges `keywords.missing` (from extractJdKeywords) + `skills.missing` (from matchSkills) so every flagged-missing keyword has an actionable add chip.
+  - In-place regenerate: keeps the existing resume visible while regenerating; score card shows a "Regenerating..." overlay; toast on completion shows new score AND delta vs previous (e.g. "ATS Match Score: 87% (+12)").
+- **PDF generator** (`lib/pdf-resume.ts`):
+  - **Bullets are now real `- ` text characters** in the PDF text stream — ATS parsers (Workday, Greenhouse, Lever, Taleo, iCIMS) extract them as list items. Previously bullets were graphical amber circles only with no text marker, so ATS extracted bullet content as one giant paragraph. This was the silent killer.
+  - Header: dark navy band restored (matches user's preferred original-resume layout). Name big bold white. Title tagline in amber ALL CAPS. Contact info on a single line with `  •  ` bullet separators in light blue-gray.
+  - Parser skips any leading `Resume / RESUME / Curriculum Vitae / CV / PROFILE` label so the navy band shows the candidate's actual name (LLM occasionally prefixed output with "Resume" — that was being rendered as the name).
+  - `doc.setProperties({ title, author, creator })` so PDF viewers display the candidate name in their toolbar instead of "Resume" or "Untitled".
+  - ASCII-only output (em-dash, smart quotes, unicode bullets, NBSP, ellipsis, ZWJ stripped) for older ATS parsers (Taleo, iCIMS).
+  - Single column, plain Helvetica throughout, minimal styling.
+- **Smart default download filename:** `{FirstName}_{Specialization}_{Years}` e.g. `Shashank_Performance_7.7.pdf`. Years preserves one decimal (was rounded to integer); fallback `7.7`. Specialization picks first non-seniority word of cleaned JD title, fallback `Performance`. Filename rendered server-side and returned in the API response so client downloads use it.
+
+### Matches list sort (PR #23, merged)
+
+Default ordering changed from `llm_score desc only` to `jobs.fetched_at desc`. Five sort modes via `?sort=` URL param + dropdown:
+
+| Mode | Order |
+|---|---|
+| `newest` (default) | `jobs.fetched_at desc` |
+| `posted` | `jobs.posted_at desc nulls last, jobs.fetched_at desc` |
+| `score` | `matches.llm_score desc, jobs.fetched_at desc` |
+| `activity` | `matches.updated_at desc` |
+| `oldest` | `jobs.fetched_at asc` |
+
+MatchCard now falls back to `fetched_at` when `posted_at` is null with a small uppercase **added** tag and tooltip — distinguishes "added 2h ago" from "posted 2h ago".
+
+### Ingest production fix (PR #24, merged)
+
+Recent ingests showed `partial (300)` with `embedded=0` for hours. Evidence-based diagnosis via Supabase SQL on `ingest_runs.errors`:
+
+```
+errors_by_source: {embed: 300}
+sample: "Missing GEMINI_API_KEY env var"
+```
+
+**Root cause:** `.github/workflows/ingest.yml` env block was missing `GEMINI_API_KEY`. This was caused by commit `da6a62a` on 2026-05-25 ("switch AI provider from Gemini to OpenAI") that deliberately removed the secret as part of a planned OpenAI-only switch. Later commits brought Gemini embeddings back into the code (text-embedding-004 stayed for the 768-dim DB schema) but no one rewired the workflow secret. The 2026-05-27 success run probably ran during a transitional state.
+
+**Fix:**
+- Both `.github/workflows/ingest.yml` and `backfill-jds.yml` now pass `GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}` with an inline comment explaining why.
+- `lib/ingest.ts` embed loop has a defensive early-bail: on the FIRST embed failure (when `embedded === 0`) we test the error message against `/missing\s+\w+_API_KEY|invalid api key|api key not valid|unauthor|forbid/i`. If it matches, the loop aborts and pushes ONE descriptive error like *"Embed phase aborted on first job (300 pending). Config error: Missing GEMINI_API_KEY env var"* — instead of 300 identical errors. Subsequent transient errors still accumulate one per job.
+
+### Auto-apply browser agent (PRs #12-#13, merged earlier in this session)
+
+Render logs from this session proved the previous "minimal API" learning was wrong for `browser-use==0.1.40`. Definitive findings (verified by reading the pinned version's source on GitHub):
+- `BrowserConfig.headless` defaults to `False` (headed mode!).
+- There is NO `BROWSER_USE_HEADLESS` env var anywhere in v0.1.40 — that name was a fabrication from earlier guessing.
+- The only way to enable headless is `Browser(BrowserConfig(headless=True, extra_chromium_args=[--no-sandbox, --disable-setuid-sandbox, --disable-dev-shm-usage, --disable-gpu]))` passed as `Agent(browser=browser)`.
+- LLM provider for the agent: switched to OpenAI gpt-4o-mini as primary (Gemini fallback). Same code mirrors `lib/gemini.ts` precedence in the Next.js app.
+- Per-step visibility: `Agent(register_new_step_callback=...)` now pipes per-step decisions (next goal + first action) into the SSE feed so silent failures are visible.
+- Truthful status: status only becomes `done` on a confirmed success signal in the agent's final output. Empty / unclear results now mark `failed` with a real diagnostic, not a fake "Application submitted!".
+
+### Workflow lessons (added to learnings)
+
+- **Never push to a closed/merged PR's branch.** GitHub considers it already-merged; commits sit dangling and the deployment platform keeps deploying old main. After every merge, fresh branch off latest main, fresh PR. Verified with the user during a frustrated moment when two commits sat on a closed branch for two test cycles.
+- **Verify deployed state by fetching `raw.githubusercontent.com/{repo}/main/{path}`**, not by trusting local git cache (which fails to fetch in this sandbox due to auth header issues).
+
+### Open issues for the next session
+
+1. **Embedding model deprecation (NOT YET MERGED).** The latest ingest run at 2026-05-28 21:03:22 UTC failed with a NEW error confirming PR #24's secret-wiring worked but exposing the next-layer problem:
+   ```
+   [GoogleGenerativeAI Error]: ... [404 Not Found] models/text-embedding-004
+     is not found for API version v1beta
+   ```
+   - `text-embedding-004` was deprecated by Google on 2026-01-14 and is now removed from the v1beta endpoint.
+   - Replacement `gemini-embedding-001` is paid ($0.15/M tokens, ~$10/month at our volume). Plus the `@google/generative-ai` SDK reached EOL on 2025-08-31.
+   - **Recommended path: switch embeddings to OpenAI `text-embedding-3-small` (1536 dims, $0.02/M = ~$1.30/month).** Already imports the `openai` SDK. DB columns are JSONB so dimension change is non-breaking; cosine similarity returns 0 on length mismatch so old 768-dim vectors are silently ignored.
+   - **Edits already made locally in this session but NOT committed/pushed** (sandbox shell tool became unavailable):
+     - `lib/gemini.ts`: `EMBED_MODEL` changed to `text-embedding-3-small`; `embed()` rewritten to use the existing OpenAI client; file header rewritten to document the migration. The `getOpenAIClient()` helper, `chat()` Gemini-fallback, and other functions are unchanged.
+     - `scripts/clear-embeddings.sql` (new file): one-shot script to wipe stale 768-dim vectors so the next ingest re-embeds with 1536 dims.
+   - **Next session must:** (a) commit + push these edits as a fresh PR off main, (b) run `scripts/clear-embeddings.sql` in Supabase SQL Editor, (c) re-save profile from `/onboarding` so resume embedding regenerates, (d) trigger the workflow manually and verify `success` status with `embedded > 0`.
+2. **Render free tier 512 MB still tight for Chromium.** Even with the headless fix, the auto-apply agent may still crash on real page loads. Options remain: upgrade ($7/mo), run agent locally, or switch to a lighter automation lib.
+3. **Auto-apply callback 401** (carried over from session 3): `INGEST_SECRET` env var still not synced between Vercel and Render.
+
+### Files modified in this session (already on main except where noted)
+
+- `lib/gemini.ts` — extractJdKeywords, generateAtsResume rewrite, cleanJdTitle, normalizeAscii, conditional directives, prompt reinforcements. **Plus uncommitted edit for embed() → OpenAI.**
+- `lib/pdf-resume.ts` — full PDF rewrite: text bullets, parser title-slot detection, label-skip, navy band restoration with single-line bullet-separator contact, setProperties metadata.
+- `lib/ingest.ts` — embed loop early-bail on config-shaped errors.
+- `app/(app)/page.tsx` — sort modes + select clause includes fetched_at and updated_at.
+- `app/(app)/_components/MatchFilters.tsx` — sort dropdown.
+- `app/(app)/_components/MatchCard.tsx` — fetched_at fallback with "added" tag.
+- `app/(app)/jobs/[id]/JobActions.tsx` — clickable add/remove keyword chips, custom-keyword input, allMissingKeywords useMemo, in-place regenerate, filename state, ATS Match Score card.
+- `app/api/match/[id]/resume/route.ts` — extractJdKeywords for picker, accept selectedKeywords + excludedKeywords, return filename_base, return ats_match_score + missing.
+- `.github/workflows/ingest.yml` + `backfill-jds.yml` — added GEMINI_API_KEY env line.
+- `browser_agent/main.py` — Browser(BrowserConfig(headless=True, ...)), OpenAI primary LLM with Gemini fallback, register_new_step_callback for SSE visibility, truthful status reporting.
+- `browser_agent/requirements.txt` — added `langchain-openai>=0.2.0`.
+- `browser_agent/.env.example` — documented OPENAI_API_KEY, OPENAI_MODEL, GEMINI_MODEL, LLM_PROVIDER.
+- `app/(app)/jobs/[id]/AutoApplyButton.tsx` — drop hardcoded "Application submitted!" log; truthful messages from Python agent.
+- `scripts/clear-embeddings.sql` (new, **uncommitted**) — wipe stale 768-dim vectors.
+
+### Merged PRs in this session
+
+#12 headless browser-agent · #13 OpenAI primary + step callback + truthful status · #14 two-pass JD tailoring + ATS Match Score + parser-safe PDF · #15 clickable missing keywords + USER PRIORITY · #16 client privacy + strict keyword scope + JD title alignment · #17 PDF JD-aligned title + cleaner header · #18 default download filename + decimal years · #19 aggressive title cleaner + multi-line PDF + remove-keyword flow · #20 strip ' - Designation' / ' / Specialization' from titles · #21 restore navy header + skip 'Resume' label leak · #22 unified missing list + clickable Skill Match chips + custom keyword input · #23 default sort by freshness + 5 sort modes · #24 wire GEMINI_API_KEY into workflow + early-bail in embed loop
 
 ---
 
@@ -194,6 +319,9 @@ When a feature seems broken:
 - **Current limitation:** Render free tier (512MB RAM) cannot sustain Chromium. Agent starts but silently crashes. Needs either: upgrade to $7/mo, run locally, or lighter automation approach.
 
 ### 5. browser-use API Learnings
+
+> **NOTE (superseded by Session 4):** the claim below that `BROWSER_USE_HEADLESS=true` enables headless mode is **WRONG** for `browser-use==0.1.40`. That env var does not exist anywhere in the v0.1.40 source. The correct API is `Browser(BrowserConfig(headless=True, extra_chromium_args=[...]))` passed as `Agent(browser=browser)`. See Session 4 → "Auto-apply browser agent" for the verified-from-source fix.
+
 - **v0.1.40 correct API:** `Agent(task=..., llm=...)` — NO `Browser`, NO `BrowserConfig`, NO `BrowserProfile`. Library manages its own browser session.
 - **Headless mode:** Set via `BROWSER_USE_HEADLESS=true` environment variable.
 - **DO NOT pass `config=`, `browser=`, or `browser_profile=`** — all cause `BrowserSession.__init__() got an unexpected keyword argument 'config'` error.
