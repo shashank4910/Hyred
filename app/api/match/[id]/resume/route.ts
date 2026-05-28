@@ -82,10 +82,14 @@ export async function POST(
   const sb = supabaseAdmin();
 
   let selectedKeywords: string[] = [];
+  let excludedKeywords: string[] = [];
   try {
     const body = await req.json();
     if (Array.isArray(body?.selectedKeywords)) {
       selectedKeywords = body.selectedKeywords.map(String).slice(0, 30);
+    }
+    if (Array.isArray(body?.excludedKeywords)) {
+      excludedKeywords = body.excludedKeywords.map(String).slice(0, 30);
     }
   } catch { /* no body */ }
 
@@ -138,6 +142,7 @@ export async function POST(
     phone: profile.insights?.phone,
     location: profile.insights?.current_location,
     selectedKeywords,
+    excludedKeywords,
   });
 
   if (!result.resume || result.resume.length < 200) {

@@ -16,7 +16,8 @@
  *   - No heavy header band. Just a thin amber accent at the top.
  *   - Name in bold dark on white background.
  *   - Title tagline (the JD-aligned current role title) in amber below the name.
- *   - Contact info joined on one or two lines with " | " separators, in stone gray.
+ *   - Contact info: each item on its OWN line in stone gray (recruiters
+ *     consistently prefer this stacked layout over a horizontal one-liner).
  *   - Single thin amber rule below the header, separating it from sections.
  *   - Each section header has a small amber rule above it.
  *   - All bullets are real "- " text characters in the text stream.
@@ -180,18 +181,20 @@ export function generateBeautifulPdf(resumeText: string): jsPDF {
   }
 
   // ── Contact info ───────────────────────────────────────────────────────────
-  // Joined on one line with " | " separators when it fits; wraps to additional
-  // lines automatically. Each item still appears as plain text in the PDF
-  // text stream so ATS parsers extract the email / phone / URL cleanly.
+  // Each contact item rendered on its OWN line for a clean, scannable layout.
+  // Recruiters consistently prefer this stacked layout over horizontal
+  // pipe-separated rows, and each item is still a separate token in the
+  // PDF text stream so ATS parsers extract email / phone / URL cleanly.
   if (parsed.contactLines.length > 0) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9.5);
     doc.setTextColor(...C.stone);
-    const joined = parsed.contactLines.join('  |  ');
-    const wrapped = doc.splitTextToSize(joined, contentW);
-    for (const wl of wrapped) {
-      doc.text(wl, L.mL, y);
-      y += 12;
+    for (const line of parsed.contactLines) {
+      const wrapped = doc.splitTextToSize(line, contentW);
+      for (const wl of wrapped) {
+        doc.text(wl, L.mL, y);
+        y += 12;
+      }
     }
   }
 
