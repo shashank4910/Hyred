@@ -23,7 +23,7 @@ from datetime import datetime
 from typing import AsyncGenerator
 
 import httpx
-from browser_use import Agent
+from browser_use import Agent, Browser, BrowserConfig
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -39,11 +39,9 @@ tasks: dict[str, dict] = {}
 # ── Lifespan ──────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Install playwright browsers on startup if not already present
-    os.system("playwright install chromium --with-deps 2>/dev/null || true")
-    # Set chromium args for headless server environment
-    os.environ["BROWSER_USE_HEADLESS"] = os.getenv("BROWSER_HEADLESS", "true")
-    os.environ["PLAYWRIGHT_CHROMIUM_ARGS"] = "--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --disable-gpu"
+    # Install playwright browsers on startup if not already present.
+    # In Docker we install at build time, this is just a safety net for local runs.
+    os.system("playwright install chromium 2>/dev/null || true")
     yield
 
 app = FastAPI(title="JobRadar Apply Agent", lifespan=lifespan)
@@ -104,6 +102,7 @@ class ApplyRequest(BaseModel):
 # ── Health ────────────────────────────────────────────────────────────────────
 
 @app.get("/health")
+@app.head("/health")
 async def health():
     return {"ok": True, "time": datetime.utcnow().isoformat()}
 
@@ -233,19 +232,42 @@ CANDIDATE INFORMATION:
 
         _log(task_id, "🤖 Initialising Gemini 2.0 Flash agent...")
 
-        # browser-use v0.1.40: just pass task + llm, library handles browser internally
-        # Headless mode is controlled by env: BROWSER_USE_HEADLESS=true
-        os.environ["BROWSER_USE_HEADLESS"] = os.getenv("BROWSER_HEADLESS", "true")
+        # browser-use 0.1.40 defaults to HEADED mode and does NOT honour any
+        # env var. The only way to run on a headless server (Render, Docker)
+        # is to construct an explicit Browser(BrowserConfig(headless=True))
+        # and pass it to Agent(browser=...).
+        # See: github.com/browser-use/browser-use/blob/0.1.40/browser_use/browser/browser.py
+        headless = os.getenv("BROWSER_HEADLESS", "true").lower() == "true"
+        browser = Browser(
+            config=BrowserConfig(
+                headless=headless,
+                disable_security=True,
+                extra_chromium_args=[
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu",
+                ],
+            )
+        )
 
         agent = Agent(
             task=task_prompt,
             llm=llm,
+            browser=browser,
         )
 
-        _log(task_id, "🌍 Opening browser and running agent...")
+        _log(task_id, f"🌍 Opening browser (headless={headless}) and running agent...")
 
-        # Run agent
-        result = await agent.run(max_steps=50)
+        try:
+            # Run agent
+            result = await agent.run(max_steps=50)
+        finally:
+            # Always close browser to free memory on Render free tier
+            try:
+                await browser.close()
+            except Exception as close_err:
+                print(f"Browser close warning: {close_err}")
 
         # Check if application was successful
         final_result = result.final_result() if hasattr(result, 'final_result') else str(result)
