@@ -701,7 +701,9 @@ Company: ${args.jobCompany ?? 'Not specified'}
 Description:
 ${args.jobDescription.slice(0, 5000)}
 
-Output the complete tailored resume in plain ASCII text. No preamble, no explanation, no markdown fences. Start with the candidate's name on the first line.`;
+Output the complete tailored resume in plain ASCII text. No preamble, no explanation, no markdown fences. Start with the candidate's name on the first line.
+
+CRITICAL: do NOT prefix the output with any header label like "Resume", "RESUME", "Curriculum Vitae", "CV", or "PROFILE". The PDF renderer treats the first non-empty line of your output as the candidate's NAME - if you put "Resume" first, the literal word "Resume" will be rendered huge in the header band where the candidate's name should be. The very first non-empty line MUST be the candidate's full name (e.g. "SHASHANK SINGH"). The very second line MUST be the role title tagline.`;
 
   const raw = await chat(
     'You reformat resumes into ATS-friendly plain ASCII text. Preserve all real content. Never fabricate experience. Output ONLY the resume.',

@@ -12,15 +12,17 @@
  *   5. Section headers are detected by the ALL CAPS pattern, exactly the
  *      pattern the ATS resume prompt is told to produce.
  *
- * Visual styling (clean & recruiter-friendly):
- *   - No heavy header band. Just a thin amber accent at the top.
- *   - Name in bold dark on white background.
- *   - Title tagline (the JD-aligned current role title) in amber below the name.
- *   - Contact info: each item on its OWN line in stone gray (recruiters
- *     consistently prefer this stacked layout over a horizontal one-liner).
- *   - Single thin amber rule below the header, separating it from sections.
+ * Visual styling (matches the user's preferred original-resume header):
+ *   - Dark navy header band at top of page (~98pt tall).
+ *   - Thin amber accent line at the very top edge.
+ *   - Name in big bold WHITE.
+ *   - Title tagline in amber, ALL CAPS, regular weight.
+ *   - Contact info on a SINGLE line with " • " bullet separators, in light
+ *     blue-gray on the navy band. Wraps to a second line if too long.
+ *   - Body content (sections + bullets) renders below the band on white.
  *   - Each section header has a small amber rule above it.
- *   - All bullets are real "- " text characters in the text stream.
+ *   - All bullets are real "- " text characters in the text stream so
+ *     ATS parsers extract them as list items.
  *
  * Input format (produced by generateAtsResume()):
  *   Line 1: Name
@@ -28,9 +30,13 @@
  *   Line 3-N: Contact lines (email, phone, location, linkedin) - any order
  *   Then ALL-CAPS section headers and "- " bullets
  *
- * The title-detection in parse() tolerates legacy resumes (pre-fix) where
- * line 2 was an email - any line that looks like contact info skips the
- * title slot and goes into contactLines instead.
+ * Defensive parser behaviour:
+ *   - Lines like "Resume" / "RESUME" / "CURRICULUM VITAE" / "CV" / "PROFILE"
+ *     that some LLM outputs include before the candidate's name are SKIPPED
+ *     so the user's name (not the literal word "Resume") is what appears in
+ *     the navy band.
+ *   - If line 2 looks like contact info (has @, +, or .com), it skips the
+ *     title slot - keeps the parser tolerant of legacy resume text.
  */
 
 import { jsPDF } from 'jspdf';
@@ -40,10 +46,13 @@ import { jsPDF } from 'jspdf';
 type RGB = [number, number, number];
 
 const C = {
-  accent: [234, 179, 8] as RGB,    // amber
-  ink:    [15, 23, 42] as RGB,     // near-black
-  stone:  [80, 92, 110] as RGB,    // mid gray
-  faint:  [212, 218, 228] as RGB,  // very-light separator
+  headerBg: [15, 23, 42] as RGB,    // deep navy (matches user's original header)
+  accent:   [234, 179, 8] as RGB,   // amber
+  white:    [255, 255, 255] as RGB,
+  ink:      [15, 23, 42] as RGB,    // body text on white
+  stone:    [80, 92, 110] as RGB,   // section / secondary text on white
+  light:    [180, 195, 215] as RGB, // contact text on the navy band
+  faint:    [212, 218, 228] as RGB, // very-light section separators
 };
 
 const L = {
@@ -51,13 +60,18 @@ const L = {
   pageH:    841.89,
   mL:       44,
   mR:       44,
-  mTop:     40,
   mBottom:  52,
+  headerH:  98,    // navy header band height
   lineH:    13.5,
   bulletIndent: 14, // hanging indent for wrapped bullet text
 };
 
 const contentW = L.pageW - L.mL - L.mR;
+
+// Labels that some LLM outputs prepend to the resume before the candidate's
+// name. These get skipped during parsing so the navy band shows the actual
+// name (not the literal word "Resume" rendered as if it were a name).
+const HEADER_LABELS_TO_SKIP = /^(resume|curriculum\s+vitae|cv|profile|c\.?v\.?)$/i;
 
 // ─── Plain-text parser ────────────────────────────────────────────────────────
 
@@ -97,6 +111,12 @@ function parse(text: string): ParsedResume {
 
     if (inHeader) {
       if (!trimmed) continue;
+
+      // Skip any "Resume" / "CV" style label that some LLM outputs prepend.
+      // Without this skip the literal word "Resume" gets treated as the
+      // candidate's name and renders huge in the navy band.
+      if (!name && HEADER_LABELS_TO_SKIP.test(trimmed)) continue;
+
       if (isSectionHeader(trimmed)) {
         // No more header lines - we've reached the first section.
         inHeader = false;
@@ -157,53 +177,65 @@ export function generateBeautifulPdf(resumeText: string): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
   const parsed = parse(asciiSafe(resumeText));
 
-  // Thin amber accent at the very top of the page (3pt).
-  // Subtle visual identity, no heavy fill.
+  // Set explicit PDF metadata so PDF viewers don't fall back to a generic
+  // "Resume" or filename-derived title in their header bar.
+  doc.setProperties({
+    title: parsed.name || '',
+    author: parsed.name || '',
+    subject: parsed.title || '',
+    creator: 'JobRadar',
+  });
+
+  // ── Dark navy header band ──────────────────────────────────────────────────
+  // Matches the user's preferred original-resume header layout.
+  doc.setFillColor(...C.headerBg);
+  doc.rect(0, 0, L.pageW, L.headerH, 'F');
+
+  // Thin amber accent line at the very top of the navy band.
   doc.setFillColor(...C.accent);
-  doc.rect(0, 0, L.pageW, 3, 'F');
+  doc.rect(0, 0, L.pageW, 4, 'F');
 
-  let y = L.mTop;
+  let y = 32;
 
-  // ── Name ───────────────────────────────────────────────────────────────────
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(20);
-  doc.setTextColor(...C.ink);
-  doc.text(parsed.name || 'Resume', L.mL, y);
-  y += 22;
-
-  // ── Title tagline (JD-aligned current role title) ──────────────────────────
-  if (parsed.title) {
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(11.5);
-    doc.setTextColor(...C.accent);
-    doc.text(parsed.title, L.mL, y);
-    y += 15;
+  // ── Name (large bold white) ────────────────────────────────────────────────
+  if (parsed.name) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(22);
+    doc.setTextColor(...C.white);
+    doc.text(parsed.name, L.mL, y);
+    y += 22;
   }
 
-  // ── Contact info ───────────────────────────────────────────────────────────
-  // Each contact item rendered on its OWN line for a clean, scannable layout.
-  // Recruiters consistently prefer this stacked layout over horizontal
-  // pipe-separated rows, and each item is still a separate token in the
-  // PDF text stream so ATS parsers extract email / phone / URL cleanly.
+  // ── Title tagline (amber, ALL CAPS) ────────────────────────────────────────
+  if (parsed.title) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(11);
+    doc.setTextColor(...C.accent);
+    doc.text(parsed.title.toUpperCase(), L.mL, y);
+    y += 16;
+  }
+
+  // ── Contact info (single line, bullet separators, light blue-gray) ─────────
+  // Joins phone / email / location / linkedin with " • " separators on a
+  // single line for the look the user asked for. Wraps to a second line if
+  // the joined string is too long for the page width. Each item is still a
+  // separate token in the PDF text stream so ATS parsers extract them
+  // cleanly.
   if (parsed.contactLines.length > 0) {
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9.5);
-    doc.setTextColor(...C.stone);
-    for (const line of parsed.contactLines) {
-      const wrapped = doc.splitTextToSize(line, contentW);
-      for (const wl of wrapped) {
-        doc.text(wl, L.mL, y);
-        y += 12;
-      }
+    doc.setFontSize(8.8);
+    doc.setTextColor(...C.light);
+    const joined = parsed.contactLines.join('  \u2022  '); // U+2022 BULLET
+    const wrapped = doc.splitTextToSize(joined, contentW);
+    for (const wl of wrapped) {
+      if (y > L.headerH - 6) break; // never spill outside the band
+      doc.text(wl, L.mL, y);
+      y += 11;
     }
   }
 
-  // ── Thin separator below the header ────────────────────────────────────────
-  y += 6;
-  doc.setDrawColor(...C.faint);
-  doc.setLineWidth(0.6);
-  doc.line(L.mL, y, L.pageW - L.mR, y);
-  y += 16;
+  // Body content starts below the navy band on white background.
+  y = L.headerH + 22;
 
   // ── Body sections ──────────────────────────────────────────────────────────
   for (let si = 0; si < parsed.sections.length; si++) {
