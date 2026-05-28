@@ -203,7 +203,7 @@ Return strict JSON in this shape:
   "email": "<primary email address from the resume, or null if not present>",
   "current_location": "<city and country, e.g. 'Noida, India', or null>",
   "phone": "<phone number with country code, or null>",
-  "years_experience": <integer total years of professional experience>,
+  "years_experience": <number total years of professional experience, decimal allowed (e.g. 7.7 if resume says 7.7 years)>,
   "seniority": "junior" | "mid" | "senior" | "staff" | "principal",
   "top_skills": [<up to 12 most prominent technical skills, lowercase, deduped>],
   "suggested_roles": [<up to 6 specific job titles this candidate is well-positioned for>],
@@ -240,7 +240,7 @@ Rules:
       phone: cleanString(parsed.phone),
       years_experience:
         typeof parsed.years_experience === 'number'
-          ? Math.max(0, Math.round(parsed.years_experience))
+          ? Math.max(0, Math.round(parsed.years_experience * 10) / 10) // preserve one decimal (e.g. 7.7) instead of rounding to integer
           : undefined,
       seniority: ['junior', 'mid', 'senior', 'staff', 'principal'].includes(
         parsed.seniority,

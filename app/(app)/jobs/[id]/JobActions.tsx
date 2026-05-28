@@ -68,6 +68,7 @@ export function JobActions({
   const [atsResume, setAtsResume] = useState('');
   const [generatingResume, setGeneratingResume] = useState(false);
   const [resumeCopied, setResumeCopied] = useState(false);
+  const [filenameBase, setFilenameBase] = useState<string>('Shashank_Performance_7.7');
   const [keywords, setKeywords] = useState<{
     added: string[];
     already_had: string[];
@@ -244,6 +245,7 @@ export function JobActions({
       setEditedResume(data.resume);
       setEditingResume(true);
       if (data.keywords) setKeywords(data.keywords);
+      if (data.filename_base) setFilenameBase(data.filename_base);
       toast.success('ATS resume ready — review & edit before exporting!', { id });
     } catch (e) {
       toast.error((e as Error).message, { id });
@@ -281,6 +283,7 @@ export function JobActions({
       setAtsResume(data.resume);
       setEditedResume(data.resume);
       if (data.keywords) setKeywords(data.keywords);
+      if (data.filename_base) setFilenameBase(data.filename_base);
       const newScore = data.keywords?.ats_match_score ?? 0;
       const oldScore = keywords?.ats_match_score ?? 0;
       const delta = newScore - oldScore;
@@ -326,7 +329,7 @@ export function JobActions({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'resume-ats-optimized.txt';
+    a.download = `${filenameBase}.txt`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -336,7 +339,7 @@ export function JobActions({
     try {
       const { generateBeautifulPdf } = await import('@/lib/pdf-resume');
       const doc = generateBeautifulPdf(editedResume || atsResume);
-      doc.save('resume-ats-optimized.pdf');
+      doc.save(`${filenameBase}.pdf`);
       toast.success('PDF downloaded!', { id });
     } catch (e) {
       toast.error(`PDF generation failed: ${(e as Error).message}`, { id });
