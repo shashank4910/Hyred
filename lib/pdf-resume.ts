@@ -12,15 +12,24 @@
  *   5. Section headers are detected by the ALL CAPS pattern, exactly the
  *      pattern the ATS resume prompt is told to produce.
  *
- * Visual styling (kept minimal so it doesn't fight the parser):
- *   - Top header band with name in bold, contact lines below
- *   - Thin amber rule above each section header
- *   - All bullets are real "- " text characters
+ * Visual styling (clean & recruiter-friendly):
+ *   - No heavy header band. Just a thin amber accent at the top.
+ *   - Name in bold dark on white background.
+ *   - Title tagline (the JD-aligned current role title) in amber below the name.
+ *   - Contact info joined on one or two lines with " | " separators, in stone gray.
+ *   - Single thin amber rule below the header, separating it from sections.
+ *   - Each section header has a small amber rule above it.
+ *   - All bullets are real "- " text characters in the text stream.
  *
  * Input format (produced by generateAtsResume()):
  *   Line 1: Name
- *   Line 2-N: Contact lines (email, phone, location, linkedin) - any order
+ *   Line 2: Title tagline (current role title - the JD-aligned one)
+ *   Line 3-N: Contact lines (email, phone, location, linkedin) - any order
  *   Then ALL-CAPS section headers and "- " bullets
+ *
+ * The title-detection in parse() tolerates legacy resumes (pre-fix) where
+ * line 2 was an email - any line that looks like contact info skips the
+ * title slot and goes into contactLines instead.
  */
 
 import { jsPDF } from 'jspdf';
@@ -30,12 +39,10 @@ import { jsPDF } from 'jspdf';
 type RGB = [number, number, number];
 
 const C = {
-  headerBg: [15, 23, 42] as RGB,    // deep navy
-  accent:   [234, 179, 8] as RGB,   // amber
-  white:    [255, 255, 255] as RGB,
-  ink:      [15, 23, 42] as RGB,
-  stone:    [80, 92, 110] as RGB,
-  light:    [180, 195, 215] as RGB, // contact text on dark band
+  accent: [234, 179, 8] as RGB,    // amber
+  ink:    [15, 23, 42] as RGB,     // near-black
+  stone:  [80, 92, 110] as RGB,    // mid gray
+  faint:  [212, 218, 228] as RGB,  // very-light separator
 };
 
 const L = {
@@ -43,8 +50,8 @@ const L = {
   pageH:    841.89,
   mL:       44,
   mR:       44,
+  mTop:     40,
   mBottom:  52,
-  headerH:  92,
   lineH:    13.5,
   bulletIndent: 14, // hanging indent for wrapped bullet text
 };
@@ -56,13 +63,29 @@ const contentW = L.pageW - L.mL - L.mR;
 interface Section { title: string; lines: string[] }
 interface ParsedResume {
   name: string;
-  contactLines: string[]; // ALL pre-section lines after the name
+  title: string | null;       // line right after name, if it's not contact info
+  contactLines: string[];     // remaining pre-section lines (email/phone/etc.)
   sections: Section[];
+}
+
+/**
+ * Heuristic: does this line look like an email / phone / URL / city,country?
+ * Used to decide whether the second line is a title tagline or contact info.
+ */
+function looksLikeContactLine(s: string): boolean {
+  const t = s.trim();
+  if (!t) return true;
+  if (t.includes('@')) return true;                                  // email
+  if (/^\+?\d/.test(t)) return true;                                  // phone
+  if (/(linkedin|github|http|www\.|\.com|\.in|\.io|\.dev)/i.test(t)) return true; // url
+  if (/^[A-Za-z .'-]{3,30},\s*[A-Za-z .'-]{2,30}$/.test(t)) return true; // "City, Country"
+  return false;
 }
 
 function parse(text: string): ParsedResume {
   const raw = text.split('\n');
   let name = '';
+  let title: string | null = null;
   const contactLines: string[] = [];
   const sections: Section[] = [];
   let cur: Section | null = null;
@@ -82,10 +105,16 @@ function parse(text: string): ParsedResume {
       }
       if (!name) {
         name = trimmed;
-      } else {
-        // Every non-section line before the first section is contact info.
-        contactLines.push(trimmed);
+        continue;
       }
+      // Second non-section, non-name line: title slot, IF it doesn't look
+      // like contact info. This makes the parser tolerant of older resumes
+      // where line 2 was an email.
+      if (title === null && !looksLikeContactLine(trimmed)) {
+        title = trimmed;
+        continue;
+      }
+      contactLines.push(trimmed);
       continue;
     }
 
@@ -98,7 +127,7 @@ function parse(text: string): ParsedResume {
     if (cur && trimmed) cur.lines.push(trimmed);
   }
 
-  return { name, contactLines, sections };
+  return { name, title, contactLines, sections };
 }
 
 function isSectionHeader(line: string): boolean {
@@ -126,37 +155,52 @@ function asciiSafe(s: string): string {
 export function generateBeautifulPdf(resumeText: string): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
   const parsed = parse(asciiSafe(resumeText));
-  let y = 0;
 
-  // ── Header band ────────────────────────────────────────────────────────────
-  doc.setFillColor(...C.headerBg);
-  doc.rect(0, 0, L.pageW, L.headerH, 'F');
-
-  // Thin amber accent bar at the very top
+  // Thin amber accent at the very top of the page (3pt).
+  // Subtle visual identity, no heavy fill.
   doc.setFillColor(...C.accent);
-  doc.rect(0, 0, L.pageW, 4, 'F');
+  doc.rect(0, 0, L.pageW, 3, 'F');
 
-  // Name (large bold white)
+  let y = L.mTop;
+
+  // ── Name ───────────────────────────────────────────────────────────────────
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(22);
-  doc.setTextColor(...C.white);
-  y = 32;
+  doc.setFontSize(20);
+  doc.setTextColor(...C.ink);
   doc.text(parsed.name || 'Resume', L.mL, y);
+  y += 22;
 
-  // Contact lines (small, light) — render each line on its own row.
-  // Joining onto fewer rows would tempt the parser to read "email | phone"
-  // as a single garbled token; keeping them separate is parser-safe.
-  y += 18;
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(...C.light);
-  for (const line of parsed.contactLines) {
-    if (y > L.headerH - 8) break; // avoid spilling out of the band
-    doc.text(line, L.mL, y);
-    y += 11;
+  // ── Title tagline (JD-aligned current role title) ──────────────────────────
+  if (parsed.title) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(11.5);
+    doc.setTextColor(...C.accent);
+    doc.text(parsed.title, L.mL, y);
+    y += 15;
   }
 
-  y = L.headerH + 18;
+  // ── Contact info ───────────────────────────────────────────────────────────
+  // Joined on one line with " | " separators when it fits; wraps to additional
+  // lines automatically. Each item still appears as plain text in the PDF
+  // text stream so ATS parsers extract the email / phone / URL cleanly.
+  if (parsed.contactLines.length > 0) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9.5);
+    doc.setTextColor(...C.stone);
+    const joined = parsed.contactLines.join('  |  ');
+    const wrapped = doc.splitTextToSize(joined, contentW);
+    for (const wl of wrapped) {
+      doc.text(wl, L.mL, y);
+      y += 12;
+    }
+  }
+
+  // ── Thin separator below the header ────────────────────────────────────────
+  y += 6;
+  doc.setDrawColor(...C.faint);
+  doc.setLineWidth(0.6);
+  doc.line(L.mL, y, L.pageW - L.mR, y);
+  y += 16;
 
   // ── Body sections ──────────────────────────────────────────────────────────
   for (let si = 0; si < parsed.sections.length; si++) {
