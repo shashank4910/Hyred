@@ -107,7 +107,7 @@ export async function POST(
     full_name: string | null;
     email: string;
     resume_text: string | null;
-    insights: { phone?: string; current_location?: string } | null;
+    insights: { phone?: string; current_location?: string; years_experience?: number } | null;
   };
   const job = match.job as unknown as {
     id: string; title: string; company: string | null;
@@ -150,9 +150,19 @@ export async function POST(
     .update({ tailored_resume_text: result.resume })
     .eq('id', id);
 
+  // Build a recruiter-friendly default download filename:
+  //   {FirstName}_{Specialization}_{Years}
+  // e.g. "Shashank_Performance_7.7"
+  const filename_base = buildResumeFilenameBase({
+    fullName: profile.full_name,
+    jobTitle: job.title,
+    yearsExperience: profile.insights?.years_experience,
+  });
+
   return NextResponse.json({
     ok: true,
     resume: result.resume,
+    filename_base,
     keywords: {
       added: [...new Set(result.added)].slice(0, 25),
       already_had: [...new Set(result.alreadyHad)].slice(0, 25),
@@ -162,4 +172,54 @@ export async function POST(
       ats_match_score: result.ats_match_score,
     },
   });
+}
+
+/**
+ * Build the default download filename base for the generated resume.
+ * Format: {FirstName}_{Specialization}_{Years}
+ * Example: "Shashank_Performance_7.7"
+ *
+ * - First name: first word of the candidate's full_name, A-Z only.
+ *   Falls back to "Shashank" if the profile has no name.
+ * - Specialization: the first non-seniority word of the JD title (Senior /
+ *   Sr / Lead / Principal / Junior / Jr / Associate / Staff are skipped),
+ *   stripped to letters, capitalized. Falls back to "Performance".
+ * - Years: profile.insights.years_experience if a positive number; otherwise
+ *   falls back to 7.7. Integers render without a trailing ".0" (e.g. "8");
+ *   decimals render with one place (e.g. "7.7").
+ *
+ * The returned string is filesystem-safe (only [A-Za-z0-9._]). Caller
+ * appends ".pdf" / ".txt".
+ */
+function buildResumeFilenameBase(args: {
+  fullName: string | null;
+  jobTitle: string;
+  yearsExperience: number | null | undefined;
+}): string {
+  const safe = (s: string) => s.replace(/[^A-Za-z0-9]/g, '');
+
+  const firstName =
+    safe((args.fullName ?? '').trim().split(/\s+/)[0] ?? '') || 'Shashank';
+
+  const stopWords = new Set([
+    'senior', 'sr', 'lead', 'principal', 'junior', 'jr', 'associate', 'staff',
+  ]);
+  let specialization = 'Performance';
+  for (const w of (args.jobTitle ?? '').split(/\s+/)) {
+    const cleaned = safe(w);
+    if (cleaned.length >= 2 && !stopWords.has(cleaned.toLowerCase())) {
+      specialization = cleaned.charAt(0).toUpperCase() + cleaned.slice(1).toLowerCase();
+      break;
+    }
+  }
+
+  const yearsRaw =
+    typeof args.yearsExperience === 'number' && args.yearsExperience > 0
+      ? args.yearsExperience
+      : 7.7;
+  const yearsStr = Number.isInteger(yearsRaw)
+    ? String(yearsRaw)
+    : yearsRaw.toFixed(1);
+
+  return `${firstName}_${specialization}_${yearsStr}`;
 }
