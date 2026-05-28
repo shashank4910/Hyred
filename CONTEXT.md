@@ -13,8 +13,8 @@ JobRadar is a personalized AI-powered job-search dashboard that:
 4. Generates tailored ATS resumes + cover letters per job
 5. Provides skill-match analysis (JD requirements vs resume)
 
-**Owner:** Shashank Singh — Senior Performance Engineer (India, 7+ years)
-**Stack:** Next.js 15, React 19, TypeScript, Supabase, OpenAI gpt-4o-mini, Vercel, GitHub Actions
+**Owner:** Shashank Singh — Senior Performance Engineer (India, 7.7 years)
+**Stack:** Next.js 15, React 19, TypeScript, Supabase, OpenAI gpt-4o-mini (primary) + Gemini 2.0 Flash (fallback), Vercel, GitHub Actions, Python FastAPI + browser-use (auto-apply agent on Render)
 
 ---
 
@@ -60,20 +60,31 @@ The LLM scoring prompt (`scoreJob` in `lib/gemini.ts`) has explicit rules:
 ## File Map
 
 ```
-lib/gemini.ts              ← AI: matchSkills, scoreJob, generateCoverLetter, extractResumeInsights
+lib/gemini.ts              ← AI: OpenAI primary, Gemini fallback. matchSkills, scoreJob, generateCoverLetter, extractResumeInsights, generateAtsResume
 lib/jd-fetcher.ts          ← Fetches full JDs from source URLs
 lib/search-profile.ts      ← AI SearchProfile generation + title classification + AI relevance filter
 lib/ingest.ts              ← Main ingest pipeline (10 steps)
 lib/sources/adzuna.ts      ← Adzuna API (multi-query, pagination, dedup)
 lib/sources/index.ts       ← Source dispatcher
-lib/pdf-resume.ts          ← Beautiful PDF resume generator
+lib/pdf-resume.ts          ← Beautiful PDF resume generator (matches Shashank's exact format)
 lib/matcher.ts             ← Cosine similarity + embedding text builder
 
-app/(app)/jobs/[id]/        ← Job detail page + actions
+app/(app)/jobs/[id]/        ← Job detail page + actions + AutoApplyButton
+app/(app)/apply-profile/    ← Application profile form (memory store for auto-apply)
+app/(app)/_components/      ← MatchCard (bookmark+seen/unseen), StatusFilter (Inbox tab), AppShell
 app/api/match/[id]/skills/  ← Skill match endpoint
 app/api/match/[id]/resume/  ← ATS resume (GET=keywords, POST=generate)
+app/api/match/[id]/resume/pdf/ ← Generate PDF + upload to Supabase Storage
+app/api/match/[id]/bookmark/ ← Toggle bookmark
+app/api/match/[id]/auto-apply/ ← Orchestrate full auto-apply flow
+app/api/match/[id]/apply-callback/ ← Agent callback on completion
+app/api/apply-profile/      ← GET/POST application profile
 app/api/coverletter/        ← Cover letter generation
 app/api/ingest/             ← Manual ingest trigger
+
+browser_agent/main.py       ← Python FastAPI auto-apply agent (browser-use + Gemini)
+browser_agent/Dockerfile    ← Docker config for Render
+browser_agent/requirements.txt ← Pinned: browser-use==0.1.40
 
 scripts/ingest.ts                    ← Cron entry point
 scripts/backfill-jds.ts             ← Backfill: fetch full JDs + re-embed + re-score existing jobs
@@ -132,6 +143,8 @@ When a feature seems broken:
 | AI relevance filter (batch of 15) | ~$0.001 | Per cron run (2-4 batches) |
 | LLM score a job | ~$0.001 | Per scored job (30-80/run) |
 | Skill match (per job detail view) | ~$0.002 | On demand |
+| ATS resume generation | ~$0.003 | Per job apply |
+| Cover letter generation | ~$0.002 | Per job apply |
 | **Total per cron run** | **~$0.07-0.10** | 4x/day |
 | **Monthly estimate** | **~$10-15** | At current usage |
 
@@ -145,7 +158,60 @@ When a feature seems broken:
 - New "pitfalls" or rules learned
 - Changes to the file map
 
-**Last updated:** May 27, 2026 (session 2: JD truncation fix, UI redesign, backfill workflow, status='viewed' bug identified)
+**Last updated:** May 28, 2026 (session 3: bookmark/seen-unseen, ATS resume engine, auto-apply agent, Gemini→OpenAI migration)
+
+---
+
+## Session 3 — What Was Built & Fixed (May 28, 2026)
+
+### 1. Bookmark + Seen/Unseen Feature (PR #11, merged)
+- **Bookmark:** Toggle on match cards + job detail page. Dedicated "Bookmarked" tab in status filter. DB: `matches.bookmarked boolean`.
+- **Seen/Unseen:** Cards fade to opacity-75 when viewed (was opacity-55, too harsh). New "Inbox" tab = `new + viewed` combined — fixes the bug where opening a job made it vanish.
+- **Inbox tab fix:** Default dashboard tab is now `inbox` (queries `status IN ('new', 'viewed')`). Individual `new`/`viewed` tabs removed.
+- **Removed `saved` status:** Replaced by bookmark concept. Removed from `STATUS_ORDER`, API ALLOWED set, and status tracker buttons.
+- **Migration:** `0003_bookmarked.sql` — `bookmarked boolean` + partial index.
+
+### 2. ATS Resume Engine (Gemini → OpenAI)
+- **Complete rewrite of `lib/gemini.ts`:** OpenAI gpt-4o-mini as primary LLM, Gemini 2.0 Flash as fallback (Gemini free tier exhausts daily quota quickly).
+- **`generateAtsResume()`:** Preserves exact resume structure (same sections, same bullets, same order). Weaves in ATS keywords: k6, Gatling, Grafana, Prometheus, Docker, Kubernetes, SLA/SLO/SLI, OpenTelemetry, Shift-Left Testing, etc. Adds new achievement: "JMeter Performance Center (React/TS + Python, adopted by Charles Schwab teams)".
+- **PDF generator rebuilt** (`lib/pdf-resume.ts`): Matches Shashank's exact format — navy header, amber accents, skills as `Category: Tools` rows, experience with shaded job headers + italic client lines.
+- **Resume saved per match:** `matches.tailored_resume_text` + `matches.tailored_resume_url` (PDF in Supabase Storage bucket "resumes").
+
+### 3. Application Profile (Memory Store)
+- **New page:** `/apply-profile` — comprehensive form with 50+ fields.
+- **Pre-filled defaults:** Name, phone, email, city, LinkedIn, all essay answers written by AI coach.
+- **Essay answers included:** About yourself, why leaving, strengths, weaknesses, salary expectation.
+- **DB:** `apply_profiles` table with unique per profile_id.
+- **Bug fix:** `upsert` had invalid `.eq()` chain — removed, now uses `onConflict: 'profile_id'`.
+
+### 4. Auto-Apply Browser Agent
+- **Python FastAPI service** (`browser_agent/`): Uses `browser-use==0.1.40` + Gemini 2.0 Flash.
+- **Hosted on Render free tier** (Docker, port 10000). UptimeRobot keeps alive.
+- **API:** `POST /apply` (start task), `GET /apply/{task_id}` (SSE stream), `GET /apply/{task_id}/result`.
+- **JobRadar integration:** `POST /api/match/[id]/auto-apply` orchestrates: generate ATS resume → upload PDF → generate cover letter → call Python agent → stream live logs.
+- **Callback:** `POST /api/match/[id]/apply-callback` — agent reports back on completion.
+- **Live feed UI:** `AutoApplyButton.tsx` — terminal-style log panel with SSE.
+- **Current limitation:** Render free tier (512MB RAM) cannot sustain Chromium. Agent starts but silently crashes. Needs either: upgrade to $7/mo, run locally, or lighter automation approach.
+
+### 5. browser-use API Learnings
+- **v0.1.40 correct API:** `Agent(task=..., llm=...)` — NO `Browser`, NO `BrowserConfig`, NO `BrowserProfile`. Library manages its own browser session.
+- **Headless mode:** Set via `BROWSER_USE_HEADLESS=true` environment variable.
+- **DO NOT pass `config=`, `browser=`, or `browser_profile=`** — all cause `BrowserSession.__init__() got an unexpected keyword argument 'config'` error.
+- **The library's public API is unstable across versions** — always pin exact version.
+
+### 6. Deployment Lessons
+- **Render:** Must use Docker runtime (not Node). Port must be 10000. "Clear build cache & deploy" needed when changing pip packages.
+- **Vercel:** Deploys from `main` only. Feature branches = Preview deployments. Always verify which branch is deployed before debugging.
+- **Gemini quota:** Free tier exhausts quickly with large prompts. OpenAI as primary avoids this.
+
+### Migrations Run
+- `0003_bookmarked.sql` — `bookmarked boolean` column + index
+- `0004_ats_and_apply.sql` — `tailored_resume_text`, `tailored_resume_url`, `auto_apply_*` columns, `apply_profiles` table, `resumes` storage bucket
+
+### Open Issues for Next Session
+1. **Render free tier memory:** 512MB insufficient for Chromium. Options: upgrade, run locally, or use lighter approach.
+2. **Callback 401:** Agent callback to `/api/match/[id]/apply-callback` returns 401 because `INGEST_SECRET` env var not synced between Vercel and Render.
+3. **Health check 405:** UptimeRobot sends HEAD, endpoint only handles GET. Minor.
 
 ---
 
