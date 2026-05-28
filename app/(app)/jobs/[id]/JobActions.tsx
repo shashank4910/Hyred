@@ -82,6 +82,7 @@ export function JobActions({
   const [jdKeywords, setJdKeywords] = useState<string[]>([]);
   const [alreadyHaveKeywords, setAlreadyHaveKeywords] = useState<string[]>([]);
   const [selectedKeywords, setSelectedKeywords] = useState<string[]>([]);
+  const [excludedKeywords, setExcludedKeywords] = useState<string[]>([]);
   const [loadingKeywords, setLoadingKeywords] = useState(false);
   const [keywordsLoaded, setKeywordsLoaded] = useState(false);
 
@@ -237,6 +238,7 @@ export function JobActions({
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           selectedKeywords: selectedKeywords.length > 0 ? selectedKeywords : undefined,
+          excludedKeywords: excludedKeywords.length > 0 ? excludedKeywords : undefined,
         }),
       });
       const data = await res.json();
@@ -276,6 +278,7 @@ export function JobActions({
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           selectedKeywords: merged.length > 0 ? merged : undefined,
+          excludedKeywords: excludedKeywords.length > 0 ? excludedKeywords : undefined,
         }),
       });
       const data = await res.json();
@@ -311,8 +314,26 @@ export function JobActions({
       setSelectedKeywords(prev => prev.filter(k => k !== kw));
       toast(`Removed "${kw}" from priorities`);
     } else {
+      // If user previously excluded this keyword, un-exclude it first
+      // (intent toggle: now they want it back IN).
+      setExcludedKeywords(prev => prev.filter(k => k.toLowerCase() !== kw.toLowerCase()));
       setSelectedKeywords(prev => [...prev, kw]);
       toast.success(`"${kw}" prioritized for next regenerate`);
+    }
+  }
+
+  // Clicking a present (woven-in / already-had) chip stages it for REMOVAL
+  // on the next regenerate. The model will be told it must not appear.
+  function toggleExcludeKeyword(kw: string) {
+    if (excludedKeywords.includes(kw)) {
+      setExcludedKeywords(prev => prev.filter(k => k !== kw));
+      toast(`"${kw}" will stay in resume`);
+    } else {
+      // If user previously selected this keyword as priority, un-select it
+      // first - they're flipping intent from "must include" to "must exclude".
+      setSelectedKeywords(prev => prev.filter(k => k.toLowerCase() !== kw.toLowerCase()));
+      setExcludedKeywords(prev => [...prev, kw]);
+      toast.success(`"${kw}" will be removed on next regenerate`);
     }
   }
 
@@ -676,28 +697,78 @@ export function JobActions({
                 {keywords.added.length > 0 && (
                   <div>
                     <div className="text-[10px] uppercase tracking-wide text-amber-hover mb-1 font-medium">
-                      + Woven into your resume ({keywords.added.length})
+                      + Woven into your resume ({keywords.added.length}) - click to remove
                     </div>
                     <div className="flex flex-wrap gap-1.5">
-                      {keywords.added.map((kw) => (
-                        <span key={kw} className="inline-flex items-center gap-0.5 rounded-badge bg-amber/10 text-amber-hover px-2 py-0.5 text-xs font-medium">
-                          + {kw}
-                        </span>
-                      ))}
+                      {keywords.added.map((kw) => {
+                        const isExcluded = excludedKeywords.includes(kw);
+                        return (
+                          <button
+                            key={kw}
+                            type="button"
+                            onClick={() => toggleExcludeKeyword(kw)}
+                            disabled={generatingResume}
+                            title={isExcluded ? 'Click to keep in resume' : 'Click to remove on next regenerate'}
+                            className={[
+                              'inline-flex items-center gap-1 rounded-badge px-2 py-0.5 text-xs font-medium transition-all duration-150 cursor-pointer',
+                              'disabled:cursor-wait disabled:opacity-60',
+                              isExcluded
+                                ? 'border border-warning-red/50 bg-red-50 text-warning-red line-through'
+                                : 'bg-amber/10 text-amber-hover hover:bg-red-50 hover:text-warning-red hover:border hover:border-warning-red/30',
+                            ].join(' ')}
+                          >
+                            {isExcluded ? (
+                              <>
+                                <XCircle className="h-2.5 w-2.5" />
+                                {kw}
+                                <span className="text-[9px] uppercase tracking-wide opacity-70 no-underline">remove</span>
+                              </>
+                            ) : (
+                              <>+ {kw}</>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
                 {keywords.already_had.length > 0 && (
                   <div>
                     <div className="text-[10px] uppercase tracking-wide text-stone mb-1">
-                      Already in your resume ({keywords.already_had.length})
+                      Already in your resume ({keywords.already_had.length}) - click to remove
                     </div>
                     <div className="flex flex-wrap gap-1.5">
-                      {keywords.already_had.map((kw) => (
-                        <span key={kw} className="inline-flex items-center gap-0.5 rounded-badge border border-border px-2 py-0.5 text-xs text-stone">
-                          <CheckCircle2 className="h-2.5 w-2.5" /> {kw}
-                        </span>
-                      ))}
+                      {keywords.already_had.map((kw) => {
+                        const isExcluded = excludedKeywords.includes(kw);
+                        return (
+                          <button
+                            key={kw}
+                            type="button"
+                            onClick={() => toggleExcludeKeyword(kw)}
+                            disabled={generatingResume}
+                            title={isExcluded ? 'Click to keep in resume' : 'Click to remove on next regenerate'}
+                            className={[
+                              'inline-flex items-center gap-1 rounded-badge px-2 py-0.5 text-xs transition-all duration-150 cursor-pointer',
+                              'disabled:cursor-wait disabled:opacity-60',
+                              isExcluded
+                                ? 'border border-warning-red/50 bg-red-50 text-warning-red line-through'
+                                : 'border border-border text-stone hover:bg-red-50 hover:text-warning-red hover:border-warning-red/30',
+                            ].join(' ')}
+                          >
+                            {isExcluded ? (
+                              <>
+                                <XCircle className="h-2.5 w-2.5" />
+                                {kw}
+                                <span className="text-[9px] uppercase tracking-wide opacity-70 no-underline">remove</span>
+                              </>
+                            ) : (
+                              <>
+                                <CheckCircle2 className="h-2.5 w-2.5" /> {kw}
+                              </>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -749,12 +820,23 @@ export function JobActions({
                         );
                       })}
                     </div>
-                    {selectedKeywords.length > 0 && (
+                    {(selectedKeywords.length > 0 || excludedKeywords.length > 0) && (
                       <div className="mt-2 flex items-center justify-between gap-2 rounded-btn bg-amber/10 border border-amber/30 px-3 py-2">
                         <div className="text-[11px] text-ink">
-                          <span className="font-semibold">{selectedKeywords.length}</span>{' '}
-                          keyword{selectedKeywords.length > 1 ? 's' : ''} staged. They will be marked
-                          [USER PRIORITY] in the prompt and forced into TECHNICAL SKILLS at minimum.
+                          {selectedKeywords.length > 0 && (
+                            <>
+                              <span className="font-semibold text-amber-hover">+{selectedKeywords.length}</span>{' '}
+                              to add
+                            </>
+                          )}
+                          {selectedKeywords.length > 0 && excludedKeywords.length > 0 && <span className="mx-1.5 text-stone">·</span>}
+                          {excludedKeywords.length > 0 && (
+                            <>
+                              <span className="font-semibold text-warning-red">-{excludedKeywords.length}</span>{' '}
+                              to remove
+                            </>
+                          )}
+                          {' '}staged for next regenerate.
                         </div>
                         <button
                           onClick={() => regenerateInPlace()}

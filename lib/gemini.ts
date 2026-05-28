@@ -418,6 +418,90 @@ function normalizeAscii(s: string): string {
 }
 
 /**
+ * Clean a job-listing title down to a recruiter-presentable role title.
+ * The JD's listing title is full of noise that should never reach the
+ * candidate's resume - department codes (CX, RX), version numbers (II, III),
+ * year ranges, location pipes, hiring tail words, parenthetical departments.
+ * If the parenthetical contents look like a real role (engineer / tester /
+ * developer / etc.), prefer the parenthetical because it's usually the
+ * better-formed title (e.g. "Tester II, Product (Performance Tester)" =>
+ * "Performance Tester").
+ *
+ * Examples:
+ *   "Specialist Performance Engineer, CX"       -> "Specialist Performance Engineer"
+ *   "Tester II, Product (Performance Tester)"   -> "Performance Tester"
+ *   "Sr Performance Engineer - 5-8 yrs - Pune"  -> "Sr Performance Engineer"
+ *   "Performance Tester | Bangalore | Hybrid"   -> "Performance Tester"
+ *   "Senior SDET (BFSI)"                        -> "Senior SDET"
+ *   "QA Engineer III"                           -> "QA Engineer"
+ *   ""                                          -> "Senior Performance Engineer" (fallback)
+ */
+function cleanJdTitle(raw: string): string {
+  const ROLE_RE = /\b(engineer|tester|developer|analyst|architect|consultant|specialist|sdet|sre|administrator|coordinator|lead|manager|designer|technician|scientist|programmer)\b/i;
+  let t = (raw ?? '').trim();
+
+  // 1. If there's a parenthetical that looks like a real role, prefer IT.
+  //    Otherwise just strip parentheticals (they're usually department/skill
+  //    annotations like "(BFSI)", "(WFH)", "(Pune)").
+  const parenMatch = t.match(/\(([^)]+)\)/);
+  if (parenMatch && ROLE_RE.test(parenMatch[1])) {
+    t = parenMatch[1].trim();
+  } else {
+    t = t.replace(/\s*\([^)]*\)\s*/g, ' ').trim();
+  }
+
+  // 2. Strip everything after the first comma (department/location).
+  t = t.split(',')[0].trim();
+
+  // 3. Strip year ranges ("- 4 to 8 years", "- 5-8 yrs").
+  t = t.replace(/\s*-\s*\d.*$/i, '').trim();
+
+  // 4. Strip pipe-separated trail (location, work mode).
+  t = t.replace(/\s*\|\s*.*$/, '').trim();
+
+  // 5. Strip "at Company X".
+  t = t.replace(/\s+at\s+.*$/i, '').trim();
+
+  // 6. Strip hiring/work-mode tail keywords.
+  t = t.replace(
+    /\s*\b(opening|openings|jobs?|hiring|wfh|remote|fulltime|full-time|contract|permanent|onsite|hybrid|immediate joiner|notice period)\b.*$/i,
+    '',
+  ).trim();
+
+  // 7. Strip trailing Roman numerals (II, III, IV ...).
+  t = t.replace(/\s+(I{1,3}|IV|V|VI|VII|VIII|IX|X)$/g, '').trim();
+
+  // 8. Strip a trailing 1-3 letter ALL-CAPS dept code (CX, RX, EU, US, APAC,
+  //    etc.) as long as it's NOT the only word and the title still has at
+  //    least one role-like keyword left after stripping. Without that guard
+  //    we'd murder titles like "AI Engineer" -> "Engineer".
+  const words = t.split(/\s+/);
+  if (words.length > 1) {
+    const last = words[words.length - 1];
+    if (/^[A-Z]{1,3}$/.test(last)) {
+      const candidate = words.slice(0, -1).join(' ').trim();
+      if (ROLE_RE.test(candidate)) t = candidate;
+    }
+  }
+
+  // 9. Strip stray dept descriptor tail words that often follow a comma we
+  //    already stripped (defensive, in case the title used " - " instead of
+  //    a comma to attach the dept).
+  t = t.replace(/\s+(product|platform|engineering|operations|infrastructure|technology|technologies)\b\s*$/i, '').trim();
+
+  // 10. Final tidy.
+  t = t.replace(/[,;:\-]\s*$/, '').trim();
+
+  // 11. Sanity check. Fallback if the result is too short, too long, or has
+  //     no recognizable role word.
+  const fallback = 'Senior Performance Engineer';
+  if (t.length < 4 || t.length > 70) return fallback;
+  if (t.split(/\s+/).length > 8) return fallback;
+  if (!ROLE_RE.test(t)) return fallback;
+  return t;
+}
+
+/**
  * Generate an ATS-optimised plain-text resume tailored to a specific job.
  *
  * Two-pass design:
@@ -440,6 +524,7 @@ export async function generateAtsResume(args: {
   phone?: string | null;
   location?: string | null;
   selectedKeywords?: string[];
+  excludedKeywords?: string[]; // user-specified keywords that MUST NOT appear
   jdKeywords?: string[]; // optional: caller can supply pre-extracted keywords
 }): Promise<{
   resume: string;
@@ -449,7 +534,7 @@ export async function generateAtsResume(args: {
   alreadyHad: string[];
   missing: string[];
 }> {
-  const { selectedKeywords = [] } = args;
+  const { selectedKeywords = [], excludedKeywords = [] } = args;
 
   // ── Pass 1: extract JD-specific keywords (unless caller already did) ────────
   const jdKeywords = args.jdKeywords?.length
@@ -463,8 +548,14 @@ export async function generateAtsResume(args: {
   // JD keywords come first because they're what the ATS will actually score on.
   // selectedKeywords are tracked separately so we can give them stronger
   // emphasis in the prompt - "MUST appear" rather than "should weave in".
+  // excludedKeywords are the user's "remove these" list - they are filtered
+  // out of allKeywords so they're never recommended, AND they're called out
+  // explicitly in the prompt so any pre-existing mention in the candidate's
+  // current resume is also stripped on regeneration.
   const selectedSet = new Set(selectedKeywords.map(s => s.toLowerCase()));
-  const allKeywords = [...new Set([...jdKeywords, ...selectedKeywords])];
+  const excludedSet = new Set(excludedKeywords.map(s => s.toLowerCase()));
+  const allKeywords = [...new Set([...jdKeywords, ...selectedKeywords])]
+    .filter(k => !excludedSet.has(k.toLowerCase()));
 
   // ── Conditional directives based on JD content ──────────────────────────────
   const jdLower = args.jobDescription.toLowerCase();
@@ -493,23 +584,12 @@ export async function generateAtsResume(args: {
 
   // ── Role title alignment with JD ────────────────────────────────────────────
   // ATS systems weight the candidate's most recent role title heavily in
-  // matching. Stripping common JD-listing noise (year ranges, location, client
-  // name, "openings" suffixes) and using the cleaned form as the candidate's
-  // CURRENT role title maximizes the title-match component of the score.
-  const cleanedJdTitle = (args.jobTitle ?? '')
-    .replace(/\s*-\s*\d.*$/i, '')                        // "- 4 to 8 years"
-    .replace(/\s*\|\s*.*$/, '')                          // "| Pune | Banking"
-    .replace(/\s*\(.*?\)\s*$/, '')                       // "(BFSI)"
-    .replace(/\s+at\s+.*$/i, '')                         // "at Company X"
-    .replace(/\s*(opening|openings|jobs?|hiring|wfh|remote)\b.*$/i, '')
-    .replace(/[,;:]\s*$/, '')
-    .trim();
-  const fallbackTitle = 'Senior Performance Engineer';
-  const isUsableJdTitle =
-    cleanedJdTitle.length >= 4 &&
-    cleanedJdTitle.length <= 70 &&
-    cleanedJdTitle.split(/\s+/).length <= 8;
-  const targetCurrentRoleTitle = isUsableJdTitle ? cleanedJdTitle : fallbackTitle;
+  // matching. We clean the JD's listing title aggressively so noise like
+  // department codes (CX, RX), version numbers (II, III), parenthetical
+  // role hints, and trailing "openings/WFH/Pune" phrases never reach the
+  // candidate's resume - that noise is a recruiter red flag ("did the AI
+  // just paste the JD listing into the resume?").
+  const targetCurrentRoleTitle = cleanJdTitle(args.jobTitle ?? '');
 
   const keywordsBlock = allKeywords.length > 0
     ? `
@@ -532,7 +612,13 @@ STRICT KEYWORD SCOPE (this is critical - the user explicitly asked for it):
 - Do NOT pick up vocabulary directly from the TARGET JOB description text. The JD is provided for relevance context only - to help you decide which of the candidate's existing experience to emphasize. It is NOT a source of new keywords.
 - Tools / skills already present in the candidate's CURRENT RESUME may stay even if they are not in TARGET JD KEYWORDS - those are the candidate's real, existing experience.
 - If you are tempted to add a tool name not in TARGET JD KEYWORDS and not in the candidate's current resume, do NOT add it.
-`
+${excludedKeywords.length > 0 ? `
+EXCLUDED KEYWORDS (the user explicitly does NOT want these in the resume):
+${excludedKeywords.map(k => `  - ${k}`).join('\n')}
+- These keywords MUST NOT appear ANYWHERE in the final resume - not in PROFESSIONAL SUMMARY, not in KEY ACHIEVEMENTS, not in TECHNICAL SKILLS, not in any bullet, not even inside other words.
+- If any of these keywords are currently in the candidate's CURRENT RESUME (for example because they were added in a previous generation that the user now wants undone), REMOVE every occurrence and rephrase the surrounding sentence so the resume still reads naturally.
+- Exclusion takes precedence over everything: even if an excluded keyword appears in TARGET JD KEYWORDS, it stays out. The user's explicit "remove" decision overrides the JD priority.
+` : ''}`
     : '';
 
   const prompt = `You are an expert ATS resume writer. Tailor this resume to pass the ATS scanner for the target job below.
@@ -553,9 +639,10 @@ CRITICAL RULES:
 
 ROLE TITLE ALIGNMENT (important for ATS scoring - the candidate explicitly asked for this):
 - Set the candidate's CURRENT (most recent) role title in PROFESSIONAL EXPERIENCE to: ${targetCurrentRoleTitle}
+- The title above has ALREADY been cleaned of department codes (CX, RX), version numbers (II, III), parenthetical noise, year ranges, and location/hiring tails. Use it EXACTLY AS GIVEN. Do NOT append anything from the original JD posting like ", CX", ", Product", "II", "WFH", or any parenthetical - those would tip off a recruiter that the title was machine-pasted from a job listing.
 - This replaces whatever current-role title is in the candidate's input resume. The candidate's actual responsibilities are unchanged - only the title label is aligned with the JD's wording so the ATS title-match component scores higher.
 - Past roles (every role except the most recent one) MUST keep their original titles from the input resume. Do not change historical titles.
-- If the target title above does not fit a performance / testing / QA / SRE shape, fall back to "Senior Performance Engineer".
+- Use the exact same cleaned title as a tagline on line 2 of the contact block (described below).
 
 PROFESSIONAL SUMMARY DIRECTIVE:
 ${summaryDirective}
