@@ -461,6 +461,9 @@ export async function generateAtsResume(args: {
 
   // Combine JD keywords with anything the user manually ticked in the picker.
   // JD keywords come first because they're what the ATS will actually score on.
+  // selectedKeywords are tracked separately so we can give them stronger
+  // emphasis in the prompt - "MUST appear" rather than "should weave in".
+  const selectedSet = new Set(selectedKeywords.map(s => s.toLowerCase()));
   const allKeywords = [...new Set([...jdKeywords, ...selectedKeywords])];
 
   // ── Conditional directives based on JD content ──────────────────────────────
@@ -488,12 +491,16 @@ export async function generateAtsResume(args: {
     ? `
 
 TARGET JD KEYWORDS (extracted from THIS specific JD - incorporate them where truthful):
-${allKeywords.map(k => `  - ${k}`).join('\n')}
+${allKeywords.map(k => {
+  const isPriority = selectedSet.has(k.toLowerCase());
+  return `  - ${k}${isPriority ? '   [USER PRIORITY - this keyword MUST appear in the final resume, at minimum in TECHNICAL SKILLS]' : ''}`;
+}).join('\n')}
 
 KEYWORD RULES:
 - Where the candidate has equivalent real experience, use the EXACT phrasing from this list (e.g. write "JMeter" not "Apache JMeter performance tool"; if the JD says "load testing", use that phrase even if the candidate normally writes "performance testing").
 - For TECHNICAL SKILLS: reorder entries so JD-priority tools appear FIRST in their category line.
 - For tools the candidate has never used, list them ONLY in TECHNICAL SKILLS (do NOT invent fake bullets in Experience).
+- Items marked [USER PRIORITY] MUST appear at least once in the final resume - the user has explicitly flagged these as critical for the ATS scan. If the candidate has no experience with a USER PRIORITY tool, list it under the most appropriate category in TECHNICAL SKILLS (e.g. "Monitoring: Splunk, Dynatrace, Grafana, Prometheus") - this is acceptable because TECHNICAL SKILLS is by convention a list of familiarity, not deep experience.
 - Do NOT fabricate experience. Truthfulness is the highest priority - even higher than keyword density.
 `
     : '';
