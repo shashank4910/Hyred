@@ -1,8 +1,9 @@
 """
 JobRadar Auto-Apply Agent
 =========================
-FastAPI service that uses Browser Use + Gemini 2.0 Flash to automatically
-apply for jobs on behalf of the user.
+FastAPI service that uses Browser Use + an LLM (OpenAI gpt-4o-mini primary,
+Gemini 2.0 Flash fallback) to automatically apply for jobs on behalf of the
+user.
 
 Deploy on Render free tier. Keep alive with UptimeRobot (free) pinging
 /health every 5 minutes so the service never sleeps.
@@ -29,6 +30,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
 load_dotenv()
@@ -182,16 +184,43 @@ async def _run_apply(task_id: str, req: ApplyRequest):
     _log(task_id, f"🌐 Target URL: {req.job_url}")
 
     try:
+        # Mirror the Next.js app: OpenAI gpt-4o-mini as primary (paid, reliable),
+        # Gemini 2.0 Flash as fallback (free tier, but quota burns fast).
+        # Set LLM_PROVIDER=gemini to force fallback ordering for testing.
+        provider_pref = (os.getenv("LLM_PROVIDER", "openai") or "openai").lower()
+        openai_key = os.getenv("OPENAI_API_KEY")
         gemini_key = os.getenv("GEMINI_API_KEY")
-        if not gemini_key:
-            raise ValueError("GEMINI_API_KEY not set in environment")
 
-        # Build the LLM
-        llm = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash",
-            google_api_key=gemini_key,
-            temperature=0.2,
-        )
+        llm = None
+        llm_name = ""
+
+        def _build_openai():
+            return ChatOpenAI(
+                model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+                api_key=openai_key,
+                temperature=0.2,
+            ), "OpenAI gpt-4o-mini"
+
+        def _build_gemini():
+            return ChatGoogleGenerativeAI(
+                model=os.getenv("GEMINI_MODEL", "gemini-2.0-flash"),
+                google_api_key=gemini_key,
+                temperature=0.2,
+            ), "Gemini 2.0 Flash"
+
+        order = ("openai", "gemini") if provider_pref != "gemini" else ("gemini", "openai")
+        for choice in order:
+            if choice == "openai" and openai_key:
+                llm, llm_name = _build_openai()
+                break
+            if choice == "gemini" and gemini_key:
+                llm, llm_name = _build_gemini()
+                break
+
+        if llm is None:
+            raise ValueError(
+                "No LLM configured. Set OPENAI_API_KEY (preferred) or GEMINI_API_KEY in environment."
+            )
 
         # Build context string with all candidate info
         candidate_context = _build_candidate_context(req)
@@ -230,7 +259,7 @@ CANDIDATE INFORMATION:
 {f'COVER LETTER:{chr(10)}{req.cover_letter}' if req.cover_letter else 'No cover letter provided — skip cover letter fields.'}
 """
 
-        _log(task_id, "🤖 Initialising Gemini 2.0 Flash agent...")
+        _log(task_id, f"🤖 Initialising {llm_name} agent...")
 
         # browser-use 0.1.40 defaults to HEADED mode and does NOT honour any
         # env var. The only way to run on a headless server (Render, Docker)
