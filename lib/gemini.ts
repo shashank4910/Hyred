@@ -482,10 +482,34 @@ export async function generateAtsResume(args: {
     ? 'This JD mentions AI/ML/automation, so it is appropriate to highlight the candidate\'s AI agent work in the Professional Summary. Lead with the strongest technical specialization that the JD asks for, then bring in the AI/automation angle as supporting evidence.'
     : 'Lead the Professional Summary with the candidate\'s core technical specialization that maps directly to this JD (e.g. "Senior Performance Engineer with 7.7 years..."). Do NOT lead with AI/automation unless the JD explicitly asks for AI/ML/agentic work.';
 
+  // Achievement bullet for the JMeter Performance Center work. Genericised so
+  // the client name (e.g. "Charles Schwab") never appears in this bullet -
+  // client identity is confidential and must only appear in the "Client:" line
+  // under the relevant job in PROFESSIONAL EXPERIENCE.
   const jmeterAchievementClause = isPerfOrTestRole
     ? `e. INCLUDE this real achievement in KEY ACHIEVEMENTS (or create that section right after PROFESSIONAL SUMMARY if it does not exist):
-   "- Architected and deployed a free, open-source Performance Center equivalent for JMeter (React/TypeScript frontend, Python backend) - a full web-based UI platform enabling teams to upload JMX scenarios, configure load test parameters, and execute distributed load tests from a centralized interface. Adopted by multiple teams at Charles Schwab, eliminating dependency on expensive LoadRunner Enterprise/Performance Center licensing."`
+   "- Architected and deployed a free, open-source Performance Center equivalent for JMeter (React/TypeScript frontend, Python backend) - a full web-based UI platform enabling teams to upload JMX scenarios, configure load test parameters, and execute distributed load tests from a centralized interface. Adopted by multiple teams across the organization, eliminating dependency on expensive LoadRunner Enterprise/Performance Center licensing."`
     : '';
+
+  // ── Role title alignment with JD ────────────────────────────────────────────
+  // ATS systems weight the candidate's most recent role title heavily in
+  // matching. Stripping common JD-listing noise (year ranges, location, client
+  // name, "openings" suffixes) and using the cleaned form as the candidate's
+  // CURRENT role title maximizes the title-match component of the score.
+  const cleanedJdTitle = (args.jobTitle ?? '')
+    .replace(/\s*-\s*\d.*$/i, '')                        // "- 4 to 8 years"
+    .replace(/\s*\|\s*.*$/, '')                          // "| Pune | Banking"
+    .replace(/\s*\(.*?\)\s*$/, '')                       // "(BFSI)"
+    .replace(/\s+at\s+.*$/i, '')                         // "at Company X"
+    .replace(/\s*(opening|openings|jobs?|hiring|wfh|remote)\b.*$/i, '')
+    .replace(/[,;:]\s*$/, '')
+    .trim();
+  const fallbackTitle = 'Senior Performance Engineer';
+  const isUsableJdTitle =
+    cleanedJdTitle.length >= 4 &&
+    cleanedJdTitle.length <= 70 &&
+    cleanedJdTitle.split(/\s+/).length <= 8;
+  const targetCurrentRoleTitle = isUsableJdTitle ? cleanedJdTitle : fallbackTitle;
 
   const keywordsBlock = allKeywords.length > 0
     ? `
@@ -502,6 +526,12 @@ KEYWORD RULES:
 - For tools the candidate has never used, list them ONLY in TECHNICAL SKILLS (do NOT invent fake bullets in Experience).
 - Items marked [USER PRIORITY] MUST appear at least once in the final resume - the user has explicitly flagged these as critical for the ATS scan. If the candidate has no experience with a USER PRIORITY tool, list it under the most appropriate category in TECHNICAL SKILLS (e.g. "Monitoring: Splunk, Dynatrace, Grafana, Prometheus") - this is acceptable because TECHNICAL SKILLS is by convention a list of familiarity, not deep experience.
 - Do NOT fabricate experience. Truthfulness is the highest priority - even higher than keyword density.
+
+STRICT KEYWORD SCOPE (this is critical - the user explicitly asked for it):
+- The ONLY new tools / technologies / frameworks / methodologies / certifications / named processes you may introduce into the resume are those listed under TARGET JD KEYWORDS above.
+- Do NOT pick up vocabulary directly from the TARGET JOB description text. The JD is provided for relevance context only - to help you decide which of the candidate's existing experience to emphasize. It is NOT a source of new keywords.
+- Tools / skills already present in the candidate's CURRENT RESUME may stay even if they are not in TARGET JD KEYWORDS - those are the candidate's real, existing experience.
+- If you are tempted to add a tool name not in TARGET JD KEYWORDS and not in the candidate's current resume, do NOT add it.
 `
     : '';
 
@@ -510,14 +540,22 @@ KEYWORD RULES:
 PRIMARY GOAL: maximize the overlap between the resume's vocabulary and the TARGET JD KEYWORDS, without fabricating any experience.
 
 CRITICAL RULES:
-1. PRESERVE every real fact: same companies, same dates, same roles, same achievements. Never invent jobs, dates, or numbers.
+1. PRESERVE every real fact: same companies, same dates, same achievements. Never invent jobs, dates, or numbers. (Note: the CURRENT/most-recent role TITLE is governed by the ROLE TITLE ALIGNMENT directive below - past role titles stay as-is.)
 2. Keep all sections from the input resume. You MAY reorder entries inside TECHNICAL SKILLS to surface JD-priority tools first.
 3. Output must be plain ASCII. No em-dashes, no smart quotes, no unicode bullets, no emojis, no graphics, no tables, no columns.
-4. Allowed transformations:
+4. CLIENT NAME PRIVACY: any client / end-customer name (for example "Charles Schwab" or any other client the candidate has worked for) must appear ONLY in the "Client: ClientName (Domain)" subline directly under the relevant job header in PROFESSIONAL EXPERIENCE - that is the only allowed location. Do NOT mention the client name anywhere else: not in PROFESSIONAL SUMMARY, not in KEY ACHIEVEMENTS, not in any bullet, not in skills. Replace any such mention with neutral phrasing like "the organization", "a major BFSI client", or simply omit it.
+5. Allowed transformations:
    a. Convert any tables to "Category: Tool1, Tool2, Tool3" plain-text lines.
    b. Weave TARGET JD KEYWORDS naturally into existing bullets where the candidate truthfully has that experience.
    c. Rewrite the Professional Summary per the directive below.
-   d. Reorder Skills entries inside TECHNICAL SKILLS to put JD-priority tools first.${jmeterAchievementClause ? '\n   ' + jmeterAchievementClause : ''}
+   d. Reorder Skills entries inside TECHNICAL SKILLS to put JD-priority tools first.
+   e. Apply ROLE TITLE ALIGNMENT (below) to the candidate's CURRENT/most-recent role only.${jmeterAchievementClause ? '\n   ' + jmeterAchievementClause.replace(/^e\. /, 'f. ') : ''}
+
+ROLE TITLE ALIGNMENT (important for ATS scoring - the candidate explicitly asked for this):
+- Set the candidate's CURRENT (most recent) role title in PROFESSIONAL EXPERIENCE to: ${targetCurrentRoleTitle}
+- This replaces whatever current-role title is in the candidate's input resume. The candidate's actual responsibilities are unchanged - only the title label is aligned with the JD's wording so the ATS title-match component scores higher.
+- Past roles (every role except the most recent one) MUST keep their original titles from the input resume. Do not change historical titles.
+- If the target title above does not fit a performance / testing / QA / SRE shape, fall back to "Senior Performance Engineer".
 
 PROFESSIONAL SUMMARY DIRECTIVE:
 ${summaryDirective}
