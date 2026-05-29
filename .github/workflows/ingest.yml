@@ -27,11 +27,11 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          # GEMINI_API_KEY is REQUIRED by lib/gemini.ts embed() -
-          # the embeddings model is text-embedding-004 (768 dims) and the DB
-          # vector schema is pinned to that size, so OpenAI can't substitute.
-          # Without this secret the embed phase logs 300 errors per run and
-          # the ingest_runs row goes to "partial" status with embedded=0.
+          # GEMINI_API_KEY is the chat-fallback only (gemini-2.0-flash).
+          # Embeddings are now OpenAI text-embedding-3-small (1536 dims) -
+          # see lib/gemini.ts. If OpenAI's chat call ever fails the code
+          # tries Gemini next; without this secret that fallback throws.
+          # Safe to keep; remove only if you've fully retired Gemini.
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
           ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
