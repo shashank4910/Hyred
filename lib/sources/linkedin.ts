@@ -117,13 +117,22 @@ async function fetchDescription(id: string): Promise<string> {
 export type LinkedInFetchOpts = {
   /** Search queries (e.g. user's target roles / skills) */
   queries?: string[];
-  /** Location filter (e.g. "India") */
+  /** Single location filter (legacy). Prefer `locations`. */
   location?: string;
-  /** Pages to fetch per query (10 jobs/page). Default 5 = ~50 jobs/query. */
+  /**
+   * Multiple locations to search. LinkedIn's country-level "India" search
+   * MISSES many city-level jobs for broad keywords, so we search major cities
+   * too. e.g. "QA Performance Tester" in Noida is invisible under location=India
+   * but visible under location=Noida.
+   */
+  locations?: string[];
+  /** Pages to fetch per (query x location). 10 jobs/page. Default 3. */
   maxPagesPerQuery?: number;
+  /** Hard cap on total search requests per run (bounds scan time). Default 90. */
+  maxSearchRequests?: number;
   /** Whether to fetch full descriptions (extra request per job). Default true. */
   fetchDescriptions?: boolean;
-  /** Cap total descriptions fetched per run to bound request count. Default 60. */
+  /** Cap total descriptions fetched per run to bound request count. Default 70. */
   maxDescriptions?: number;
 };
 
@@ -146,55 +155,64 @@ function delay(ms: number): Promise<void> {
  */
 export async function fetchLinkedIn(opts?: LinkedInFetchOpts): Promise<RawJob[]> {
   const queries = opts?.queries?.length ? opts.queries : ['performance testing'];
-  const location = opts?.location ?? 'India';
-  const maxPages = opts?.maxPagesPerQuery ?? 5;
+  const locations = opts?.locations?.length
+    ? opts.locations
+    : [opts?.location ?? 'India'];
+  const maxPages = opts?.maxPagesPerQuery ?? 3;
+  const maxSearchRequests = opts?.maxSearchRequests ?? 90;
   const fetchDesc = opts?.fetchDescriptions ?? true;
-  const maxDesc = opts?.maxDescriptions ?? 60;
+  const maxDesc = opts?.maxDescriptions ?? 70;
 
   const seen = new Set<string>();
   const cards: ParsedCard[] = [];
+  let searchRequests = 0;
 
-  for (const q of queries) {
-    let emptyStreak = 0;
-    for (let page = 0; page < maxPages; page++) {
-      const start = page * 10;
-      const url = `${SEARCH_BASE}?keywords=${encodeURIComponent(q)}&location=${encodeURIComponent(location)}&start=${start}`;
-      try {
-        // Space out requests so LinkedIn returns fresh pages, not cached dupes.
-        if (page > 0) await delay(300);
-        const res = await fetch(url, {
-          headers: { 'user-agent': UA, accept: 'text/html' },
-          cache: 'no-store',
-          signal: AbortSignal.timeout(15000),
-        });
-        if (!res.ok) {
-          logApiRequest({ source: 'linkedin', status: res.status === 429 ? 'rate_limited' : 'error', http_status: res.status, query: q });
-          if (res.status === 429) break; // backoff this query
-          continue;
-        }
-        const html = await res.text();
-        const parsed = parseSearchHtml(html);
-        logApiRequest({ source: 'linkedin', status: 'success', http_status: 200, query: q, jobs_returned: parsed.length });
-        let newCount = 0;
-        for (const c of parsed) {
-          if (!seen.has(c.id)) {
-            seen.add(c.id);
-            cards.push(c);
-            newCount++;
+  // Iterate query x location. Location-first ordering would repeat keywords;
+  // we go query-then-location so each keyword is tried across all cities.
+  outer: for (const q of queries) {
+    for (const location of locations) {
+      let emptyStreak = 0;
+      for (let page = 0; page < maxPages; page++) {
+        if (searchRequests >= maxSearchRequests) break outer; // global budget
+        const start = page * 10;
+        const url = `${SEARCH_BASE}?keywords=${encodeURIComponent(q)}&location=${encodeURIComponent(location)}&start=${start}`;
+        try {
+          // Space out requests so LinkedIn returns fresh pages, not cached dupes.
+          if (searchRequests > 0) await delay(300);
+          searchRequests++;
+          const res = await fetch(url, {
+            headers: { 'user-agent': UA, accept: 'text/html' },
+            cache: 'no-store',
+            signal: AbortSignal.timeout(15000),
+          });
+          if (!res.ok) {
+            logApiRequest({ source: 'linkedin', status: res.status === 429 ? 'rate_limited' : 'error', http_status: res.status, query: `${q} @ ${location}` });
+            if (res.status === 429) break; // backoff this query/location
+            continue;
           }
+          const html = await res.text();
+          const parsed = parseSearchHtml(html);
+          logApiRequest({ source: 'linkedin', status: 'success', http_status: 200, query: `${q} @ ${location}`, jobs_returned: parsed.length });
+          let newCount = 0;
+          for (const c of parsed) {
+            if (!seen.has(c.id)) {
+              seen.add(c.id);
+              cards.push(c);
+              newCount++;
+            }
+          }
+          // Stop this query/location after 2 consecutive no-new-jobs pages.
+          if (parsed.length === 0) break;
+          if (newCount === 0) {
+            emptyStreak++;
+            if (emptyStreak >= 2) break;
+          } else {
+            emptyStreak = 0;
+          }
+        } catch (e) {
+          logApiRequest({ source: 'linkedin', status: 'error', error_message: (e as Error).message, query: `${q} @ ${location}` });
+          break;
         }
-        // Stop only after 2 consecutive pages with no new jobs (handles the
-        // occasional cached/duplicate page without prematurely bailing).
-        if (parsed.length === 0) break;
-        if (newCount === 0) {
-          emptyStreak++;
-          if (emptyStreak >= 2) break;
-        } else {
-          emptyStreak = 0;
-        }
-      } catch (e) {
-        logApiRequest({ source: 'linkedin', status: 'error', error_message: (e as Error).message, query: q });
-        break;
       }
     }
   }
@@ -217,7 +235,7 @@ export async function fetchLinkedIn(opts?: LinkedInFetchOpts): Promise<RawJob[]>
     }
   }
 
-  console.log(`[linkedin] Fetched ${cards.length} unique jobs, ${descMap.size} with descriptions`);
+  console.log(`[linkedin] ${searchRequests} searches across ${locations.length} locations -> ${cards.length} unique jobs, ${descMap.size} with descriptions`);
 
   return cards.map((c) => ({
     source: 'linkedin',
