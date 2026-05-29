@@ -1,13 +1,28 @@
 /**
- * AI helpers — OpenAI as primary for chat AND embeddings, Gemini 2.0 Flash as
- * chat fallback only.
+ * AI helpers — OpenAI as primary for chat AND embeddings, Groq (Llama 3.3 70B)
+ * as the FREE chat fallback.
  *
  * Chat-based calls (scoreJob, matchSkills, generateAtsResume, etc.) try OpenAI
- * first (if OPENAI_API_KEY is set) and fall back to Gemini on failure.
+ * first (if OPENAI_API_KEY is set), then fall back to Groq (if GROQ_API_KEY is
+ * set). Both use the OpenAI-compatible chat-completions API, so a single code
+ * path serves both — Groq just points the same OpenAI SDK at its base URL.
+ *
+ * WHY GROQ INSTEAD OF GEMINI (May 2026): the previous fallback `gemini-2.0-flash`
+ * is deprecated (shuts down 2026-06-01) and since 2026-03-06 is "existing
+ * customers only", so free/new keys get `429 ResourceExhausted` with `limit: 0`
+ * — which LOOKS like a rate limit but means "model not on your plan". Google
+ * also cut free-tier limits 50-80% in Dec 2025 and the free tier trains on data
+ * (a problem for resumes/PII). Groq's free tier is ~14,400 req/day and fast.
+ *
+ * NO SILENT MASKING: chat() no longer swallows the OpenAI error with a
+ * console.warn. If a provider fails we record its error and try the next; if
+ * ALL providers fail we throw a single combined, readable error so the real
+ * cause (e.g. OpenAI key missing/exhausted) is visible instead of being hidden
+ * behind a fallback failure.
+ *
  * Embeddings are OpenAI text-embedding-3-small (1536 dims). Gemini's
- * text-embedding-004 was deprecated by Google on 2026-01-14 and the v1beta
- * endpoint returns 404; switching to OpenAI also unblocks the cron when the
- * Gemini free-tier quota is exhausted.
+ * text-embedding-004 was deprecated by Google on 2026-01-14 (v1beta returns
+ * 404). There is no Groq embeddings endpoint, so embeddings are OpenAI-only.
  *
  * NOTE: existing rows have 768-dim vectors stored as JSONB. Cosine similarity
  * returns 0 on length mismatch, so old vectors are silently ignored — no
@@ -15,23 +30,28 @@
  * stale vectors and the next ingest re-embeds at 1536 dims.
  */
 
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import OpenAI from 'openai';
 import type { ResumeInsights } from './types';
 
-const CHAT_MODEL = 'gemini-2.0-flash';
+const OPENAI_CHAT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+const GROQ_CHAT_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+const GROQ_BASE_URL = 'https://api.groq.com/openai/v1';
 const EMBED_MODEL = 'text-embedding-3-small';
-
-function getClient(): GoogleGenerativeAI {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) throw new Error('Missing GEMINI_API_KEY env var');
-  return new GoogleGenerativeAI(key);
-}
 
 function getOpenAIClient(): OpenAI | null {
   const key = process.env.OPENAI_API_KEY;
   if (!key) return null;
   return new OpenAI({ apiKey: key });
+}
+
+/**
+ * Groq exposes an OpenAI-compatible API, so we reuse the OpenAI SDK with a
+ * different base URL + key. Returns null when GROQ_API_KEY is not set.
+ */
+function getGroqClient(): OpenAI | null {
+  const key = process.env.GROQ_API_KEY;
+  if (!key) return null;
+  return new OpenAI({ apiKey: key, baseURL: GROQ_BASE_URL });
 }
 
 async function chat(
@@ -40,12 +60,30 @@ async function chat(
   temperature = 0.3,
   jsonMode = false,
 ): Promise<string> {
-  // Try OpenAI first (more reliable, already paid)
+  // Build the provider chain: OpenAI primary (paid, reliable), Groq fallback
+  // (free, fast). Both speak the OpenAI chat-completions API.
+  const providers: Array<{ name: string; client: OpenAI; model: string }> = [];
+
   const openaiClient = getOpenAIClient();
   if (openaiClient) {
+    providers.push({ name: `OpenAI ${OPENAI_CHAT_MODEL}`, client: openaiClient, model: OPENAI_CHAT_MODEL });
+  }
+  const groqClient = getGroqClient();
+  if (groqClient) {
+    providers.push({ name: `Groq ${GROQ_CHAT_MODEL}`, client: groqClient, model: GROQ_CHAT_MODEL });
+  }
+
+  if (providers.length === 0) {
+    throw new Error(
+      'No chat LLM configured. Set OPENAI_API_KEY (primary) and/or GROQ_API_KEY (free fallback).',
+    );
+  }
+
+  const errors: string[] = [];
+  for (const provider of providers) {
     try {
-      const res = await openaiClient.chat.completions.create({
-        model: 'gpt-4o-mini',
+      const res = await provider.client.chat.completions.create({
+        model: provider.model,
         temperature,
         ...(jsonMode ? { response_format: { type: 'json_object' as const } } : {}),
         messages: [
@@ -55,29 +93,21 @@ async function chat(
       });
       return (res.choices[0]?.message?.content ?? '').trim();
     } catch (e) {
-      console.warn('OpenAI failed, falling back to Gemini:', (e as Error).message);
+      // Record and try the next provider — do NOT swallow silently. If this is
+      // the last provider, the combined error below surfaces every reason.
+      const msg = (e as Error).message;
+      errors.push(`${provider.name} → ${msg}`);
+      console.warn(`[chat] ${provider.name} failed, trying next provider: ${msg}`);
     }
   }
 
-  // Fallback to Gemini
-  const genAI = getClient();
-  const model = genAI.getGenerativeModel({
-    model: CHAT_MODEL,
-    generationConfig: {
-      temperature,
-      ...(jsonMode ? { responseMimeType: 'application/json' } : {}),
-    },
-    systemInstruction: systemPrompt,
-  });
-  const result = await model.generateContent(userPrompt);
-  return result.response.text().trim();
+  throw new Error(`All chat providers failed. ${errors.join(' || ')}`);
 }
 
 /**
  * Embed a piece of text using OpenAI text-embedding-3-small (1536 dims).
- * Throws if OPENAI_API_KEY is not set — there is no Gemini fallback for
- * embeddings (text-embedding-004 was deprecated and gemini-embedding-001 is
- * paid + needs a different SDK).
+ * Throws if OPENAI_API_KEY is not set — embeddings are OpenAI-only. Groq has no
+ * embeddings endpoint, and Gemini's text-embedding-004 was deprecated.
  */
 export async function embed(text: string): Promise<number[]> {
   const client = getOpenAIClient();

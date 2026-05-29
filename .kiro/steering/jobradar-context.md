@@ -4,9 +4,66 @@
 
 ---
 
+## ⭐ ACTIVE INITIATIVE — Enterprise Multi-Tenant Transformation
+
+> **Current north-star.** JobRadar is moving from a single-user app (personalized for Shashank) to a **public, multi-tenant SaaS**: anyone signs up, uploads a resume, and gets the full feature set. **Execute ONE phase per chat** — finish a phase, update this tracker, start the next phase in a NEW chat. Never mix phases.
+
+### Progress Tracker (read this first, every chat)
+
+| Phase | Title | Status |
+|---|---|---|
+| **0** | Strategic decisions (auth provider, cost model, scope) | 🟡 IN PROGRESS |
+| **1** | Real auth & identity (Supabase Auth, replace first-profile pattern) | ⬜ Not started |
+| **2** | Data isolation & security (RLS, ownership checks, private resume bucket) | ⬜ Not started |
+| **3** | Scalable ingest & cost control (split shared vs per-user, quotas) | ⬜ Not started |
+| **4** | Monetization & abuse protection (tiers, rate limits, legal) | ⬜ Not started |
+| **5** | Scale & ops (pgvector, observability, auto-apply queue) | ⬜ Not started |
+
+⬜ Not started · 🟡 In progress · ✅ Done
+
+### Two realities driving this
+
+1. **Single-user assumption is contained but pervasive.** "Current user" is resolved everywhere by `profiles … order('created_at').limit(1)` = "whoever signed up first" = Shashank (~10 files). Auth = one shared `APP_PASSWORD`, JWT payload `{ ok: true }` (no identity). **But** the data model is already ~80% multi-tenant: `matches`, `apply_profiles`, `search_profile` are keyed by `profile_id`; `jobs` is a correctly-shared global pool.
+2. **⚠️ COST MODEL INVERTS (biggest risk).** All LLM/embedding calls run on Shashank's OpenAI key. New users scale cost **linearly on our bill**. This breaks "free tiers only." **No public sign-up link until Phase 3 quotas exist.** (Phase 0 open question: can FREE models replace paid OpenAI? — under research.)
+
+### Single-user blast radius (Phase 1 files)
+`app/(app)/{layout,page,onboarding/page,top-mnc/page}.tsx`, `app/api/apply-profile/route.ts` (2×), `app/api/extension/{answer,profile}/route.ts`, `app/api/import-job/route.ts`, `app/api/profile/route.ts` (email upsert), `lib/ingest.ts`, `scripts/backfill-jds.ts`. Auth core: `lib/auth.ts` + `middleware.ts`.
+
+### Phase 0 — Decisions (decide before coding; fill in as answered)
+
+| # | Decision | Recommendation | Answer |
+|---|---|---|---|
+| Q1 | Auth provider | **Supabase Auth** (email/pass + Google OAuth) — native RLS, free, email verify/reset built in | _pending_ |
+| Q2 | Who pays for LLM? | Free tier + hard quotas / Stripe paid tiers / bring-your-own-key. **Researching free models now.** | _pending pick: (A) free-tier swap / (B) BYOK / (C) hybrid — see research note_ |
+| Q3 | Auto-apply at launch? | **Gate off / waitlist** (Render 512MB agent crashes for one user) | _pending_ |
+| Q4 | Hosting | Free tiers for beta; budget paid Supabase/Vercel at scale | _pending_ |
+
+### Phase 0 research — free/open-source models vs paid OpenAI (May 29, 2026)
+
+- **Kiro/Cursor/Antigravity are dev assistants, NOT callable inference APIs.** Runtime AI needs a real free LLM API.
+- **Free LLM APIs:** Gemini free (2.5 Flash-Lite ~1,000 req/day), **Groq** (Llama 3.3 70B, 14,400 req/day, fast), **Cerebras** (1M tokens/day), **OpenRouter** free models (50/day unpaid). 
+- **Free embeddings:** `gemini-embedding-001`, Jina v5, Cohere embed-v4. But OpenAI embeddings are only ~$1.30/mo — **embeddings aren't the cost driver; LLM scoring/generation is.**
+- **⚠️ Two public-launch caveats:** (1) free tiers are **per-KEY not per-user** — 1,000 req/day is shared across ALL users; one scan (30-80 jobs) eats most of it → breaks at ~10-50 users. (2) free tiers **log/train on data** → PII/GDPR risk for strangers' resumes.
+- **⚠️ GEMINI IS OUT (evidence-based, May 2026):** code's `gemini-2.0-flash` is deprecated (shuts down June 1 2026; "existing customers only" since March 6) → free/new keys get `429 limit: 0` (the "rate limit" Shashank saw). Google also gutted free limits 50-80% in Dec 2025 + free tier trains on data. Drop Gemini entirely.
+- **✅ SHIPPED (session 6): Groq replaces Gemini.** `lib/gemini.ts` `chat()` now chains OpenAI `gpt-4o-mini` → **Groq `llama-3.3-70b-versatile`** (free ~14,400 req/day, OpenAI-compatible API), with no silent error masking (combined error if all providers fail). `browser_agent/main.py` uses Groq via `ChatOpenAI(base_url=...)`. New secret: `GROQ_API_KEY`. Gemini fully removed.
+- **Recommended provider stack: OpenAI `gpt-4o-mini` (paid, primary) → Groq (free fallback) → BYOK for scale.** Options to Shashank for multi-tenant cost model: (A) free-tier swap (Groq) / (B) pure BYOK / (C) hybrid ← rec.
+
+### Phase summaries (the "how")
+
+- **Phase 1 — Auth & identity:** Supabase Auth via `@supabase/ssr`; retire `APP_PASSWORD`/`jr_session`; migration `0005_multitenant.sql` adds `user_id uuid → auth.users` on `profiles` + backfills Shashank's row; `getCurrentProfile()` helper replaces all first-profile queries; sign-up/login/reset/verify UI.
+- **Phase 2 — Isolation (ship WITH Phase 1):** RLS on `profiles`/`matches`/`apply_profiles`/`ingest_runs` keyed to `auth.uid()`; ownership checks on `match/[id]/*`; **make `resumes` bucket private** + signed URLs; add `profile_id` to `ingest_runs`.
+- **Phase 3 — Cost control (before any public link):** split `lib/ingest.ts` into shared (fetch→upsert→embed, paid once) vs per-user (filter→score→matches); broad shared Adzuna fetch + per-user embedding pre-filter to top ~30 before LLM; `usage` table + hard quotas; per-user work on Supabase scheduled Edge Functions / queue for active users only.
+- **Phase 4 — Monetization:** Stripe tiers; rate limiting (Upstash free); input hardening + prompt-injection guards; Privacy/Terms + delete-account + GDPR.
+- **Phase 5 — Scale:** `pgvector` + index (replace cosine-in-JS); Sentry + usage dashboard; auto-apply as queued worker service (separate track).
+
+### Execution rule
+Start each chat by reading this tracker → confirm prior phase is ✅ → execute ONLY the next phase → update tracker + add a phase log when done.
+
+---
+
 ## 1. What is JobRadar?
 
-A **personalized AI-powered job-search dashboard** built by Shashank (Senior Performance Engineer, India, 7+ years). Single-user for now, designed for multi-user/public later. UI uses a warm light theme (Runway-inspired: off-white canvas, amber CTA, Inter typography).
+A **personalized AI-powered job-search dashboard** built by Shashank (Senior Performance Engineer, India, 7+ years). **Currently single-user; actively being converted to public multi-tenant SaaS — see ⭐ ACTIVE INITIATIVE above.** UI uses a warm light theme (Runway-inspired: off-white canvas, amber CTA, Inter typography).
 
 **Core flow:** Fetches jobs from multiple sources → AI-scores against resume → surfaces relevant matches → generates tailored ATS resumes + cover letters per job.
 
@@ -21,9 +78,9 @@ A **personalized AI-powered job-search dashboard** built by Shashank (Senior Per
 |---|---|
 | Framework | Next.js 15 (App Router), React 19, TypeScript |
 | Database | Supabase (Postgres + pgvector) |
-| Auth | Custom JWT cookie (HS256 via `jose`) |
-| AI | OpenAI `gpt-4o-mini` + `text-embedding-3-small` |
-| AI module | `lib/gemini.ts` (named historically; uses OpenAI) |
+| Auth | Custom JWT cookie (HS256 via `jose`) — **being replaced by Supabase Auth in Phase 1** |
+| AI | OpenAI `gpt-4o-mini` + `text-embedding-3-small`; **Groq `llama-3.3-70b-versatile` = free chat fallback** (Gemini removed, session 6) |
+| AI module | `lib/gemini.ts` (named historically; uses OpenAI primary + Groq fallback) |
 | Ingestion | GitHub Actions cron every 6h → `scripts/ingest.ts` |
 | Hosting | Vercel (web) + GitHub Actions (cron) |
 | Job sources | Adzuna India, Remotive, RemoteOK, HackerNews, Arbeitnow |
@@ -149,7 +206,9 @@ This file should be updated every 2-3 significant conversations. Add:
 - Changes to architecture
 - New "NEVER do" / "ALWAYS do" rules learned
 
-Last updated: May 27, 2026 (session 2: backfill + JD fix + UI redesign + status='viewed' bug identified)
+Last updated: May 29, 2026 (session 6: launched the **Enterprise Multi-Tenant Transformation** initiative — added the Master Plan + Progress Tracker (Phases 0-5) to the top of this file. Phase 0 in progress: strategic decisions + researching free/open-source LLM + embedding alternatives to paid OpenAI. Documentation only, no code changed.)
+
+_Earlier: May 27, 2026 (session 2: backfill + JD fix + UI redesign + status='viewed' bug identified)_
 
 ---
 

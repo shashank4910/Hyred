@@ -2,8 +2,8 @@
 JobRadar Auto-Apply Agent
 =========================
 FastAPI service that uses Browser Use + an LLM (OpenAI gpt-4o-mini primary,
-Gemini 2.0 Flash fallback) to automatically apply for jobs on behalf of the
-user.
+Groq Llama 3.3 70B free fallback) to automatically apply for jobs on behalf of
+the user.
 
 Deploy on Render free tier. Keep alive with UptimeRobot (free) pinging
 /health every 5 minutes so the service never sleeps.
@@ -29,7 +29,6 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
@@ -230,11 +229,12 @@ async def _run_apply(task_id: str, req: ApplyRequest):
 
     try:
         # Mirror the Next.js app: OpenAI gpt-4o-mini as primary (paid, reliable),
-        # Gemini 2.0 Flash as fallback (free tier, quota burns fast).
-        # LLM_PROVIDER=gemini forces fallback ordering for testing.
+        # Groq (Llama 3.3 70B) as the FREE fallback. Gemini was dropped May 2026
+        # because gemini-2.0-flash is deprecated and free/new keys 429 (limit:0).
+        # LLM_PROVIDER=groq forces fallback ordering for testing.
         provider_pref = (os.getenv("LLM_PROVIDER", "openai") or "openai").lower()
         openai_key = os.getenv("OPENAI_API_KEY")
-        gemini_key = os.getenv("GEMINI_API_KEY")
+        groq_key = os.getenv("GROQ_API_KEY")
 
         llm = None
         llm_name = ""
@@ -246,25 +246,28 @@ async def _run_apply(task_id: str, req: ApplyRequest):
                 temperature=0.2,
             ), "OpenAI gpt-4o-mini"
 
-        def _build_gemini():
-            return ChatGoogleGenerativeAI(
-                model=os.getenv("GEMINI_MODEL", "gemini-2.0-flash"),
-                google_api_key=gemini_key,
+        def _build_groq():
+            # Groq exposes an OpenAI-compatible API, so we reuse ChatOpenAI with
+            # Groq's base URL + key (no extra dependency needed).
+            return ChatOpenAI(
+                model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+                api_key=groq_key,
+                base_url="https://api.groq.com/openai/v1",
                 temperature=0.2,
-            ), "Gemini 2.0 Flash"
+            ), "Groq llama-3.3-70b-versatile"
 
-        order = ("openai", "gemini") if provider_pref != "gemini" else ("gemini", "openai")
+        order = ("openai", "groq") if provider_pref != "groq" else ("groq", "openai")
         for choice in order:
             if choice == "openai" and openai_key:
                 llm, llm_name = _build_openai()
                 break
-            if choice == "gemini" and gemini_key:
-                llm, llm_name = _build_gemini()
+            if choice == "groq" and groq_key:
+                llm, llm_name = _build_groq()
                 break
 
         if llm is None:
             raise ValueError(
-                "No LLM configured. Set OPENAI_API_KEY (preferred) or GEMINI_API_KEY in environment."
+                "No LLM configured. Set OPENAI_API_KEY (preferred) or GROQ_API_KEY in environment."
             )
 
         # Build context string with all candidate info

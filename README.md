@@ -1,8 +1,8 @@
 # JobRadar
 
-AI-curated job matches from across the web. Pulls jobs from public job APIs, scores them against your resume with Gemini, and gives you a curated dashboard plus a tailored cover letter on demand.
+AI-curated job matches from across the web. Pulls jobs from public job APIs, scores them against your resume with OpenAI (Groq as a free fallback), and gives you a curated dashboard plus a tailored cover letter on demand.
 
-- **Stack**: Next.js 15 (App Router) + TypeScript + Tailwind, Supabase (Postgres), OpenAI gpt-4o-mini + `text-embedding-3-small` (Gemini 2.0 Flash as chat fallback), GitHub Actions cron, Vercel hosting.
+- **Stack**: Next.js 15 (App Router) + TypeScript + Tailwind, Supabase (Postgres), OpenAI gpt-4o-mini + `text-embedding-3-small` (Groq Llama 3.3 70B as free chat fallback), GitHub Actions cron, Vercel hosting.
 - **Cost**: ₹0/month using free tiers.
 
 ## Features
@@ -44,8 +44,8 @@ Web app (Next.js on Vercel):
 - Run `supabase/migrations/0001_init.sql`.
 - Run `supabase/migrations/0002_production.sql`.
 
-### 2. Get a Gemini API key
-- https://aistudio.google.com/apikey -> Create API key. Free tier: 1M tokens/day.
+### 2. Get a Groq API key (free chat fallback)
+- https://console.groq.com/keys -> Create API key. Free tier: ~14,400 req/day (Llama 3.3 70B).
 
 ### 3. Local env
 ```bash
@@ -70,7 +70,7 @@ npm run dev
 
 ### 6. Schedule the cron
 - GitHub repo -> Settings -> Secrets and variables -> Actions.
-- Add: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY`, optionally `GEMINI_API_KEY` (chat fallback) and `INGEST_PROFILE_EMAIL`.
+- Add: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY`, optionally `GROQ_API_KEY` (free chat fallback) and `INGEST_PROFILE_EMAIL`.
 - Auto-runs every 6 hours; manual trigger available in **Actions** tab.
 
 ## Scripts

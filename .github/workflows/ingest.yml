@@ -27,12 +27,11 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          # GEMINI_API_KEY is the chat-fallback only (gemini-2.0-flash).
-          # Embeddings are now OpenAI text-embedding-3-small (1536 dims) -
-          # see lib/gemini.ts. If OpenAI's chat call ever fails the code
-          # tries Gemini next; without this secret that fallback throws.
-          # Safe to keep; remove only if you've fully retired Gemini.
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # GROQ_API_KEY is the FREE chat fallback (Llama 3.3 70B) used when
+          # OpenAI's chat call fails. Embeddings are OpenAI text-embedding-3-small
+          # (1536 dims) - see lib/gemini.ts. Replaced Gemini (gemini-2.0-flash
+          # deprecated + free-tier 429, May 2026). Safe to keep even if unused.
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
           ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
           INGEST_PROFILE_EMAIL: ${{ secrets.INGEST_PROFILE_EMAIL }}

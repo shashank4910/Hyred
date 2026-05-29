@@ -14,7 +14,116 @@ JobRadar is a personalized AI-powered job-search dashboard that:
 5. Provides skill-match analysis (JD requirements vs resume)
 
 **Owner:** Shashank Singh — Senior Performance Engineer (India, 7.7 years)
-**Stack:** Next.js 15, React 19, TypeScript, Supabase, OpenAI gpt-4o-mini (primary) + Gemini 2.0 Flash (fallback), Vercel, GitHub Actions, Python FastAPI + browser-use (auto-apply agent on Render)
+**Stack:** Next.js 15, React 19, TypeScript, Supabase, OpenAI gpt-4o-mini (primary) + Groq Llama 3.3 70B (free fallback), Vercel, GitHub Actions, Python FastAPI + browser-use (auto-apply agent on Render)
+
+---
+
+## ⭐ ACTIVE INITIATIVE — Enterprise Multi-Tenant Transformation (Master Plan)
+
+> **This is the current north-star.** JobRadar is moving from a single-user app (personalized for Shashank) to a **public, multi-tenant SaaS** where anyone can sign up, upload a resume, and get the full feature set. We execute this **one phase per chat session** — finish a phase, update this tracker, then start the next phase in a NEW chat. Do not mix phases.
+
+### Progress Tracker (update after every phase)
+
+| Phase | Title | Status |
+|---|---|---|
+| **0** | Strategic decisions (auth provider, cost model, scope) | 🟡 IN PROGRESS |
+| **1** | Real authentication & identity (Supabase Auth, replace first-profile pattern) | ⬜ Not started |
+| **2** | Data isolation & security (RLS, ownership checks, private resume bucket) | ⬜ Not started |
+| **3** | Scalable ingest & cost control (split shared vs per-user, quotas) | ⬜ Not started |
+| **4** | Monetization & abuse protection (tiers, rate limits, legal) | ⬜ Not started |
+| **5** | Scale & operations (pgvector, observability, queue for auto-apply) | ⬜ Not started |
+
+Legend: ⬜ Not started · 🟡 In progress · ✅ Done
+
+### Why this is non-trivial: two realities
+
+1. **Single-user assumption is contained but pervasive.** "The current user" is resolved everywhere by the same trick — `sb.from('profiles').select(...).order('created_at').limit(1).maybeSingle()` = "whoever signed up first" = Shashank. It appears in ~10 places (see blast radius below). Auth is a single shared `APP_PASSWORD` whose JWT payload is literally `{ ok: true }` — it carries **no identity**. Good news: the data model is already ~80% multi-tenant (`matches`, `apply_profiles`, `search_profile` are keyed by `profile_id`; `jobs` is a correctly-shared global pool).
+
+2. **⚠️ THE COST MODEL INVERTS (most important risk).** Today every LLM/embedding call runs on Shashank's own OpenAI key for one person (~$10–15/mo). The moment strangers sign up, scoring + skill-match + resume/cover-letter generation + embeddings all scale **linearly per user on our bill**. 1,000 active users is potentially thousands of dollars/month, NOT ~$15. This breaks the "free tiers only / no infra spend beyond API keys" constraint. **A public launch is fundamentally a cost-control + monetization problem, not just an auth problem.** Do NOT put a public sign-up link anywhere until Phase 3 (quotas) ships.
+
+### Single-user blast radius (files to change in Phase 1)
+
+The `profiles … order('created_at').limit(1)` pattern lives in:
+- `app/(app)/layout.tsx`, `app/(app)/page.tsx`, `app/(app)/onboarding/page.tsx`, `app/(app)/top-mnc/page.tsx`
+- `app/api/apply-profile/route.ts` (2×), `app/api/extension/answer/route.ts`, `app/api/extension/profile/route.ts`, `app/api/import-job/route.ts`
+- `lib/ingest.ts`, `scripts/backfill-jds.ts`
+- `app/api/profile/route.ts` resolves by `email` upsert (also needs to bind to the authed user)
+
+Auth core: `lib/auth.ts` (`APP_PASSWORD`, `jr_session` cookie, `jose` HS256, payload `{ ok: true }`) + `middleware.ts`.
+
+### Phase 0 — Strategic decisions (DECIDE BEFORE CODING)
+
+These shape everything. **Recorded answers will be filled in here as Shashank decides:**
+
+| # | Decision | Recommendation | Shashank's answer |
+|---|---|---|---|
+| Q1 | Auth provider | **Supabase Auth** (email/pass + Google OAuth) — already on Supabase, native Postgres RLS, free tier, email verify + reset built in | _pending_ |
+| Q2 | Who pays for LLM calls? | Free tier + hard quotas, OR paid tiers (Stripe), OR bring-your-own-key. **Open question this session: can we use FREE models to avoid paid OpenAI entirely?** (research in progress) | _pending Shashank's pick: (A) free-tier swap / (B) BYOK / (C) hybrid — see research note below_ |
+| Q3 | Auto-apply at launch? | **Gate off / waitlist** — Render 512MB agent already crashes for one user; multi-user needs a queue + workers | _pending_ |
+| Q4 | Hosting reality | Free tiers fine for beta; budget paid Supabase/Vercel at scale | _pending_ |
+
+### Phase 0 research note — Free / open-source models vs paid OpenAI (May 29, 2026)
+
+Researched the latest 2026 landscape (web). Key findings:
+
+- **"Kiro / Cursor / Antigravity" are NOT callable inference APIs** — they're dev assistants/IDEs. The app's runtime AI (`lib/gemini.ts`) needs a real free/open-weight LLM API, not an IDE.
+- **Free LLM APIs that can replace paid OpenAI for scoring/generation:**
+  - Google **Gemini free tier** — 2.5 Flash-Lite ~15 RPM / **1,000 req/day**, Flash 10 RPM / 250/day, Pro 5 RPM / 100/day. Easiest drop-in (already the fallback).
+  - **Groq** free — Llama 3.3 70B etc., **30 RPM / 14,400 req/day**, very fast.
+  - **Cerebras** free — Llama/Qwen/GPT-OSS, **1M tokens/day**, ~2,000 tok/s.
+  - **OpenRouter** free models — 50 req/day unpaid (1,000/day after one-time >$10 top-up), 300+ models, easy fallback routing.
+- **Free embeddings:** `gemini-embedding-001` (free tier), Jina v5 (open weights), Cohere embed-v4 (trial). Self-hosted BGE-M3/Qwen3 cheapest but bad fit for Vercel serverless. NOTE: current OpenAI embeddings are only **~$1.30/mo** — embeddings are NOT the cost driver; LLM scoring/generation is.
+- **⚠️ Two caveats that matter because this is going PUBLIC:**
+  1. **Free tiers are per-KEY, not per-user.** Gemini's 1,000 req/day is shared across ALL users. One JobRadar scan scores 30–80 jobs → one user's single scan eats most of a day's free quota. Free tiers break at ~10–50 users (rate-limit problem replaces cost problem).
+  2. **Free tiers typically log/train on data.** Running strangers' resumes (PII) through a free tier that may log/human-review them is a GDPR/privacy liability once we have a Privacy Policy (Phase 4). Paid Vertex / zero-data-retention tiers have training restrictions; free does not.
+
+**Recommended direction — Bring Your Own Key (BYOK), likely as a hybrid:**
+- **⚠️ Gemini is OUT (evidence-based, May 2026):** `gemini-2.0-flash` (the current code's `CHAT_MODEL`) is deprecated, shuts down June 1 2026, and since March 6 2026 is "existing customers only" → free/new keys get `429 limit: 0`. Plus Google gutted free-tier limits 50-80% in Dec 2025 and free tier trains on data. Do NOT rely on Gemini as the free default.
+- **Provider stack:** OpenAI `gpt-4o-mini` (paid, already primary + works) → **Groq** (Llama 3.3 70B, free ~14,400 req/day, fast) as the free fallback → BYOK for multi-tenant scale. Cerebras (1M tokens/day) is a backup free option.
+- Each user pastes their OWN free Groq/OpenAI key at onboarding → our LLM cost = **$0**, rate limits become per-user (not a shared pool), PII flows through the user's own account. This permanently satisfies "no infra spend beyond API keys" even at world scale.
+- Launch path: (1) for dev + early beta, replace the dead Gemini fallback in `lib/gemini.ts` + `browser_agent/main.py` with **Groq**, keep OpenAI primary; (2) public = add **BYOK** with a small hard-quota'd shared trial pool for users who haven't added a key yet.
+- **Three options put to Shashank (awaiting pick): (A)** free-tier swap (Groq fallback) + shared key + hard quotas; **(B)** pure BYOK; **(C)** hybrid (shared trial pool + BYOK) ← recommended.
+
+### Phase 1 — Real authentication & identity (the foundation)
+
+**Goal:** every request knows *which user* it is.
+- Adopt **Supabase Auth** via `@supabase/ssr`; retire `APP_PASSWORD` + `jr_session`. Middleware resolves the Supabase session → real `user.id`.
+- New migration `0005_multitenant.sql`: add `user_id uuid references auth.users(id)` to `profiles`; **backfill Shashank's existing row** so no data loss.
+- Build a `getCurrentProfile()` helper (authed user → their profile). Replace all ~10 first-profile queries with it.
+- Auth UI: sign-up, login, forgot-password, email verification (Supabase provides backend; we build thin UI).
+
+### Phase 2 — Data isolation & security (ship WITH Phase 1)
+
+**Goal:** User A can never see User B's data, even with a bug.
+- Real RLS policies keyed to `auth.uid()` on `profiles`, `matches`, `apply_profiles`, per-user `ingest_runs`. Keep service-role for cron; user-facing reads go through the user's JWT so the DB enforces isolation.
+- Ownership checks on every `match/[id]/*` route (resume, bookmark, auto-apply, etc.) — RLS makes this automatic once wired.
+- **Make the `resumes` storage bucket private** + short-lived signed URLs (resumes are PII; currently public = guessable URLs).
+- Add `profile_id` to `ingest_runs` so Stats shows the user's own scans.
+
+### Phase 3 — Scalable ingest & cost control (MUST precede any public link)
+
+**Goal:** serving N users doesn't N-times the bill or runtime.
+- Split `lib/ingest.ts`: **shared phase** (fetch sources → upsert jobs → embed new jobs; paid once, shared by all) vs **per-user phase** (candidate select → title filter → AI relevance → LLM score → write matches).
+- Adzuna queries are currently personalized to Shashank's `SearchProfile`. With many domains, switch to a broad shared fetch + aggressive per-user embedding pre-filter so LLM tokens hit only the top ~30 candidates per user.
+- **Hard quotas + metering** (`usage` table): free tier = e.g. 1 scan/day, capped scored jobs, capped resume/cover-letter generations. Stops one user/bot from burning $50 in an afternoon.
+- Move per-user work off GitHub Actions cron → Supabase scheduled Edge Functions or a queue; only process *active* users (logged in within N days).
+
+### Phase 4 — Monetization & abuse protection
+
+- **Stripe** for paid tiers (free until you transact). Free tier for acquisition; paid unlocks higher quotas / auto-apply.
+- Rate limiting on auth + AI endpoints (Upstash Redis free tier or Supabase-based).
+- Input hardening: resume size/type caps, scan-frequency caps, prompt-injection guards on uploaded resume text (it flows into prompts).
+- Legal: Privacy Policy + Terms, "delete my account" button (the `on delete cascade` already makes this clean), GDPR/data-handling language (we store resumes).
+
+### Phase 5 — Scale & operations
+
+- Observability: error tracking (Sentry free tier), structured logging, an internal per-user usage dashboard.
+- Move embeddings from `JSONB` to **`pgvector`** with an index once `jobs` exceeds a few thousand (cosine-in-JS won't scale).
+- Auto-apply as a real service: queue + dedicated workers + per-user browser isolation. Separate paid/beta track.
+
+### Execution rule
+
+**One phase per chat.** Start each new chat by reading this tracker, confirm the previous phase is ✅, then execute only the next phase. Update the tracker + add a phase log when done. Never juggle phases.
 
 ---
 
@@ -130,6 +239,7 @@ scripts/clear-embeddings.sql        ← (Session 5, MERGED) Wipe stale 768-dim v
 | Trusting local `git fetch` in this sandbox | Auth header issues silently fail the fetch; local git cache lies about remote state | Verify deployed state by fetching `raw.githubusercontent.com/{repo}/main/{path}` directly |
 | `BROWSER_USE_HEADLESS` env var | Fabricated from earlier guessing; does not exist in `browser-use==0.1.40` source | Verify env-var/API names by reading the pinned version's source on GitHub. v0.1.40 needs explicit `Browser(BrowserConfig(headless=True, extra_chromium_args=[...]))` into `Agent(browser=...)`. |
 | `text-embedding-004` deprecated (Google, 2026-01-14) | Ingest fails with `404 Not Found ... models/text-embedding-004`. `@google/generative-ai` SDK also EOL 2025-08-31. | Switch to OpenAI `text-embedding-3-small` (1536 dims, ~$1.30/mo). DB columns are JSONB so dimension change is non-breaking; cosine similarity returns 0 on length mismatch so old vectors are silently ignored. |
+| `gemini-2.0-flash` throws "rate limit" 429 on ALL AI activities (May 2026) — ✅ FIXED session 6 | **WHERE:** a single chokepoint — `chat()` in `lib/gemini.ts` (lines 37-75), the `model.generateContent()` call with `CHAT_MODEL='gemini-2.0-flash'`. **ALL 6 chat AI features route through it**: `scoreJob`, `matchSkills`, `extractJdKeywords` + `generateAtsResume` (resume regen = 2 calls), `generateCoverLetter`, `extractResumeInsights`. Only `embed()` bypasses it (OpenAI-only). That's why scoring, skill-match, resume-regen, cover-letter ALL 429'd identically when Gemini was the active provider. **WHY:** Gemini 2.0 Flash is **deprecated, shuts down June 1 2026**; since **March 6 2026 it's "existing customers only"** → free/new keys get `429 ResourceExhausted` `limit: 0` (looks like a rate limit, means "model not on your plan"). Google also cut free limits 50-80% in Dec 2025 + free tier trains on data. **MASKING TRAP:** `chat()` tried OpenAI first, but on ANY OpenAI failure it did only `console.warn(...)` and silently fell through to Gemini → so a Gemini 429 was often a *symptom* of OpenAI not running (missing/exhausted key in that env, billing, outage), NOT a real Gemini rate limit. | **✅ FIXED (session 6, PR pending):** dropped Gemini entirely. `chat()` now builds a provider chain [OpenAI `gpt-4o-mini` → **Groq** `llama-3.3-70b-versatile`, free ~14,400 req/day], both via the OpenAI SDK (Groq is OpenAI-compatible, `baseURL=api.groq.com/openai/v1`). No more silent masking — each provider's error is recorded and if ALL fail it throws one combined readable error. `browser_agent/main.py` switched to Groq via `ChatOpenAI(base_url=...)`; removed `langchain-google-genai`. New secret: `GROQ_API_KEY` (Vercel + GH Actions + Render). For multi-tenant scale: BYOK (chat() uses the user's key → per-user limits). |
 | ATS parsers see one giant paragraph instead of bullets | PDF used graphical amber circles only — no text bullet character. Workday/Greenhouse/Lever/Taleo/iCIMS extracted bullet content as a single blob. | Render real `- ` text characters in the PDF text stream; ASCII-only output for legacy parsers. |
 | LLM prefixes resume output with the word "Resume" | Navy header band rendered "Resume" as the candidate's name | Parser skips any leading `Resume / RESUME / Curriculum Vitae / CV / PROFILE` label before treating the next line as the name. Also call `doc.setProperties({ title, author, creator })` so PDF viewers show candidate name. |
 
@@ -172,7 +282,9 @@ When a feature seems broken:
 - New "pitfalls" or rules learned
 - Changes to the file map
 
-**Last updated:** May 29, 2026 (session 5: OpenAI text-embedding-3-small migration shipped; matches sort dropdown bug fixed (foreignTable alias) + per-card discovery date stamp; UI UX Pro Max design skill installed for Kiro, Cursor, and Antigravity from the official `uipro-cli`. PRs #25-#28 + #29 all merged.)
+**Last updated:** May 29, 2026 (session 6: started the **Enterprise Multi-Tenant Transformation** initiative — added the Master Plan + Progress Tracker (Phases 0-5) near the top of this file. Phase 0 in progress: strategic decisions + researched free/open-source LLM alternatives. **Shipped the Groq fix** (Phase 0 cost-model groundwork): replaced the dead `gemini-2.0-flash` 429 fallback with **Groq Llama 3.3 70B** across `lib/gemini.ts` + `browser_agent/main.py`, removed silent OpenAI-error masking, swapped `GEMINI_API_KEY`→`GROQ_API_KEY` in workflows/env/README. Requires `GROQ_API_KEY` secret on Vercel + GH Actions + Render.)
+
+_Session 5 (May 29, 2026): OpenAI text-embedding-3-small migration shipped; matches sort dropdown bug fixed (foreignTable alias) + per-card discovery date stamp; UI UX Pro Max design skill installed for Kiro, Cursor, and Antigravity from the official `uipro-cli`. PRs #25-#28 + #29 all merged._
 
 ---
 
