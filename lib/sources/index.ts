@@ -71,12 +71,11 @@ function buildFns(searchProfile?: SearchProfile | null): Partial<
       });
   }
 
-  // Himalayas — always enabled (free, no auth)
-  fns.himalayas = () =>
-    fetchHimalayas({
-      queries: queries.length > 0 ? queries.slice(0, 3) : undefined,
-      limit: 50,
-    });
+  // Himalayas — DISABLED: Their API ignores all filter params (query, category).
+  // Returns a chronological dump of 100K+ jobs with no working search.
+  // For niche domains like performance testing, <0.1% of results are relevant.
+  // Re-enable if they fix their search endpoint.
+  // fns.himalayas = () => fetchHimalayas({ limit: 100 });
 
   // JSearch (RapidAPI) — enabled if at least one API key is configured (env or DB)
   // Always register it — fetchJSearch will check keys at runtime and throw
