@@ -481,8 +481,19 @@ function normalizeAscii(s: string): string {
  *   ""                                                          -> "Senior Performance Engineer" (fallback)
  */
 function cleanJdTitle(raw: string): string {
-  const ROLE_RE = /\b(engineer|tester|developer|analyst|architect|consultant|specialist|sdet|sre|administrator|coordinator|lead|manager|designer|technician|scientist|programmer)\b/i;
+  const ROLE_RE = /\b(engineer|engineering|tester|testing|developer|development|analyst|architect|consultant|specialist|sdet|sre|administrator|coordinator|lead|manager|designer|technician|scientist|programmer)\b/i;
+  // Domain / specialization words. A title side that has one of these names
+  // the ACTUAL role (e.g. "Performance Engineering"), and should win over a
+  // bare seniority phrase like "Senior Lead" that only has a generic role word.
+  const DOMAIN_RE = /\b(performance|load|stress|qa|quality|automation|sdet|test|testing|reliability|sre|backend|frontend|fullstack|full-stack|devops|data|ml|ai|security|cloud|platform|infrastructure|mobile|android|ios|web|api|database|network|systems?|embedded|firmware|analytics)\b/i;
   let t = (raw ?? '').trim();
+
+  // 0. Normalise hyphen separators that have a space on AT LEAST one side
+  //    into a canonical " - ". This catches "Senior Lead- Performance" (space
+  //    only after the dash) which the old code missed. Hyphenated compound
+  //    words like "full-stack" / "front-end" / "e-commerce" have NO adjacent
+  //    spaces, so they are left intact.
+  t = t.replace(/\s+-\s*/g, ' - ').replace(/\s*-\s+/g, ' - ');
 
   // 1. If there's a parenthetical that looks like a real role, prefer IT.
   //    Otherwise just strip parentheticals (they're usually department/skill
@@ -497,22 +508,37 @@ function cleanJdTitle(raw: string): string {
   // 2. Strip everything after the first comma (department/location).
   t = t.split(',')[0].trim();
 
-  // 2.5. Strip " - " and " / " separators with everything after them, IF
-  //      the part BEFORE the separator already contains a role keyword.
-  //      The role-keyword guard prevents us from accidentally stripping the
-  //      actual role (e.g. "Senior - Performance Engineer" stays untouched
-  //      because "Senior" alone has no role keyword).
-  //      Catches noise like:
-  //        "Senior Performance Testing Engineer - Assistant Manager"
-  //          -> "Senior Performance Testing Engineer"
-  //        "QA Engineer / Backend" -> "QA Engineer"
-  //        "Performance Tester - Banking" -> "Performance Tester"
+  // 2.5. Resolve " - " / " / " separators by picking the side that names the
+  //      ACTUAL role. Old bug: "Senior Lead - Performance Engineering" became
+  //      "Senior Lead" because "lead" is a role word — losing the real
+  //      specialization. Now we prefer the side that has a DOMAIN word.
+  //        "Senior Lead - Performance Engineering"          -> "Performance Engineering"
+  //        "Senior Performance Testing Engineer - Asst Mgr" -> "Senior Performance Testing Engineer"
+  //        "QA Engineer / Backend"                          -> "QA Engineer"
+  //        "Performance Tester - Banking"                   -> "Performance Tester"
   for (const sep of [' - ', ' / ']) {
     const idx = t.indexOf(sep);
     if (idx > 0) {
       const before = t.slice(0, idx).trim();
-      if (ROLE_RE.test(before)) {
+      const after = t.slice(idx + sep.length).trim();
+      const beforeRole = ROLE_RE.test(before);
+      const afterRole = ROLE_RE.test(after);
+      const beforeDomain = DOMAIN_RE.test(before);
+      const afterDomain = DOMAIN_RE.test(after);
+      // The after-side names a specialization the before-side lacks -> take it.
+      if (afterRole && afterDomain && !beforeDomain) {
+        t = after;
+        break;
+      }
+      // Otherwise the before-side is the role (it has a domain, or the after
+      // side is just a designation/department with no specialization).
+      if (beforeRole && (beforeDomain || !afterDomain)) {
         t = before;
+        break;
+      }
+      // Fallback: whichever side has a role word.
+      if (afterRole) {
+        t = after;
         break;
       }
     }
@@ -553,8 +579,24 @@ function cleanJdTitle(raw: string): string {
 
   // 9. Strip stray dept descriptor tail words that often follow a comma we
   //    already stripped (defensive, in case the title used " - " instead of
-  //    a comma to attach the dept).
-  t = t.replace(/\s+(product|platform|engineering|operations|infrastructure|technology|technologies)\b\s*$/i, '').trim();
+  //    a comma to attach the dept). GUARDED: only strip when a role keyword
+  //    still remains afterwards, so "Performance Engineering" keeps its
+  //    "Engineering" (stripping it would leave a bare "Performance").
+  {
+    const stripped = t
+      .replace(/\s+(product|platform|engineering|operations|infrastructure|technology|technologies)\b\s*$/i, '')
+      .trim();
+    if (stripped !== t && ROLE_RE.test(stripped)) t = stripped;
+  }
+
+  // 9.5. Strip a trailing requisition-ID-like token (contains 3+ digits),
+  //      e.g. "QA Performance Tester IRC294922" -> "QA Performance Tester",
+  //      "Performance Engineer REQ-12345" -> "Performance Engineer". Guarded:
+  //      only strip when a role keyword still remains.
+  {
+    const stripped = t.replace(/\s+[A-Za-z]*\d{3,}[A-Za-z0-9-]*$/i, '').trim();
+    if (stripped !== t && ROLE_RE.test(stripped)) t = stripped;
+  }
 
   // 10. Final tidy.
   t = t.replace(/[,;:\-]\s*$/, '').trim();
