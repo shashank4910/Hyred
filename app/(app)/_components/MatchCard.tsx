@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { MapPin, Building2, Clock, ExternalLink, Bookmark } from 'lucide-react';
+import { MapPin, Building2, Clock, ExternalLink, Bookmark, Crown } from 'lucide-react';
 import { relativeTime, formatShortDate, formatFullDate, scoreColorClass, SOURCE_LABELS } from '@/lib/ui';
 import { useState } from 'react';
 
@@ -22,9 +22,11 @@ type Props = {
     posted_at: string | null;
     fetched_at?: string | null;
   };
+  /** Optional MNC category label — shown as a premium badge on the card */
+  mncCategory?: string;
 };
 
-export function MatchCard({ matchId, score, reason, status, bookmarked: initialBookmarked, job }: Props) {
+export function MatchCard({ matchId, score, reason, status, bookmarked: initialBookmarked, job, mncCategory }: Props) {
   const colorClass = scoreColorClass(score);
   const dateSource = job.posted_at ?? job.fetched_at ?? null;
   const relative = relativeTime(dateSource);
@@ -87,6 +89,12 @@ export function MatchCard({ matchId, score, reason, status, bookmarked: initialB
               {job.title}
             </h3>
             <span className="badge">{SOURCE_LABELS[job.source] ?? job.source}</span>
+            {mncCategory && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-secondary-fixed text-on-secondary-fixed-variant px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+                <Crown className="h-2.5 w-2.5" />
+                {mncCategory}
+              </span>
+            )}
             {!isViewed && (
               <span className="inline-flex items-center rounded-full bg-primary-fixed text-primary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
                 New
