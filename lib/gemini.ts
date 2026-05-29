@@ -1,10 +1,18 @@
 /**
- * AI helpers — OpenAI (gpt-4o-mini) as primary, Gemini 2.0 Flash as fallback.
+ * AI helpers — OpenAI as primary for chat AND embeddings, Gemini 2.0 Flash as
+ * chat fallback only.
  *
- * All chat-based calls try OpenAI first (if OPENAI_API_KEY is set) and fall
- * back to Gemini on failure or missing key.
- * Embeddings remain Gemini text-embedding-004 (768 dims) since the DB schema
- * is configured for those dimensions.
+ * Chat-based calls (scoreJob, matchSkills, generateAtsResume, etc.) try OpenAI
+ * first (if OPENAI_API_KEY is set) and fall back to Gemini on failure.
+ * Embeddings are OpenAI text-embedding-3-small (1536 dims). Gemini's
+ * text-embedding-004 was deprecated by Google on 2026-01-14 and the v1beta
+ * endpoint returns 404; switching to OpenAI also unblocks the cron when the
+ * Gemini free-tier quota is exhausted.
+ *
+ * NOTE: existing rows have 768-dim vectors stored as JSONB. Cosine similarity
+ * returns 0 on length mismatch, so old vectors are silently ignored — no
+ * schema migration needed. Run scripts/clear-embeddings.sql once to wipe
+ * stale vectors and the next ingest re-embeds at 1536 dims.
  */
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -12,7 +20,7 @@ import OpenAI from 'openai';
 import type { ResumeInsights } from './types';
 
 const CHAT_MODEL = 'gemini-2.0-flash';
-const EMBED_MODEL = 'text-embedding-004';
+const EMBED_MODEL = 'text-embedding-3-small';
 
 function getClient(): GoogleGenerativeAI {
   const key = process.env.GEMINI_API_KEY;
@@ -66,14 +74,22 @@ async function chat(
 }
 
 /**
- * Embed a piece of text using text-embedding-004 (768 dims).
+ * Embed a piece of text using OpenAI text-embedding-3-small (1536 dims).
+ * Throws if OPENAI_API_KEY is not set — there is no Gemini fallback for
+ * embeddings (text-embedding-004 was deprecated and gemini-embedding-001 is
+ * paid + needs a different SDK).
  */
 export async function embed(text: string): Promise<number[]> {
-  const genAI = getClient();
-  const model = genAI.getGenerativeModel({ model: EMBED_MODEL });
+  const client = getOpenAIClient();
+  if (!client) throw new Error('Missing OPENAI_API_KEY env var');
   const trimmed = text.slice(0, 8000);
-  const result = await model.embedContent(trimmed);
-  return result.embedding.values;
+  const result = await client.embeddings.create({
+    model: EMBED_MODEL,
+    input: trimmed,
+  });
+  const vector = result.data[0]?.embedding;
+  if (!vector) throw new Error('OpenAI embeddings response had no vector');
+  return vector;
 }
 
 /**

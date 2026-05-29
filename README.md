@@ -2,7 +2,7 @@
 
 AI-curated job matches from across the web. Pulls jobs from public job APIs, scores them against your resume with Gemini, and gives you a curated dashboard plus a tailored cover letter on demand.
 
-- **Stack**: Next.js 15 (App Router) + TypeScript + Tailwind, Supabase (Postgres), Gemini 2.0 Flash + `text-embedding-004`, GitHub Actions cron, Vercel hosting.
+- **Stack**: Next.js 15 (App Router) + TypeScript + Tailwind, Supabase (Postgres), OpenAI gpt-4o-mini + `text-embedding-3-small` (Gemini 2.0 Flash as chat fallback), GitHub Actions cron, Vercel hosting.
 - **Cost**: ₹0/month using free tiers.
 
 ## Features
@@ -26,9 +26,9 @@ AI-curated job matches from across the web. Pulls jobs from public job APIs, sco
 GitHub Actions (every 6h) -> npm run ingest:
   fetch jobs (Remotive, RemoteOK, HN Who-is-hiring, Arbeitnow)
     -> upsert into Postgres (dedup by source+source_id)
-    -> embed any new jobs (Gemini text-embedding-004, 768 dims)
+    -> embed any new jobs (OpenAI text-embedding-3-small, 1536 dims)
     -> rank by cosine similarity vs your resume embedding
-    -> top 25 -> Gemini 2.0 Flash scores 0-100 with a reason
+    -> top 25 -> gpt-4o-mini scores 0-100 with a reason
     -> persist matches with score >= min_score (default 70)
     -> log run to ingest_runs
 
@@ -70,7 +70,7 @@ npm run dev
 
 ### 6. Schedule the cron
 - GitHub repo -> Settings -> Secrets and variables -> Actions.
-- Add: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY`, optionally `INGEST_PROFILE_EMAIL`.
+- Add: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY`, optionally `GEMINI_API_KEY` (chat fallback) and `INGEST_PROFILE_EMAIL`.
 - Auto-runs every 6 hours; manual trigger available in **Actions** tab.
 
 ## Scripts
