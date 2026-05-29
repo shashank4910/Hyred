@@ -42,6 +42,35 @@ export const SOURCE_LABELS: Record<SourceName, string> = {
 };
 
 /**
+ * Build a high-coverage LinkedIn query set from the search profile.
+ *
+ * KEY INSIGHT: LinkedIn's keyword search matches ROLE-TITLE PHRASES far better
+ * than niche tool names. e.g. searching "loadrunner" misses "Senior Lead -
+ * Performance Engineering" at Levi Strauss, but "performance testing" and
+ * "performance engineering" surface it. So we prioritise titlePatterns +
+ * primaryDomain + adjacentDomains (role phrases), then add a few tool keywords.
+ *
+ * LinkedIn is free (no API token), so we can afford a broad query set.
+ */
+function buildLinkedInQueries(profile?: SearchProfile | null): string[] {
+  if (!profile) return ['performance testing', 'performance engineer'];
+  const out = new Set<string>();
+  const add = (s?: string) => {
+    const t = (s ?? '').trim().toLowerCase();
+    if (t && t.length >= 3) out.add(t);
+  };
+  // Role-title phrases are the strongest signal on LinkedIn.
+  (profile.titlePatterns ?? []).forEach(add);
+  // Primary + adjacent domains (e.g. "performance engineering", "sre").
+  add(profile.primaryDomain);
+  (profile.adjacentDomains ?? []).forEach(add);
+  // A few niche tool keywords for specialised coverage.
+  (profile.searchKeywords ?? []).slice(0, 4).forEach(add);
+  // Cap to keep request count + scan time bounded (LinkedIn is free but slow).
+  return Array.from(out).slice(0, 10);
+}
+
+/**
  * Build the dispatch table at call time.
  *
  * If a SearchProfile is provided, its AI-generated `searchKeywords` are used
@@ -94,13 +123,13 @@ function buildFns(searchProfile?: SearchProfile | null): Partial<
     });
 
   // LinkedIn — PUBLIC GUEST API (free, no auth, no API key).
-  // Uses the search-engine-facing guest endpoints. Returns real LinkedIn
-  // job listings for the user's keywords + location, with full descriptions.
+  // Uses role-title phrase queries (best coverage on LinkedIn) built from the
+  // full search profile, not just niche tool keywords. See buildLinkedInQueries.
   fns.linkedin = () =>
     fetchLinkedIn({
-      queries: queries.length > 0 ? queries.slice(0, 5) : undefined,
+      queries: buildLinkedInQueries(searchProfile),
       location: 'India',
-      maxPagesPerQuery: 5,
+      maxPagesPerQuery: 4,
       fetchDescriptions: true,
       maxDescriptions: 60,
     });
