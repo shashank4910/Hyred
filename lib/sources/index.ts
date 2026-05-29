@@ -6,6 +6,7 @@ import { fetchArbeitnow } from './arbeitnow';
 import { fetchAdzuna } from './adzuna';
 import { fetchHimalayas } from './himalayas';
 import { fetchJSearch } from './jsearch';
+import { fetchLinkedIn } from './linkedin';
 import type { SearchProfile } from '../search-profile';
 
 export type SourceName =
@@ -15,7 +16,8 @@ export type SourceName =
   | 'arbeitnow'
   | 'adzuna_in'
   | 'himalayas'
-  | 'jsearch';
+  | 'jsearch'
+  | 'linkedin';
 
 export const ALL_SOURCES: SourceName[] = [
   'remotive',
@@ -25,6 +27,7 @@ export const ALL_SOURCES: SourceName[] = [
   'adzuna_in',
   'himalayas',
   'jsearch',
+  'linkedin',
 ];
 
 export const SOURCE_LABELS: Record<SourceName, string> = {
@@ -35,6 +38,7 @@ export const SOURCE_LABELS: Record<SourceName, string> = {
   adzuna_in: 'Adzuna India',
   himalayas: 'Himalayas',
   jsearch: 'JSearch',
+  linkedin: 'LinkedIn',
 };
 
 /**
@@ -87,6 +91,18 @@ function buildFns(searchProfile?: SearchProfile | null): Partial<
       queries: queries.length > 0 ? queries.slice(0, 5) : undefined,
       country: 'India',
       datePosted: 'week',
+    });
+
+  // LinkedIn — PUBLIC GUEST API (free, no auth, no API key).
+  // Uses the search-engine-facing guest endpoints. Returns real LinkedIn
+  // job listings for the user's keywords + location, with full descriptions.
+  fns.linkedin = () =>
+    fetchLinkedIn({
+      queries: queries.length > 0 ? queries.slice(0, 5) : undefined,
+      location: 'India',
+      maxPagesPerQuery: 2,
+      fetchDescriptions: true,
+      maxDescriptions: 40,
     });
 
   return fns;
