@@ -143,6 +143,47 @@ Researched the latest 2026 landscape (web). Key findings:
 
 Quick win for Phase 3: the "stop re-sending the full resume on every `scoreJob` call" change alone cuts per-job tokens roughly in half. Tackle first.
 
+#### OpenAI-primary cost model — scaling 1 → 1,000 users (May 2026, evidence-based)
+
+If OpenAI `gpt-4o-mini` is the primary (no Groq offset), here is the AI-only cost (LLM + embeddings; excludes Supabase/Vercel/hosting).
+
+**Prices (verified May 2026):** gpt-4o-mini = **$0.15/1M input, $0.60/1M output** ([markaicode](https://markaicode.com/pricing/tool-pricing-comparison/)); text-embedding-3-small = **$0.02/1M** ([costgoat](https://costgoat.com/pricing/openai-embeddings)). gpt-4o-mini is OpenAI's cheapest chat model — newer o4-mini/GPT-5.x minis cost more.
+
+**Per-operation cost (from the code):**
+
+| Operation | Tokens/call | Cost/call |
+|---|---|---|
+| **Score one job** (resume + JD re-sent each call) | ~2,900 in + 150 out | **~$0.0005** ← dominant |
+| AI relevance filter (batch) | ~2,000 in + 300 out | ~$0.0005 |
+| Skill match (on-demand) | ~4,000 in + 500 out | ~$0.0009 |
+| ATS resume (2-pass) | ~8,000 in + 2,000 out | ~$0.0024 |
+| Cover letter | ~3,000 in + 700 out | ~$0.0009 |
+
+**Per active user / month** (driven almost entirely by jobs scored @ ~$0.0005/job):
+
+| Jobs scored/day | Per user/month |
+|---|---|
+| ~20 (light) | ~$0.50 |
+| ~40 (typical) | ~$1 |
+| ~80 (heavy, current 4×/day cron) | ~$2 |
+
+Note: the ~$10-15/mo in this file's "Cost Model" section is the **owner's heavy-dev usage** (constant re-scans, backfills, dozens of resume regens) — NOT a normal end-user. Plan on **~$1-2/active user/mo**.
+
+**Shared fixed cost:** embedding the job pool ≈ **$2-4/mo flat** — does NOT grow with users (jobs embedded once, scored for all).
+
+**Scaling table (AI-only, per month):**
+
+| Users | Typical (~$1.5/user) | Heavy ceiling (~$8/user) |
+|---|---|---|
+| 1 | ~$3-5 | ~$10-13 |
+| 10 | ~$18 | ~$85 |
+| 100 | ~$150 | ~$800 |
+| **1,000** | **~$1,500** | **~$8,000** |
+
+(~$18K-$96K/year at 1,000 users.)
+
+**Takeaways:** (1) cost scales **linearly** with users — no economy of scale on tokens. (2) **Scoring is ~90% of the bill**; embeddings are negligible → the Phase 3 "don't re-send full resume + pre-filter to ~15 jobs" change can cut per-user cost 50-70% (e.g. $1,500→~$500/mo at 1,000 users). (3) This is the whole case for **BYOK**: with users' own free Groq keys, the $1,500-8,000/mo at 1,000 users → **~$0 to us** (only the small shared embedding cost remains). OpenAI-primary is fine for the owner + a small beta; financially unviable for a free public launch.
+
 ### Phase 4 — Monetization & abuse protection
 
 - **Stripe** for paid tiers (free until you transact). Free tier for acquisition; paid unlocks higher quotas / auto-apply.
