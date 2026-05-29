@@ -34,17 +34,15 @@ export function StatusFilter({
     return `/?${params.toString()}`;
   }
 
-  // Tabs: Inbox first, then every explicit status, then Bookmarked
   const tabs = [
-    { id: 'inbox', label: 'Inbox', count: inboxCount, icon: <Inbox className="h-3 w-3" /> },
+    { id: 'inbox', label: 'Inbox', count: inboxCount, icon: <Inbox className="h-3.5 w-3.5" /> },
     ...STATUS_ORDER
-      // skip 'new' and 'viewed' — they're merged into Inbox
       .filter((s) => s !== 'new' && s !== 'viewed')
       .map((s) => ({ id: s, label: s, count: counts[s] ?? 0, icon: null })),
   ];
 
   return (
-    <div className="flex flex-wrap gap-2 -mx-1 px-1 overflow-x-auto">
+    <div className="flex flex-wrap gap-2 overflow-x-auto pb-1">
       {tabs.map(({ id, label, count, icon }) => {
         const isActive = !onlyBookmarked && id === active;
         return (
@@ -52,20 +50,22 @@ export function StatusFilter({
             key={id}
             href={hrefFor(id)}
             scroll={false}
-            className={
+            className={[
+              'inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-medium whitespace-nowrap transition-all',
               isActive
-                ? 'inline-flex items-center gap-1.5 rounded-btn bg-amber text-ink px-3.5 py-1.5 text-xs font-semibold whitespace-nowrap shadow-sm'
-                : 'inline-flex items-center gap-1.5 rounded-btn border border-border px-3.5 py-1.5 text-xs text-stone hover:text-ink hover:border-amber/40 hover:bg-amber/5 whitespace-nowrap transition-colors'
-            }
+                ? 'bg-primary text-on-primary shadow-sm'
+                : 'border border-border-muted text-on-surface-variant hover:text-primary hover:border-primary/40 hover:bg-primary-fixed/30',
+            ].join(' ')}
           >
             {icon}
             <span className="capitalize">{label}</span>
             <span
-              className={
+              className={[
+                'rounded-full px-1.5 py-0.5 text-[10px] font-medium',
                 isActive
-                  ? 'rounded-badge bg-ink/10 px-1.5 py-0.5 text-[10px] font-medium'
-                  : 'rounded-badge bg-off-white px-1.5 py-0.5 text-[10px]'
-              }
+                  ? 'bg-white/20'
+                  : 'bg-surface-container',
+              ].join(' ')}
             >
               {count}
             </span>
@@ -77,23 +77,25 @@ export function StatusFilter({
       <Link
         href={bookmarkedHref()}
         scroll={false}
-        className={
+        className={[
+          'inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-medium whitespace-nowrap transition-all',
           onlyBookmarked
-            ? 'inline-flex items-center gap-1.5 rounded-btn bg-amber text-ink px-3.5 py-1.5 text-xs font-semibold whitespace-nowrap shadow-sm'
-            : 'inline-flex items-center gap-1.5 rounded-btn border border-border px-3.5 py-1.5 text-xs text-stone hover:text-ink hover:border-amber/40 hover:bg-amber/5 whitespace-nowrap transition-colors'
-        }
+            ? 'bg-secondary text-on-secondary shadow-sm'
+            : 'border border-border-muted text-on-surface-variant hover:text-secondary hover:border-secondary/40 hover:bg-secondary-fixed/30',
+        ].join(' ')}
       >
         <Bookmark
-          className="h-3 w-3"
+          className="h-3.5 w-3.5"
           fill={onlyBookmarked ? 'currentColor' : 'none'}
         />
         <span>Bookmarked</span>
         <span
-          className={
+          className={[
+            'rounded-full px-1.5 py-0.5 text-[10px] font-medium',
             onlyBookmarked
-              ? 'rounded-badge bg-ink/10 px-1.5 py-0.5 text-[10px] font-medium'
-              : 'rounded-badge bg-off-white px-1.5 py-0.5 text-[10px]'
-          }
+              ? 'bg-white/20'
+              : 'bg-surface-container',
+          ].join(' ')}
         >
           {bookmarkedCount}
         </span>

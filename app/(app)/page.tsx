@@ -16,16 +16,6 @@ type SearchParams = {
   min?: string;
   remote?: string;
   bookmarked?: string;
-  /**
-   * Sort mode for the matches list. Default is "newest" so the freshest jobs
-   * (most recently fetched by JobRadar) sit at the top - the standard job-board
-   * expectation.
-   *  - newest   : jobs.fetched_at desc  (default)
-   *  - posted   : jobs.posted_at desc nulls last, then fetched_at desc
-   *  - score    : matches.llm_score desc, then fetched_at desc
-   *  - activity : matches.updated_at desc (recent bookmark/notes/status edits)
-   *  - oldest   : jobs.fetched_at asc
-   */
   sort?: 'newest' | 'posted' | 'score' | 'activity' | 'oldest';
 };
 
@@ -38,7 +28,6 @@ export default async function Dashboard({
   searchParams: Promise<SearchParams>;
 }) {
   const sp = await searchParams;
-  // 'inbox' = new + viewed combined (default). Individual statuses are explicit.
   const status = sp.status ?? 'inbox';
   const onlyBookmarked = sp.bookmarked === '1';
   const sort: SortMode = (VALID_SORTS as readonly string[]).includes(sp.sort ?? '')
@@ -58,11 +47,6 @@ export default async function Dashboard({
     return <EmptyOnboarding />;
   }
 
-  // Effective min score: explicit ?min= URL param overrides; otherwise default to 50.
-  // We do NOT use the user's saved preferences.min_score as a HARD filter on
-  // the dashboard — that's used by the ingest's "Kept" counter only. Showing
-  // a saturated dashboard with all 50+ matches is more useful than silently
-  // hiding everything when the user has set a high threshold.
   const effectiveMinScore = sp.min ? Number(sp.min) : 50;
 
   // Status counts
@@ -78,21 +62,18 @@ export default async function Dashboard({
     }),
   );
 
-  // Inbox count = new + viewed combined
   const { count: inboxCount } = await sb
     .from('matches')
     .select('id', { count: 'exact', head: true })
     .eq('profile_id', profile.id)
     .in('status', ['new', 'viewed']);
 
-  // Bookmarked count (cross-status)
   const { count: bookmarkedCount } = await sb
     .from('matches')
     .select('id', { count: 'exact', head: true })
     .eq('profile_id', profile.id)
     .eq('bookmarked', true);
 
-  // Top-line stats
   const [{ count: totalJobs }, { count: totalMatches }, { data: lastRun }] =
     await Promise.all([
       sb.from('jobs').select('id', { count: 'exact', head: true }),
@@ -118,21 +99,8 @@ export default async function Dashboard({
     .eq('profile_id', profile.id)
     .gte('llm_score', effectiveMinScore);
 
-  // Apply sort mode. Defaults to 'newest' which puts the freshest jobs (most
-  // recently fetched by JobRadar) at the top - the typical job-board UX. Each
-  // mode adds a secondary sort so results are deterministic when the primary
-  // key has duplicates or NULLs.
-  //
-  // IMPORTANT: foreignTable must be the *alias* used in the select clause
-  // ('job:jobs!inner(...)' -> alias = 'job'), NOT the underlying table name
-  // 'jobs'. PostgREST silently ignores order params that don't match an
-  // embedded resource identifier, which is why the previous 'jobs' value
-  // made every sort mode no-op for foreign-column orders.
   switch (sort) {
     case 'posted':
-      // Original posting date from the source. Many sources return null here,
-      // so jobs without posted_at fall to the bottom (nullsFirst:false) and we
-      // tiebreak on fetched_at so they're not in arbitrary order.
       query = query
         .order('posted_at', { foreignTable: 'job', ascending: false, nullsFirst: false })
         .order('fetched_at', { foreignTable: 'job', ascending: false });
@@ -177,8 +145,6 @@ export default async function Dashboard({
 
   const { data: matches } = await query.limit(100);
 
-  // Count total matches in this status across ALL scores (so we can tell the
-  // user how many are hidden by their min_score filter).
   let totalInStatusQuery = sb
     .from('matches')
     .select('id', { count: 'exact', head: true })
@@ -195,22 +161,26 @@ export default async function Dashboard({
     (totalInStatus ?? 0) - ((matches ?? []).length || 0);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between flex-wrap gap-3">
+    <div className="space-y-8">
+      {/* Hero / Welcome */}
+      <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-heading-sm font-semibold text-ink">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary-fixed text-primary text-xs font-medium tracking-wide mb-3">
+            <Sparkles className="h-3.5 w-3.5" />
+            <span>{counts.new ?? 0} NEW MATCHES</span>
+          </div>
+          <h1 className="font-headline text-headline-lg-mobile md:text-heading-sm font-bold text-on-background">
             Hi{profile.full_name ? `, ${profile.full_name.split(' ')[0]}` : ''}
           </h1>
-          <p className="text-body-sm text-stone mt-1">
-            {counts.new ?? 0} new match{counts.new === 1 ? '' : 'es'} waiting for
-            you.
+          <p className="text-body-md text-on-surface-variant mt-1">
+            Your AI-curated job matches, scored and ready for action.
           </p>
         </div>
         <RunIngestButton />
       </div>
 
       {/* Stats grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <StatCard
           label="New matches"
           value={counts.new ?? 0}
@@ -245,7 +215,7 @@ export default async function Dashboard({
       </div>
 
       {/* Filters */}
-      <div className="space-y-3">
+      <div className="space-y-4">
         <StatusFilter counts={counts} active={status} inboxCount={inboxCount ?? 0} bookmarkedCount={bookmarkedCount ?? 0} onlyBookmarked={onlyBookmarked} />
         <MatchFilters />
       </div>
@@ -308,31 +278,31 @@ function StatCard({
   subValue?: string;
 }) {
   return (
-    <div className="stat-card">
-      <div className="flex items-center justify-between text-caption text-stone">
+    <div className="glass-card p-4 rounded-xl">
+      <div className="flex items-center justify-between text-xs font-medium text-on-surface-variant">
         <span>{label}</span>
-        <span className={accent ? 'text-amber' : 'text-shadow-tint'}>{icon}</span>
+        <span className={accent ? 'text-primary' : 'text-outline'}>{icon}</span>
       </div>
       <div
-        className={`mt-1.5 ${isText ? 'text-body' : 'text-heading-sm'} font-semibold ${
-          accent ? 'text-amber' : 'text-ink'
+        className={`mt-2 ${isText ? 'text-body-md' : 'text-stat-value font-headline'} font-bold ${
+          accent ? 'text-primary' : 'text-on-background'
         }`}
       >
         {value}
       </div>
-      {subValue && <div className="text-caption text-stone mt-0.5">{subValue}</div>}
+      {subValue && <div className="text-xs text-on-surface-variant mt-1">{subValue}</div>}
     </div>
   );
 }
 
 function EmptyOnboarding() {
   return (
-    <div className="card max-w-xl mx-auto text-center mt-12 space-y-4 py-12">
-      <div className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-amber/10 text-amber mx-auto">
+    <div className="glass-card max-w-xl mx-auto text-center mt-12 space-y-4 py-12 px-8">
+      <div className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-primary-fixed text-primary mx-auto">
         <Sparkles className="h-7 w-7" />
       </div>
-      <h1 className="text-subheading font-semibold text-ink">Welcome to JobRadar</h1>
-      <p className="text-stone text-body-sm max-w-sm mx-auto">
+      <h1 className="font-headline text-headline-md font-bold text-on-background">Welcome to JobRadar</h1>
+      <p className="text-on-surface-variant text-body-md max-w-sm mx-auto">
         Upload your resume so we can start finding matches that fit your
         experience.
       </p>
@@ -356,20 +326,20 @@ function EmptyMatches({
 }) {
   if (hiddenBelowThreshold > 0) {
     return (
-      <div className="card text-center py-10 space-y-3">
-        <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-sunshine text-amber-hover mx-auto">
+      <div className="glass-card text-center py-10 px-6 space-y-3">
+        <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-primary-fixed text-primary mx-auto">
           <Inbox className="h-5 w-5" />
         </div>
-        <p className="text-sm text-ink">
+        <p className="text-sm text-on-surface">
           <span className="font-semibold">{hiddenBelowThreshold}</span> match
           {hiddenBelowThreshold === 1 ? ' is' : 'es are'} hidden because{' '}
           {hiddenBelowThreshold === 1 ? 'its score is' : 'their scores are'}{' '}
           below your threshold of{' '}
-          <span className="text-amber font-semibold">{effectiveMinScore}</span>.
+          <span className="text-primary font-semibold">{effectiveMinScore}</span>.
         </p>
-        <p className="text-xs text-stone">
+        <p className="text-xs text-on-surface-variant">
           Lower the threshold in your{' '}
-          <Link href="/onboarding" className="text-amber-hover hover:underline font-medium">
+          <Link href="/onboarding" className="text-primary hover:underline font-medium">
             profile
           </Link>{' '}
           to view them, or wait for the next scan to bring fresher jobs.
@@ -386,14 +356,14 @@ function EmptyMatches({
   }
 
   return (
-    <div className="card text-center py-12">
-      <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-off-white text-stone mx-auto">
+    <div className="glass-card text-center py-12 px-6">
+      <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-surface-container text-outline mx-auto">
         <Inbox className="h-5 w-5" />
       </div>
-      <p className="mt-3 text-sm text-ink">
-        No matches in <span className="text-amber font-medium">{status}</span> yet.
+      <p className="mt-3 text-sm text-on-surface">
+        No matches in <span className="text-primary font-medium">{status}</span> yet.
       </p>
-      <p className="mt-1 text-xs text-stone">
+      <p className="mt-1 text-xs text-on-surface-variant">
         {totalJobs > 0
           ? 'Try a different status or run a scan to find more.'
           : 'Click "Run scan" to fetch jobs from job boards.'}

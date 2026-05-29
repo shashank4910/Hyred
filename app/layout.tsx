@@ -10,8 +10,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className="min-h-screen bg-bg text-fg font-sans antialiased">
+    <html lang="en" className="light">
+      <body className="min-h-screen bg-background text-on-surface font-sans antialiased">
         {children}
         <Toaster
           theme="light"
@@ -19,9 +19,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           toastOptions={{
             style: {
               background: '#ffffff',
-              color: '#261b07',
-              border: '1px solid #e3dfd5',
-              boxShadow: '0px 4px 8px 0px rgba(38,27,7,0.06)',
+              color: '#121c2a',
+              border: '1px solid #E5E7EB',
+              boxShadow: '0 4px 6px -1px rgba(18, 28, 42, 0.06)',
+              borderRadius: '0.75rem',
             },
           }}
         />

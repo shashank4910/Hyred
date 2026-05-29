@@ -16,7 +16,6 @@ export function MatchFilters() {
   const remote = sp.get('remote') ?? '';
   const sort = sp.get('sort') ?? 'newest';
 
-  // Debounced search
   useEffect(() => {
     const id = setTimeout(() => {
       const params = new URLSearchParams(sp.toString());
@@ -40,7 +39,7 @@ export function MatchFilters() {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <div className="relative flex-1 min-w-[200px] max-w-md">
-        <Search className="absolute left-3 top-2.5 h-4 w-4 text-shadow-tint" />
+        <Search className="absolute left-3 top-2.5 h-4 w-4 text-outline" />
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
@@ -105,7 +104,7 @@ export function MatchFilters() {
             if (status) params.set('status', status);
             router.replace(`/?${params.toString()}`, { scroll: false });
           }}
-          className="btn-ghost"
+          className="btn-ghost text-error"
         >
           <X className="h-3.5 w-3.5" />
           Clear
