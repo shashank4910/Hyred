@@ -179,14 +179,7 @@ export default async function TopMncPage({
               fetched_at: string | null;
             };
             return (
-              <li key={m.id} className="relative">
-                {/* MNC badge overlay */}
-                <div className="absolute top-3 left-3 z-10">
-                  <span className="inline-flex items-center gap-1 rounded-full bg-secondary-fixed text-on-secondary-fixed-variant px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide shadow-sm">
-                    <Crown className="h-2.5 w-2.5" />
-                    {CATEGORY_LABELS[(m as unknown as MatchWithMnc)._mnc.category]}
-                  </span>
-                </div>
+              <li key={m.id}>
                 <MatchCard
                   matchId={m.id}
                   score={m.llm_score}
@@ -194,6 +187,7 @@ export default async function TopMncPage({
                   status={m.status}
                   bookmarked={(m as unknown as { bookmarked: boolean }).bookmarked ?? false}
                   job={job}
+                  mncCategory={CATEGORY_LABELS[(m as unknown as MatchWithMnc)._mnc.category]}
                 />
               </li>
             );
