@@ -89,24 +89,24 @@ export type HimalayasFetchOpts = {
 
 /**
  * Fetch jobs from Himalayas.app.
- * Supports multiple queries for broader coverage — deduplicates by ID.
+ *
+ * NOTE: The Himalayas /search endpoint is broken — it ignores the query
+ * parameter and returns the full unfiltered feed regardless of keywords.
+ * So we fetch a large batch of latest jobs and rely on the ingest
+ * pipeline's AI pre-filter (title patterns + relevance scoring) to
+ * filter down to relevant jobs. Same approach as Remotive/RemoteOK.
  */
 export async function fetchHimalayas(opts?: HimalayasFetchOpts): Promise<RawJob[]> {
-  const limit = opts?.limit ?? 50;
-  const seenIds = new Set<string>();
+  const limit = opts?.limit ?? 100;
   const allJobs: HimalayasJob[] = [];
+  const seenIds = new Set<string>();
 
-  // Build list of fetches to make
-  const queries = opts?.queries?.length ? opts.queries : [opts?.query ?? ''];
-
-  for (const q of queries) {
+  // Fetch latest jobs in pages (search endpoint is non-functional for keyword filtering)
+  const pagesToFetch = 2;
+  for (let page = 0; page < pagesToFetch; page++) {
     try {
-      const params = new URLSearchParams({ limit: String(limit) });
-      if (q) params.set('query', q);
-      if (opts?.country) params.set('country', opts.country);
-
-      const endpoint = q ? `${BASE}/search` : BASE;
-      const url = `${endpoint}?${params.toString()}`;
+      const offset = page * limit;
+      const url = `${BASE}?limit=${limit}&offset=${offset}`;
 
       const res = await fetch(url, {
         headers: { 'user-agent': 'jobradar/0.5' },
@@ -115,22 +115,27 @@ export async function fetchHimalayas(opts?: HimalayasFetchOpts): Promise<RawJob[
       });
 
       if (!res.ok) {
-        console.warn(`[himalayas] Query "${q}" returned HTTP ${res.status}`);
-        continue;
+        console.warn(`[himalayas] Page ${page} returned HTTP ${res.status}`);
+        break;
       }
 
       const data = (await res.json()) as HimalayasResponse;
-      for (const j of data.jobs ?? []) {
+      const jobs = data.jobs ?? [];
+      for (const j of jobs) {
         const uid = j.guid || j.applicationLink || `${j.companySlug}-${j.title}`;
         if (!seenIds.has(uid)) {
           seenIds.add(uid);
           allJobs.push(j);
         }
       }
+      if (jobs.length < limit) break;
     } catch (e) {
-      console.warn(`[himalayas] Query "${q}" failed:`, (e as Error).message);
+      console.warn(`[himalayas] Page ${page} failed:`, (e as Error).message);
+      break;
     }
   }
+
+  console.log(`[himalayas] Fetched ${allJobs.length} jobs (will be filtered by AI pipeline)`);
 
   return allJobs
     .filter((j) => j.title && (j.guid || j.applicationLink))
