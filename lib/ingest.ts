@@ -176,6 +176,7 @@ export async function runIngest(opts?: {
     const { jobs: rawJobs, errors } = await fetchAllSources(
       opts?.sources ?? undefined,
       searchProfile,
+      p.preferences,
     );
     runErrors = [...runErrors, ...errors];
     fetched = rawJobs.length;
