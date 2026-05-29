@@ -1,11 +1,19 @@
 /**
- * AI helpers — OpenAI as primary for chat AND embeddings, Groq (Llama 3.3 70B)
- * as the FREE chat fallback.
+ * AI helpers — Groq (Llama 3.3 70B) is the FREE primary for chat; OpenAI
+ * gpt-4o-mini is the paid fallback. Embeddings are OpenAI-only.
  *
- * Chat-based calls (scoreJob, matchSkills, generateAtsResume, etc.) try OpenAI
- * first (if OPENAI_API_KEY is set), then fall back to Groq (if GROQ_API_KEY is
- * set). Both use the OpenAI-compatible chat-completions API, so a single code
- * path serves both — Groq just points the same OpenAI SDK at its base URL.
+ * Chat-based calls (scoreJob, matchSkills, generateAtsResume, etc.) try Groq
+ * first (free, if GROQ_API_KEY is set) and fall back to OpenAI (paid, if
+ * OPENAI_API_KEY is set). Both use the OpenAI-compatible chat-completions API,
+ * so a single code path serves both — Groq just points the same OpenAI SDK at
+ * its base URL.
+ *
+ * ORDER IS CONFIGURABLE via LLM_PRIMARY ("groq" | "openai", default "groq").
+ * Vercel and GitHub Actions have separate env, so you can keep Groq primary on
+ * the dashboard (on-demand calls = free) while setting LLM_PRIMARY=openai for
+ * the ingest cron if Groq's free tokens-per-minute cap throttles the 30-80 job
+ * scoring burst. If the chosen primary fails, the chain falls through to the
+ * other provider automatically.
  *
  * WHY GROQ INSTEAD OF GEMINI (May 2026): the previous fallback `gemini-2.0-flash`
  * is deprecated (shuts down 2026-06-01) and since 2026-03-06 is "existing
@@ -38,6 +46,10 @@ const GROQ_CHAT_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
 const GROQ_BASE_URL = 'https://api.groq.com/openai/v1';
 const EMBED_MODEL = 'text-embedding-3-small';
 
+// Which provider to try FIRST. Default 'groq' (free); set 'openai' to prefer
+// the paid model (e.g. on the ingest cron if Groq's free TPM cap throttles).
+const LLM_PRIMARY = (process.env.LLM_PRIMARY || 'groq').toLowerCase();
+
 function getOpenAIClient(): OpenAI | null {
   const key = process.env.OPENAI_API_KEY;
   if (!key) return null;
@@ -60,22 +72,30 @@ async function chat(
   temperature = 0.3,
   jsonMode = false,
 ): Promise<string> {
-  // Build the provider chain: OpenAI primary (paid, reliable), Groq fallback
-  // (free, fast). Both speak the OpenAI chat-completions API.
-  const providers: Array<{ name: string; client: OpenAI; model: string }> = [];
-
+  // Build the provider chain ordered by LLM_PRIMARY. Default: Groq first
+  // (free, fast), OpenAI second (paid, reliable). Both speak the OpenAI
+  // chat-completions API. Only providers whose API key is set are included.
   const openaiClient = getOpenAIClient();
-  if (openaiClient) {
-    providers.push({ name: `OpenAI ${OPENAI_CHAT_MODEL}`, client: openaiClient, model: OPENAI_CHAT_MODEL });
-  }
   const groqClient = getGroqClient();
-  if (groqClient) {
-    providers.push({ name: `Groq ${GROQ_CHAT_MODEL}`, client: groqClient, model: GROQ_CHAT_MODEL });
-  }
+
+  const openaiProvider = openaiClient
+    ? { name: `OpenAI ${OPENAI_CHAT_MODEL}`, client: openaiClient, model: OPENAI_CHAT_MODEL }
+    : null;
+  const groqProvider = groqClient
+    ? { name: `Groq ${GROQ_CHAT_MODEL}`, client: groqClient, model: GROQ_CHAT_MODEL }
+    : null;
+
+  const ordered =
+    LLM_PRIMARY === 'openai'
+      ? [openaiProvider, groqProvider]
+      : [groqProvider, openaiProvider];
+  const providers = ordered.filter(
+    (p): p is { name: string; client: OpenAI; model: string } => p !== null,
+  );
 
   if (providers.length === 0) {
     throw new Error(
-      'No chat LLM configured. Set OPENAI_API_KEY (primary) and/or GROQ_API_KEY (free fallback).',
+      'No chat LLM configured. Set GROQ_API_KEY (free primary) and/or OPENAI_API_KEY (paid fallback).',
     );
   }
 

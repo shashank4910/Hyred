@@ -45,8 +45,8 @@
 - **Free embeddings:** `gemini-embedding-001`, Jina v5, Cohere embed-v4. But OpenAI embeddings are only ~$1.30/mo — **embeddings aren't the cost driver; LLM scoring/generation is.**
 - **⚠️ Two public-launch caveats:** (1) free tiers are **per-KEY not per-user** — 1,000 req/day is shared across ALL users; one scan (30-80 jobs) eats most of it → breaks at ~10-50 users. (2) free tiers **log/train on data** → PII/GDPR risk for strangers' resumes.
 - **⚠️ GEMINI IS OUT (evidence-based, May 2026):** code's `gemini-2.0-flash` is deprecated (shuts down June 1 2026; "existing customers only" since March 6) → free/new keys get `429 limit: 0` (the "rate limit" Shashank saw). Google also gutted free limits 50-80% in Dec 2025 + free tier trains on data. Drop Gemini entirely.
-- **✅ SHIPPED (session 6): Groq replaces Gemini.** `lib/gemini.ts` `chat()` now chains OpenAI `gpt-4o-mini` → **Groq `llama-3.3-70b-versatile`** (free ~14,400 req/day, OpenAI-compatible API), with no silent error masking (combined error if all providers fail). `browser_agent/main.py` uses Groq via `ChatOpenAI(base_url=...)`. New secret: `GROQ_API_KEY`. Gemini fully removed.
-- **Recommended provider stack: OpenAI `gpt-4o-mini` (paid, primary) → Groq (free fallback) → BYOK for scale.** Options to Shashank for multi-tenant cost model: (A) free-tier swap (Groq) / (B) pure BYOK / (C) hybrid ← rec.
+- **✅ SHIPPED (session 6): Groq is the FREE PRIMARY, OpenAI the paid fallback.** `lib/gemini.ts` `chat()` orders providers by `LLM_PRIMARY` (default `groq`): **Groq `llama-3.3-70b-versatile` → OpenAI `gpt-4o-mini`** (OpenAI-compatible API, no silent error masking). PR #48 added Groq as fallback; PR #50 flipped it to primary for $0 cost + added the toggle. `browser_agent/main.py` defaults to Groq. Secret: `GROQ_API_KEY`. Watch: Groq free TPM cap may throttle the ingest burst → set `LLM_PRIMARY=openai` on the cron if needed.
+- **Recommended provider stack: Groq (free primary) → OpenAI `gpt-4o-mini` (paid fallback) → BYOK for scale.** Options to Shashank for multi-tenant cost model: (A) free-tier swap (Groq) / (B) pure BYOK / (C) hybrid ← rec.
 
 ### Phase summaries (the "how")
 
@@ -79,8 +79,8 @@ A **personalized AI-powered job-search dashboard** built by Shashank (Senior Per
 | Framework | Next.js 15 (App Router), React 19, TypeScript |
 | Database | Supabase (Postgres + pgvector) |
 | Auth | Custom JWT cookie (HS256 via `jose`) — **being replaced by Supabase Auth in Phase 1** |
-| AI | OpenAI `gpt-4o-mini` + `text-embedding-3-small`; **Groq `llama-3.3-70b-versatile` = free chat fallback** (Gemini removed, session 6) |
-| AI module | `lib/gemini.ts` (named historically; uses OpenAI primary + Groq fallback) |
+| AI | **Groq `llama-3.3-70b-versatile` = free chat PRIMARY** + OpenAI `gpt-4o-mini` (paid chat fallback) + `text-embedding-3-small` (embeddings, OpenAI-only). Order via `LLM_PRIMARY` env (default `groq`). Gemini removed (session 6). |
+| AI module | `lib/gemini.ts` (named historically; Groq primary + OpenAI fallback) |
 | Ingestion | GitHub Actions cron every 6h → `scripts/ingest.ts` |
 | Hosting | Vercel (web) + GitHub Actions (cron) |
 | Job sources | Adzuna India, Remotive, RemoteOK, HackerNews, Arbeitnow |

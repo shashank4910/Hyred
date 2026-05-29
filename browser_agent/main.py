@@ -1,9 +1,9 @@
 """
 JobRadar Auto-Apply Agent
 =========================
-FastAPI service that uses Browser Use + an LLM (OpenAI gpt-4o-mini primary,
-Groq Llama 3.3 70B free fallback) to automatically apply for jobs on behalf of
-the user.
+FastAPI service that uses Browser Use + an LLM (Groq Llama 3.3 70B free
+primary, OpenAI gpt-4o-mini paid fallback) to automatically apply for jobs on
+behalf of the user.
 
 Deploy on Render free tier. Keep alive with UptimeRobot (free) pinging
 /health every 5 minutes so the service never sleeps.
@@ -228,11 +228,12 @@ async def _run_apply(task_id: str, req: ApplyRequest):
     _log(task_id, f"🌐 Target URL: {req.job_url}")
 
     try:
-        # Mirror the Next.js app: OpenAI gpt-4o-mini as primary (paid, reliable),
-        # Groq (Llama 3.3 70B) as the FREE fallback. Gemini was dropped May 2026
+        # Mirror the Next.js app: Groq (Llama 3.3 70B) as the FREE primary,
+        # OpenAI gpt-4o-mini as the paid fallback. Gemini was dropped May 2026
         # because gemini-2.0-flash is deprecated and free/new keys 429 (limit:0).
-        # LLM_PROVIDER=groq forces fallback ordering for testing.
-        provider_pref = (os.getenv("LLM_PROVIDER", "openai") or "openai").lower()
+        # LLM_PROVIDER=openai forces OpenAI-first (e.g. if Groq form-filling is
+        # weaker for a given site).
+        provider_pref = (os.getenv("LLM_PROVIDER", "groq") or "groq").lower()
         openai_key = os.getenv("OPENAI_API_KEY")
         groq_key = os.getenv("GROQ_API_KEY")
 
@@ -256,7 +257,7 @@ async def _run_apply(task_id: str, req: ApplyRequest):
                 temperature=0.2,
             ), "Groq llama-3.3-70b-versatile"
 
-        order = ("openai", "groq") if provider_pref != "groq" else ("groq", "openai")
+        order = ("openai", "groq") if provider_pref == "openai" else ("groq", "openai")
         for choice in order:
             if choice == "openai" and openai_key:
                 llm, llm_name = _build_openai()

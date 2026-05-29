@@ -1,8 +1,8 @@
 # JobRadar
 
-AI-curated job matches from across the web. Pulls jobs from public job APIs, scores them against your resume with OpenAI (Groq as a free fallback), and gives you a curated dashboard plus a tailored cover letter on demand.
+AI-curated job matches from across the web. Pulls jobs from public job APIs, scores them against your resume with Groq (free) — falling back to OpenAI — and gives you a curated dashboard plus a tailored cover letter on demand.
 
-- **Stack**: Next.js 15 (App Router) + TypeScript + Tailwind, Supabase (Postgres), OpenAI gpt-4o-mini + `text-embedding-3-small` (Groq Llama 3.3 70B as free chat fallback), GitHub Actions cron, Vercel hosting.
+- **Stack**: Next.js 15 (App Router) + TypeScript + Tailwind, Supabase (Postgres), Groq Llama 3.3 70B (free chat primary) + OpenAI gpt-4o-mini (paid chat fallback) & `text-embedding-3-small` (embeddings), GitHub Actions cron, Vercel hosting.
 - **Cost**: ₹0/month using free tiers.
 
 ## Features
