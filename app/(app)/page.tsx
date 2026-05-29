@@ -93,7 +93,7 @@ export default async function Dashboard({
   let query = sb
     .from('matches')
     .select(
-      `id, llm_score, similarity, reason, status, bookmarked, applied_at, created_at, updated_at,
+      `id, llm_score, similarity, reason, status, bookmarked, matched_skills, missing_skills, applied_at, created_at, updated_at,
        job:jobs!inner(id, title, company, location, remote, url, source, salary, posted_at, fetched_at, description, tags)`,
     )
     .eq('profile_id', profile.id)
@@ -256,6 +256,8 @@ export default async function Dashboard({
                   reason={m.reason}
                   status={m.status}
                   bookmarked={(m as unknown as { bookmarked: boolean }).bookmarked ?? false}
+                  matchedSkills={(m as unknown as { matched_skills: string[] | null }).matched_skills ?? []}
+                  missingSkills={(m as unknown as { missing_skills: string[] | null }).missing_skills ?? []}
                   job={job}
                 />
               </li>

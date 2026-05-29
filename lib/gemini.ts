@@ -102,7 +102,7 @@ export async function scoreJob(args: {
   jobCompany: string | null;
   jobLocation: string | null;
   jobDescription: string | null;
-}): Promise<{ score: number; reason: string }> {
+}): Promise<{ score: number; reason: string; matchedSkills: string[]; missingSkills: string[] }> {
   const userPrompt = `Score how well this job matches the candidate.
 
 CANDIDATE RESUME:
@@ -149,7 +149,19 @@ OTHER RULES:
 - Location mismatch alone should NEVER drop score below 60 if skills match.
 - Remote jobs get a small boost.
 
-Respond with strict JSON: {"score": <int 0-100>, "reason": "<one or two sentences>"}`;
+Respond with strict JSON:
+{
+  "score": <int 0-100>,
+  "reason": "<one or two sentences>",
+  "matchedSkills": [<up to 5 SHORT skill/tool/domain keywords that appear in BOTH the JD and the resume — e.g. "JMeter", "Load Testing", "Java". These are WHY it matched.>],
+  "missingSkills": [<up to 5 SHORT skill/tool keywords the JD asks for that are NOT clearly in the resume — e.g. "Kubernetes", "Gatling". These are the GAPS. Empty array if none.>]
+}
+
+matchedSkills/missingSkills RULES:
+- Keep each entry 1-3 words max. Real tools/skills/domains only, no sentences.
+- matchedSkills: only include terms genuinely present in BOTH JD and resume.
+- missingSkills: only terms the JD explicitly wants that the resume lacks.
+- If the JD is too short to tell, return best-effort based on the title.`;
 
   const text = await chat(
     'You are a senior tech recruiter. Respond with JSON only.',
@@ -161,9 +173,21 @@ Respond with strict JSON: {"score": <int 0-100>, "reason": "<one or two sentence
     const parsed = JSON.parse(text);
     const score = Math.max(0, Math.min(100, Math.round(Number(parsed.score) || 0)));
     const reason = String(parsed.reason ?? '').slice(0, 500);
-    return { score, reason };
+    const cleanSkills = (arr: unknown): string[] =>
+      Array.isArray(arr)
+        ? arr
+            .map((s) => String(s).trim())
+            .filter((s) => s.length > 0 && s.length <= 40)
+            .slice(0, 5)
+        : [];
+    return {
+      score,
+      reason,
+      matchedSkills: cleanSkills(parsed.matchedSkills),
+      missingSkills: cleanSkills(parsed.missingSkills),
+    };
   } catch {
-    return { score: 0, reason: 'Failed to parse model response' };
+    return { score: 0, reason: 'Failed to parse model response', matchedSkills: [], missingSkills: [] };
   }
 }
 

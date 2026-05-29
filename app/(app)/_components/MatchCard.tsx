@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { MapPin, Building2, Clock, ExternalLink, Bookmark, Crown } from 'lucide-react';
+import { MapPin, Building2, Clock, ExternalLink, Bookmark, Crown, Check, X } from 'lucide-react';
 import { relativeTime, formatShortDate, formatFullDate, scoreColorClass, SOURCE_LABELS } from '@/lib/ui';
 import { useState } from 'react';
 
@@ -24,9 +24,13 @@ type Props = {
   };
   /** Optional MNC category label — rendered inline as a badge */
   mncCategory?: string;
+  /** Top skills matched between JD and resume (why it matched) */
+  matchedSkills?: string[];
+  /** Top skills the JD wants but resume lacks (the gaps) */
+  missingSkills?: string[];
 };
 
-export function MatchCard({ matchId, score, reason, status, bookmarked: initialBookmarked, job, mncCategory }: Props) {
+export function MatchCard({ matchId, score, reason, status, bookmarked: initialBookmarked, job, mncCategory, matchedSkills = [], missingSkills = [] }: Props) {
   const colorClass = scoreColorClass(score);
   const dateSource = job.posted_at ?? job.fetched_at ?? null;
   const relative = relativeTime(dateSource);
@@ -134,6 +138,32 @@ export function MatchCard({ matchId, score, reason, status, bookmarked: initialB
           </div>
           {reason && (
             <p className="mt-2.5 text-sm text-on-surface-variant line-clamp-2">{reason}</p>
+          )}
+
+          {/* Top matched / missing skills — quick visual "why" at a glance */}
+          {(matchedSkills.length > 0 || missingSkills.length > 0) && (
+            <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+              {matchedSkills.slice(0, 5).map((s) => (
+                <span
+                  key={`m-${s}`}
+                  className="inline-flex items-center gap-1 rounded-full bg-success-green/10 text-success-green px-2 py-0.5 text-[11px] font-medium"
+                  title="Matches your resume"
+                >
+                  <Check className="h-3 w-3" />
+                  {s}
+                </span>
+              ))}
+              {missingSkills.slice(0, 5).map((s) => (
+                <span
+                  key={`x-${s}`}
+                  className="inline-flex items-center gap-1 rounded-full bg-error/10 text-error px-2 py-0.5 text-[11px] font-medium"
+                  title="Required by the job but not clearly in your resume"
+                >
+                  <X className="h-3 w-3" />
+                  {s}
+                </span>
+              ))}
+            </div>
           )}
         </div>
 
