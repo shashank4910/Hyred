@@ -34,6 +34,14 @@ const SIMILARITY_TOP_N = 80;
 const MIN_SCORE_TO_KEEP = 40;
 
 /**
+ * Maximum age (in days) for a job to be ingested. Any job whose posted_at
+ * date is older than this threshold gets dropped before upsert. This prevents
+ * stale listings (e.g. Adzuna indexing jobs from 11 months ago) from polluting
+ * the dashboard.
+ */
+const MAX_JOB_AGE_DAYS = 45;
+
+/**
  * Full ingest pipeline:
  *  1. Open ingest_runs row
  *  2. Pick profile, ensure fresh AI-generated SearchProfile
@@ -171,8 +179,27 @@ export async function runIngest(opts?: {
     runErrors = [...runErrors, ...errors];
     fetched = rawJobs.length;
 
+    // ---------- 3.5. Filter out stale jobs (older than MAX_JOB_AGE_DAYS) ----------
+    const maxAgeMs = MAX_JOB_AGE_DAYS * 24 * 60 * 60 * 1000;
+    const cutoffDate = new Date(Date.now() - maxAgeMs);
+    const freshJobs = rawJobs.filter((j) => {
+      if (!j.posted_at) return true; // No date = keep (can't tell age)
+      try {
+        const postedDate = new Date(j.posted_at);
+        return postedDate >= cutoffDate;
+      } catch {
+        return true; // Unparseable date = keep
+      }
+    });
+    const staleDropped = rawJobs.length - freshJobs.length;
+    if (staleDropped > 0) {
+      console.log(
+        `[ingest] Staleness filter: dropped ${staleDropped} jobs older than ${MAX_JOB_AGE_DAYS} days (cutoff: ${cutoffDate.toISOString().slice(0, 10)})`,
+      );
+    }
+
     // ---------- 4. Upsert jobs ----------
-    const newJobIds = await upsertJobs(rawJobs);
+    const newJobIds = await upsertJobs(freshJobs);
     newJobsCount = newJobIds.length;
 
     // ---------- 5. Embed jobs missing embeddings ----------
