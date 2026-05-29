@@ -16,3 +16,9 @@ dist/
 .turbo
 next-env.d.ts
 *.tsbuildinfo
+
+
+# Python bytecode (e.g. from .kiro/steering/ui-ux-pro-max/scripts/)
+__pycache__/
+*.pyc
+*.pyo
