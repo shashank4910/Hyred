@@ -2,6 +2,7 @@ import { supabaseAdmin } from './supabase/server';
 import { fetchAllSources } from './sources';
 import { embed, scoreJob } from './gemini';
 import { cosineSimilarity, jobToEmbeddingText } from './matcher';
+import { isTopCompany } from './top-companies';
 import {
   generateSearchProfile,
   isProfileFresh,
@@ -354,6 +355,25 @@ export async function runIngest(opts?: {
             (a as Cand & { similarity: number }).similarity,
         )
         .slice(0, SIMILARITY_TOP_N);
+    }
+
+    // ---------- 7.5. Force-include TOP MNC company jobs ----------
+    // Premium "Top MNC Hiring" jobs (TCS, Infosys, Levi Strauss, Google, etc.)
+    // must ALWAYS get scored so they appear in both general matches AND the
+    // Top MNC page — even if the title pre-filter/AI relevance dropped them or
+    // they fell outside the SIMILARITY_TOP_N cut. We add any eligible job from
+    // a recognised top company that isn't already queued, capped to avoid
+    // blowing up scan time.
+    const alreadyQueued = new Set(toScore.map((c) => c.id));
+    const topCompanyExtras = eligible.filter(
+      (c) => !alreadyQueued.has(c.id) && isTopCompany(c.company),
+    );
+    if (topCompanyExtras.length > 0) {
+      const TOP_COMPANY_CAP = 40;
+      toScore = [...toScore, ...topCompanyExtras.slice(0, TOP_COMPANY_CAP)];
+      console.log(
+        `[ingest] Force-included ${Math.min(topCompanyExtras.length, TOP_COMPANY_CAP)} top-MNC company jobs into scoring (${topCompanyExtras.length} found)`,
+      );
     }
 
     // ---------- 8. Compute similarity for the final scoring set ----------
