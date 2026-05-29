@@ -6,6 +6,7 @@ import { Loader2, RefreshCw, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 
 const ALL_SOURCES = [
+  { id: 'linkedin', label: 'LinkedIn (guest API)', tokens: 'free' },
   { id: 'adzuna_in', label: 'Adzuna India', tokens: '~22/scan' },
   { id: 'jsearch', label: 'JSearch (Indeed+LinkedIn)', tokens: '5/scan' },
   { id: 'remotive', label: 'Remotive', tokens: 'free' },
