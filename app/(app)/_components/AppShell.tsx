@@ -13,11 +13,13 @@ import {
   Radar,
   Link2,
   Rocket,
+  Crown,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-const NAV = [
+const NAV: { href: string; label: string; icon: typeof LayoutDashboard; premium?: boolean }[] = [
   { href: '/', label: 'Matches', icon: LayoutDashboard },
+  { href: '/top-mnc', label: 'Top MNC Hiring', icon: Crown, premium: true },
   { href: '/import', label: 'Import', icon: Link2 },
   { href: '/onboarding', label: 'Resume', icon: User },
   { href: '/apply-profile', label: 'Apply Profile', icon: Rocket },
@@ -59,7 +61,7 @@ export function AppShell({
 
         {/* Desktop nav */}
         <nav className="hidden md:flex items-center gap-1">
-          {NAV.map(({ href, label, icon: Icon }) => {
+          {NAV.map(({ href, label, icon: Icon, premium }) => {
             const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
             return (
               <Link
@@ -68,11 +70,15 @@ export function AppShell({
                 className={[
                   'inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all',
                   active
-                    ? 'text-primary bg-primary-fixed/50'
-                    : 'text-on-surface-variant hover:text-primary hover:bg-primary-fixed/30',
+                    ? premium
+                      ? 'text-secondary bg-secondary-fixed/50'
+                      : 'text-primary bg-primary-fixed/50'
+                    : premium
+                      ? 'text-secondary hover:text-secondary hover:bg-secondary-fixed/30'
+                      : 'text-on-surface-variant hover:text-primary hover:bg-primary-fixed/30',
                 ].join(' ')}
               >
-                <Icon className={`h-4 w-4 ${active ? 'text-primary' : ''}`} />
+                <Icon className={`h-4 w-4 ${active ? (premium ? 'text-secondary' : 'text-primary') : premium ? 'text-secondary' : ''}`} />
                 {label}
               </Link>
             );
@@ -96,7 +102,7 @@ export function AppShell({
 
       {/* Mobile bottom nav */}
       <nav className="md:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-2 py-2 bg-surface/95 backdrop-blur-md border-t border-border-muted">
-        {NAV.map(({ href, label, icon: Icon }) => {
+        {NAV.map(({ href, label, icon: Icon, premium }) => {
           const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
           return (
             <Link
@@ -105,8 +111,12 @@ export function AppShell({
               className={[
                 'flex flex-col items-center justify-center gap-0.5 p-2 rounded-xl transition-all',
                 active
-                  ? 'bg-primary-fixed text-primary'
-                  : 'text-on-surface-variant',
+                  ? premium
+                    ? 'bg-secondary-fixed text-secondary'
+                    : 'bg-primary-fixed text-primary'
+                  : premium
+                    ? 'text-secondary'
+                    : 'text-on-surface-variant',
               ].join(' ')}
             >
               <Icon className="h-5 w-5" />
