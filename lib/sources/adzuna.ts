@@ -2,7 +2,17 @@ import type { RawJob } from '../types';
 
 /**
  * Adzuna public API — https://developer.adzuna.com/
- * Free tier: 250 calls/month.
+ * Free tier: 250 calls/month per account.
+ *
+ * MULTI-CREDENTIAL ROTATION:
+ * Set env var ADZUNA_CREDENTIALS as a comma-separated list of id:key pairs.
+ * Example: ADZUNA_CREDENTIALS=appId1:appKey1,appId2:appKey2,appId3:appKey3
+ *
+ * Falls back to legacy ADZUNA_APP_ID + ADZUNA_APP_KEY if ADZUNA_CREDENTIALS
+ * is not set (backward compatible).
+ *
+ * On 401/403/429, the current credential is marked exhausted and the next
+ * one is tried. This gives you 250 × N calls/month with N free accounts.
  *
  * IMPROVEMENTS over previous version:
  *  - Fetches MULTIPLE PAGES (up to 3) to get more results
@@ -10,8 +20,6 @@ import type { RawJob } from '../types';
  *  - Removes hardcoded 'it-jobs' category restriction — searches all categories
  *  - Uses `what` param (broader) instead of `what_phrase` (exact match only)
  *  - Also searches without category filter when using role-based queries
- *
- * Requires env: ADZUNA_APP_ID, ADZUNA_APP_KEY
  */
 const BASE = 'https://api.adzuna.com/v1/api/jobs';
 
@@ -138,21 +146,73 @@ export type AdzunaFetchOpts = {
   maxPages?: number;
 };
 
+type AdzunaCredential = { appId: string; appKey: string };
+
+/**
+ * Get all configured Adzuna credentials.
+ * Supports two formats:
+ *  1. ADZUNA_CREDENTIALS=id1:key1,id2:key2,id3:key3 (multi-account)
+ *  2. ADZUNA_APP_ID + ADZUNA_APP_KEY (legacy single account, backward compat)
+ */
+function getCredentials(): AdzunaCredential[] {
+  const multi = process.env.ADZUNA_CREDENTIALS ?? '';
+  if (multi.trim()) {
+    return multi
+      .split(',')
+      .map((pair) => pair.trim())
+      .filter(Boolean)
+      .map((pair) => {
+        const [appId, appKey] = pair.split(':');
+        return { appId: appId?.trim(), appKey: appKey?.trim() };
+      })
+      .filter((c) => c.appId && c.appKey);
+  }
+
+  // Fallback to legacy single-credential env vars
+  const appId = process.env.ADZUNA_APP_ID;
+  const appKey = process.env.ADZUNA_APP_KEY;
+  if (appId && appKey) return [{ appId, appKey }];
+  return [];
+}
+
+/** Track exhausted credentials this run */
+const exhaustedCreds = new Set<string>();
+
+/**
+ * Get the next available credential (not yet exhausted this run).
+ * Returns null if all are exhausted.
+ */
+function getActiveCred(): AdzunaCredential | null {
+  const creds = getCredentials();
+  for (const c of creds) {
+    const key = `${c.appId}:${c.appKey}`;
+    if (!exhaustedCreds.has(key)) return c;
+  }
+  return null;
+}
+
+/**
+ * Mark a credential as exhausted (rate limited).
+ */
+function markExhausted(c: AdzunaCredential): void {
+  exhaustedCreds.add(`${c.appId}:${c.appKey}`);
+  console.warn(`[adzuna] Credential ${c.appId.slice(0, 6)}... exhausted, rotating...`);
+}
+
 /**
  * Fetch jobs from Adzuna. Supports:
  *  - Multiple search queries (each produces separate API calls)
  *  - Pagination (fetches up to maxPages per query)
  *  - Deduplication across queries
+ *  - MULTI-CREDENTIAL ROTATION on rate limit
  *
  * API budget: each query × pages = 1 API call per page.
- * With 4 queries × 2 pages × 4 runs/day = 32 calls/day = ~960/month.
- * Stay within 250/month free tier by limiting queries or using paid.
+ * With multi-account rotation, you get 250 × N calls/month.
  */
 export async function fetchAdzuna(opts?: AdzunaFetchOpts): Promise<RawJob[]> {
-  const appId = process.env.ADZUNA_APP_ID;
-  const appKey = process.env.ADZUNA_APP_KEY;
-  if (!appId || !appKey) {
-    throw new Error('Missing ADZUNA_APP_ID or ADZUNA_APP_KEY env vars');
+  const creds = getCredentials();
+  if (creds.length === 0) {
+    throw new Error('Missing Adzuna credentials. Set ADZUNA_CREDENTIALS=id:key,id:key or ADZUNA_APP_ID + ADZUNA_APP_KEY');
   }
 
   const country = (opts?.country ?? 'in').toLowerCase();
@@ -163,27 +223,48 @@ export async function fetchAdzuna(opts?: AdzunaFetchOpts): Promise<RawJob[]> {
   const queries: string[] = [];
 
   if (opts?.queries?.length) {
-    queries.push(...opts.queries); // Use ALL queries from buildSearchQueries
+    queries.push(...opts.queries);
   } else if (opts?.whatPhrase) {
     queries.push(opts.whatPhrase);
   }
 
-  // Always do a general IT jobs fetch too (no specific query, category filter)
   const seenIds = new Set<string>();
   const allJobs: AdzunaJob[] = [];
+
+  /**
+   * Helper: fetch a page with automatic credential rotation.
+   * If current cred is rate-limited (401/403/429), rotates to next.
+   */
+  async function fetchPageWithRotation(pageOpts: Omit<Parameters<typeof fetchPage>[0], 'appId' | 'appKey'>): Promise<AdzunaJob[]> {
+    let attempts = 0;
+    const maxAttempts = creds.length;
+    while (attempts < maxAttempts) {
+      const cred = getActiveCred();
+      if (!cred) break;
+      try {
+        return await fetchPage({ ...pageOpts, appId: cred.appId, appKey: cred.appKey });
+      } catch (e) {
+        const msg = (e as Error).message;
+        if (/401|403|429|quota|limit|unauthor/i.test(msg)) {
+          markExhausted(cred);
+          attempts++;
+          continue;
+        }
+        throw e; // Non-auth error, don't retry
+      }
+    }
+    throw new Error('All Adzuna credentials exhausted this run');
+  }
 
   // --- Role-specific searches (no category filter, broader results) ---
   for (const query of queries) {
     for (let page = 1; page <= maxPages; page++) {
       try {
-        const jobs = await fetchPage({
-          appId,
-          appKey,
+        const jobs = await fetchPageWithRotation({
           country,
           page,
           resultsPerPage,
           what: query,
-          // No category filter — search all categories for broader results
         });
         for (const j of jobs) {
           if (j.id && !seenIds.has(String(j.id))) {
@@ -191,22 +272,19 @@ export async function fetchAdzuna(opts?: AdzunaFetchOpts): Promise<RawJob[]> {
             allJobs.push(j);
           }
         }
-        // If page returned fewer results than requested, no more pages
         if (jobs.length < resultsPerPage) break;
       } catch (e) {
-        // Log but continue — one query failing shouldn't stop others
         console.warn(`[adzuna] Query "${query}" page ${page} failed:`, (e as Error).message);
+        if ((e as Error).message.includes('exhausted')) break;
         break;
       }
     }
   }
 
-  // --- General IT category fetch (catches jobs that don't match specific queries) ---
+  // --- General IT category fetch ---
   for (let page = 1; page <= maxPages; page++) {
     try {
-      const jobs = await fetchPage({
-        appId,
-        appKey,
+      const jobs = await fetchPageWithRotation({
         country,
         page,
         resultsPerPage,
