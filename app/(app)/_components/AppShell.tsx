@@ -14,6 +14,7 @@ import {
   Link2,
   Rocket,
   Crown,
+  Shield,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -24,6 +25,7 @@ const NAV: { href: string; label: string; icon: typeof LayoutDashboard; premium?
   { href: '/onboarding', label: 'Resume', icon: User },
   { href: '/apply-profile', label: 'Apply Profile', icon: Rocket },
   { href: '/stats', label: 'Stats', icon: BarChart3 },
+  { href: '/admin', label: 'Admin', icon: Shield },
 ];
 
 export function AppShell({
