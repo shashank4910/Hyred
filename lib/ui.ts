@@ -1,9 +1,36 @@
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, format } from 'date-fns';
 
 export function relativeTime(date: string | null): string {
   if (!date) return '';
   try {
     return formatDistanceToNow(new Date(date), { addSuffix: true });
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Compact human-readable date stamp like "28 May 26".
+ * Used on match cards next to the relative time so users can see exactly
+ * how old a job is, not just a fuzzy "2 days ago".
+ */
+export function formatShortDate(date: string | null | undefined): string {
+  if (!date) return '';
+  try {
+    return format(new Date(date), 'd MMM yy');
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Full date+time tooltip like "28 May 2026, 14:32".
+ * Used in title attributes so hover gives the precise timestamp.
+ */
+export function formatFullDate(date: string | null | undefined): string {
+  if (!date) return '';
+  try {
+    return format(new Date(date), 'd MMM yyyy, HH:mm');
   } catch {
     return '';
   }

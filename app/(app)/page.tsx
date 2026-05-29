@@ -122,29 +122,35 @@ export default async function Dashboard({
   // recently fetched by JobRadar) at the top - the typical job-board UX. Each
   // mode adds a secondary sort so results are deterministic when the primary
   // key has duplicates or NULLs.
+  //
+  // IMPORTANT: foreignTable must be the *alias* used in the select clause
+  // ('job:jobs!inner(...)' -> alias = 'job'), NOT the underlying table name
+  // 'jobs'. PostgREST silently ignores order params that don't match an
+  // embedded resource identifier, which is why the previous 'jobs' value
+  // made every sort mode no-op for foreign-column orders.
   switch (sort) {
     case 'posted':
       // Original posting date from the source. Many sources return null here,
       // so jobs without posted_at fall to the bottom (nullsFirst:false) and we
       // tiebreak on fetched_at so they're not in arbitrary order.
       query = query
-        .order('posted_at', { foreignTable: 'jobs', ascending: false, nullsFirst: false })
-        .order('fetched_at', { foreignTable: 'jobs', ascending: false });
+        .order('posted_at', { foreignTable: 'job', ascending: false, nullsFirst: false })
+        .order('fetched_at', { foreignTable: 'job', ascending: false });
       break;
     case 'score':
       query = query
         .order('llm_score', { ascending: false })
-        .order('fetched_at', { foreignTable: 'jobs', ascending: false });
+        .order('fetched_at', { foreignTable: 'job', ascending: false });
       break;
     case 'activity':
       query = query.order('updated_at', { ascending: false });
       break;
     case 'oldest':
-      query = query.order('fetched_at', { foreignTable: 'jobs', ascending: true });
+      query = query.order('fetched_at', { foreignTable: 'job', ascending: true });
       break;
     case 'newest':
     default:
-      query = query.order('fetched_at', { foreignTable: 'jobs', ascending: false });
+      query = query.order('fetched_at', { foreignTable: 'job', ascending: false });
       break;
   }
 
