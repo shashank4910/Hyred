@@ -366,7 +366,7 @@ export async function runIngest(opts?: {
     const prefsStr = formatPreferences(p.preferences);
     for (const c of ranked) {
       try {
-        const { score, reason } = await scoreJob({
+        const { score, reason, matchedSkills, missingSkills } = await scoreJob({
           resume: p.resume_text!,
           preferences: prefsStr,
           jobTitle: c.title,
@@ -382,6 +382,8 @@ export async function runIngest(opts?: {
             similarity: c.similarity,
             llm_score: score,
             reason,
+            matched_skills: matchedSkills,
+            missing_skills: missingSkills,
             status: 'new',
           },
           { onConflict: 'profile_id,job_id' },

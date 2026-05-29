@@ -100,9 +100,9 @@ function buildFns(searchProfile?: SearchProfile | null): Partial<
     fetchLinkedIn({
       queries: queries.length > 0 ? queries.slice(0, 5) : undefined,
       location: 'India',
-      maxPagesPerQuery: 2,
+      maxPagesPerQuery: 5,
       fetchDescriptions: true,
-      maxDescriptions: 40,
+      maxDescriptions: 60,
     });
 
   return fns;

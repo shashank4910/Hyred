@@ -119,34 +119,49 @@ export type LinkedInFetchOpts = {
   queries?: string[];
   /** Location filter (e.g. "India") */
   location?: string;
-  /** Pages to fetch per query (10 jobs/page). Default 2 = 20 jobs/query. */
+  /** Pages to fetch per query (10 jobs/page). Default 5 = ~50 jobs/query. */
   maxPagesPerQuery?: number;
   /** Whether to fetch full descriptions (extra request per job). Default true. */
   fetchDescriptions?: boolean;
-  /** Cap total descriptions fetched per run to bound request count. Default 40. */
+  /** Cap total descriptions fetched per run to bound request count. Default 60. */
   maxDescriptions?: number;
 };
+
+/** Small delay helper — LinkedIn returns cached/duplicate results for rapid
+ *  identical-ish requests. A short pause between requests makes pagination
+ *  actually return fresh jobs. */
+function delay(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 /**
  * Fetch jobs from LinkedIn's public guest API.
  * Free, no auth, no API key. Paginates the search endpoint per keyword,
  * then optionally fetches full descriptions from the detail endpoint.
+ *
+ * IMPORTANT pagination note: the guest endpoint returns ~10 jobs per request
+ * and honours the `start` offset, BUT only if requests are spaced out. Firing
+ * start=0,10,20 back-to-back returns the SAME 10 jobs (server-side caching).
+ * A ~300ms delay between requests fixes this and yields unique pages.
  */
 export async function fetchLinkedIn(opts?: LinkedInFetchOpts): Promise<RawJob[]> {
   const queries = opts?.queries?.length ? opts.queries : ['performance testing'];
   const location = opts?.location ?? 'India';
-  const maxPages = opts?.maxPagesPerQuery ?? 2;
+  const maxPages = opts?.maxPagesPerQuery ?? 5;
   const fetchDesc = opts?.fetchDescriptions ?? true;
-  const maxDesc = opts?.maxDescriptions ?? 40;
+  const maxDesc = opts?.maxDescriptions ?? 60;
 
   const seen = new Set<string>();
   const cards: ParsedCard[] = [];
 
   for (const q of queries) {
+    let emptyStreak = 0;
     for (let page = 0; page < maxPages; page++) {
       const start = page * 10;
       const url = `${SEARCH_BASE}?keywords=${encodeURIComponent(q)}&location=${encodeURIComponent(location)}&start=${start}`;
       try {
+        // Space out requests so LinkedIn returns fresh pages, not cached dupes.
+        if (page > 0) await delay(300);
         const res = await fetch(url, {
           headers: { 'user-agent': UA, accept: 'text/html' },
           cache: 'no-store',
@@ -168,7 +183,15 @@ export async function fetchLinkedIn(opts?: LinkedInFetchOpts): Promise<RawJob[]>
             newCount++;
           }
         }
-        if (parsed.length < 10 || newCount === 0) break; // no more pages
+        // Stop only after 2 consecutive pages with no new jobs (handles the
+        // occasional cached/duplicate page without prematurely bailing).
+        if (parsed.length === 0) break;
+        if (newCount === 0) {
+          emptyStreak++;
+          if (emptyStreak >= 2) break;
+        } else {
+          emptyStreak = 0;
+        }
       } catch (e) {
         logApiRequest({ source: 'linkedin', status: 'error', error_message: (e as Error).message, query: q });
         break;
@@ -176,19 +199,25 @@ export async function fetchLinkedIn(opts?: LinkedInFetchOpts): Promise<RawJob[]>
     }
   }
 
-  // Fetch descriptions (bounded) so embedding + scoring have real JD text
-  let descFetched = 0;
+  // Fetch descriptions (bounded, with limited concurrency) so embedding +
+  // scoring have real JD text. Without descriptions, jobs get scored on
+  // title alone and good matches get filtered out — that was the quality bug.
   const descMap = new Map<string, string>();
   if (fetchDesc) {
-    for (const c of cards) {
-      if (descFetched >= maxDesc) break;
-      const d = await fetchDescription(c.id);
-      if (d) {
-        descMap.set(c.id, d);
-        descFetched++;
+    const toFetch = cards.slice(0, maxDesc);
+    const CONCURRENCY = 6;
+    for (let i = 0; i < toFetch.length; i += CONCURRENCY) {
+      const batch = toFetch.slice(i, i + CONCURRENCY);
+      const results = await Promise.all(
+        batch.map(async (c) => ({ id: c.id, desc: await fetchDescription(c.id) })),
+      );
+      for (const r of results) {
+        if (r.desc) descMap.set(r.id, r.desc);
       }
     }
   }
+
+  console.log(`[linkedin] Fetched ${cards.length} unique jobs, ${descMap.size} with descriptions`);
 
   return cards.map((c) => ({
     source: 'linkedin',
