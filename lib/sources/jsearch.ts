@@ -1,4 +1,5 @@
 import type { RawJob } from '../types';
+import { logApiRequest, maskKey } from '../api-tracker';
 
 /**
  * JSearch — RapidAPI job aggregator.
@@ -126,6 +127,7 @@ async function fetchWithKey(
   params: URLSearchParams,
 ): Promise<JSearchJob[] | null> {
   const url = `${BASE}?${params.toString()}`;
+  const query = params.get('query') ?? '';
   const res = await fetch(url, {
     headers: {
       'x-rapidapi-host': HOST,
@@ -136,19 +138,22 @@ async function fetchWithKey(
   });
 
   if (res.status === 429 || res.status === 403) {
-    // Rate limited or quota exhausted — mark key and return null
     exhaustedKeys.add(key);
     console.warn(`[jsearch] Key ${key.slice(0, 8)}... exhausted (HTTP ${res.status})`);
+    logApiRequest({ source: 'jsearch', key_identifier: maskKey(key), status: 'rate_limited', http_status: res.status, query });
     return null;
   }
 
   if (!res.ok) {
     const body = await res.text().catch(() => '');
+    logApiRequest({ source: 'jsearch', key_identifier: maskKey(key), status: 'error', http_status: res.status, error_message: body.slice(0, 200), query });
     throw new Error(`JSearch HTTP ${res.status}: ${body.slice(0, 200)}`);
   }
 
   const data = (await res.json()) as JSearchResponse;
-  return data.data ?? [];
+  const jobs = data.data ?? [];
+  logApiRequest({ source: 'jsearch', key_identifier: maskKey(key), status: 'success', http_status: 200, query, jobs_returned: jobs.length });
+  return jobs;
 }
 
 /**

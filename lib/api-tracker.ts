@@ -85,6 +85,10 @@ export async function getUsageSummary(daysBack = 30): Promise<{
   byKey: Record<string, { source: string; total: number; success: number; rateLimited: number; lastUsed: string }>;
   recentErrors: Array<{ source: string; key_identifier: string; error_message: string; created_at: string; http_status: number | null }>;
   totalRequests: number;
+  quota: {
+    jsearch: { used: number; limit: number; keys: number; perKeyLimit: number };
+    adzuna: { used: number; limit: number; keys: number; perKeyLimit: number };
+  };
 }> {
   const sb = supabaseAdmin();
   const since = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString();
@@ -136,10 +140,44 @@ export async function getUsageSummary(daysBack = 30): Promise<{
       http_status: e.http_status,
     }));
 
+  // Quota calculation — count this calendar month's usage
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+  const monthEntries = entries.filter((e) => new Date(e.created_at) >= monthStart);
+
+  const jsearchThisMonth = monthEntries.filter((e) => e.source === 'jsearch').length;
+  const adzunaThisMonth = monthEntries.filter((e) => e.source === 'adzuna_in').length;
+
+  // Count keys to compute total monthly limit
+  const jsearchKeyCount = new Set(
+    entries.filter((e) => e.source === 'jsearch' && e.key_identifier).map((e) => e.key_identifier)
+  ).size || 1;
+  const adzunaKeyCount = new Set(
+    entries.filter((e) => e.source === 'adzuna_in' && e.key_identifier).map((e) => e.key_identifier)
+  ).size || 1;
+
+  const JSEARCH_PER_KEY_LIMIT = 200; // Free tier per account/month
+  const ADZUNA_PER_KEY_LIMIT = 250;  // Free tier per account/month
+
   return {
     bySource,
     byKey,
     recentErrors,
     totalRequests: entries.length,
+    quota: {
+      jsearch: {
+        used: jsearchThisMonth,
+        limit: jsearchKeyCount * JSEARCH_PER_KEY_LIMIT,
+        keys: jsearchKeyCount,
+        perKeyLimit: JSEARCH_PER_KEY_LIMIT,
+      },
+      adzuna: {
+        used: adzunaThisMonth,
+        limit: adzunaKeyCount * ADZUNA_PER_KEY_LIMIT,
+        keys: adzunaKeyCount,
+        perKeyLimit: ADZUNA_PER_KEY_LIMIT,
+      },
+    },
   };
 }

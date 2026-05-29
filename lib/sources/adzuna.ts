@@ -1,4 +1,5 @@
 import type { RawJob } from '../types';
+import { logApiRequest, maskKey } from '../api-tracker';
 
 /**
  * Adzuna public API — https://developer.adzuna.com/
@@ -287,15 +288,19 @@ export async function fetchAdzuna(opts?: AdzunaFetchOpts): Promise<RawJob[]> {
       const cred = await getActiveCred();
       if (!cred) break;
       try {
-        return await fetchPage({ ...pageOpts, appId: cred.appId, appKey: cred.appKey });
+        const jobs = await fetchPage({ ...pageOpts, appId: cred.appId, appKey: cred.appKey });
+        logApiRequest({ source: 'adzuna_in', key_identifier: maskKey(cred.appId), status: 'success', http_status: 200, query: pageOpts.what || pageOpts.category || '', jobs_returned: jobs.length });
+        return jobs;
       } catch (e) {
         const msg = (e as Error).message;
         if (/401|403|429|quota|limit|unauthor/i.test(msg)) {
           markExhausted(cred);
+          logApiRequest({ source: 'adzuna_in', key_identifier: maskKey(cred.appId), status: 'rate_limited', error_message: msg, query: pageOpts.what || pageOpts.category || '' });
           attempts++;
           continue;
         }
-        throw e; // Non-auth error, don't retry
+        logApiRequest({ source: 'adzuna_in', key_identifier: maskKey(cred.appId), status: 'error', error_message: msg, query: pageOpts.what || pageOpts.category || '' });
+        throw e;
       }
     }
     throw new Error('All Adzuna credentials exhausted this run');
