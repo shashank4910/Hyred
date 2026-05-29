@@ -26,8 +26,8 @@ export function ImportForm() {
     e.preventDefault();
     setErrorMsg(null);
 
-    if (!url.trim()) {
-      toast.error('Paste a job URL first');
+    if (!url.trim() && !manualJd.trim()) {
+      toast.error('Paste a job URL or a JD text');
       return;
     }
 
@@ -91,7 +91,6 @@ export function ImportForm() {
           <Link2 className="absolute left-3 top-2.5 h-4 w-4 text-shadow-tint" />
           <input
             type="url"
-            required
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://www.naukri.com/job-listings-..."
@@ -170,7 +169,7 @@ export function ImportForm() {
       <div className="flex justify-end">
         <button
           type="submit"
-          disabled={submitting || !url.trim()}
+          disabled={submitting || (!url.trim() && !manualJd.trim())}
           className="btn-primary"
         >
           {submitting ? (

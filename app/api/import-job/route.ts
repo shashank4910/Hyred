@@ -387,10 +387,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'invalid JSON' }, { status: 400 });
   }
 
-  const url = body.url?.trim();
-  if (!url || !/^https?:\/\//i.test(url)) {
+  const url = body.url?.trim() || '';
+  const hasValidUrl = !!url && /^https?:\/\//i.test(url);
+  const hasManualJd = !!(body.manual_jd?.trim()) && body.manual_jd!.trim().length >= 100;
+
+  // Require either a valid URL or a manual JD
+  if (!hasValidUrl && !hasManualJd) {
     return NextResponse.json(
-      { error: 'A valid http(s) URL is required' },
+      { error: 'Provide a valid http(s) URL or paste a JD (at least 100 chars)' },
       { status: 400 },
     );
   }
@@ -401,7 +405,7 @@ export async function POST(req: NextRequest) {
   let description: string = body.manual_jd?.trim() ?? '';
 
   // If user didn't paste the JD manually, try to fetch + extract from URL.
-  if (!description) {
+  if (!description && hasValidUrl) {
     const fetched = await tryFetchUrl(url);
     if (fetched.ok) {
       description = fetched.text;
@@ -443,17 +447,19 @@ export async function POST(req: NextRequest) {
   }
 
   // Upsert the job (URL is the unique id for source='manual')
+  // When no URL is provided (manual JD only), use a hash of the description as source_id
+  const jobUrl = hasValidUrl ? url : `manual://${Date.now()}`;
   const { data: jobRow, error: jobErr } = await sb
     .from('jobs')
     .upsert(
       {
         source: 'manual',
-        source_id: url,
+        source_id: jobUrl,
         title,
         company,
         location,
         remote: /\b(remote|wfh|work from home)\b/i.test(`${title} ${description}`),
-        url,
+        url: hasValidUrl ? url : '',
         description,
         salary: null,
         tags: null,
