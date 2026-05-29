@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, MapPin, Building2, Clock } from 'lucide-react';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { ensureFullDescription } from '@/lib/jd-fetcher';
 import { JobActions } from './JobActions';
 import { AutoApplyButton } from './AutoApplyButton';
 import { relativeTime, scoreColorClass, scoreLabel, SOURCE_LABELS } from '@/lib/ui';
@@ -52,6 +53,19 @@ export default async function JobMatchPage({
   } | null;
   const colorClass = scoreColorClass(match.llm_score);
   const posted = relativeTime(job.posted_at);
+
+  // Ensure the FULL job description is loaded before rendering.
+  // Adzuna (and some other sources) truncate JDs to ~500 chars on ingest.
+  // Previously the page rendered whatever was in the DB and the full JD was
+  // only fetched later by background API calls (skills/resume) — so the user
+  // saw a partial JD until a hard refresh re-queried the updated row.
+  // Now we fetch + persist it here, server-side, so the first render is complete.
+  // ensureFullDescription is idempotent: a no-op once the JD is long enough.
+  const fullDescription = await ensureFullDescription({
+    jobId: job.id,
+    currentDescription: job.description,
+    url: job.url,
+  });
 
   return (
     <div className="space-y-5">
@@ -146,7 +160,7 @@ export default async function JobMatchPage({
       <div className="glass-card p-6 md:p-8">
         <h2 className="font-headline font-semibold text-on-background mb-4">Job description</h2>
         <pre className="whitespace-pre-wrap text-sm text-on-surface-variant font-sans leading-relaxed">
-          {job.description ?? 'No description.'}
+          {fullDescription || job.description || 'No description.'}
         </pre>
       </div>
     </div>
