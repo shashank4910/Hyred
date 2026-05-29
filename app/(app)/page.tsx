@@ -99,6 +99,11 @@ export default async function Dashboard({
     .eq('profile_id', profile.id)
     .gte('llm_score', effectiveMinScore);
 
+  // Filter out stale jobs (older than 45 days) from the dashboard.
+  // Jobs without a posted_at are kept (can't determine age).
+  const staleCutoff = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString();
+  query = query.or(`posted_at.gte.${staleCutoff},posted_at.is.null`, { foreignTable: 'job' });
+
   switch (sort) {
     case 'posted':
       query = query
