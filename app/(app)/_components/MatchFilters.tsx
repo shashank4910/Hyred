@@ -5,7 +5,7 @@ import { Search, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { SOURCE_LABELS } from '@/lib/ui';
 
-const SOURCES = ['remotive', 'remoteok', 'hn', 'arbeitnow', 'adzuna_in'];
+const SOURCES = ['remotive', 'remoteok', 'hn', 'arbeitnow', 'adzuna_in', 'himalayas', 'jsearch'];
 
 export function MatchFilters() {
   const router = useRouter();
