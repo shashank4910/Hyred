@@ -88,9 +88,16 @@ browser_agent/requirements.txt ← Pinned: browser-use==0.1.40
 
 scripts/ingest.ts                    ← Cron entry point
 scripts/backfill-jds.ts             ← Backfill: fetch full JDs + re-embed + re-score existing jobs
-scripts/clear-embeddings.sql        ← (Session 4, NOT YET COMMITTED) Wipe stale 768-dim vectors so next ingest re-embeds with OpenAI 1536-dim
-.github/workflows/ingest.yml        ← Cron schedule (every 6h). MUST pass GEMINI_API_KEY (still needed until embeddings migration ships)
+scripts/clear-embeddings.sql        ← (Session 5, MERGED) Wipe stale 768-dim vectors so next ingest re-embeds with OpenAI 1536-dim. Run once in Supabase SQL Editor.
+.github/workflows/ingest.yml        ← Cron schedule (every 6h). GEMINI_API_KEY now chat-fallback only.
 .github/workflows/backfill-jds.yml  ← Manual workflow_dispatch for bulk JD backfill
+
+# AI IDE skill directories (Session 5) — UI UX Pro Max design skill
+# Installed via 'uipro init --ai <ide>' from npm package 'uipro-cli'.
+# Auto-loaded by the IDE when present. Same 28 files in each location.
+.kiro/steering/ui-ux-pro-max/        ← Kiro skill (slash command: /ui-ux-pro-max)
+.cursor/skills/ui-ux-pro-max/        ← Cursor skill (auto-activate)
+.agent/skills/ui-ux-pro-max/         ← Antigravity skill (auto-activate)
 ```
 
 ---
@@ -165,7 +172,170 @@ When a feature seems broken:
 - New "pitfalls" or rules learned
 - Changes to the file map
 
-**Last updated:** May 28, 2026 evening (session 4: two-pass JD-tailored ATS resume + ATS Match Score, parser-safe PDF, clickable add/remove keyword chips, custom-keyword input, default sort by freshness with 5 sort modes, ingest GEMINI_API_KEY wiring + early-bail, browser-use v0.1.40 headless via Browser(BrowserConfig(...)), OpenAI primary for the agent. Embeddings migration to OpenAI text-embedding-3-small drafted but NOT yet pushed.)
+**Last updated:** May 29, 2026 (session 5: OpenAI text-embedding-3-small migration shipped; matches sort dropdown bug fixed (foreignTable alias) + per-card discovery date stamp; UI UX Pro Max design skill installed for Kiro, Cursor, and Antigravity from the official `uipro-cli`. PRs #25-#28 + #29 all merged.)
+
+---
+
+## Session 5 — What Was Built & Fixed (May 29, 2026)
+
+Short, focused session that closed the three open issues from session 4 and added a workspace-wide design skill that auto-activates in multiple AI IDEs.
+
+### 1. OpenAI embeddings migration (PR #26, merged)
+
+Closed open issue #1 from session 4. The cron's embed phase had been failing every run with `[GoogleGenerativeAI Error]: ... [404 Not Found] models/text-embedding-004` because Google deprecated `text-embedding-004` on 2026-01-14 and the v1beta endpoint started 404'ing.
+
+- `lib/gemini.ts` — `embed()` now uses OpenAI `text-embedding-3-small` (1536 dims) via the existing `getOpenAIClient()` helper. `EMBED_MODEL` constant updated. File header rewritten to document the migration. Throws clean `Missing OPENAI_API_KEY env var` on misconfig.
+- `scripts/clear-embeddings.sql` (new) — one-shot Supabase SQL to wipe stale 768-dim vectors so the next ingest re-embeds at 1536 dims. Idempotent.
+- `.github/workflows/ingest.yml` + `backfill-jds.yml` — comment block rewritten: `GEMINI_API_KEY` is now chat-fallback only, no longer required for embed. Secret line kept so the chat fallback still works if OpenAI ever errors.
+- `README.md` — stack line, pipeline diagram, cron-secrets list updated.
+
+**Why no schema migration:** embedding columns are `JSONB`. Cosine similarity in `lib/matcher.ts` returns 0 on length mismatch, so old 768-dim vectors are silently ignored — non-breaking.
+
+**Manual steps after deploy:**
+1. Run `scripts/clear-embeddings.sql` in Supabase SQL Editor.
+2. Re-save profile from `/onboarding` to regenerate `resume_embedding` at 1536 dims.
+3. Trigger Daily Ingest workflow manually.
+4. Verify `ingest_runs` latest row is `status='success'` with `embedded > 0`.
+
+### 2. Matches sort dropdown was a silent no-op (PR #27, merged)
+
+User reported "newest first" doing nothing. Root cause was a `foreignTable` alias mismatch in the Supabase query.
+
+The select clause aliased the embedded relationship as `job` (singular):
+
+```ts
+.select(`...job:jobs!inner(...)`)
+                   //  ^^^ alias is 'job', not 'jobs'
+```
+
+But every `.order()` call passed `foreignTable: 'jobs'` (the underlying table name). PostgREST uses the **alias** as the embed identifier in URL params, so the generated `?jobs.order=fetched_at.desc` was silently dropped server-side. Three of the five sort modes were dead (newest, oldest, posted); "best score" was half-broken (primary worked, secondary tiebreak ignored); only "recent activity" worked because it sorts on a local column.
+
+**Fix:** changed all 4 `foreignTable: 'jobs'` → `foreignTable: 'job'` in `app/(app)/page.tsx`, with an inline comment explaining the gotcha so it doesn't silently regress again.
+
+### 3. Per-card discovery date stamp (PR #27, merged)
+
+User wanted to see exactly how old each job is, not just "2 days ago".
+
+- `lib/ui.ts` — added `formatShortDate()` (returns `"28 May 26"`) and `formatFullDate()` (returns `"28 May 2026, 14:32"`). Both use the existing `date-fns` import.
+- `MatchCard.tsx` now renders: `🕒 28 May 26 · 2 days ago` next to each card, with the precise `28 May 2026, 14:32` on hover via the `title` attribute. The small `added` tag is preserved when the source did not provide a `posted_at` (so user can distinguish "JobRadar saw it" from "company posted it").
+
+### 4. UI UX Pro Max design skill — multi-platform install (PRs #28 + #29, merged)
+
+Installed an external open-source design skill so any AI IDE working on this repo gets professional UI/UX guidance automatically.
+
+**What the skill provides:**
+- 67 UI styles (Glassmorphism, Bento Grid, Neumorphism, Brutalism, Soft UI Evolution, AI-Native UI, Dark Mode OLED, etc.)
+- 161 industry-specific reasoning rules (SaaS, fintech, healthcare, e-commerce, services, gaming, etc.)
+- 96 color palettes, 57 font pairings, 99 UX guidelines, 25 chart types
+- Stack-specific guidelines for 13+ stacks (React, Next.js, Vue, shadcn/ui, Tailwind, SwiftUI, Jetpack Compose, React Native, Flutter, etc.)
+- A Python "design system generator" that produces a complete recommended pattern + style + colors + typography + effects + anti-patterns + pre-delivery checklist for any product/industry combination
+
+**Source:** [github.com/nextlevelbuilder/ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) (MIT-licensed). Installed via the project's official `uipro-cli` — no manual file copying.
+
+**Installed for three IDEs (all in this repo):**
+
+| IDE | Install path | Activation mode |
+|---|---|---|
+| **Kiro** | `.kiro/steering/ui-ux-pro-max/` | Slash command: `/ui-ux-pro-max <prompt>` |
+| **Cursor** | `.cursor/skills/ui-ux-pro-max/` | Auto-activate on UI requests |
+| **Antigravity** | `.agent/skills/ui-ux-pro-max/` | Auto-activate on UI requests |
+
+Each location has the same 28 files: `SKILL.md` + 15 CSV databases + 11 stack-specific CSVs + 3 Python scripts (`core.py`, `design_system.py`, `search.py`).
+
+`.gitignore` updated to exclude `__pycache__/`, `*.pyc`, `*.pyo` so Python bytecode caches don't get committed.
+
+**Verified working:** ran `python3 .kiro/steering/ui-ux-pro-max/scripts/search.py "SaaS dashboard" --design-system -p "TestApp"` and `python3 .cursor/skills/ui-ux-pro-max/scripts/search.py "fintech dashboard" --design-system -p "TestApp"` — both produced real ASCII design system outputs (pattern, style, colors, typography, effects, anti-patterns, pre-delivery checklist).
+
+#### How to use the skill in each IDE
+
+**In Kiro (slash command):**
+```
+/ui-ux-pro-max Build a landing page for my SaaS product
+/ui-ux-pro-max Design a dashboard for healthcare analytics
+/ui-ux-pro-max Improve the JobRadar matches list visual design
+```
+
+**In Cursor / Antigravity (auto-activate):** just describe the UI work in chat — the skill activates automatically when the request matches design/build/create/implement/review/fix/improve UI-related keywords. Example prompts:
+```
+Build a landing page for my SaaS product
+Create a dashboard for healthcare analytics
+Design a portfolio website with dark mode
+Make a mobile app UI for e-commerce
+```
+
+You may need to start a new session in the IDE for the skill files to be discovered.
+
+#### Adding the skill for a new AI IDE
+
+If you start using Windsurf, Claude Code, GitHub Copilot, Codex CLI, Continue, Roo Code, or any other supported tool, run **one** command from the JobRadar repo root and commit the new platform directory:
+
+```bash
+npm install -g uipro-cli           # only first time
+uipro init --ai windsurf           # or: claude, copilot, codex, continue, roocode, kilocode, warp, augment, droid, gemini, opencode, qoder, codebuddy, trae, all
+```
+
+Supported platforms (per the skill's official README):
+
+| Tool | Workflow Mode (slash command) | Skill Mode (auto-activate) |
+|---|---|---|
+| Kiro | ✓ | — |
+| GitHub Copilot | ✓ | — |
+| Roo Code | ✓ | — |
+| KiloCode | ✓ | ✓ |
+| Cursor | — | ✓ |
+| Windsurf | — | ✓ |
+| Antigravity | — | ✓ |
+| Claude Code | — | ✓ |
+| Codex CLI, Continue, Gemini CLI, OpenCode, Qoder, CodeBuddy, Droid (Factory), Warp, Augment | — | ✓ |
+| **All at once** | `uipro init --ai all` | — |
+
+**Global install** (available to every project on your machine, not just JobRadar): add `--global` to the command, e.g. `uipro init --ai cursor --global`.
+
+#### Updating the skill
+
+```bash
+uipro update                       # pull latest version
+uipro versions                     # list available versions
+uipro init --offline               # use bundled assets (no network)
+```
+
+#### Uninstalling
+
+```bash
+uipro uninstall --ai kiro          # remove from this project for one platform
+uipro uninstall                    # remove from this project for all detected platforms
+```
+
+Or just delete the relevant directory (`.kiro/steering/ui-ux-pro-max/`, `.cursor/skills/ui-ux-pro-max/`, `.agent/skills/ui-ux-pro-max/`) and the `.gitignore` entry for `__pycache__/`.
+
+### Workflow lessons (this session)
+
+- Always verify the actual `main` branch state via `raw.githubusercontent.com/{repo}/main/{path}` before assuming what's deployed. The local sandbox's `git fetch` and `git pull` fail with auth-header errors; only the `mcp_tool_server_github_push_to_remote` and `web_fetch` tools talk to GitHub reliably.
+- When local `main` is stale and can't be pulled: `rm -rf` the workspace and re-clone via `github_repo_set_up`. Do this BEFORE branching or the new branch will diverge from real `main` and the PR diff will be a mess.
+- Pre-installing platform-specific skill files (`.cursor/`, `.agent/`, `.kiro/steering/`) in the repo means the skill auto-loads when you open the project in any of those IDEs — no per-tool re-install needed.
+
+### Open issues for the next session
+
+1. **Render free tier 512 MB still tight for Chromium.** Carried over from session 3/4. Even with the headless fix, the auto-apply agent may still crash on real page loads. Options remain: upgrade ($7/mo), run agent locally, or switch to a lighter automation lib.
+2. **Auto-apply callback 401** (carried over): `INGEST_SECRET` env var still not synced between Vercel and Render.
+
+### Files modified / added this session (all on main)
+
+- `lib/gemini.ts` — `embed()` switched to OpenAI text-embedding-3-small.
+- `scripts/clear-embeddings.sql` (new) — wipe stale 768-dim vectors.
+- `.github/workflows/ingest.yml` + `backfill-jds.yml` — comment block clarification.
+- `README.md` — stack/pipeline/secrets references updated.
+- `app/(app)/page.tsx` — `foreignTable: 'jobs'` → `'job'` in 4 places + comment.
+- `app/(app)/_components/MatchCard.tsx` — discovery date stamp + tooltip.
+- `lib/ui.ts` — `formatShortDate()`, `formatFullDate()` helpers.
+- `.kiro/steering/ui-ux-pro-max/` (new, 28 files) — UI UX Pro Max skill for Kiro.
+- `.cursor/skills/ui-ux-pro-max/` (new, 28 files) — same skill for Cursor.
+- `.agent/skills/ui-ux-pro-max/` (new, 28 files) — same skill for Antigravity.
+- `.gitignore` — added `__pycache__/`, `*.pyc`, `*.pyo`.
+
+### Merged PRs in this session
+
+#25 docs(context): add Session 4 · #26 fix(embed): switch from deprecated Gemini text-embedding-004 to OpenAI text-embedding-3-small · #27 fix(matches): repair sort dropdown (foreignTable alias bug) + show discovery date · #28 feat(skill): install UI UX Pro Max via official uipro-cli for Kiro · #29 feat(skill): install UI UX Pro Max for Cursor + Antigravity + Session 5 context update
 
 ---
 
