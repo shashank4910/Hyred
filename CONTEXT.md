@@ -108,6 +108,41 @@ Researched the latest 2026 landscape (web). Key findings:
 - **Hard quotas + metering** (`usage` table): free tier = e.g. 1 scan/day, capped scored jobs, capped resume/cover-letter generations. Stops one user/bot from burning $50 in an afternoon.
 - Move per-user work off GitHub Actions cron → Supabase scheduled Edge Functions or a queue; only process *active* users (logged in within N days).
 
+#### Phase 3 capacity analysis — single shared Groq free key (May 2026, evidence-based)
+
+**Question:** how many users can one shared Groq free API key support, and how many cron runs/day?
+
+**Critical fact:** Groq rate limits apply at the **organization (API-key) level, not per user** ([Groq docs](https://console.groq.com/docs/rate-limits)). One key = ONE shared bucket every user draws from. Adding users does NOT add capacity.
+
+**Groq free-tier limits — `llama-3.3-70b-versatile`** (verify exact values per key at `console.groq.com/settings/limits`; figures vary as Groq tunes them):
+
+| Limit | Free value | Binds first? |
+|---|---|---|
+| Requests/min (RPM) | ~30 | |
+| Requests/day (RPD) | ~1,000 | |
+| **Tokens/min (TPM)** | **~12,000** | ✅ (burst) |
+| **Tokens/day (TPD)** | **~100,000** | ✅ (daily) |
+
+**JobRadar measured usage** (from `lib/ingest.ts → scoreJob()`): each job scored re-sends the full resume (~6,000 chars ≈ 1,500 tok) + JD (~4,000 chars ≈ 1,000 tok) + prompt + output ≈ **~3,000 tokens/job**. A cron run scores 30–80 jobs.
+
+| | Per cron run | Per day (4 runs / 6h) |
+|---|---|---|
+| Requests | ~30–80 | ~150–340 |
+| **Tokens** | **~100K–250K** | **~400K–1,000K** |
+
+**Verdict:** one user's daily scoring (~400K–1M tokens) is **~4–10× the entire free daily token cap (~100K TPD)**. The binding constraint is **tokens, not requests** (prompts are huge because every job re-sends the whole resume).
+
+| Question | Answer (current design, one shared free key) |
+|---|---|
+| Max users on one free Groq key | **~1** (the owner). Does NOT scale to a public launch. |
+| Cron runs/day supportable | Even **1 run/day for 1 user** meets/exceeds ~100K TPD → throttles (TPM) + spills overflow to paid OpenAI. |
+
+**Only two honest paths to scale (both = the plan):**
+- **(A) BYOK — Bring Your Own Key:** each user pastes their own free Groq key → per-key limits mean every user gets their own ~100K TPD bucket → **$0 to us at any scale.** The only free multi-user path.
+- **(B) Shrink per-user consumption** (stretches a shared key to ~2–4 light users at best): cron 4×/day→1×/day (4× saving); embedding pre-filter so the LLM scores only the top ~15 (not 80); **stop re-sending the full resume every call — cache a short resume summary (biggest single saving)**; on-demand scoring instead of scheduled burst; cheaper `llama-3.1-8b-instant` (higher free limits, lower quality).
+
+Quick win for Phase 3: the "stop re-sending the full resume on every `scoreJob` call" change alone cuts per-job tokens roughly in half. Tackle first.
+
 ### Phase 4 — Monetization & abuse protection
 
 - **Stripe** for paid tiers (free until you transact). Free tier for acquisition; paid unlocks higher quotas / auto-apply.
@@ -282,7 +317,7 @@ When a feature seems broken:
 - New "pitfalls" or rules learned
 - Changes to the file map
 
-**Last updated:** May 29, 2026 (session 6: started the **Enterprise Multi-Tenant Transformation** initiative — added the Master Plan + Progress Tracker (Phases 0-5) near the top of this file. Phase 0 in progress: strategic decisions + researched free/open-source LLM alternatives. **Shipped the Groq migration** (Phase 0 cost-model groundwork): PR #48 replaced the dead `gemini-2.0-flash` 429 fallback with Groq + removed silent OpenAI-error masking; PR #50 then **flipped Groq to the FREE PRIMARY** with OpenAI as paid fallback, added the `LLM_PRIMARY` env toggle (default `groq`). Requires `GROQ_API_KEY` secret on Vercel + GH Actions + Render.)
+**Last updated:** May 29, 2026 (session 6: started the **Enterprise Multi-Tenant Transformation** initiative — added the Master Plan + Progress Tracker (Phases 0-5) near the top of this file. Phase 0 in progress: strategic decisions + researched free/open-source LLM alternatives. **Shipped the Groq migration** (Phase 0 cost-model groundwork): PR #48 replaced the dead `gemini-2.0-flash` 429 fallback with Groq + removed silent OpenAI-error masking; PR #50 then **flipped Groq to the FREE PRIMARY** with OpenAI as paid fallback, added the `LLM_PRIMARY` env toggle (default `groq`). Requires `GROQ_API_KEY` secret on Vercel + GH Actions + Render. Also **added the Phase 3 Groq free-tier capacity analysis** (one shared free key ≈ 1 user; limits are per-key not per-user; scale via BYOK or token-shrinking) under the Phase 3 section.)
 
 _Session 5 (May 29, 2026): OpenAI text-embedding-3-small migration shipped; matches sort dropdown bug fixed (foreignTable alias) + per-card discovery date stamp; UI UX Pro Max design skill installed for Kiro, Cursor, and Antigravity from the official `uipro-cli`. PRs #25-#28 + #29 all merged._
 
