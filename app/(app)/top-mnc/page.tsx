@@ -180,8 +180,8 @@ export default async function TopMncPage({
             };
             return (
               <li key={m.id} className="relative">
-                {/* MNC badge overlay */}
-                <div className="absolute top-3 left-3 z-10">
+                {/* MNC badge — positioned top-right, offset to avoid score */}
+                <div className="absolute top-3 right-14 z-10">
                   <span className="inline-flex items-center gap-1 rounded-full bg-secondary-fixed text-on-secondary-fixed-variant px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide shadow-sm">
                     <Crown className="h-2.5 w-2.5" />
                     {CATEGORY_LABELS[(m as unknown as MatchWithMnc)._mnc.category]}
