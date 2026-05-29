@@ -60,6 +60,7 @@ export const SOURCE_LABELS: Record<string, string> = {
   adzuna_in: 'Adzuna IN',
   himalayas: 'Himalayas',
   jsearch: 'JSearch',
+  linkedin: 'LinkedIn',
   manual: 'Imported',
 };
 
