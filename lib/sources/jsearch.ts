@@ -50,15 +50,48 @@ type JSearchResponse = {
 };
 
 /**
- * Get all configured JSearch API keys from env.
- * Returns empty array if not configured.
+ * Get all configured JSearch API keys.
+ * Merges from TWO sources:
+ *   1. JSEARCH_API_KEYS env var (Vercel config)
+ *   2. admin_settings DB table (added via Admin Center UI)
+ * Deduplicates so keys added in both places aren't used twice.
  */
-function getApiKeys(): string[] {
+let _dbKeysCache: string[] | null = null;
+let _dbKeysCacheTime = 0;
+
+async function loadDbKeys(): Promise<string[]> {
+  // Cache DB keys for 5 minutes to avoid hitting Supabase on every API call
+  if (_dbKeysCache && Date.now() - _dbKeysCacheTime < 5 * 60 * 1000) {
+    return _dbKeysCache;
+  }
+  try {
+    const { supabaseAdmin } = await import('../supabase/server');
+    const sb = supabaseAdmin();
+    const { data } = await sb
+      .from('admin_settings')
+      .select('value')
+      .eq('key', 'api_keys')
+      .maybeSingle();
+    const keys = (data?.value as Record<string, string[]> | null)?.jsearch ?? [];
+    _dbKeysCache = keys;
+    _dbKeysCacheTime = Date.now();
+    return keys;
+  } catch {
+    return _dbKeysCache ?? [];
+  }
+}
+
+function getEnvKeys(): string[] {
   const raw = process.env.JSEARCH_API_KEYS ?? '';
-  return raw
-    .split(',')
-    .map((k) => k.trim())
-    .filter(Boolean);
+  return raw.split(',').map((k) => k.trim()).filter(Boolean);
+}
+
+async function getApiKeys(): Promise<string[]> {
+  const envKeys = getEnvKeys();
+  const dbKeys = await loadDbKeys();
+  // Merge and deduplicate
+  const all = new Set([...envKeys, ...dbKeys]);
+  return Array.from(all);
 }
 
 /**
@@ -123,11 +156,12 @@ async function fetchWithKey(
  * Tries each available key until one works or all are exhausted.
  */
 async function fetchWithRotation(params: URLSearchParams): Promise<JSearchJob[]> {
-  const keys = getApiKeys().filter((k) => !exhaustedKeys.has(k));
+  const allKeys = await getApiKeys();
+  const keys = allKeys.filter((k) => !exhaustedKeys.has(k));
 
   if (keys.length === 0) {
     throw new Error(
-      'All JSearch API keys exhausted. Add more keys to JSEARCH_API_KEYS or wait for quota reset.',
+      'All JSearch API keys exhausted. Add more keys to JSEARCH_API_KEYS or via Admin Center.',
     );
   }
 
@@ -138,7 +172,7 @@ async function fetchWithRotation(params: URLSearchParams): Promise<JSearchJob[]>
   }
 
   throw new Error(
-    `All ${getApiKeys().length} JSearch keys exhausted this run. Add more accounts.`,
+    `All ${allKeys.length} JSearch keys exhausted this run. Add more accounts via Admin Center.`,
   );
 }
 
@@ -164,9 +198,9 @@ export type JSearchFetchOpts = {
  * A single free account (200/month) covers ~10 days; 3 accounts = full month.
  */
 export async function fetchJSearch(opts?: JSearchFetchOpts): Promise<RawJob[]> {
-  const keys = getApiKeys();
+  const keys = await getApiKeys();
   if (keys.length === 0) {
-    throw new Error('Missing JSEARCH_API_KEYS env var');
+    throw new Error('Missing JSearch API keys. Add via JSEARCH_API_KEYS env var or Admin Center.');
   }
 
   const queries = opts?.queries?.length ? opts.queries : ['performance engineer'];

@@ -150,11 +150,36 @@ type AdzunaCredential = { appId: string; appKey: string };
 
 /**
  * Get all configured Adzuna credentials.
- * Supports two formats:
- *  1. ADZUNA_CREDENTIALS=id1:key1,id2:key2,id3:key3 (multi-account)
- *  2. ADZUNA_APP_ID + ADZUNA_APP_KEY (legacy single account, backward compat)
+ * Merges from TWO sources:
+ *   1. Env vars: ADZUNA_CREDENTIALS or legacy ADZUNA_APP_ID + ADZUNA_APP_KEY
+ *   2. admin_settings DB table (added via Admin Center UI)
+ * Deduplicates by appId.
  */
-function getCredentials(): AdzunaCredential[] {
+let _dbCredCache: string[] | null = null;
+let _dbCredCacheTime = 0;
+
+async function loadDbCredentials(): Promise<string[]> {
+  if (_dbCredCache && Date.now() - _dbCredCacheTime < 5 * 60 * 1000) {
+    return _dbCredCache;
+  }
+  try {
+    const { supabaseAdmin: getSb } = await import('../supabase/server');
+    const sb = getSb();
+    const { data } = await sb
+      .from('admin_settings')
+      .select('value')
+      .eq('key', 'api_keys')
+      .maybeSingle();
+    const creds = (data?.value as Record<string, string[]> | null)?.adzuna ?? [];
+    _dbCredCache = creds;
+    _dbCredCacheTime = Date.now();
+    return creds;
+  } catch {
+    return _dbCredCache ?? [];
+  }
+}
+
+function getEnvCredentials(): AdzunaCredential[] {
   const multi = process.env.ADZUNA_CREDENTIALS ?? '';
   if (multi.trim()) {
     return multi
@@ -167,12 +192,32 @@ function getCredentials(): AdzunaCredential[] {
       })
       .filter((c) => c.appId && c.appKey);
   }
-
-  // Fallback to legacy single-credential env vars
   const appId = process.env.ADZUNA_APP_ID;
   const appKey = process.env.ADZUNA_APP_KEY;
   if (appId && appKey) return [{ appId, appKey }];
   return [];
+}
+
+async function getCredentials(): Promise<AdzunaCredential[]> {
+  const envCreds = getEnvCredentials();
+  const dbRaw = await loadDbCredentials();
+  const dbCreds = dbRaw
+    .map((pair) => {
+      const [appId, appKey] = pair.split(':');
+      return { appId: appId?.trim(), appKey: appKey?.trim() };
+    })
+    .filter((c) => c.appId && c.appKey);
+
+  // Merge and deduplicate by appId
+  const seen = new Set<string>();
+  const all: AdzunaCredential[] = [];
+  for (const c of [...envCreds, ...dbCreds]) {
+    if (!seen.has(c.appId)) {
+      seen.add(c.appId);
+      all.push(c);
+    }
+  }
+  return all;
 }
 
 /** Track exhausted credentials this run */
@@ -182,8 +227,8 @@ const exhaustedCreds = new Set<string>();
  * Get the next available credential (not yet exhausted this run).
  * Returns null if all are exhausted.
  */
-function getActiveCred(): AdzunaCredential | null {
-  const creds = getCredentials();
+async function getActiveCred(): Promise<AdzunaCredential | null> {
+  const creds = await getCredentials();
   for (const c of creds) {
     const key = `${c.appId}:${c.appKey}`;
     if (!exhaustedCreds.has(key)) return c;
@@ -210,9 +255,9 @@ function markExhausted(c: AdzunaCredential): void {
  * With multi-account rotation, you get 250 × N calls/month.
  */
 export async function fetchAdzuna(opts?: AdzunaFetchOpts): Promise<RawJob[]> {
-  const creds = getCredentials();
+  const creds = await getCredentials();
   if (creds.length === 0) {
-    throw new Error('Missing Adzuna credentials. Set ADZUNA_CREDENTIALS=id:key,id:key or ADZUNA_APP_ID + ADZUNA_APP_KEY');
+    throw new Error('Missing Adzuna credentials. Set ADZUNA_CREDENTIALS env var or add via Admin Center.');
   }
 
   const country = (opts?.country ?? 'in').toLowerCase();
@@ -239,7 +284,7 @@ export async function fetchAdzuna(opts?: AdzunaFetchOpts): Promise<RawJob[]> {
     let attempts = 0;
     const maxAttempts = creds.length;
     while (attempts < maxAttempts) {
-      const cred = getActiveCred();
+      const cred = await getActiveCred();
       if (!cred) break;
       try {
         return await fetchPage({ ...pageOpts, appId: cred.appId, appKey: cred.appKey });
