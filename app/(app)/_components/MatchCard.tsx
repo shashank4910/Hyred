@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { MapPin, Building2, Clock, ExternalLink, Bookmark } from 'lucide-react';
-import { relativeTime, scoreColorClass, SOURCE_LABELS } from '@/lib/ui';
+import { relativeTime, formatShortDate, formatFullDate, scoreColorClass, SOURCE_LABELS } from '@/lib/ui';
 import { useState } from 'react';
 
 type Props = {
@@ -30,8 +30,14 @@ export function MatchCard({ matchId, score, reason, status, bookmarked: initialB
   // (when JobRadar first saw the job) so every card always shows a date.
   // Many sources don't expose a posted_at value, but fetched_at is always set
   // and is a good proxy for freshness within a small window.
-  const posted = relativeTime(job.posted_at) ?? relativeTime(job.fetched_at ?? null);
-  const postedLabel = job.posted_at ? 'posted' : 'added';
+  const dateSource = job.posted_at ?? job.fetched_at ?? null;
+  const relative = relativeTime(dateSource);
+  const shortDate = formatShortDate(dateSource);
+  const fullDate = formatFullDate(dateSource);
+  const isAdded = !job.posted_at && !!job.fetched_at;
+  const tooltip = isAdded
+    ? `Added to JobRadar on ${fullDate} (source did not provide a posted date)`
+    : `Posted on the source on ${fullDate}`;
   const isViewed = status === 'viewed' || (status !== 'new');
   const [bookmarked, setBookmarked] = useState(initialBookmarked);
   const [saving, setSaving] = useState(false);
@@ -101,11 +107,17 @@ export function MatchCard({ matchId, score, reason, status, bookmarked: initialB
                 {job.location || 'Remote'}
               </span>
             )}
-            {posted && (
-              <span className="inline-flex items-center gap-1" title={postedLabel === 'added' ? 'Added to JobRadar (source did not provide a posted date)' : 'Posted on the source'}>
+            {shortDate && (
+              <span
+                className="inline-flex items-center gap-1"
+                title={tooltip}
+              >
                 <Clock className="h-3 w-3" />
-                {posted}
-                {postedLabel === 'added' && (
+                <span className="font-medium text-ink/80">{shortDate}</span>
+                {relative && (
+                  <span className="text-shadow-tint">· {relative}</span>
+                )}
+                {isAdded && (
                   <span className="text-[9px] uppercase tracking-wide text-shadow-tint">added</span>
                 )}
               </span>
