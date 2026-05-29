@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runIngest } from '@/lib/ingest';
 import { verifySession, COOKIE } from '@/lib/auth';
+import type { SourceName } from '@/lib/sources';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -13,7 +14,10 @@ export const maxDuration = 300;
  *   2. Header `x-ingest-secret: <secret>` (GitHub Actions cron)
  *   3. Query `?secret=<secret>` (convenience for cURL)
  *
- * If INGEST_SECRET is not set AND no session, allow open access (dev only).
+ * Optional body (JSON):
+ *   { sources?: string[] } — restrict scan to specific sources only.
+ *   Example: { sources: ["jsearch"] } will only scan JSearch.
+ *   If omitted, scans all configured sources (default behavior).
  */
 export async function POST(req: NextRequest) {
   // Check session cookie first — dashboard users are always allowed
@@ -33,8 +37,17 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Parse optional sources filter from request body
+  let sources: SourceName[] | undefined;
   try {
-    const result = await runIngest({ triggeredBy: 'manual' });
+    const body = await req.json().catch(() => null);
+    if (body?.sources && Array.isArray(body.sources) && body.sources.length > 0) {
+      sources = body.sources as SourceName[];
+    }
+  } catch { /* no body = scan all */ }
+
+  try {
+    const result = await runIngest({ triggeredBy: 'manual', sources });
     return NextResponse.json(result);
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
