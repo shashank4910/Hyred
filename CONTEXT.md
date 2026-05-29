@@ -7,11 +7,12 @@
 ## Project Overview
 
 JobRadar is a personalized AI-powered job-search dashboard that:
-1. Fetches jobs from Adzuna, Remotive, RemoteOK, HackerNews, Arbeitnow (cron every 6h)
-2. AI-scores each job against the user's resume (0-100)
-3. Surfaces relevant matches in a polished light-themed dashboard (Runway-inspired warm palette)
+1. Fetches jobs from Adzuna, Remotive, RemoteOK, HackerNews, Arbeitnow, JSearch (RapidAPI), and LinkedIn (public guest API) — cron every 6h
+2. AI-scores each job against the user's resume (0-100) and returns top matched/missing skills
+3. Surfaces relevant matches in a Material-Design-3 glass dashboard (indigo/violet palette)
 4. Generates tailored ATS resumes + cover letters per job
 5. Provides skill-match analysis (JD requirements vs resume)
+6. Has a "Top MNC Hiring" premium page and an owner-only Admin Center (API usage tracking + key management)
 
 **Owner:** Shashank Singh — Senior Performance Engineer (India, 7.7 years)
 **Stack:** Next.js 15, React 19, TypeScript, Supabase, OpenAI gpt-4o-mini (primary) + Gemini 2.0 Flash (fallback), Vercel, GitHub Actions, Python FastAPI + browser-use (auto-apply agent on Render)
@@ -60,18 +61,25 @@ The LLM scoring prompt (`scoreJob` in `lib/gemini.ts`) has explicit rules:
 ## File Map
 
 ```
-lib/gemini.ts              ← AI: OpenAI primary, Gemini fallback. matchSkills, scoreJob, generateCoverLetter, extractResumeInsights, generateAtsResume
+lib/gemini.ts              ← AI: OpenAI primary, Gemini fallback. matchSkills, scoreJob (now returns matched/missing skills), generateCoverLetter, extractResumeInsights, generateAtsResume
 lib/jd-fetcher.ts          ← Fetches full JDs from source URLs
 lib/search-profile.ts      ← AI SearchProfile generation + title classification + AI relevance filter
-lib/ingest.ts              ← Main ingest pipeline (10 steps)
-lib/sources/adzuna.ts      ← Adzuna API (multi-query, pagination, dedup)
-lib/sources/index.ts       ← Source dispatcher
+lib/ingest.ts              ← Main ingest pipeline (10 steps). MAX_JOB_AGE_DAYS=45 stale filter. Passes preferences to sources.
+lib/sources/adzuna.ts      ← Adzuna API (multi-credential rotation, pagination, dedup)
+lib/sources/himalayas.ts   ← Himalayas (DISABLED — API ignores all filters)
+lib/sources/jsearch.ts     ← JSearch/RapidAPI (Indeed+LinkedIn+Glassdoor via Google Jobs, multi-key rotation)
+lib/sources/linkedin.ts    ← LinkedIn PUBLIC GUEST API (free, no auth). Search + detail endpoints. Pagination delay, multi-city.
+lib/sources/index.ts       ← Source dispatcher. buildLinkedInQueries() + buildLinkedInLocations(). Merges env+DB keys.
+lib/top-companies.ts       ← ~170 curated companies in 6 categories for Top MNC Hiring (fuzzy match)
+lib/api-tracker.ts         ← logApiRequest() + getUsageSummary() for Admin Center
 lib/pdf-resume.ts          ← Beautiful PDF resume generator (matches Shashank's exact format)
 lib/matcher.ts             ← Cosine similarity + embedding text builder
 
 app/(app)/jobs/[id]/        ← Job detail page + actions + AutoApplyButton
+app/(app)/top-mnc/          ← Top MNC Hiring premium page (Fortune 500 / MNC filtered matches)
+app/(app)/admin/            ← Admin Center (usage tracking, error log, API-key management) — owner only
 app/(app)/apply-profile/    ← Application profile form (memory store for auto-apply)
-app/(app)/_components/      ← MatchCard (bookmark+seen/unseen), StatusFilter (Inbox tab), AppShell
+app/(app)/_components/      ← MatchCard (bookmark + seen/unseen + MNC badge + skill chips), StatusFilter, AppShell (glass top nav), RunIngestButton (source selector dropdown)
 app/api/match/[id]/skills/  ← Skill match endpoint
 app/api/match/[id]/resume/  ← ATS resume (GET=keywords, POST=generate)
 app/api/match/[id]/resume/pdf/ ← Generate PDF + upload to Supabase Storage
@@ -80,7 +88,9 @@ app/api/match/[id]/auto-apply/ ← Orchestrate full auto-apply flow
 app/api/match/[id]/apply-callback/ ← Agent callback on completion
 app/api/apply-profile/      ← GET/POST application profile
 app/api/coverletter/        ← Cover letter generation
-app/api/ingest/             ← Manual ingest trigger
+app/api/ingest/             ← Manual ingest trigger (session-cookie OR INGEST_SECRET auth; accepts {sources:[...]})
+app/api/admin/stats/        ← Admin usage stats
+app/api/admin/keys/         ← Admin API-key management (DB-stored)
 
 browser_agent/main.py       ← Python FastAPI auto-apply agent (browser-use + Gemini)
 browser_agent/Dockerfile    ← Docker config for Render
@@ -172,7 +182,114 @@ When a feature seems broken:
 - New "pitfalls" or rules learned
 - Changes to the file map
 
-**Last updated:** May 29, 2026 (session 5: OpenAI text-embedding-3-small migration shipped; matches sort dropdown bug fixed (foreignTable alias) + per-card discovery date stamp; UI UX Pro Max design skill installed for Kiro, Cursor, and Antigravity from the official `uipro-cli`. PRs #25-#28 + #29 all merged.)
+**Last updated:** May 29, 2026 (session 6: M3 glass UI redesign; Run Scan 401 fix; 45-day stale-job filter; Top MNC Hiring premium page; new job sources Himalayas + JSearch + LinkedIn guest API with multi-key rotation; Admin Center with API usage tracking; top matched/missing skills on cards; LinkedIn pagination/role-title/multi-city fixes; user-preferred locations wired into LinkedIn. PRs #31-#46.)
+
+---
+
+## Session 6 — What Was Built & Fixed (May 29, 2026)
+
+Large session. Full UI redesign, several bug fixes, three new job sources, an Admin Center, and a deep evidence-based effort to maximise LinkedIn coverage. **PRs #31-#45 merged; #46 open at time of writing.**
+
+### 1. M3 Glass UI redesign (PR #31, merged)
+
+Replaced the warm amber/Runway palette with a Material-Design-3 inspired indigo/violet glass design system (from a Stitch-generated reference).
+- `tailwind.config.ts` — full M3 token palette (primary indigo `#4648d4`, secondary violet `#8127cf`, surface/on-surface roles), Hanken Grotesk (headlines) + Inter (body) + Geist (mono) fonts, glass shadows, pill radii.
+- `app/globals.css` — `.glass-card` utility (`bg-white/70 backdrop-blur border`), updated component classes, new font imports.
+- Sidebar nav → sticky glass **top header** + mobile **bottom nav** (`AppShell.tsx`).
+- **Legacy color aliases preserved** (amber→primary, stone→on-surface-variant, ink→on-background, etc.) so untouched components (JobActions, KeywordPicker) inherit the new palette without edits.
+- Pill-shaped status tabs, ping indicator for new jobs, glass stat cards.
+
+### 2. Run Scan 401 fix (PR #32, merged)
+
+`POST /api/ingest` returned `unauthorized` for the dashboard button. Root cause: the route only accepted `INGEST_SECRET` header/query, which the browser button doesn't send. Fix: check the `jr_session` cookie FIRST (logged-in users allowed), fall back to `INGEST_SECRET` only for unauthenticated callers (cron/cURL).
+
+### 3. 45-day stale-job filter (PR #33, merged)
+
+Adzuna returns jobs indexed months ago (their `created` = indexing date, not posting date). An 11-month-old job surfaced. Fix: `MAX_JOB_AGE_DAYS = 45` constant in `lib/ingest.ts` drops stale jobs before upsert; dashboard query in `app/(app)/page.tsx` also filters `posted_at >= 45d ago OR posted_at IS NULL`.
+
+### 4. Top MNC Hiring — premium feature page (PRs #34, #35 merged)
+
+Standalone `/top-mnc` page (designed to become paid). `lib/top-companies.ts` = curated list of ~170 companies in 6 categories (Fortune 500 Tech, Fortune 500 Finance, Big 4 & Consulting, Indian MNC, Global Product, Indian Unicorn) with fuzzy substring matching (TCS = Tata Consultancy Services, etc.). Crown nav item in purple. Category filter pills. MNC badge rendered **inline** in the MatchCard title row (PR #35 fixed an overlap bug — was absolute-positioned over the title).
+
+### 5. New job sources (PRs #37, #39, #41-#46)
+
+| Source | Auth | Notes |
+|---|---|---|
+| **Himalayas** (`lib/sources/himalayas.ts`) | none | DISABLED — their public API ignores ALL filter params (query/category/parentCategory) and caps at 20/req. Returns 106K unfiltered chronological feed. Useless for niche domains. Left registered but effectively off. |
+| **JSearch** (`lib/sources/jsearch.ts`) | RapidAPI key | Aggregates Indeed/LinkedIn/Glassdoor via Google Jobs. Multi-key rotation on 429/403. ~5 calls/scan. Free tier ~200/mo per account — needs "Subscribe to Test" click on RapidAPI or returns 403. Only sees ~10-30% of LinkedIn (Google Jobs middleman). |
+| **LinkedIn** (`lib/sources/linkedin.ts`) | NONE (public guest API) | The big win. See below. |
+
+**Adzuna multi-credential rotation** (`lib/sources/adzuna.ts`): `ADZUNA_CREDENTIALS=id1:key1,id2:key2` rotates on rate limit; falls back to legacy `ADZUNA_APP_ID`+`ADZUNA_APP_KEY`. ~22 calls/scan (N keywords × 2 pages + IT-jobs × 2 pages).
+
+Both JSearch + Adzuna keys are MERGED from env vars AND the Admin Center DB (`admin_settings.api_keys`), deduplicated, 5-min cache.
+
+### 6. LinkedIn public guest API — the centrepiece (PRs #41, #43, #44, #45, #46)
+
+LinkedIn's **guest endpoints** (the ones search engines use) are free, no auth, no API key, public data only. Legal basis: hiQ v LinkedIn. Verified live.
+- **Search:** `https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=&location=&start=` → 10 job cards (HTML) per page.
+- **Detail:** `https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{id}` → full JD (~3800 chars).
+
+Three evidence-based coverage fixes, each triggered by a real missed job the user reported:
+- **Pagination (PR #43):** rapid identical requests return CACHED duplicate pages. `start=0,10,20` fired back-to-back = same 10 jobs. Fix: 300ms delay between requests → 55 unique jobs/keyword. `emptyStreak` guard stops after 2 no-new-job pages.
+- **Role-title queries (PR #44):** LinkedIn matches role-title PHRASES far better than tool names. `loadrunner`/`jmeter` miss "Senior Lead - Performance Engineering" (Levi Strauss); `performance engineering` finds it. `buildLinkedInQueries()` now uses `titlePatterns` + `primaryDomain` + `adjacentDomains` + a few tool keywords (cap 10).
+- **Multi-city (PR #45):** LinkedIn's country-level `location=India` search MISSES city-level jobs for broad keywords. A Noida "QA Performance Tester" was invisible under India, visible under Noida. `LINKEDIN_LOCATIONS = [India, Noida, Gurgaon, Pune, Bengaluru, Hyderabad]`, iterate query × location, `maxSearchRequests` budget (90).
+- **User-preferred locations (PR #46, OPEN):** `buildLinkedInLocations(preferences)` builds the location list from the user's onboarding `preferences.locations`, embedding them into the search URL. Always includes India catch-all; Remote/Anywhere → India search; falls back to default metros; capped at 6. `fetchAllSources`/`buildFns` now accept a `preferences` arg, threaded from `runIngest(p.preferences)`. Onboarding "Preferred locations" hint clarified.
+
+### 7. Admin Center (PR #38, merged)
+
+Owner-only `/admin` page (session-protected). `lib/api-tracker.ts` = fire-and-forget `logApiRequest()` + `getUsageSummary()` + quota math. Every JSearch/Adzuna/LinkedIn call is logged. Page shows: usage overview per source (success/rate-limited/error bars), per-key breakdown table, recent error log with HTTP-status badges, API-key management UI (add/remove JSearch + Adzuna keys to DB), and the migration SQL. Quota meter: JSearch 200/key/mo, Adzuna 250/key/mo.
+
+### 8. Top matched/missing skills on cards (PR #43, merged)
+
+`scoreJob()` now ALSO returns `matchedSkills` + `missingSkills` (≤5 each) in the SAME LLM call (zero extra cost). Stored on `matches.matched_skills` / `matches.missing_skills`. MatchCard shows green ✓ chips (in both JD + resume) and red ✗ chips (JD wants, resume lacks) so the user sees WHY a job matched at a glance.
+
+### 9. Manual JD import fix (PR #36, merged)
+
+The Import button stayed disabled unless a URL was present. Now enabled when EITHER a URL OR a pasted JD (100+ chars) is provided. API accepts `manual_jd` without a URL (generates `manual://{timestamp}` source_id).
+
+### 10. Source selector on Run Scan (PRs #40, #42, merged)
+
+Run Scan button got a ▼ dropdown with per-source checkboxes + token costs. No selection = scan all. Lets the user test one source (e.g. only LinkedIn) without burning tokens. LinkedIn added to the list in #42.
+
+### Required Supabase migrations (run in SQL Editor)
+
+```sql
+-- Admin Center (Session 6)
+CREATE TABLE IF NOT EXISTS api_request_logs (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  source text NOT NULL, key_identifier text, status text NOT NULL DEFAULT 'success',
+  http_status int, error_message text, query text, jobs_returned int DEFAULT 0,
+  created_at timestamptz DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_api_logs_source ON api_request_logs(source);
+CREATE INDEX IF NOT EXISTS idx_api_logs_created ON api_request_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_api_logs_status ON api_request_logs(status);
+CREATE TABLE IF NOT EXISTS admin_settings (
+  key text PRIMARY KEY, value jsonb NOT NULL DEFAULT '{}', updated_at timestamptz DEFAULT now()
+);
+-- Top skills on cards (Session 6)
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS matched_skills jsonb DEFAULT '[]'::jsonb;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS missing_skills jsonb DEFAULT '[]'::jsonb;
+```
+
+### Environment variables added this session
+
+- `JSEARCH_API_KEYS=key1,key2,key3` — comma-separated RapidAPI keys (rotation)
+- `ADZUNA_CREDENTIALS=id1:key1,id2:key2` — comma-separated Adzuna creds (rotation; legacy `ADZUNA_APP_ID`+`ADZUNA_APP_KEY` still work)
+
+### New env-var / source-quirk learnings (verified live)
+
+- **RapidAPI/JSearch:** creating an account is NOT enough — you must click "Subscribe to Test" on the JSearch API page or every request 403s (RapidAPI dashboard shows 0 usage). Multiple free accounts + key rotation = effectively unlimited.
+- **Himalayas API is broken for filtering** — ignores query/category, caps at 20/req. Do not rely on it.
+- **LinkedIn guest API quirks:** (1) rapid identical requests return cached dupes — space them 300ms; (2) keyword matching favours role-title phrases over tool names; (3) country-level `location=India` misses city-level jobs — search specific cities; (4) `start` increments of 10 work with delays; (5) job `id` lives in `data-entity-urn="urn:li:jobPosting:{id}"`, detail JD in `show-more-less-html__markup`.
+- **scoreJob extended** to return matched/missing skills in one call — pattern for adding structured fields cheaply.
+
+### Open issues for next session
+
+1. **PR #46 (user-preferred LinkedIn locations) still open** — merge it.
+2. **LinkedIn still won't return 100%** — recruiter-only posts never hit the public guest endpoint. Manual "Import JD" remains the fallback for those.
+3. **Scan time budget** — LinkedIn multi-city × multi-keyword + descriptions adds ~20-40s. Combined with scoring (~250s) it approaches Vercel's 300s `maxDuration`. Watch for timeouts; reduce `maxSearchRequests` if needed.
+4. Carried over: Render free tier 512MB tight for Chromium (auto-apply); auto-apply callback 401 (`INGEST_SECRET` not synced Vercel↔Render).
 
 ---
 
