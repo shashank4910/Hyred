@@ -42,6 +42,25 @@ export const SOURCE_LABELS: Record<SourceName, string> = {
 };
 
 /**
+ * Major Indian tech-hiring locations to search on LinkedIn.
+ *
+ * LinkedIn's country-level "India" search does NOT surface all city-level
+ * jobs for broad keywords. Searching specific metros catches jobs that the
+ * country search misses (verified: a Noida "QA Performance Tester" job was
+ * invisible under location=India but visible under location=Noida).
+ *
+ * "India" is kept first as a catch-all; the user's primary metros follow.
+ */
+const LINKEDIN_LOCATIONS = [
+  'India',
+  'Noida',
+  'Gurgaon',
+  'Pune',
+  'Bengaluru',
+  'Hyderabad',
+];
+
+/**
  * Build a high-coverage LinkedIn query set from the search profile.
  *
  * KEY INSIGHT: LinkedIn's keyword search matches ROLE-TITLE PHRASES far better
@@ -123,15 +142,17 @@ function buildFns(searchProfile?: SearchProfile | null): Partial<
     });
 
   // LinkedIn — PUBLIC GUEST API (free, no auth, no API key).
-  // Uses role-title phrase queries (best coverage on LinkedIn) built from the
-  // full search profile, not just niche tool keywords. See buildLinkedInQueries.
+  // Searches role-title phrases across multiple Indian cities, because
+  // LinkedIn's country-level "India" search misses many city-level jobs
+  // (e.g. a Noida "QA Performance Tester" is invisible under location=India).
   fns.linkedin = () =>
     fetchLinkedIn({
       queries: buildLinkedInQueries(searchProfile),
-      location: 'India',
-      maxPagesPerQuery: 4,
+      locations: LINKEDIN_LOCATIONS,
+      maxPagesPerQuery: 3,
+      maxSearchRequests: 90,
       fetchDescriptions: true,
-      maxDescriptions: 60,
+      maxDescriptions: 70,
     });
 
   return fns;
