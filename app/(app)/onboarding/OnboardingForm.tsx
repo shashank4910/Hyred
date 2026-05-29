@@ -306,8 +306,8 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
           <Field label="Target roles" hint="Comma separated. Used by the LLM to focus matching." ai={aiFields.has('roles')}>
             <input className="input" value={roles} onChange={(e) => { setRoles(e.target.value); clearAiFlag('roles'); }} placeholder="Senior Performance Engineer, SRE Lead" />
           </Field>
-          <Field label="Preferred locations" hint="Comma separated." ai={aiFields.has('locations')}>
-            <input className="input" value={locations} onChange={(e) => { setLocations(e.target.value); clearAiFlag('locations'); }} placeholder="India, Remote, Bangalore" />
+          <Field label="Preferred locations" hint="Comma separated. Used to personalise your LinkedIn job search — e.g. Pune, Noida, Bengaluru. Add 'Remote' for remote roles." ai={aiFields.has('locations')}>
+            <input className="input" value={locations} onChange={(e) => { setLocations(e.target.value); clearAiFlag('locations'); }} placeholder="Pune, Noida, Gurgaon, Remote" />
           </Field>
           <Field label="Avoid keywords" hint="Skips JDs mentioning these.">
             <input className="input" value={excludeKeywords} onChange={(e) => setExcludeKeywords(e.target.value)} placeholder="Junior, Intern, Contract" />
