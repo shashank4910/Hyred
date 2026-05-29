@@ -199,6 +199,93 @@ const COMPANIES: CompanyEntry[] = [
   { name: 'Slice', patterns: ['slice'], category: 'unicorn_india' },
   { name: 'Urban Company', patterns: ['urban company'], category: 'unicorn_india' },
   { name: 'CarDekho', patterns: ['cardekho'], category: 'unicorn_india' },
+  { name: 'Zepto', patterns: ['zepto'], category: 'unicorn_india' },
+  { name: 'PhysicsWallah', patterns: ['physicswallah', 'physics wallah'], category: 'unicorn_india' },
+  { name: 'upGrad', patterns: ['upgrad'], category: 'unicorn_india' },
+  { name: 'boAt', patterns: ['imagine marketing', 'boat lifestyle'], category: 'unicorn_india' },
+  { name: 'Mamaearth', patterns: ['mamaearth', 'honasa'], category: 'unicorn_india' },
+  { name: 'Innovaccer', patterns: ['innovaccer'], category: 'unicorn_india' },
+  { name: 'Gupshup', patterns: ['gupshup'], category: 'unicorn_india' },
+  { name: 'Zeta', patterns: ['zeta suite'], category: 'unicorn_india' },
+
+  // ===== Retail / Apparel / Consumer (Fortune 500 / global, hire tech in India) =====
+  { name: 'Levi Strauss', patterns: ['levi strauss', 'levi\'s', 'levis'], category: 'global_product' },
+  { name: 'Nike', patterns: ['nike'], category: 'global_product' },
+  { name: 'Adidas', patterns: ['adidas'], category: 'global_product' },
+  { name: 'Walmart', patterns: ['walmart', 'walmart labs', 'walmart global tech'], category: 'fortune500_tech' },
+  { name: 'Target', patterns: ['target corporation', 'target india'], category: 'fortune500_tech' },
+  { name: 'Lowe\'s', patterns: ["lowe's", 'lowes india'], category: 'fortune500_tech' },
+  { name: 'PepsiCo', patterns: ['pepsico', 'pepsi'], category: 'global_product' },
+  { name: 'Coca-Cola', patterns: ['coca-cola', 'coca cola'], category: 'global_product' },
+  { name: 'Mondelez', patterns: ['mondelez', 'mondelēz'], category: 'global_product' },
+  { name: 'Colgate-Palmolive', patterns: ['colgate'], category: 'global_product' },
+  { name: 'Kraft Heinz', patterns: ['kraft heinz'], category: 'global_product' },
+  { name: 'Reckitt', patterns: ['reckitt'], category: 'global_product' },
+  { name: 'H&M', patterns: ['h&m', 'hennes mauritz'], category: 'global_product' },
+  { name: 'Inditex/Zara', patterns: ['inditex', 'zara'], category: 'global_product' },
+  { name: 'Decathlon', patterns: ['decathlon'], category: 'global_product' },
+  { name: 'IKEA', patterns: ['ikea', 'ingka'], category: 'global_product' },
+
+  // ===== Pharma / Healthcare (Fortune 500, hire tech in India) =====
+  { name: 'Pfizer', patterns: ['pfizer'], category: 'global_product' },
+  { name: 'Novartis', patterns: ['novartis'], category: 'global_product' },
+  { name: 'Roche', patterns: ['roche'], category: 'global_product' },
+  { name: 'AstraZeneca', patterns: ['astrazeneca'], category: 'global_product' },
+  { name: 'GSK', patterns: ['glaxosmithkline', 'gsk'], category: 'global_product' },
+  { name: 'Merck', patterns: ['merck', 'msd'], category: 'global_product' },
+  { name: 'Sanofi', patterns: ['sanofi'], category: 'global_product' },
+  { name: 'Novo Nordisk', patterns: ['novo nordisk'], category: 'global_product' },
+  { name: 'UnitedHealth/Optum', patterns: ['unitedhealth', 'optum'], category: 'global_product' },
+  { name: 'Sun Pharma', patterns: ['sun pharma'], category: 'indian_mnc' },
+  { name: 'Dr Reddy\'s', patterns: ["dr. reddy", "dr reddy", 'dr reddys'], category: 'indian_mnc' },
+  { name: 'Cipla', patterns: ['cipla'], category: 'indian_mnc' },
+
+  // ===== Auto / Industrial (Fortune 500, hire tech in India) =====
+  { name: 'Ford', patterns: ['ford motor', 'ford india'], category: 'global_product' },
+  { name: 'General Motors', patterns: ['general motors'], category: 'global_product' },
+  { name: 'Hyundai', patterns: ['hyundai'], category: 'global_product' },
+  { name: 'Maruti Suzuki', patterns: ['maruti'], category: 'indian_mnc' },
+  { name: 'Caterpillar', patterns: ['caterpillar'], category: 'global_product' },
+  { name: 'Cummins', patterns: ['cummins'], category: 'global_product' },
+  { name: 'Emerson', patterns: ['emerson'], category: 'global_product' },
+  { name: 'John Deere', patterns: ['john deere', 'deere & company'], category: 'global_product' },
+
+  // ===== Telecom / Networking =====
+  { name: 'Ericsson', patterns: ['ericsson'], category: 'global_product' },
+  { name: 'Nokia', patterns: ['nokia'], category: 'global_product' },
+  { name: 'Vodafone', patterns: ['vodafone'], category: 'global_product' },
+  { name: 'Juniper Networks', patterns: ['juniper'], category: 'fortune500_tech' },
+  { name: 'Arista Networks', patterns: ['arista'], category: 'fortune500_tech' },
+
+  // ===== More global tech / SaaS (hire heavily in India) =====
+  { name: 'Akamai', patterns: ['akamai'], category: 'fortune500_tech' },
+  { name: 'Nutanix', patterns: ['nutanix'], category: 'fortune500_tech' },
+  { name: 'Pure Storage', patterns: ['pure storage'], category: 'fortune500_tech' },
+  { name: 'NetApp', patterns: ['netapp'], category: 'fortune500_tech' },
+  { name: 'Western Digital', patterns: ['western digital'], category: 'fortune500_tech' },
+  { name: 'Micron', patterns: ['micron'], category: 'fortune500_tech' },
+  { name: 'Expedia', patterns: ['expedia'], category: 'fortune500_tech' },
+  { name: 'Visa', patterns: ['visa inc'], category: 'fortune500_finance' },
+  { name: 'Wayfair', patterns: ['wayfair'], category: 'fortune500_tech' },
+  { name: 'PayU', patterns: ['payu'], category: 'global_product' },
+  { name: 'Tesco', patterns: ['tesco'], category: 'global_product' },
+  { name: 'Mastercard (India)', patterns: ['mastercard'], category: 'fortune500_finance' },
+  { name: 'Wells Fargo (India)', patterns: ['wells fargo'], category: 'fortune500_finance' },
+
+  // ===== More India IT services / GCC =====
+  { name: 'Genpact', patterns: ['genpact'], category: 'big4_consulting' },
+  { name: 'WNS', patterns: ['wns global', 'wns holdings'], category: 'big4_consulting' },
+  { name: 'EXL', patterns: ['exl service', 'exlservice'], category: 'big4_consulting' },
+  { name: 'Hexaware', patterns: ['hexaware'], category: 'big4_consulting' },
+  { name: 'Birlasoft', patterns: ['birlasoft'], category: 'big4_consulting' },
+  { name: 'Zensar', patterns: ['zensar'], category: 'big4_consulting' },
+  { name: 'Sonata Software', patterns: ['sonata software'], category: 'big4_consulting' },
+  { name: 'Cyient', patterns: ['cyient'], category: 'big4_consulting' },
+  { name: 'KPIT', patterns: ['kpit'], category: 'big4_consulting' },
+  { name: 'Virtusa', patterns: ['virtusa'], category: 'big4_consulting' },
+  { name: 'Nagarro', patterns: ['nagarro'], category: 'big4_consulting' },
+  { name: 'Publicis Sapient', patterns: ['publicis sapient', 'sapient'], category: 'big4_consulting' },
+  { name: 'Capco', patterns: ['capco'], category: 'big4_consulting' },
 ];
 
 /**
@@ -210,16 +297,32 @@ const ALL_PATTERNS: { pattern: string; name: string; category: CompanyEntry['cat
   );
 
 /**
+ * Normalise a string for word-boundary matching: lowercase, replace every
+ * non-alphanumeric run with a single space, and pad with spaces on both ends.
+ * This lets us match whole tokens/phrases and AVOID false positives like
+ * "ola" matching "Coca-Cola" or "visa" matching "Visakhapatnam".
+ */
+function normalize(s: string): string {
+  return ` ${s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim()} `;
+}
+
+/**
  * Check if a company name matches any top MNC pattern.
  * Returns the matched company info or null.
+ *
+ * Uses WORD-BOUNDARY matching: the pattern must appear as a complete token
+ * sequence (surrounded by spaces), not just as a substring. So "tcs" matches
+ * "TCS Limited" but NOT "Matchstics", and "ola" matches "Ola Electric" but
+ * NOT "Coca-Cola".
  */
 export function matchTopCompany(
   companyName: string | null | undefined,
 ): { name: string; category: CompanyEntry['category'] } | null {
   if (!companyName) return null;
-  const lower = ` ${companyName.toLowerCase()} `; // pad with spaces for word-boundary patterns like ' ey '
+  const hay = normalize(companyName);
   for (const { pattern, name, category } of ALL_PATTERNS) {
-    if (lower.includes(pattern)) {
+    const needle = ` ${pattern.replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim()} `;
+    if (needle !== '  ' && hay.includes(needle)) {
       return { name, category };
     }
   }

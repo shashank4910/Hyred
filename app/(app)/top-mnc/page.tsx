@@ -55,9 +55,10 @@ export default async function TopMncPage({
     );
   }
 
-  // Fetch all matches with job data — we filter client-side by company name
-  // because the pattern matching is complex (substring across ~200 patterns).
-  // Supabase doesn't support OR-chaining 200 ILIKE conditions efficiently.
+  // Fetch ALL matches with job data — we filter client-side by company name.
+  // NO score floor here: the value of this premium feature is "every job from
+  // a top company", regardless of the AI score. A TCS/Infosys/Levi job should
+  // appear even if it scored modestly.
   const { data: allMatches } = await sb
     .from('matches')
     .select(
@@ -65,9 +66,8 @@ export default async function TopMncPage({
        job:jobs!inner(id, title, company, location, remote, url, source, salary, posted_at, fetched_at, description, tags)`,
     )
     .eq('profile_id', profile.id)
-    .gte('llm_score', 40)
-    .order('llm_score', { ascending: false })
-    .limit(500);
+    .order('llm_score', { ascending: false, nullsFirst: false })
+    .limit(1000);
 
   // Filter to only top MNC companies + apply category filter
   type MatchWithMnc = (typeof allMatches extends (infer T)[] | null ? T : never) & {
