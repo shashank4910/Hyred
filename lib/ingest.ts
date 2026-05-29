@@ -57,6 +57,7 @@ const MAX_JOB_AGE_DAYS = 45;
 export async function runIngest(opts?: {
   profileEmail?: string;
   triggeredBy?: 'manual' | 'cron' | 'api';
+  sources?: import('./sources').SourceName[];
 }): Promise<IngestResult> {
   const sb = supabaseAdmin();
   const startedAt = Date.now();
@@ -173,7 +174,7 @@ export async function runIngest(opts?: {
 
     // ---------- 3. Fetch from sources (using AI-generated keywords) ----------
     const { jobs: rawJobs, errors } = await fetchAllSources(
-      undefined,
+      opts?.sources ?? undefined,
       searchProfile,
     );
     runErrors = [...runErrors, ...errors];
