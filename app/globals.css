@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Hanken+Grotesk:wght@600;700;800&family=Geist:wght@500&display=swap');
 
 :root {
   color-scheme: light;
@@ -10,13 +10,13 @@
 
 html,
 body {
-  background: #f8f7f5;
-  color: #261b07;
+  background: #f8f9ff;
+  color: #121c2a;
   -webkit-font-smoothing: antialiased;
 }
 
 *::selection {
-  background: rgba(249, 166, 0, 0.2);
+  background: rgba(70, 72, 212, 0.15);
 }
 
 /* Subtle scrollbars */
@@ -28,62 +28,73 @@ body {
   background: transparent;
 }
 *::-webkit-scrollbar-thumb {
-  background: #e3dfd5;
+  background: #c7c4d7;
   border-radius: 999px;
-  border: 2px solid #f8f7f5;
+  border: 2px solid #f8f9ff;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: #aca89f;
+  background: #767586;
 }
 
 @layer components {
-  .btn {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-btn border border-border bg-pearl px-3 py-1.5 text-sm font-medium text-ink hover:border-amber-hover hover:text-amber-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-elevated;
-  }
-  .btn-primary {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-btn bg-amber px-4 py-2 text-sm font-semibold text-ink hover:bg-amber-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
-  }
-  .btn-ghost {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-btn px-3 py-1.5 text-sm font-medium text-stone hover:text-ink hover:bg-faded-stone/40 transition-colors;
-  }
-  .input {
-    @apply w-full rounded-field border border-border bg-pearl px-3 py-2 text-sm text-ink placeholder:text-shadow-tint focus:outline-none focus:border-amber focus:ring-1 focus:ring-amber/30 transition-colors;
-  }
-  .card {
-    @apply rounded-card border border-border bg-pearl p-5 shadow-card;
-  }
-  .card-hover {
-    @apply rounded-card border border-border bg-pearl p-5 shadow-card transition-all hover:shadow-elevated hover:border-amber/40;
-  }
-  .badge {
-    @apply inline-flex items-center rounded-badge bg-off-white text-ink px-2 py-0.5 text-xs font-medium;
-  }
-  .badge-primary {
-    @apply inline-flex items-center rounded-badge bg-sunshine text-ink px-2 py-0.5 text-xs font-medium;
-  }
-  .badge-grape {
-    @apply inline-flex items-center rounded-badge bg-grape text-ink px-2 py-0.5 text-xs font-medium;
-  }
-  .stat-card {
-    @apply rounded-card border border-border bg-pearl p-4 shadow-card;
+  /* Glass morphism card */
+  .glass-card {
+    @apply bg-white/70 backdrop-blur-[10px] border border-border-muted/50 rounded-xl shadow-glass;
   }
 
-  /* Score color bands — warm palette */
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-btn border border-border-muted bg-white px-3 py-1.5 text-sm font-medium text-on-surface hover:border-primary/40 hover:text-primary transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-card;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-btn bg-primary px-4 py-2 text-sm font-semibold text-on-primary hover:bg-primary-container transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-elevated;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-btn px-3 py-1.5 text-sm font-medium text-on-surface-variant hover:text-primary hover:bg-primary-fixed/40 transition-colors;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-btn bg-secondary px-4 py-2 text-sm font-semibold text-on-secondary hover:bg-secondary-container transition-all disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .input {
+    @apply w-full rounded-field border border-border-muted bg-white px-3 py-2 text-sm text-on-surface placeholder:text-outline focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all;
+  }
+  .card {
+    @apply rounded-xl border border-border-muted bg-surface-card p-5 shadow-card;
+  }
+  .card-hover {
+    @apply rounded-xl border border-border-muted bg-surface-card p-5 shadow-card transition-all hover:shadow-elevated hover:border-primary/30 hover:-translate-y-0.5;
+  }
+  .badge {
+    @apply inline-flex items-center rounded-full bg-surface-container text-on-surface-variant px-2.5 py-0.5 text-xs font-medium;
+  }
+  .badge-primary {
+    @apply inline-flex items-center rounded-full bg-primary-fixed text-on-primary-fixed px-2.5 py-0.5 text-xs font-medium;
+  }
+  .badge-grape {
+    @apply inline-flex items-center rounded-full bg-secondary-fixed text-on-secondary-fixed-variant px-2.5 py-0.5 text-xs font-medium;
+  }
+  .badge-success {
+    @apply inline-flex items-center rounded-full bg-success-green/10 text-success-green px-2.5 py-0.5 text-xs font-medium;
+  }
+  .stat-card {
+    @apply rounded-xl border border-border-muted bg-surface-card p-4 shadow-card;
+  }
+
+  /* Score color bands */
   .score-band-90 {
-    @apply text-emerald-600;
+    @apply text-success-green;
   }
   .score-band-75 {
-    @apply text-amber;
+    @apply text-primary;
   }
   .score-band-60 {
-    @apply text-orange-500;
+    @apply text-secondary;
   }
   .score-band-low {
-    @apply text-stone;
+    @apply text-outline;
   }
 }
 
-/* Skeleton shimmer — light theme */
+/* Skeleton shimmer */
 @keyframes shimmer {
   0% {
     background-position: -400px 0;
@@ -93,7 +104,7 @@ body {
   }
 }
 .skeleton {
-  background: linear-gradient(90deg, #e3dfd5 0%, #f8f7f5 50%, #e3dfd5 100%);
+  background: linear-gradient(90deg, #e6eeff 0%, #f8f9ff 50%, #e6eeff 100%);
   background-size: 800px 100%;
   animation: shimmer 1.4s infinite linear;
   border-radius: 6px;

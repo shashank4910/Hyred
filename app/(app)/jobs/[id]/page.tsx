@@ -54,41 +54,42 @@ export default async function JobMatchPage({
   const posted = relativeTime(job.posted_at);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <Link
         href="/"
-        className="inline-flex items-center gap-1.5 text-sm text-stone hover:text-amber-hover transition-colors"
+        className="inline-flex items-center gap-1.5 text-sm text-on-surface-variant hover:text-primary transition-colors"
       >
         <ArrowLeft className="h-4 w-4" /> All matches
       </Link>
 
-      <div className="card">
+      {/* Job header card */}
+      <div className="glass-card p-6 md:p-8">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
-            <h1 className="text-heading-sm font-semibold text-ink leading-tight">{job.title}</h1>
-            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-sm text-stone">
+            <h1 className="font-headline text-headline-md font-bold text-on-background leading-tight">{job.title}</h1>
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-sm text-on-surface-variant">
               {job.company && (
-                <span className="inline-flex items-center gap-1">
-                  <Building2 className="h-3.5 w-3.5" />
+                <span className="inline-flex items-center gap-1.5">
+                  <Building2 className="h-4 w-4" />
                   {job.company}
                 </span>
               )}
               {(job.location || job.remote) && (
-                <span className="inline-flex items-center gap-1">
-                  <MapPin className="h-3.5 w-3.5" />
+                <span className="inline-flex items-center gap-1.5">
+                  <MapPin className="h-4 w-4" />
                   {job.location || 'Remote'}
                 </span>
               )}
               {posted && (
-                <span className="inline-flex items-center gap-1">
-                  <Clock className="h-3.5 w-3.5" />
+                <span className="inline-flex items-center gap-1.5">
+                  <Clock className="h-4 w-4" />
                   Posted {posted}
                 </span>
               )}
             </div>
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-4 flex flex-wrap gap-2">
               <span className="badge">{SOURCE_LABELS[job.source] ?? job.source}</span>
-              {job.salary && <span className="badge-primary">{job.salary}</span>}
+              {job.salary && <span className="badge-success">{job.salary}</span>}
               {(job.tags ?? []).slice(0, 8).map((t) => (
                 <span key={t} className="badge">
                   {t}
@@ -97,20 +98,22 @@ export default async function JobMatchPage({
             </div>
           </div>
           <div className="text-right shrink-0">
-            <div className={`text-4xl font-bold ${colorClass}`}>
+            <div className={`text-stat-value font-headline font-bold ${colorClass}`}>
               {match.llm_score ?? '–'}
             </div>
-            <div className="text-xs text-stone uppercase tracking-wide font-medium">
+            <div className="text-xs text-on-surface-variant uppercase tracking-wider font-medium mt-1">
               {scoreLabel(match.llm_score)}
             </div>
           </div>
         </div>
 
         {match.reason && (
-          <p className="mt-4 text-sm border-l-2 border-amber/50 pl-3 text-stone">
-            <span className="text-shadow-tint">Why this matched: </span>
-            {match.reason}
-          </p>
+          <div className="mt-5 p-4 rounded-lg bg-primary-fixed/30 border-l-4 border-primary">
+            <p className="text-sm text-on-surface-variant">
+              <span className="text-primary font-medium">Why this matched: </span>
+              {match.reason}
+            </p>
+          </div>
         )}
       </div>
 
@@ -124,12 +127,12 @@ export default async function JobMatchPage({
         applyUrl={job.url}
       />
 
-      {/* Auto Apply — AI agent applies on your behalf */}
-      <div className="card border-amber/20 bg-gradient-to-r from-amber/5 to-transparent">
-        <h2 className="font-semibold text-ink flex items-center gap-2 mb-1">
-          <span className="text-amber">⚡</span> Auto Apply
+      {/* Auto Apply */}
+      <div className="glass-card p-6 border-secondary/20 bg-gradient-to-r from-secondary-fixed/20 to-transparent">
+        <h2 className="font-headline font-semibold text-on-background flex items-center gap-2 mb-1">
+          <span className="text-secondary">⚡</span> Auto Apply
         </h2>
-        <p className="text-xs text-stone mb-3">
+        <p className="text-xs text-on-surface-variant mb-4">
           The AI agent will open the company&apos;s career page, fill the form using your
           Application Profile, upload your ATS resume, and submit — while you watch it live.
         </p>
@@ -139,9 +142,10 @@ export default async function JobMatchPage({
         />
       </div>
 
-      <div className="card">
-        <h2 className="font-semibold text-ink mb-2">Job description</h2>
-        <pre className="whitespace-pre-wrap text-sm text-stone font-sans leading-relaxed">
+      {/* Job description */}
+      <div className="glass-card p-6 md:p-8">
+        <h2 className="font-headline font-semibold text-on-background mb-4">Job description</h2>
+        <pre className="whitespace-pre-wrap text-sm text-on-surface-variant font-sans leading-relaxed">
           {job.description ?? 'No description.'}
         </pre>
       </div>
