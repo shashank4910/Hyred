@@ -17,8 +17,9 @@
  *   - Thin amber accent line at the very top edge.
  *   - Name in big bold WHITE.
  *   - Title tagline in amber, ALL CAPS, regular weight.
- *   - Contact info on a SINGLE line with " • " bullet separators, in light
- *     blue-gray on the navy band. Wraps to a second line if too long.
+ *   - Contact info on a SINGLE line with ASCII " | " separators, in light
+ *     blue-gray on the navy band. The font auto-shrinks a touch to stay on one
+ *     line before any wrap. ASCII separators honour design rule #4.
  *   - Body content (sections + bullets) renders below the band on white.
  *   - Each section header has a small amber rule above it.
  *   - All bullets are real "- " text characters in the text stream so
@@ -215,17 +216,21 @@ export function generateBeautifulPdf(resumeText: string): jsPDF {
     y += 16;
   }
 
-  // ── Contact info (single line, bullet separators, light blue-gray) ─────────
-  // Joins phone / email / location / linkedin with " • " separators on a
-  // single line for the look the user asked for. Wraps to a second line if
-  // the joined string is too long for the page width. Each item is still a
-  // separate token in the PDF text stream so ATS parsers extract them
-  // cleanly.
+  // ── Contact info (single clean line, " | " separators, light blue-gray) ────
+  // Joins email / phone / location / linkedin with ASCII " | " separators on
+  // ONE line (the look the user asked for). The font auto-shrinks slightly to
+  // keep everything on a single line before any wrap. ASCII separators (not a
+  // bullet glyph) honour the file's ASCII-only rule and parse cleanly in ATS.
   if (parsed.contactLines.length > 0) {
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.8);
     doc.setTextColor(...C.light);
-    const joined = parsed.contactLines.join('  \u2022  '); // U+2022 BULLET
+    const joined = parsed.contactLines.join('   |   ');
+    let fs = 8.8;
+    doc.setFontSize(fs);
+    while (doc.getTextWidth(joined) > contentW && fs > 7.2) {
+      fs -= 0.3;
+      doc.setFontSize(fs);
+    }
     const wrapped = doc.splitTextToSize(joined, contentW);
     for (const wl of wrapped) {
       if (y > L.headerH - 6) break; // never spill outside the band
