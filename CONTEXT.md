@@ -230,14 +230,18 @@ Shipped the full single-user → multi-user transformation. Anyone can sign up (
 - `scripts/backfill-jds.ts` still single-profile (manual owner maintenance tool).
 - Per-user cron currently re-fetches/re-embeds per profile (cost) → split shared vs per-user in Phase 3.
 
-#### Phase 1 follow-up — duplicate-email sign-in crash FIXED (session 8, PR #56)
+#### Phase 1 follow-up — duplicate-email sign-in crash FIXED (session 8, PR #56 + #58)
 
 **Symptom (Vercel runtime logs):** login succeeded, then the dashboard threw
 `Failed to create profile: duplicate key value violates unique constraint "profiles_email_key"` (`app/(app)/page.js`, digest `943845339`).
 
 **Root cause:** `resolveProfileForUser()` in `lib/current-user.ts` only adopted an existing profile when `user_id IS NULL` (step 2). A profile already owned by a *different* auth identity but sharing the same email (e.g. the same address used via email/password **and** Google) fell through to the step-3 `INSERT` and hit the `profiles_email_key` unique constraint → crash *after* a successful login.
 
-**Fix (PR #56, one file):** new helper `adoptProfileByEmail(sb, email, userId)` selects the oldest profile by `ilike('email', email)`, returns it if `user_id` already matches, else re-points `user_id` to the current user. Step 2 now adopts *any* same-email profile (not just null-`user_id` rows); step 3 inserts and, on a duplicate, falls back to adopting before throwing. `tsc --noEmit` clean + `next build` succeeds (dummy envs).
+**Fix attempt 1 (PR #56, partial):** new helper `adoptProfileByEmail(sb, email, userId)` selects the oldest profile by `ilike('email', email)`, returns it if `user_id` already matches, else re-points `user_id` to the current user. Step 2 now adopts *any* same-email profile (not just null-`user_id` rows); step 3 inserted and, on a duplicate, fell back to adopting before throwing.
+
+**Why #56 wasn't enough:** after #56 deployed, the crash recurred — a **new** digest `4079527518` at `06:50` (the merge of #56 went live `06:41`). Since `resolveProfileForUser` uses the **service-role** client (RLS bypassed) and `profiles.email` is `NOT NULL UNIQUE`, a read-then-`INSERT` guard cannot explain a SELECT-misses-but-INSERT-collides outcome *except* via a **time-of-check/time-of-use race**: on first sign-in the dashboard Server Component renders concurrently (prefetch + navigation), two `resolveProfileForUser` calls both see "no profile", and both `INSERT` — the loser hits `profiles_email_key`.
+
+**Real fix (PR #58, `lib/current-user.ts`):** step 3 now uses an **atomic upsert** — `INSERT ... ON CONFLICT (email) DO UPDATE` (`onConflict: 'email'`, the `profiles_email_key` constraint). Postgres resolves the conflict in one statement: an existing same-email row (concurrent insert, legacy null-`user_id` row, or a row owned by another auth identity for the same address) is re-pointed to this user; otherwise a fresh row is inserted. A duplicate email can no longer crash sign-in. Lesson: for "create-on-first-use" rows, prefer an atomic upsert over read-then-insert. `tsc --noEmit` clean + `next build` succeeds (dummy envs).
 
 ---
 
