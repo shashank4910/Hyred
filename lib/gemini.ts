@@ -569,6 +569,83 @@ export function stripUnauthorizedSkillKeywords(
 }
 
 /**
+ * Mirror of stripUnauthorizedSkillKeywords: a deterministic safety net that
+ * GUARANTEES every keyword the user explicitly selected ends up in the resume.
+ *
+ * Why this exists: the prompt asks the model to weave/append the selected
+ * keywords, but an LLM can silently skip a few when several are selected at
+ * once. Those skipped keywords then stay stuck in the UI's "Will be added next"
+ * bucket even though the user already clicked Optimize - which makes the app
+ * look broken. Re-clicking Optimize is not an acceptable fix, so we close the
+ * gap mechanically here.
+ *
+ * Placement: keywords are appended verbatim (exact selected wording) to the
+ * TECHNICAL SKILLS section - prepended to the first "Category: ..." line so
+ * they surface first (consistent with the prompt's "appear FIRST" rule). If
+ * there is no skills category line we insert one; if there is no TECHNICAL
+ * SKILLS section at all we append a fresh one. Prose bullets are never touched.
+ *
+ * Because we insert the EXACT selected text, keywordInText() matches it on the
+ * re-score, so the chip reliably moves to "Added". Returns the cleaned text and
+ * the keywords actually inserted.
+ */
+export function ensureSelectedKeywordsPresent(
+  text: string,
+  required: string[],
+): { text: string; added: string[] } {
+  if (required.length === 0) return { text, added: [] };
+
+  // Keep only the genuinely-absent selections (case-insensitive, de-duped).
+  const missing: string[] = [];
+  const seen = new Set<string>();
+  for (const kw of required) {
+    const k = kw.trim();
+    if (!k) continue;
+    const lc = k.toLowerCase();
+    if (seen.has(lc)) continue;
+    seen.add(lc);
+    if (!keywordInText(k, text)) missing.push(k);
+  }
+  if (missing.length === 0) return { text, added: [] };
+
+  const lines = text.split('\n');
+
+  // An ALL-CAPS section header alone on a line (e.g. "TECHNICAL SKILLS").
+  const isSectionHeader = (l: string) => {
+    const t = l.trim();
+    return t.length >= 3 && /^[A-Z][A-Z0-9 &/]*$/.test(t) && t === t.toUpperCase();
+  };
+  // A "Label: item, item" skills/category line (same shape strip uses).
+  const catRe = /^(\s*[A-Za-z][A-Za-z0-9 &/+().'-]*:\s*)(.+)$/;
+
+  const skillsHeaderIdx = lines.findIndex(l => /^\s*TECHNICAL SKILLS\s*$/i.test(l));
+
+  // No skills section -> append a fresh one at the end of the resume.
+  if (skillsHeaderIdx === -1) {
+    const block = ['', 'TECHNICAL SKILLS', `Additional Skills: ${missing.join(', ')}`];
+    return { text: [...lines, ...block].join('\n'), added: missing };
+  }
+
+  // Find the first category line inside the section (stop at the next header).
+  let catIdx = -1;
+  for (let i = skillsHeaderIdx + 1; i < lines.length; i++) {
+    if (isSectionHeader(lines[i])) break;
+    if (catRe.test(lines[i])) { catIdx = i; break; }
+  }
+
+  if (catIdx !== -1) {
+    const m = lines[catIdx].match(catRe)!;
+    const existing = m[2].split(',').map(s => s.trim()).filter(Boolean);
+    lines[catIdx] = m[1] + [...missing, ...existing].join(', ');
+    return { text: lines.join('\n'), added: missing };
+  }
+
+  // Skills section exists but has no category line -> insert one under it.
+  lines.splice(skillsHeaderIdx + 1, 0, `Additional Skills: ${missing.join(', ')}`);
+  return { text: lines.join('\n'), added: missing };
+}
+
+/**
  * Clean a job-listing title down to a recruiter-presentable role title.
  * The JD's listing title is full of noise that should never reach the
  * candidate's resume - department codes (CX, RX), version numbers (II, III),
@@ -975,6 +1052,24 @@ CRITICAL: do NOT prefix the output with any header label like "Resume", "RESUME"
     if (survivors.length > 0) {
       console.warn('[generateAtsResume] model injected unselected JD keywords into prose (left intact)',
         JSON.stringify({ survivors }));
+    }
+  }
+
+  // Deterministic guarantee: every keyword the user explicitly selected MUST be
+  // present. The model occasionally skips some when several are selected at once,
+  // which previously left them stuck in the UI's "Will be added next" bucket even
+  // after the user optimized (looks broken). Append any still-missing selection
+  // verbatim to TECHNICAL SKILLS, then re-score so the chip moves to "Added".
+  if (keywordsToAdd.length > 0) {
+    const stillMissing = keywordsToAdd.filter(kw => !keywordInText(kw, resume));
+    if (stillMissing.length > 0) {
+      const ensured = ensureSelectedKeywordsPresent(resume, stillMissing);
+      if (ensured.added.length > 0) {
+        resume = ensured.text;
+        ({ added, alreadyHad, missing } = scoreResume(resume));
+        console.log('[generateAtsResume] force-added selected keywords the model skipped',
+          JSON.stringify({ forced: ensured.added }));
+      }
     }
   }
 
