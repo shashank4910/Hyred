@@ -88,18 +88,40 @@ interface ParsedResume {
   sections: Section[];
 }
 
+const ROLE_TITLE_WORD_RE =
+  /\b(engineer|engineering|tester|testing|developer|development|analyst|architect|consultant|specialist|sdet|sre|administrator|coordinator|lead|manager|designer|technician|scientist|programmer)\b/i;
+
 /**
  * Heuristic: does this line look like an email / phone / URL / city,country?
  * Used to decide whether the second line is a title tagline or contact info.
+ *
+ * IMPORTANT: keep strict — false positives dump the job title into the gray
+ * contact row instead of the amber tagline. iOS PDF viewers often render that
+ * gray-on-navy row as invisible, while desktop Adobe/Chrome show it (looks "fine"
+ * on desktop, "missing title" on iPhone/iPad).
  */
 function looksLikeContactLine(s: string): boolean {
   const t = s.trim();
   if (!t) return true;
-  if (t.includes('@')) return true;                                  // email
-  if (/^\+?\d/.test(t)) return true;                                  // phone
-  if (/(linkedin|github|http|www\.|\.com|\.in|\.io|\.dev)/i.test(t)) return true; // url
-  if (/^[A-Za-z .'-]{3,30},\s*[A-Za-z .'-]{2,30}$/.test(t)) return true; // "City, Country"
+  if (t.includes('@')) return true;
+  if (/^\+?\d[\d\s().-]{6,}/.test(t)) return true;
+  if (/https?:\/\//i.test(t)) return true;
+  if (/^www\./i.test(t)) return true;
+  if (/linkedin\.com|github\.com/i.test(t)) return true;
+  // "City, Country" — NOT "Senior Performance Engineer, CX" (role word before comma).
+  const commaMatch = t.match(/^([A-Za-z .'-]{3,30}),\s*([A-Za-z .'-]{2,30})$/);
+  if (commaMatch && !ROLE_TITLE_WORD_RE.test(commaMatch[1]) && commaMatch[1].length <= 24) {
+    return true;
+  }
   return false;
+}
+
+function looksLikeJobTitleLine(s: string): boolean {
+  const t = s.split('|')[0].trim();
+  if (t.length < 3 || t.length > 80) return false;
+  if (looksLikeContactLine(t)) return false;
+  if (KNOWN_BODY_SECTION.test(t)) return false;
+  return ROLE_TITLE_WORD_RE.test(t);
 }
 
 function parse(text: string): ParsedResume {
@@ -165,9 +187,33 @@ function parse(text: string): ParsedResume {
   return { name, title, contactLines, sections };
 }
 
+/** Recover title when it was mis-filed as a contact line (comma/heuristic false +). */
+function finalizeParsedHeader(parsed: ParsedResume): ParsedResume {
+  let { title, contactLines } = parsed;
+  if (!title && contactLines.length > 0 && looksLikeJobTitleLine(contactLines[0])) {
+    title = contactLines[0].split('|')[0].trim();
+    contactLines = contactLines.slice(1);
+  }
+  return { ...parsed, title, contactLines };
+}
+
+function measureContactBlockHeight(doc: jsPDF, contactLines: string[]): number {
+  if (contactLines.length === 0) return 0;
+  const joined = contactLines.join('   |   ');
+  let fs = 8.8;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(fs);
+  while (doc.getTextWidth(joined) > contentW && fs > 7.2) {
+    fs -= 0.3;
+    doc.setFontSize(fs);
+  }
+  const wrapped = doc.splitTextToSize(joined, contentW);
+  return wrapped.length * 11;
+}
+
 /** Exposed for deterministic header-parse verification. */
 export function parseResumePlainText(text: string): ParsedResume {
-  return parse(asciiSafe(text));
+  return finalizeParsedHeader(parse(asciiSafe(text)));
 }
 
 function isSectionHeader(line: string): boolean {
@@ -199,7 +245,16 @@ function asciiSafe(s: string): string {
 
 export function generateBeautifulPdf(resumeText: string): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
-  const parsed = parse(asciiSafe(resumeText));
+  const parsed = finalizeParsedHeader(parse(asciiSafe(resumeText)));
+
+  // Size the navy band to fit name + amber title + contacts (fixed 98pt clipped
+  // wrapped contact rows on some mobile PDF viewers).
+  doc.setFont('helvetica', 'normal');
+  let headerH = 32;
+  if (parsed.name) headerH += 22;
+  if (parsed.title) headerH += 16;
+  headerH += measureContactBlockHeight(doc, parsed.contactLines);
+  headerH = Math.max(L.headerH, headerH + 10);
 
   // Set explicit PDF metadata so PDF viewers don't fall back to a generic
   // "Resume" or filename-derived title in their header bar.
@@ -211,9 +266,8 @@ export function generateBeautifulPdf(resumeText: string): jsPDF {
   });
 
   // ── Dark navy header band ──────────────────────────────────────────────────
-  // Matches the user's preferred original-resume header layout.
   doc.setFillColor(...C.headerBg);
-  doc.rect(0, 0, L.pageW, L.headerH, 'F');
+  doc.rect(0, 0, L.pageW, headerH, 'F');
 
   // Thin amber accent line at the very top of the navy band.
   doc.setFillColor(...C.accent);
@@ -256,14 +310,14 @@ export function generateBeautifulPdf(resumeText: string): jsPDF {
     }
     const wrapped = doc.splitTextToSize(joined, contentW);
     for (const wl of wrapped) {
-      if (y > L.headerH - 6) break; // never spill outside the band
+      if (y > headerH - 6) break;
       doc.text(wl, L.mL, y);
       y += 11;
     }
   }
 
   // Body content starts below the navy band on white background.
-  y = L.headerH + 22;
+  y = headerH + 22;
 
   // ── Body sections ──────────────────────────────────────────────────────────
   for (let si = 0; si < parsed.sections.length; si++) {

@@ -58,7 +58,7 @@ export function JobActions({
   const [atsResume, setAtsResume] = useState('');
   const [generatingResume, setGeneratingResume] = useState(false);
   const [resumeCopied, setResumeCopied] = useState(false);
-  const [filenameBase, setFilenameBase] = useState<string>('Resume');
+  const [filenameBase, setFilenameBase] = useState<string>('Shashank_Performance_7.7');
   const [keywords, setKeywords] = useState<GenResult>(null);
   // Change in ATS score vs the previous optimize (for the +N / -N badge).
   const [scoreDelta, setScoreDelta] = useState<number | null>(null);
@@ -289,8 +289,23 @@ export function JobActions({
     const id = toast.loading('Generating beautiful PDF...');
     try {
       const { generateBeautifulPdf } = await import('@/lib/pdf-resume');
-      const doc = generateBeautifulPdf(editedResume || atsResume);
-      doc.save(`${filenameBase}.pdf`);
+      const text = editedResume || atsResume;
+      const doc = generateBeautifulPdf(text);
+      const filename = `${filenameBase}.pdf`;
+
+      // iOS Safari (iPhone/iPad) often ignores jsPDF doc.save(); blob + anchor
+      // opens the system PDF preview reliably with the same bytes as desktop.
+      const blob = doc.output('blob');
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+
       toast.success('PDF downloaded!', { id });
     } catch (e) {
       toast.error(`PDF generation failed: ${(e as Error).message}`, { id });
