@@ -69,6 +69,9 @@ export function JobActions({
   const [jdKeywords, setJdKeywords] = useState<string[]>([]);
   const [alreadyHaveKeywords, setAlreadyHaveKeywords] = useState<string[]>([]);
   const [selectedKeywords, setSelectedKeywords] = useState<string[]>([]);
+  // LLM-decided keyword types (tool vs activity), keyed by keyword. Ferried back
+  // to the POST so placement is driven by the model's judgement, not a heuristic.
+  const [keywordTypes, setKeywordTypes] = useState<Record<string, string>>({});
   const [loadingKeywords, setLoadingKeywords] = useState(false);
   const [keywordsLoaded, setKeywordsLoaded] = useState(false);
 
@@ -83,6 +86,7 @@ export function JobActions({
         if (d?.keywords) {
           setJdKeywords(d.keywords);
           setAlreadyHaveKeywords(d.alreadyHave ?? []);
+          setKeywordTypes(d.keywordTypes ?? {});
           setSelectedKeywords([]);
           setKeywordsLoaded(true);
         }
@@ -211,6 +215,7 @@ export function JobActions({
         body: JSON.stringify({
           selectedKeywords: selectedKeywords.length > 0 ? selectedKeywords : undefined,
           jdKeywords: jdKeywords.length > 0 ? jdKeywords : undefined,
+          keywordTypes: Object.keys(keywordTypes).length > 0 ? keywordTypes : undefined,
         }),
       });
       const data = await res.json();

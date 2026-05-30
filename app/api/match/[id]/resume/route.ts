@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { getCurrentProfile } from '@/lib/current-user';
 import { ensureFullDescription } from '@/lib/jd-fetcher';
-import { generateAtsResume, extractJdKeywords, keywordInText } from '@/lib/gemini';
+import { generateAtsResume, extractJdKeywordsTyped, keywordInText, type KeywordType } from '@/lib/gemini';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -43,18 +43,24 @@ export async function GET(
     jobId: job.id, currentDescription: job.description, url: job.url,
   });
 
-  if (!fullDescription) return NextResponse.json({ keywords: [], alreadyHave: [] });
+  if (!fullDescription) return NextResponse.json({ keywords: [], alreadyHave: [], keywordTypes: {} });
 
-  // LLM-based extraction — same function the generator uses
-  const jdKeywords = await extractJdKeywords({
+  // LLM-based extraction + per-keyword type (tool vs activity) — the same
+  // typed function the generator uses. The type is decided by the model here,
+  // once, and ferried to the POST so placement stays consistent and scalable.
+  const typed = await extractJdKeywordsTyped({
     jobTitle: job.title,
     jobDescription: fullDescription,
   });
 
-  // Fall back to the job's existing tags if the LLM returned nothing
-  const finalKeywords = jdKeywords.length > 0
-    ? jdKeywords
-    : (job.tags ?? []);
+  // Fall back to the job's existing tags if the LLM returned nothing.
+  const finalTyped = typed.length > 0
+    ? typed
+    : (job.tags ?? []).map((t) => ({ keyword: t, type: 'activity' as KeywordType }));
+
+  const keywordTypes: Record<string, KeywordType> = {};
+  for (const t of finalTyped) keywordTypes[t.keyword] = t.type;
+  const finalKeywords = finalTyped.map((t) => t.keyword);
 
   // Whole-token matching (keywordInText) — same matcher the generator uses for
   // its ATS score — so the picker's "already have" split agrees with the
@@ -71,6 +77,7 @@ export async function GET(
   return NextResponse.json({
     keywords: [...new Set([...available, ...alreadyHave])],
     alreadyHave: [...new Set(alreadyHave)],
+    keywordTypes,
   });
 }
 
@@ -98,6 +105,9 @@ export async function POST(
   // picker (GET) and the result (POST) due to LLM non-determinism, making chips
   // appear/disappear after optimizing. It also saves one LLM call per generate.
   let clientJdKeywords: string[] = [];
+  // LLM-decided keyword types (tool vs activity), captured by the GET route and
+  // sent back so placement is driven by the model's judgement, not a heuristic.
+  let clientKeywordTypes: Record<string, KeywordType> = {};
   try {
     const body = await req.json();
     if (Array.isArray(body?.selectedKeywords)) {
@@ -108,6 +118,11 @@ export async function POST(
     }
     if (Array.isArray(body?.jdKeywords)) {
       clientJdKeywords = body.jdKeywords.map(String).slice(0, 60);
+    }
+    if (body?.keywordTypes && typeof body.keywordTypes === 'object') {
+      for (const [k, v] of Object.entries(body.keywordTypes as Record<string, unknown>)) {
+        if (v === 'tool' || v === 'activity') clientKeywordTypes[k] = v;
+      }
     }
   } catch { /* no body */ }
 
@@ -165,6 +180,7 @@ export async function POST(
     selectedKeywords,
     excludedKeywords,
     jdKeywords: clientJdKeywords.length > 0 ? clientJdKeywords : undefined,
+    keywordTypes: Object.keys(clientKeywordTypes).length > 0 ? clientKeywordTypes : undefined,
   });
 
   if (!result.resume || result.resume.length < 200) {

@@ -432,25 +432,35 @@ INVARIANTS: matched ∪ missing = jdRequirements, matched ∩ missing = ∅`;
   return { matched: dedupe(matched).slice(0, 15), missing: dedupe(missing).slice(0, 8) };
 }
 
+// A keyword's placement type, decided by the LLM at extraction time (NOT by a
+// hardcoded word list). "tool" => belongs in TECHNICAL SKILLS; "activity" =>
+// an activity / methodology / metric / concept that belongs in prose / CORE
+// COMPETENCIES, never in the tools list.
+export type KeywordType = 'tool' | 'activity';
+export type TypedKeyword = { keyword: string; type: KeywordType };
+
 /**
- * Extract ATS-relevant keywords from a specific job description using the LLM.
- * Used as Pass 1 of the two-pass ATS resume generation: we first identify
- * what THIS specific JD is asking for, then we tailor the resume around those
- * keywords. This is what makes the resume genuinely "tailored per JD" rather
- * than "padded with a static perf-eng keyword list".
+ * Extract ATS-relevant keywords from a job description AND classify each one as
+ * a "tool" (named product/technology) or an "activity" (everything else). The
+ * LLM does the classification because it understands any tool/activity in any
+ * domain - this scales to the whole world of jobs, unlike a hardcoded list. The
+ * type travels with each keyword so downstream placement (skills vs prose) is
+ * driven by the model's judgement, with the keyword-shape heuristic kept only as
+ * a fallback for keywords that arrive without a type.
  */
-export async function extractJdKeywords(args: {
+export async function extractJdKeywordsTyped(args: {
   jobTitle: string;
   jobDescription: string;
-}): Promise<string[]> {
+}): Promise<TypedKeyword[]> {
   if (!args.jobDescription || args.jobDescription.length < 50) return [];
 
-  const userPrompt = `Extract the ATS-relevant keywords from this job description.
+  const userPrompt = `Extract the ATS-relevant keywords from this job description AND classify each one.
 
-ATS keywords are the specific tools, technologies, frameworks, methodologies,
-certifications, and named processes an automated resume scanner would search
-for. Skip vague soft-skill phrases ("strong communicator", "team player",
-"self-starter").
+ATS keywords are the specific tools, technologies, frameworks, methodologies, certifications, testing types, metrics, and named processes an automated resume scanner would search for. Skip vague soft-skill phrases ("strong communicator", "team player", "self-starter").
+
+For EACH keyword set "type":
+- "tool"     = a concrete, NAMED tool / technology / framework / programming language / platform / library / product (e.g. JMeter, LoadRunner, Splunk, Kubernetes, Python, SoapUI, Grafana). These belong in a TECHNICAL SKILLS list.
+- "activity" = anything that is NOT a named product: an activity / testing type / methodology / metric / concept / process / certification / domain term (e.g. load testing, stress testing, baseline testing, distributed systems, KPI, SLA, Agile, Shift-Left Testing, troubleshooting). These belong in prose or a competencies section, NOT in a tools list.
 
 JOB TITLE: ${args.jobTitle}
 
@@ -458,22 +468,17 @@ JOB DESCRIPTION:
 ${args.jobDescription.slice(0, 7000)}
 
 RULES:
-- Use the EXACT phrasing from the JD whenever possible (e.g., if the JD says
-  "JMeter" return "JMeter", not "Apache JMeter"; if it says "load testing"
-  return "load testing", not "performance testing").
-- Include tool/framework names: JMeter, Kubernetes, Splunk, Dynatrace, etc.
-- Include methodologies: Shift-Left Testing, TDD, Agile, etc.
-- Include certifications when explicitly mentioned: PMP, AWS Certified, etc.
-- Include named domain abbreviations: NFR, SLA, SLO, BFSI, etc.
+- Use the EXACT phrasing from the JD whenever possible (e.g. "JMeter" not "Apache JMeter"; "load testing" not "performance testing").
 - Each keyword: 1-3 words max.
 - Order by importance: most-mentioned + must-have requirements first.
 - Skip generic words: "communication", "leadership", "passion", "ownership".
 - Aim for 18-25 keywords. Fewer is fine if the JD is short.
+- When unsure whether something is a named product, classify it as "activity".
 
-Return strict JSON: {"keywords": ["keyword1", "keyword2", ...]}`;
+Return strict JSON: {"keywords": [{"keyword": "JMeter", "type": "tool"}, {"keyword": "load testing", "type": "activity"}]}`;
 
   const text = await chat(
-    'You extract ATS keywords from job descriptions. Output JSON only.',
+    'You extract ATS keywords from job descriptions and classify each as a "tool" (named product) or "activity" (everything else). Output JSON only.',
     userPrompt,
     0.1,
     true,
@@ -482,13 +487,41 @@ Return strict JSON: {"keywords": ["keyword1", "keyword2", ...]}`;
   try {
     const parsed = JSON.parse(text);
     const list: unknown[] = Array.isArray(parsed.keywords) ? parsed.keywords : [];
-    const cleaned: string[] = list
-      .map((v) => String(v).trim())
-      .filter((s) => s.length >= 2 && s.length <= 60);
-    return [...new Set(cleaned)].slice(0, 25);
+    const out: TypedKeyword[] = [];
+    const seen = new Set<string>();
+    for (const item of list) {
+      // Accept both {keyword,type} objects and bare strings (model-drift safety).
+      let keyword = '';
+      let type: KeywordType = 'activity';
+      if (typeof item === 'string') {
+        keyword = item.trim();
+      } else if (item && typeof item === 'object') {
+        const o = item as Record<string, unknown>;
+        keyword = String(o.keyword ?? o.name ?? '').trim();
+        type = o.type === 'tool' ? 'tool' : 'activity';
+      }
+      if (keyword.length < 2 || keyword.length > 60) continue;
+      const lc = keyword.toLowerCase();
+      if (seen.has(lc)) continue;
+      seen.add(lc);
+      out.push({ keyword, type });
+    }
+    return out.slice(0, 25);
   } catch {
     return [];
   }
+}
+
+/**
+ * Backward-compatible string-only view of extractJdKeywordsTyped. Existing
+ * callers that only need the keyword text keep working unchanged.
+ */
+export async function extractJdKeywords(args: {
+  jobTitle: string;
+  jobDescription: string;
+}): Promise<string[]> {
+  const typed = await extractJdKeywordsTyped(args);
+  return typed.map((t) => t.keyword);
 }
 
 /**
@@ -982,6 +1015,7 @@ export async function generateAtsResume(args: {
   selectedKeywords?: string[];
   excludedKeywords?: string[]; // user-specified keywords that MUST NOT appear
   jdKeywords?: string[]; // optional: caller can supply pre-extracted keywords
+  keywordTypes?: Record<string, KeywordType>; // optional: LLM-decided tool/activity tags, keyed by keyword
 }): Promise<{
   resume: string;
   ats_match_score: number;
@@ -993,12 +1027,37 @@ export async function generateAtsResume(args: {
   const { selectedKeywords = [], excludedKeywords = [] } = args;
 
   // ── Pass 1: extract JD-specific keywords (unless caller already did) ────────
-  const jdKeywords = args.jdKeywords?.length
-    ? args.jdKeywords
-    : await extractJdKeywords({
-        jobTitle: args.jobTitle,
-        jobDescription: args.jobDescription,
-      });
+  // typeMap (lowercased keyword -> 'tool'|'activity') is the LLM's placement
+  // judgement. It is the source of truth for skills-vs-prose placement; the
+  // keyword-shape heuristic (isSkillLikeKeyword) is only a fallback for keywords
+  // that arrive without an LLM type.
+  const typeMap = new Map<string, KeywordType>();
+  let jdKeywords: string[];
+  if (args.jdKeywords?.length) {
+    jdKeywords = args.jdKeywords;
+  } else {
+    const typed = await extractJdKeywordsTyped({
+      jobTitle: args.jobTitle,
+      jobDescription: args.jobDescription,
+    });
+    jdKeywords = typed.map(t => t.keyword);
+    for (const t of typed) typeMap.set(t.keyword.toLowerCase(), t.type);
+  }
+  // Client-supplied tags (captured at extraction time in the GET route) are
+  // authoritative when present.
+  if (args.keywordTypes) {
+    for (const [k, v] of Object.entries(args.keywordTypes)) {
+      if (v === 'tool' || v === 'activity') typeMap.set(k.toLowerCase(), v);
+    }
+  }
+
+  // Placement decision: prefer the LLM's tag; fall back to the keyword-shape
+  // heuristic only when no tag exists for this keyword.
+  const isToolKeyword = (kw: string): boolean => {
+    const t = typeMap.get(kw.toLowerCase());
+    if (t) return t === 'tool';
+    return isSkillLikeKeyword(kw);
+  };
 
   // Split the keyword universe by role.
   //   - keywordsToAdd   = ONLY what the user explicitly selected (minus excluded).
@@ -1263,8 +1322,8 @@ CRITICAL: do NOT prefix the output with any header label like "Resume", "RESUME"
       // COMPETENCIES (never force-listed as a technical skill). After this,
       // every selected keyword is guaranteed present.
       stillMissing = keywordsToAdd.filter(kw => !keywordInText(kw, resume));
-      const toolLeftovers = stillMissing.filter(isSkillLikeKeyword);
-      const proseLeftovers = stillMissing.filter(kw => !isSkillLikeKeyword(kw));
+      const toolLeftovers = stillMissing.filter(isToolKeyword);
+      const proseLeftovers = stillMissing.filter(kw => !isToolKeyword(kw));
       if (toolLeftovers.length > 0) {
         const ensured = ensureSelectedKeywordsPresent(resume, toolLeftovers);
         if (ensured.added.length > 0) {
