@@ -1,6 +1,6 @@
 import { LoginForm } from './LoginForm';
 
-export const metadata = { title: 'Sign in · JobRadar' };
+export const metadata = { title: 'Sign in' };
 
 export default async function LoginPage({
   searchParams,
@@ -13,11 +13,11 @@ export default async function LoginPage({
       <div className="w-full max-w-sm space-y-6">
         <div className="text-center space-y-2">
           <div className="inline-flex items-center justify-center h-14 w-14 rounded-card bg-amber/10 text-amber text-xl font-bold mx-auto">
-            JR
+            H
           </div>
-          <h1 className="text-heading-sm font-semibold text-ink">JobRadar</h1>
+          <h1 className="text-heading-sm font-semibold text-ink">Hyred</h1>
           <p className="text-body-sm text-stone">
-            AI-curated job matches from across the web.
+            AI that matches you to the right jobs and gets you Hyred.
           </p>
         </div>
         <LoginForm next={sp.next} />

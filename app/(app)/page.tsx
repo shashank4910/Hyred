@@ -305,7 +305,7 @@ function EmptyOnboarding() {
       <div className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-primary-fixed text-primary mx-auto">
         <Sparkles className="h-7 w-7" />
       </div>
-      <h1 className="font-headline text-headline-md font-bold text-on-background">Welcome to JobRadar</h1>
+      <h1 className="font-headline text-headline-md font-bold text-on-background">Welcome to Hyred</h1>
       <p className="text-on-surface-variant text-body-md max-w-sm mx-auto">
         Upload your resume so we can start finding matches that fit your
         experience.

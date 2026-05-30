@@ -1,6 +1,6 @@
 import { ImportForm } from './ImportForm';
 
-export const metadata = { title: 'Import job · JobRadar' };
+export const metadata = { title: 'Import job' };
 
 export default function ImportPage() {
   return (

@@ -299,7 +299,7 @@
         if (!/^(submit|apply|send|continue)/.test(text)) return;
         // Fire-and-forget; don't block the click.
         send('markApplied', { match_id: matchId });
-        toast('Marked as applied in JobRadar ✓', 'ok');
+        toast('Marked as applied in Hyred ✓', 'ok');
       },
       true,
     );
@@ -323,7 +323,7 @@
       const ping = await send('ping');
       if (!ping?.connected) {
         toast(
-          'Not connected. Open the JobRadar extension popup and sign in.',
+          'Not connected. Open the Hyred extension popup and sign in.',
           'warn',
           6000,
         );
@@ -388,7 +388,7 @@
     const fab = document.createElement('button');
     fab.id = 'jobradar-fab';
     fab.type = 'button';
-    fab.title = 'Autofill with JobRadar';
+          fab.title = 'Autofill with Hyred';
     fab.innerHTML =
       '<span class="jr-logo">JR</span><span class="jr-label">Autofill</span>';
     fab.addEventListener('click', () => runAutofill());

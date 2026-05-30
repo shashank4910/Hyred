@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "JobRadar Autofill",
+  "name": "Hyred Autofill",
   "version": "0.1.1",
-  "description": "AI-powered job application autofill, cover letter injection, and screening Q&A. Pairs with your JobRadar app.",
+  "description": "AI-powered job application autofill, cover letter injection, and screening Q&A. Pairs with your Hyred app.",
   "permissions": ["storage", "activeTab", "scripting", "tabs"],
   "host_permissions": ["<all_urls>"],
   "background": {
@@ -20,7 +20,7 @@
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "JobRadar Autofill"
+    "default_title": "Hyred Autofill"
   },
   "web_accessible_resources": [
     {

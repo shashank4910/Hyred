@@ -38,7 +38,7 @@ export function MatchCard({ matchId, score, reason, status, bookmarked: initialB
   const fullDate = formatFullDate(dateSource);
   const isAdded = !job.posted_at && !!job.fetched_at;
   const tooltip = isAdded
-    ? `Added to JobRadar on ${fullDate} (source did not provide a posted date)`
+    ? `Added to Hyred on ${fullDate} (source did not provide a posted date)`
     : `Posted on the source on ${fullDate}`;
   const isViewed = status === 'viewed' || (status !== 'new');
   const [bookmarked, setBookmarked] = useState(initialBookmarked);

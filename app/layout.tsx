@@ -3,8 +3,8 @@ import { Toaster } from 'sonner';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'JobRadar',
-  description: 'AI-curated job matches from across the web.',
+  title: { default: 'Hyred', template: '%s · Hyred' },
+  description: 'AI that matches you to the right jobs and tailors your resume to get you Hyred.',
   robots: 'noindex, nofollow',
 };
 

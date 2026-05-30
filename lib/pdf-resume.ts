@@ -195,7 +195,7 @@ export function generateBeautifulPdf(resumeText: string): jsPDF {
     title: parsed.name || '',
     author: parsed.name || '',
     subject: parsed.title || '',
-    creator: 'JobRadar',
+    creator: 'Hyred',
   });
 
   // ── Dark navy header band ──────────────────────────────────────────────────
