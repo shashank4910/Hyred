@@ -564,7 +564,30 @@ const ROLE_TITLE_WORD_RE =
   /\b(engineer|engineering|tester|testing|developer|development|analyst|architect|consultant|specialist|sdet|sre|administrator|coordinator|lead|manager|designer|technician|scientist|programmer)\b/i;
 
 const EXPERIENCE_SECTION_RE =
-  /^PROFESSIONAL EXPERIENCE$|^WORK EXPERIENCE$|^WORK HISTORY$|^EMPLOYMENT$|^EXPERIENCE$/i;
+  /^(PROFESSIONAL EXPERIENCE|WORK EXPERIENCE|WORK HISTORY|EMPLOYMENT|EXPERIENCE|CAREER HISTORY|RELEVANT EXPERIENCE)$/i;
+
+const DATE_IN_LINE_RE =
+  /\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\b|\b\d{4}\b|Present|Current/i;
+
+function isResumeSectionHeader(line: string): boolean {
+  const t = line.trim();
+  if (t.length < 3 || t.length > 60) return false;
+  return /^[A-Z][A-Z\s&/-]+$/.test(t);
+}
+
+function findExperienceSectionIndex(lines: string[]): number {
+  const exact = lines.findIndex((l) => EXPERIENCE_SECTION_RE.test(l.trim()));
+  if (exact >= 0) return exact;
+  // PDF uploads often use mixed-case headers like "Work Experience" or
+  // "Professional experience" that still need to match.
+  return lines.findIndex((l) => {
+    const t = l.trim();
+    return t.length >= 8 &&
+      t.length <= 40 &&
+      /\b(experience|employment|career)\b/i.test(t) &&
+      !t.startsWith('-');
+  });
+}
 
 function looksLikeResumeContactLine(s: string): boolean {
   const t = s.trim();
@@ -592,6 +615,16 @@ function parseJobHeaderTitle(line: string): string | null {
     if (title.length >= 3 && title.length <= 80) return title;
   }
 
+  // Common PDF layout: title on its own line (no pipes), often before dates/company.
+  if (
+    t.length >= 3 &&
+    t.length <= 80 &&
+    !DATE_IN_LINE_RE.test(t) &&
+    ROLE_TITLE_WORD_RE.test(t)
+  ) {
+    return t.split('|')[0].trim();
+  }
+
   return null;
 }
 
@@ -607,29 +640,106 @@ function extractCurrentRoleTitleFromResume(resume: string): string | null {
 
   // Generated / structured resumes: line 2 is often the title tagline.
   if (lines.length >= 2) {
-    const line2 = lines[1];
+    const line2 = lines[1].split('|')[0].trim();
     if (
       !looksLikeResumeContactLine(line2) &&
-      line2.length >= 4 &&
-      line2.length <= 70 &&
-      ROLE_TITLE_WORD_RE.test(line2)
+      !isResumeSectionHeader(line2) &&
+      line2.length >= 3 &&
+      line2.length <= 80 &&
+      !DATE_IN_LINE_RE.test(line2)
     ) {
       return line2;
     }
   }
 
-  const expIdx = lines.findIndex((l) => EXPERIENCE_SECTION_RE.test(l));
+  const expIdx = findExperienceSectionIndex(lines);
   if (expIdx >= 0) {
     for (let i = expIdx + 1; i < lines.length; i++) {
       const line = lines[i];
-      if (/^[A-Z][A-Z\s&/-]+$/.test(line) && line.length <= 60) break;
-      const title = parseJobHeaderTitle(line);
-      if (title) return title;
+      if (isResumeSectionHeader(line)) break;
+      if (line.startsWith('-') || /^Client:/i.test(line)) continue;
+
+      const parsed = parseJobHeaderTitle(line);
+      if (parsed) return parsed;
+
+      // PDF layout: company line then title line, or title then dates.
+      const next = lines[i + 1]?.trim() ?? '';
+      const bare = line.split('|')[0].trim();
+      if (
+        bare.length >= 3 &&
+        bare.length <= 80 &&
+        ROLE_TITLE_WORD_RE.test(bare) &&
+        !DATE_IN_LINE_RE.test(bare)
+      ) {
+        if (
+          DATE_IN_LINE_RE.test(next) ||
+          next.startsWith('-') ||
+          parseJobHeaderTitle(next) !== null
+        ) {
+          return bare;
+        }
+        // First role-like line after experience header is usually current title.
+        return bare;
+      }
     }
   }
 
   return null;
 }
+
+/**
+ * Deterministic guarantee: line 2 of the generated resume MUST be the role
+ * title when we resolved one. The LLM sometimes drops it despite the prompt.
+ */
+function ensureContactBlockTitle(
+  text: string,
+  candidateName: string,
+  title: string,
+): { text: string; inserted: boolean } {
+  const roleTitle = title.trim();
+  const name = candidateName.trim();
+  if (!roleTitle || !name) return { text, inserted: false };
+
+  const lines = text.split('\n');
+  let nameIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (!t || HEADER_LABELS_TO_SKIP.test(t)) continue;
+    nameIdx = i;
+    break;
+  }
+  if (nameIdx < 0) return { text, inserted: false };
+
+  // Ensure line 1 is the candidate name (LLM sometimes drifts).
+  if (lines[nameIdx].trim() !== name) {
+    lines[nameIdx] = name;
+  }
+
+  let insertAt = nameIdx + 1;
+  while (insertAt < lines.length && !lines[insertAt].trim()) insertAt++;
+
+  if (insertAt >= lines.length) {
+    lines.splice(nameIdx + 1, 0, '', roleTitle);
+    return { text: lines.join('\n'), inserted: true };
+  }
+
+  const line2 = lines[insertAt].trim();
+  if (line2.toLowerCase() === roleTitle.toLowerCase()) {
+    return { text: lines.join('\n'), inserted: false };
+  }
+
+  if (looksLikeResumeContactLine(line2) || isResumeSectionHeader(line2)) {
+    lines.splice(insertAt, 0, roleTitle);
+    return { text: lines.join('\n'), inserted: true };
+  }
+
+  // Wrong/missing title on line 2 — replace in place.
+  lines[insertAt] = roleTitle;
+  return { text: lines.join('\n'), inserted: true };
+}
+
+/** Skip labels the PDF parser also ignores (shared with pdf-resume.ts). */
+const HEADER_LABELS_TO_SKIP = /^(resume|curriculum\s+vitae|cv|profile|c\.?v\.?)$/i;
 
 /**
  * Resolve the title to align the candidate's current role with the JD.
@@ -1473,6 +1583,21 @@ CRITICAL: do NOT prefix the output with any header label like "Resume", "RESUME"
   const ats_match_score = scoredJd.length > 0
     ? Math.round((present / scoredJd.length) * 100)
     : 0;
+
+  // Deterministic guarantee: never ship a PDF with a blank title band because
+  // the LLM dropped line 2 despite the contact block in the prompt.
+  if (targetCurrentRoleTitle) {
+    const titleFix = ensureContactBlockTitle(
+      resume,
+      candidateName,
+      targetCurrentRoleTitle,
+    );
+    if (titleFix.inserted) {
+      resume = titleFix.text;
+      console.log('[generateAtsResume] ensured contact block title on line 2',
+        JSON.stringify({ title: targetCurrentRoleTitle }));
+    }
+  }
 
   console.log('[generateAtsResume] result',
     JSON.stringify({ ats_match_score, added, alreadyHad_count: alreadyHad.length, missing }));
