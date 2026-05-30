@@ -331,8 +331,9 @@ export function JobActions({
     }
   }
 
-  // One-click: stage all currently-missing keywords (merged from both
-  // skills.missing and keywords.missing) and regenerate.
+  // One-click: stage all currently-missing keywords (from the generator's
+  // keywords.missing, filtered by excluded — see allMissingKeywords) and
+  // regenerate.
   async function addAllMissingAndRegenerate() {
     if (!allMissingKeywords.length) return;
     await regenerateInPlace(allMissingKeywords);
