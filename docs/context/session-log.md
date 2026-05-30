@@ -2,6 +2,39 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 11 — ATS keyword GUARANTEE (selected keywords must land) + LLM-typed placement + resume header polish (May 30, 2026)
+
+Three threads: (a) guarantee every user-selected keyword actually lands in the regenerated resume, (b) make the tool-vs-activity placement decision scale (move it off hardcoded lists onto the LLM), and (c) a visual/ATS review + a header layout fix. PRs #67, #69, #70 (code) and #71 (PDF header).
+
+### (a) Selected keywords were silently dropped after regenerate (PRs #67, #69)
+
+**Symptom (owner, with screenshots):** the owner ticked ~5-6 missing keywords, hit Optimize, and after regeneration several were STILL listed as "Will be added next" and were genuinely absent from the resume text. Re-clicking Optimize was rejected as a fix — "the user thinks the app is broken; it must land on the first try."
+
+**Root cause:** the prompt *asked* the model to weave selected keywords in, but the LLM is non-deterministic and quietly skipped some — especially **prose-type** keywords (activities/metrics/concepts like "load testing", "stress testing", "KPI") that don't fit a `Category: tool, tool` skills line. There was no code-level guarantee; a skipped keyword just stayed "missing".
+
+**Fix — deterministic safety net in `lib/gemini.ts` (runs after the LLM + the unauthorized-strip pass):**
+- `ensureSelectedKeywordsPresent(text, required)` — appends any still-missing **tool-like** selected keywords to a `TECHNICAL SKILLS` category line (last resort for tools only).
+- `ensureCompetencyKeywordsPresent(text, required)` — guarantees **activity/metric/concept** keywords by adding them to a `CORE COMPETENCIES` section (created if absent). This was the actual regression fix: an earlier pass only *logged* a warning for prose leftovers instead of inserting them, so they vanished.
+- After either insert, the resume is re-scored so the UI's added/missing buckets reflect reality. Net effect: **100% of selected keywords are present after one Optimize**, placed by kind (tools→skills, activities→competencies).
+
+### (b) Hardcoded tool/activity lists don't scale → LLM decides the type (PR #70, the "clean design")
+
+The session-9/#69 placement relied on heuristics (`isSkillLikeKeyword` + small hardcoded `KNOWN_TOOL_PHRASES` like "soap ui", "load runner"). The owner correctly flagged this won't scale — there are thousands of tools ("New Relic", "k6", "Cavisson NetStorm" …) and the list will always be incomplete in production.
+
+Clean design shipped:
+- New `extractJdKeywordsTyped()` (`lib/gemini.ts`) — the SAME LLM pass that extracts JD keywords now also tags each one `type: 'tool' | 'activity'`. Types: `KeywordType`, `TypedKeyword`. `extractJdKeywords()` is now a thin wrapper returning just the strings (back-compat).
+- The type map is plumbed end-to-end so it survives the client round-trip: GET `route.ts` returns `keywordTypes`; `JobActions.tsx` stores it in state and echoes it back on the Optimize POST; POST passes `keywordTypes` into `generateAtsResume()`.
+- Inside `generateAtsResume()`, `isToolKeyword(kw)` now **trusts the LLM's type first** (`typeMap.get(kw)`), and only falls back to the `isSkillLikeKeyword` heuristic when no type is present. So placement (skills vs competencies) is LLM-driven and scalable; the hardcoded lists are a last-resort fallback, not the primary path.
+
+### (c) Visual / ATS review + header layout (PR #71)
+
+**ATS review verdict — no blockers.** Evidence-based: extracting the text from the owner's `SHASHANK_Qa_7.pdf` yielded every field cleanly (name, title, all four contact items, section headers, and real `- ` bullets), which proves the PDF is true selectable text — not an image — and that the navy header band does NOT hide the contact info from parsers. Single-column, Helvetica, standard headings (PROFESSIONAL SUMMARY / KEY ACHIEVEMENTS / CORE COMPETENCIES / TECHNICAL SKILLS / CERTIFICATIONS / PROFESSIONAL EXPERIENCE / EDUCATION), reverse-chronological, consistent `Mon YYYY` dates, no tables/columns/text-boxes. Advisory-only (not ATS blockers): 3 pages is long for ~7.7 yrs; `CORE COMPETENCIES` items render lowercase (cosmetic, a side-effect of the keyword-guarantee insert); the `-- N of M --` lines seen in text extraction are the extractor's page markers, not content in the PDF.
+
+**Header fix (`lib/pdf-resume.ts`).** Contact details now render on ONE clean line under the name/title using ASCII `" | "` separators (the file's own design rule #4 is ASCII-only; the previous code used a literal `•` bullet glyph, which is non-ASCII). The font auto-shrinks slightly (8.8pt → 7.2pt floor) to keep the whole line on a single row before any wrap. Older downloaded PDFs that showed contacts stacked as a paragraph predate this; regenerate after deploy to get the single line.
+
+### Verified
+`npm run typecheck` clean for all four PRs. PRs #67, #69, #70 merged (keyword guarantee + LLM-typed placement); #71 merged (header). Two new `## Known Pitfalls` rows added to `CONTEXT.md`.
+
 ## Session 10 — ATS keyword feature: injection root-cause fix + simplified UX redesign (May 30, 2026)
 
 Two parts: (a) finished killing the "unselected keywords get added" bug, then (b) redesigned the whole keyword UX to be simple, on the owner's request.
