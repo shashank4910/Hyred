@@ -243,6 +243,8 @@ Shipped the full single-user → multi-user transformation. Anyone can sign up (
 
 **Real fix (PR #58, `lib/current-user.ts`):** step 3 now uses an **atomic upsert** — `INSERT ... ON CONFLICT (email) DO UPDATE` (`onConflict: 'email'`, the `profiles_email_key` constraint). Postgres resolves the conflict in one statement: an existing same-email row (concurrent insert, legacy null-`user_id` row, or a row owned by another auth identity for the same address) is re-pointed to this user; otherwise a fresh row is inserted. A duplicate email can no longer crash sign-in. Lesson: for "create-on-first-use" rows, prefer an atomic upsert over read-then-insert. `tsc --noEmit` clean + `next build` succeeds (dummy envs).
 
+**Data-safety follow-up — `0006` migration (session 8).** While verifying the above, found the admin's original profile (1150 matches) had been lost. Root cause: `profiles.user_id` FK to `auth.users` was `ON DELETE CASCADE`, so deleting an auth user wiped its profile + all matches. The original profile happened to survive only because the pre-fix adoption crash left it `user_id = NULL` (a NULL-`user_id` row isn't cascade-deleted), so it was recoverable by signing in with the original email. `0006_profiles_user_fk_set_null.sql`: (1) re-points the FK to **`ON DELETE SET NULL`** so deleting an auth user *orphans* the profile (kept, re-adoptable by email) instead of destroying it; (2) lowercases `profiles.email` + adds a BEFORE trigger to keep it lowercase, since `profiles_email_key` is case-sensitive while Supabase Auth lowercases — preventing case-only duplicates/misses. **Run manually in the Supabase SQL editor after 0005.**
+
 ---
 
 ## Key Architecture Decisions
