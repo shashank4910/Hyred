@@ -195,7 +195,7 @@ export async function POST(
 
   // Build a recruiter-friendly default download filename:
   //   {FirstName}_{Specialization}_{Years}
-  // e.g. "Shashank_Performance_7.7"
+  // e.g. "Alex_Engineering_5"
   const filename_base = buildResumeFilenameBase({
     fullName: profile.full_name,
     jobTitle: job.title,
@@ -220,15 +220,15 @@ export async function POST(
 /**
  * Build the default download filename base for the generated resume.
  * Format: {FirstName}_{Specialization}_{Years}
- * Example: "Shashank_Performance_7.7"
+ * Example: "Alex_Engineering_5"
  *
  * - First name: first word of the candidate's full_name, A-Z only.
- *   Falls back to "Shashank" if the profile has no name.
+ *   Falls back to "Resume" if the profile has no name.
  * - Specialization: the first non-seniority word of the JD title (Senior /
  *   Sr / Lead / Principal / Junior / Jr / Associate / Staff are skipped),
  *   stripped to letters, capitalized. Falls back to "Performance".
  * - Years: profile.insights.years_experience if a positive number; otherwise
- *   falls back to 7.7. Integers render without a trailing ".0" (e.g. "8");
+ *   omitted when unknown. Integers render without a trailing ".0" (e.g. "8");
  *   decimals render with one place (e.g. "7.7").
  *
  * The returned string is filesystem-safe (only [A-Za-z0-9._]). Caller
@@ -242,12 +242,12 @@ function buildResumeFilenameBase(args: {
   const safe = (s: string) => s.replace(/[^A-Za-z0-9]/g, '');
 
   const firstName =
-    safe((args.fullName ?? '').trim().split(/\s+/)[0] ?? '') || 'Shashank';
+    safe((args.fullName ?? '').trim().split(/\s+/)[0] ?? '') || 'Resume';
 
   const stopWords = new Set([
     'senior', 'sr', 'lead', 'principal', 'junior', 'jr', 'associate', 'staff',
   ]);
-  let specialization = 'Performance';
+  let specialization = 'Role';
   for (const w of (args.jobTitle ?? '').split(/\s+/)) {
     const cleaned = safe(w);
     if (cleaned.length >= 2 && !stopWords.has(cleaned.toLowerCase())) {
@@ -256,10 +256,11 @@ function buildResumeFilenameBase(args: {
     }
   }
 
-  const yearsRaw =
-    typeof args.yearsExperience === 'number' && args.yearsExperience > 0
-      ? args.yearsExperience
-      : 7.7;
+  const hasYears =
+    typeof args.yearsExperience === 'number' && args.yearsExperience > 0;
+  if (!hasYears) return `${firstName}_${specialization}`;
+
+  const yearsRaw = args.yearsExperience as number;
   const yearsStr = Number.isInteger(yearsRaw)
     ? String(yearsRaw)
     : yearsRaw.toFixed(1);

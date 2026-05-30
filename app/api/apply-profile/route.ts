@@ -16,7 +16,17 @@ export async function GET() {
     .eq('profile_id', profile.id)
     .maybeSingle();
 
-  return NextResponse.json(data ?? { profile_id: profile.id });
+  // First visit: no apply_profiles row yet — seed identity from the user's profile
+  // (never hard-coded owner defaults; those leaked PII in the client form).
+  if (!data) {
+    return NextResponse.json({
+      profile_id: profile.id,
+      email: profile.email ?? '',
+      full_name: profile.full_name ?? '',
+    });
+  }
+
+  return NextResponse.json(data);
 }
 
 /** POST — upsert the apply profile for the signed-in user */
@@ -32,6 +42,7 @@ export async function POST(req: NextRequest) {
   const {
     id: _id,
     created_at: _ca,
+    updated_at: _ua,
     profile_id: _pid,
     ...rest
   } = body as Record<string, unknown>;
