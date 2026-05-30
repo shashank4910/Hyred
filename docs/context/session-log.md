@@ -2,6 +2,40 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 8 — Multi-user auth hardening: duplicate-email crash, data-loss footgun, migration 0006 (May 30, 2026)
+
+Follow-up hardening to Phase 1 (multi-user auth): fixed a sign-in crash, diagnosed/recovered lost data, and shipped a data-safety migration.
+
+### 1. Duplicate-email sign-in crash (PR #56 partial → PR #58 real fix)
+
+**Symptom:** after a successful login the dashboard threw `Failed to create profile: duplicate key value violates unique constraint "profiles_email_key"` (`app/(app)/page.js`, digests `943845339` then `4079527518`).
+
+**Evidence trail (why #56 wasn't enough):** the first report's timestamp (06:33) predated the #56 merge (06:41) → old code. But a second report (06:50) carried a **new** digest *after* #56 was live — proving #56 (which only made step 2 adopt any same-email row, not just `user_id IS NULL`) was a partial fix.
+
+**Root cause:** `resolveProfileForUser` in `lib/current-user.ts` used read-then-INSERT. The real cause is a **TOCTOU race** — on first sign-in the dashboard Server Component renders concurrently (prefetch + navigation), two calls both see "no profile" and both INSERT; the loser hits the unique email index. Service-role bypasses RLS and `email` is `NOT NULL UNIQUE`, so a guard SELECT can never close the window.
+
+**Fix (PR #58):** step 3 now uses an atomic upsert — `.upsert({ user_id, email }, { onConflict: 'email' })` (INSERT … ON CONFLICT (email) DO UPDATE). Postgres resolves the conflict in one statement; a duplicate email can no longer crash sign-in. `tsc --noEmit` + `next build` clean. Docs corrected in PR #57/#59.
+
+### 2. Lost admin profile — diagnosed + recovered (no code)
+
+User deleted an old auth user, re-signed-up with Google, then noticed unfamiliar numbers and asked where the original data went. Findings (from reading the dashboard/stats/migration code + a `profiles` query):
+- **No data leak.** Dashboard/stats scope `matches` by `profile_id`; the large number was the shared **`jobs`** pool (global by design), and the test account had its own 51 matches.
+- **The original profile survived.** `select … from profiles` showed the admin row (`Shashank.srmncr@gmail.com`, **1150 matches**, resume) with `user_id = NULL` — never linked (the pre-fix adoption crash), and NULL-`user_id` rows aren't cascade-deleted, so deleting auth users didn't destroy it.
+- **Recovery (free):** sign in with the original email; the adopt/upsert re-links the orphaned profile. A deterministic `UPDATE … set user_id = …` SQL fallback was provided.
+
+### 3. Migration 0006 — prevent the data-loss footgun (PR #61)
+
+How data *could* be lost: `profiles.user_id` FK to `auth.users` was `ON DELETE CASCADE`, so deleting an auth user wiped the profile + all matches. `0006_profiles_user_fk_set_null.sql`: (1) FK → `ON DELETE SET NULL` (deletion orphans the profile, kept + re-adoptable by email); (2) lowercase `profiles.email` backfill + BEFORE trigger, since `profiles_email_key` is case-sensitive while Supabase Auth lowercases (prevents case-only duplicates/misses). **Run manually in the Supabase SQL editor after 0005.** Merged on top of a parallel docs-restructure commit (`887b229`); verified live on `main`.
+
+### Admin architecture (advice, no code)
+
+Recommended **RBAC + decoupling identity/role from the job-seeker persona**: keep the personal account (`Shashank.srmncr@gmail.com`) for job-hunting and a **separate admin account** (a Gmail `+admin` alias works, free) set as `ADMIN_EMAIL` for the `/admin` ops view. Distinguished "change the app" (developer tooling — GitHub/Vercel/Supabase) from in-app admin (runtime monitoring). Offered optional multi-admin support + not auto-provisioning a job profile for admin-only accounts.
+
+### PRs this session
+#56 (adopt-by-email, partial) · #57 (docs) · #58 (atomic upsert — real fix) · #59 (docs correction) · #61 (migration 0006: FK SET NULL + lowercase email)
+
+---
+
 ## Session 5 — What Was Built & Fixed (May 29, 2026)
 
 Short, focused session that closed the three open issues from session 4 and added a workspace-wide design skill that auto-activates in multiple AI IDEs.
