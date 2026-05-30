@@ -593,9 +593,14 @@ function looksLikeResumeContactLine(s: string): boolean {
   const t = s.trim();
   if (!t) return true;
   if (t.includes('@')) return true;
-  if (/^\+?\d/.test(t)) return true;
-  if (/(linkedin|github|http|www\.|\.com|\.in|\.io|\.dev)/i.test(t)) return true;
-  if (/^[A-Za-z .'-]{3,30},\s*[A-Za-z .'-]{2,30}$/.test(t)) return true;
+  if (/^\+?\d[\d\s().-]{6,}/.test(t)) return true;
+  if (/https?:\/\//i.test(t)) return true;
+  if (/^www\./i.test(t)) return true;
+  if (/linkedin\.com|github\.com/i.test(t)) return true;
+  const commaMatch = t.match(/^([A-Za-z .'-]{3,30}),\s*([A-Za-z .'-]{2,30})$/);
+  if (commaMatch && !ROLE_TITLE_WORD_RE.test(commaMatch[1]) && commaMatch[1].length <= 24) {
+    return true;
+  }
   return false;
 }
 
