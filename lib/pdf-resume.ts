@@ -173,6 +173,11 @@ function asciiSafe(s: string): string {
     .replace(/[\u2018\u2019]/g, "'")
     .replace(/[\u201C\u201D]/g, '"')
     .replace(/[\u2022\u25CF\u25E6]/g, '-')
+    // Arrows are outside Latin-1 → jsPDF renders them as garbage and can
+    // corrupt the surrounding line. Normalise to ASCII.
+    .replace(/[\u2192\u21D2\u2794\u2799\u279C\u279E\u27A1\u2B95\u27F6\u21FE]/g, '->')
+    .replace(/[\u2190\u21D0\u27F5]/g, '<-')
+    .replace(/[\u2194\u21D4\u27F7]/g, '<->')
     .replace(/\u00A0/g, ' ')
     .replace(/\u2026/g, '...')
     .replace(/[\u200B-\u200D\uFEFF]/g, '');

@@ -535,9 +535,28 @@ function normalizeAscii(s: string): string {
     .replace(/[\u2018\u2019\u201A\u201B]/g, "'") // smart single quotes
     .replace(/[\u201C\u201D\u201E\u201F]/g, '"') // smart double quotes
     .replace(/[\u2022\u25CF\u25E6\u2043\u00B7]/g, '-') // bullet variants
+    // Arrows → these are NOT in Latin-1, so jsPDF mangles them into garbage
+    // (e.g. "source -> SAP" rendered as "s o u r c e !'"). Map to ASCII.
+    .replace(/[\u2192\u21D2\u2794\u2799\u279C\u279E\u27A1\u2B95\u27F6\u21FE]/g, '->') // right arrows
+    .replace(/[\u2190\u21D0\u27F5]/g, '<-')   // left arrows
+    .replace(/[\u2194\u21D4\u27F7]/g, '<->')  // bi-directional arrows
     .replace(/\u00A0/g, ' ')                  // non-breaking space
     .replace(/\u2026/g, '...')                // ellipsis
     .replace(/[\u200B-\u200D\uFEFF]/g, '');   // zero-width chars
+}
+
+/**
+ * Pull the candidate's OWN LinkedIn URL out of their resume text, normalised to
+ * the display form "linkedin.com/in/<handle>" (no protocol/www). Returns null
+ * if the resume has no LinkedIn. NEVER fall back to a hard-coded value — doing
+ * so leaks one user's contact into another user's resume (multi-tenant bug).
+ */
+function extractLinkedinFromResume(resume: string): string | null {
+  const m = resume.match(
+    /(?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/[A-Za-z0-9_%-]+/i,
+  );
+  if (!m) return null;
+  return m[0].replace(/^https?:\/\//i, '').replace(/^www\./i, '');
 }
 
 /**
@@ -1096,22 +1115,14 @@ export async function generateAtsResume(args: {
     /\b(ai|artificial intelligence|ml|machine learning|llm|gpt|agentic|automation agent|copilot|generative ai|prompt engineer)\b/.test(jdLower) ||
     /\b(ai|ml|llm|agentic|generative ai)\b/.test(titleLower);
 
-  const isPerfOrTestRole =
-    /\b(perf|performance|sdet|qa\b|quality engineer|test automat|reliability eng|sre|load test|stress test)\b/.test(jdLower) ||
-    /\b(perf|performance|sdet|qa|quality|test|sre|tester)\b/.test(titleLower);
-
+  // NOTE: this resume writer is multi-tenant. NEVER hard-code any one person's
+  // contact details, achievements, or domain into the prompt — the ONLY source
+  // of the candidate's facts is args.resumeText below. (A previous version baked
+  // in the owner's LinkedIn + a JMeter achievement + a "BFSI" client domain,
+  // which leaked into every other user's generated resume.)
   const summaryDirective = isAiRole
-    ? 'This JD mentions AI/ML/automation, so it is appropriate to highlight the candidate\'s AI agent work in the Professional Summary. Lead with the strongest technical specialization that the JD asks for, then bring in the AI/automation angle as supporting evidence.'
-    : 'Lead the Professional Summary with the candidate\'s core technical specialization that maps directly to this JD (e.g. "Senior Performance Engineer with 7.7 years..."). Do NOT lead with AI/automation unless the JD explicitly asks for AI/ML/agentic work.';
-
-  // Achievement bullet for the JMeter Performance Center work. Genericised so
-  // the client name (e.g. "Charles Schwab") never appears in this bullet -
-  // client identity is confidential and must only appear in the "Client:" line
-  // under the relevant job in PROFESSIONAL EXPERIENCE.
-  const jmeterAchievementClause = isPerfOrTestRole
-    ? `e. INCLUDE this real achievement in KEY ACHIEVEMENTS (or create that section right after PROFESSIONAL SUMMARY if it does not exist):
-   "- Architected and deployed a free, open-source Performance Center equivalent for JMeter (React/TypeScript frontend, Python backend) - a full web-based UI platform enabling teams to upload JMX scenarios, configure load test parameters, and execute distributed load tests from a centralized interface. Adopted by multiple teams across the organization, eliminating dependency on expensive LoadRunner Enterprise/Performance Center licensing."`
-    : '';
+    ? 'This JD mentions AI/ML/automation. If — and only if — the candidate\'s OWN resume shows genuine AI/automation experience, surface it in the Professional Summary as supporting evidence. Lead with the candidate\'s core specialization that the JD asks for. NEVER invent AI experience the candidate does not have.'
+    : 'Lead the Professional Summary with the candidate\'s own core specialization (taken from their resume) that maps most directly to this JD. Do NOT lead with AI/automation unless the JD explicitly asks for it AND the candidate actually has it.';
 
   // ── Role title alignment with JD ────────────────────────────────────────────
   // ATS systems weight the candidate's most recent role title heavily in
@@ -1121,6 +1132,26 @@ export async function generateAtsResume(args: {
   // candidate's resume - that noise is a recruiter red flag ("did the AI
   // just paste the JD listing into the resume?").
   const targetCurrentRoleTitle = cleanJdTitle(args.jobTitle ?? '');
+
+  // ── Contact block — built ENTIRELY from THIS candidate's data ───────────────
+  // Every line comes from the signed-in user's profile/resume. Missing fields
+  // are OMITTED (never defaulted to another person's value). LinkedIn is parsed
+  // from the user's own resume; if absent, no LinkedIn line is emitted.
+  const candidateName =
+    args.candidateName?.trim() ||
+    args.resumeText.split('\n').map(l => l.trim()).find(Boolean) ||
+    '';
+  const linkedinUrl = extractLinkedinFromResume(args.resumeText);
+  const contactBlock = [
+    candidateName,
+    targetCurrentRoleTitle,
+    args.email?.trim() || null,
+    args.phone?.trim() || null,
+    args.location?.trim() || null,
+    linkedinUrl,
+  ]
+    .filter((line): line is string => typeof line === 'string' && line.length > 0)
+    .join('\n');
 
   // IMPORTANT: we deliberately do NOT enumerate the unselected JD keywords
   // (contextKeywords) anywhere in the prompt. Listing them - even under a
@@ -1165,13 +1196,14 @@ CRITICAL RULES:
 1. PRESERVE every real fact: same companies, same dates, same achievements. Never invent jobs, dates, or numbers. (Note: the CURRENT/most-recent role TITLE is governed by the ROLE TITLE ALIGNMENT directive below - past role titles stay as-is.)
 2. Keep all sections from the input resume. You MAY reorder entries inside TECHNICAL SKILLS to surface JD-priority tools first.
 3. Output must be plain ASCII. No em-dashes, no smart quotes, no unicode bullets, no emojis, no graphics, no tables, no columns.
-4. CLIENT NAME PRIVACY: any client / end-customer name (for example "Charles Schwab" or any other client the candidate has worked for) must appear ONLY in the "Client: ClientName (Domain)" subline directly under the relevant job header in PROFESSIONAL EXPERIENCE - that is the only allowed location. Do NOT mention the client name anywhere else: not in PROFESSIONAL SUMMARY, not in KEY ACHIEVEMENTS, not in any bullet, not in skills. Replace any such mention with neutral phrasing like "the organization", "a major BFSI client", or simply omit it.
+4. CLIENT NAME PRIVACY & HONESTY: a client / end-customer name may appear ONLY in a "Client: ClientName (Domain)" subline directly under the relevant job header in PROFESSIONAL EXPERIENCE - that is the only allowed location. Do NOT mention a client name anywhere else: not in PROFESSIONAL SUMMARY, not in KEY ACHIEVEMENTS, not in any bullet, not in skills. Replace any such mention with neutral phrasing like "the organization" or "a major enterprise client", or simply omit it.
+   - ONLY add a "Client:" subline when the input resume actually names a real client for that specific role. NEVER invent a client, and NEVER attach a domain label (e.g. "BFSI", "Healthcare", "Retail") to a role unless that domain is explicitly stated in the candidate's own resume. Do not assume any default domain.
 5. Allowed transformations:
    a. Convert any tables to "Category: Tool1, Tool2, Tool3" plain-text lines.
    b. Weave KEYWORDS TO ADD naturally into existing bullets where the candidate truthfully has that experience.
    c. Rewrite the Professional Summary per the directive below.
    d. Reorder Skills entries inside TECHNICAL SKILLS to put JD-priority tools first.
-   e. Apply ROLE TITLE ALIGNMENT (below) to the candidate's CURRENT/most-recent role only.${jmeterAchievementClause ? '\n   ' + jmeterAchievementClause.replace(/^e\. /, 'f. ') : ''}
+   e. Apply ROLE TITLE ALIGNMENT (below) to the candidate's CURRENT/most-recent role only.
 
 ROLE TITLE ALIGNMENT (important for ATS scoring - the candidate explicitly asked for this):
 - Set the candidate's CURRENT (most recent) role title in PROFESSIONAL EXPERIENCE to: ${targetCurrentRoleTitle}
@@ -1191,13 +1223,8 @@ FORMAT (these patterns are what ATS parsers expect):
 - Skills lines: "Category: Tool1, Tool2, Tool3" - one category per line, no tables.
 - One blank line between sections. No blank line between job header and its bullets.
 ${keywordsBlock}
-CANDIDATE CONTACT BLOCK (place at the very top, one item per line, in this exact order):
-${args.candidateName ?? 'SHASHANK SINGH'}
-${targetCurrentRoleTitle}
-${args.email}
-${args.phone ?? '+91 8077162893'}
-${args.location ?? 'Noida, India'}
-linkedin.com/in/shashank-singh-610155b1
+CANDIDATE CONTACT BLOCK (reproduce these lines EXACTLY as given, at the very top, one item per line, in this order — do NOT add, invent, or guess any contact line, e.g. a LinkedIn/GitHub/website/phone that is not listed here):
+${contactBlock}
 
 LINE 2 IS THE TITLE TAGLINE: the second line of the contact block is the candidate's CURRENT role title (the JD-aligned title from ROLE TITLE ALIGNMENT above). It must appear immediately under the name, BEFORE the email line. The PDF renderer treats this as the title tagline below the name. Do not omit it.
 
@@ -1212,7 +1239,7 @@ ${args.jobDescription.slice(0, 5000)}
 
 Output the complete tailored resume in plain ASCII text. No preamble, no explanation, no markdown fences. Start with the candidate's name on the first line.
 
-CRITICAL: do NOT prefix the output with any header label like "Resume", "RESUME", "Curriculum Vitae", "CV", or "PROFILE". The PDF renderer treats the first non-empty line of your output as the candidate's NAME - if you put "Resume" first, the literal word "Resume" will be rendered huge in the header band where the candidate's name should be. The very first non-empty line MUST be the candidate's full name (e.g. "SHASHANK SINGH"). The very second line MUST be the role title tagline.`;
+CRITICAL: do NOT prefix the output with any header label like "Resume", "RESUME", "Curriculum Vitae", "CV", or "PROFILE". The PDF renderer treats the first non-empty line of your output as the candidate's NAME - if you put "Resume" first, the literal word "Resume" will be rendered huge in the header band where the candidate's name should be. The very first non-empty line MUST be the candidate's full name (exactly as given in the contact block above). The very second line MUST be the role title tagline.`;
 
   const raw = await chat(
     'You reformat resumes into ATS-friendly plain ASCII text. Preserve all real content. Never fabricate experience. Output ONLY the resume.',
