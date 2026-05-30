@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
-export const metadata = { title: 'Stats · JobRadar' };
+export const metadata = { title: 'Stats' };
 
 export default async function StatsPage() {
   const sb = supabaseAdmin();

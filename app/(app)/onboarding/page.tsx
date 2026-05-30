@@ -3,7 +3,7 @@ import { OnboardingForm } from './OnboardingForm';
 import type { ResumeInsights } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
-export const metadata = { title: 'Profile · JobRadar' };
+export const metadata = { title: 'Profile' };
 
 export default async function OnboardingPage() {
   const profile = await getCurrentProfile();

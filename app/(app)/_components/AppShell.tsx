@@ -147,7 +147,7 @@ function Brand() {
       <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary-fixed">
         <Radar className="h-4.5 w-4.5 text-primary" />
       </span>
-      <span className="text-lg font-extrabold font-headline tracking-tight">JobRadar</span>
+      <span className="text-lg font-extrabold font-headline tracking-tight">Hyred</span>
     </Link>
   );
 }
