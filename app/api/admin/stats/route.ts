@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentUser, isAdminEmail } from '@/lib/current-user';
+import { isCurrentUserAdmin } from '@/lib/current-user';
 import { getUsageSummary } from '@/lib/api-tracker';
 
 export const runtime = 'nodejs';
@@ -9,8 +9,7 @@ export const runtime = 'nodejs';
  * Returns per-source totals, per-key breakdown, and recent errors.
  */
 export async function GET(req: NextRequest) {
-  const user = await getCurrentUser();
-  if (!isAdminEmail(user?.email)) {
+  if (!(await isCurrentUserAdmin())) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 

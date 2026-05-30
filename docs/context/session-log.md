@@ -31,6 +31,10 @@ How data *could* be lost: `profiles.user_id` FK to `auth.users` was `ON DELETE C
 
 Recommended **RBAC + decoupling identity/role from the job-seeker persona**: keep the personal account (`Shashank.srmncr@gmail.com`) for job-hunting and a **separate admin account** (a Gmail `+admin` alias works, free) set as `ADMIN_EMAIL` for the `/admin` ops view. Distinguished "change the app" (developer tooling — GitHub/Vercel/Supabase) from in-app admin (runtime monitoring). Offered optional multi-admin support + not auto-provisioning a job profile for admin-only accounts.
 
+### 4. Admin access made DB-backed (migration 0007)
+
+Follow-up to the above: the owner reported the Admin button was missing on the main login. Cause — admin was gated *solely* by `ADMIN_EMAIL` env matching the login email (no other gate), so an unset/mismatched env hid every admin surface. Made admin **DB-backed**: added `profiles.is_admin` (migration `0007_profiles_is_admin.sql`, which also grants the owner) and a new `isCurrentUserAdmin()` helper that returns true if `is_admin` is set **or** the email matches `ADMIN_EMAIL` (kept as bootstrap). Rewired all four gates (nav in `AppShell` via `layout.tsx`, `/admin` page, `/api/admin/keys`, `/api/admin/stats`). The `is_admin` read is error-tolerant (tolerates the column not existing pre-0007), so the code is safe to deploy before the migration runs. `tsc --noEmit` + `next build` clean. **Run 0007 in Supabase** (or set `ADMIN_EMAIL`) to light up the portal.
+
 ### PRs this session
 #56 (adopt-by-email, partial) · #57 (docs) · #58 (atomic upsert — real fix) · #59 (docs correction) · #61 (migration 0006: FK SET NULL + lowercase email)
 

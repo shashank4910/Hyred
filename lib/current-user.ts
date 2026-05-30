@@ -47,11 +47,35 @@ export async function requireProfile(): Promise<Profile> {
   return profile;
 }
 
-/** Is this user the app admin? (gates /admin). */
+/** Env bootstrap: does this email match the configured ADMIN_EMAIL? */
 export function isAdminEmail(email: string | null | undefined): boolean {
   const admin = process.env.ADMIN_EMAIL?.trim().toLowerCase();
   if (!admin || !email) return false;
   return email.trim().toLowerCase() === admin;
+}
+
+/**
+ * Is the CURRENT request an admin? (gates the Admin nav, `/admin`, `/api/admin/*`).
+ *
+ * True if EITHER the signed-in email matches `ADMIN_EMAIL` (env bootstrap) OR
+ * the user's `profiles.is_admin` flag is set (DB-driven, migration 0007). The
+ * DB read is error-tolerant: if the `is_admin` column doesn't exist yet
+ * (pre-0007) the query errors and we simply fall back to the env check, so
+ * deploying this before the migration never breaks the app.
+ */
+export async function isCurrentUserAdmin(): Promise<boolean> {
+  const user = await getCurrentUser();
+  if (!user) return false;
+  if (isAdminEmail(user.email)) return true;
+
+  const sb = supabaseAdmin();
+  const { data, error } = await sb
+    .from('profiles')
+    .select('is_admin')
+    .eq('user_id', user.id)
+    .maybeSingle();
+  if (error) return false; // column missing (pre-migration) or query error → env-only
+  return (data as { is_admin?: boolean } | null)?.is_admin === true;
 }
 
 const PROFILE_COLUMNS =

@@ -1,5 +1,5 @@
 import { AppShell } from './_components/AppShell';
-import { getCurrentProfile, isAdminEmail } from '@/lib/current-user';
+import { getCurrentProfile, isCurrentUserAdmin } from '@/lib/current-user';
 
 export default async function AuthedLayout({
   children,
@@ -7,7 +7,7 @@ export default async function AuthedLayout({
   children: React.ReactNode;
 }) {
   const profile = await getCurrentProfile();
-  const isAdmin = isAdminEmail(profile?.email);
+  const isAdmin = await isCurrentUserAdmin();
 
   return (
     <AppShell

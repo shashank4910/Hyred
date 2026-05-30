@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentUser, isAdminEmail } from '@/lib/current-user';
+import { isCurrentUserAdmin } from '@/lib/current-user';
 import { supabaseAdmin } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
@@ -22,8 +22,7 @@ export const runtime = 'nodejs';
  */
 
 async function requireAdmin(_req: NextRequest): Promise<boolean> {
-  const user = await getCurrentUser();
-  return isAdminEmail(user?.email);
+  return isCurrentUserAdmin();
 }
 
 export async function GET(req: NextRequest) {
