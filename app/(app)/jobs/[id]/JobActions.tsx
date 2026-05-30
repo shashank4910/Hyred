@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition, useEffect, useMemo } from 'react';
+import { useState, useTransition, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
@@ -9,7 +9,6 @@ import {
   Copy,
   Download,
   CheckCircle2,
-  XCircle,
   ExternalLink,
   Save,
   StickyNote,
@@ -17,13 +16,10 @@ import {
   Pencil,
   FileText,
   Rocket,
-  Zap,
   Bookmark,
 } from 'lucide-react';
 import { STATUS_ORDER } from '@/lib/ui';
-import { KeywordPicker } from './KeywordPicker';
-
-type Skills = { matched: string[]; missing: string[]; allSkills: string[] } | null;
+import { KeywordManager, type GenResult } from './KeywordManager';
 
 
 export function JobActions({
@@ -32,7 +28,6 @@ export function JobActions({
   bookmarked: initialBookmarked,
   coverLetter,
   notes,
-  candidateSkills,
   applyUrl,
 }: {
   matchId: string;
@@ -40,7 +35,6 @@ export function JobActions({
   bookmarked: boolean;
   coverLetter: string | null;
   notes: string | null;
-  candidateSkills: string[];
   applyUrl: string;
 }) {
   const router = useRouter();
@@ -60,81 +54,25 @@ export function JobActions({
   const [savingNotes, setSavingNotes] = useState(false);
   const [notesDirty, setNotesDirty] = useState(false);
 
-  // Skills state
-  const [skills, setSkills] = useState<Skills>(null);
-  const [analyzingSkills, setAnalyzingSkills] = useState(false);
-
   // ATS Resume state
   const [atsResume, setAtsResume] = useState('');
   const [generatingResume, setGeneratingResume] = useState(false);
   const [resumeCopied, setResumeCopied] = useState(false);
   const [filenameBase, setFilenameBase] = useState<string>('Shashank_Performance_7.7');
-  const [keywords, setKeywords] = useState<{
-    added: string[];
-    already_had: string[];
-    missing: string[];
-    total_jd_keywords: number;
-    selected_count?: number;
-    ats_match_score: number;
-  } | null>(null);
+  const [keywords, setKeywords] = useState<GenResult>(null);
+  // Change in ATS score vs the previous optimize (for the +N / -N badge).
+  const [scoreDelta, setScoreDelta] = useState<number | null>(null);
 
-  // Keyword picker state
+  // Keyword state. jdKeywords = the stable JD keyword universe (from GET).
+  // alreadyHaveKeywords = the subset present in the master resume.
+  // selectedKeywords = the user's current "weave these in" intent (staged).
   const [jdKeywords, setJdKeywords] = useState<string[]>([]);
   const [alreadyHaveKeywords, setAlreadyHaveKeywords] = useState<string[]>([]);
   const [selectedKeywords, setSelectedKeywords] = useState<string[]>([]);
-  const [excludedKeywords, setExcludedKeywords] = useState<string[]>([]);
   const [loadingKeywords, setLoadingKeywords] = useState(false);
   const [keywordsLoaded, setKeywordsLoaded] = useState(false);
 
-  // Free-text input for custom keywords. Lets the user type ANY keyword
-  // (including ones that didn't make it into either the matchSkills or the
-  // extractJdKeywords output) and stage it for the next regenerate.
-  const [customKeyword, setCustomKeyword] = useState('');
-
-  // Missing-keywords list. Source ONLY from the generator's keywords.missing —
-  // that set is computed against the ACTUAL generated resume (whole-token match)
-  // in generateAtsResume. Previously we merged in skills.missing (from
-  // matchSkills, computed against the ORIGINAL resume), which went stale after
-  // the first regenerate and caused the same keyword to show as both "Woven in"
-  // and "Missing" simultaneously. We additionally drop anything the user has
-  // staged for removal (excludedKeywords) so a deliberately-removed keyword never
-  // reappears as actionable-missing.
-  const allMissingKeywords = useMemo(() => {
-    const fromKeywords = keywords?.missing ?? [];
-    const seen = new Set<string>();
-    const merged: string[] = [];
-    for (const kw of fromKeywords) {
-      const t = kw.trim();
-      if (!t) continue;
-      const lower = t.toLowerCase();
-      if (seen.has(lower)) continue;
-      if (excludedKeywords.some(k => k.toLowerCase() === lower)) continue;
-      seen.add(lower);
-      merged.push(t);
-    }
-    return merged;
-  }, [keywords?.missing, excludedKeywords]);
-
-
-  // Load skills if we have any candidate skills
-  useEffect(() => {
-    if (!candidateSkills.length) return;
-    let cancelled = false;
-    setAnalyzingSkills(true);
-    fetch(`/api/match/${matchId}/skills`, { method: 'POST' })
-      .then((r) => r.json())
-      .then((d) => {
-        if (cancelled) return;
-        if (d?.matched != null) setSkills(d as Skills);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setAnalyzingSkills(false);
-      });
-    return () => { cancelled = true; };
-  }, [matchId, candidateSkills.length]);
-
-  // Load JD keywords for the keyword picker
+  // Load JD keywords for the keyword panel
   useEffect(() => {
     let cancelled = false;
     setLoadingKeywords(true);
@@ -258,72 +196,36 @@ export function JobActions({
   const [editingResume, setEditingResume] = useState(false);
   const [editedResume, setEditedResume] = useState('');
 
-  async function generateAtsResume() {
+  // The single action. Generates (or regenerates in-place) the resume, weaving
+  // in exactly the staged keywords. Keeps the current resume visible while it
+  // runs, and reports the score change.
+  async function optimize() {
     setGeneratingResume(true);
-    const id = toast.loading('Generating ATS-optimized resume...');
+    const firstRun = !atsResume;
+    const id = toast.loading(firstRun ? 'Optimizing your resume...' : 'Re-optimizing...');
+    const oldScore = keywords?.ats_match_score ?? null;
     try {
       const res = await fetch(`/api/match/${matchId}/resume`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           selectedKeywords: selectedKeywords.length > 0 ? selectedKeywords : undefined,
-          excludedKeywords: excludedKeywords.length > 0 ? excludedKeywords : undefined,
+          jdKeywords: jdKeywords.length > 0 ? jdKeywords : undefined,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed');
       setAtsResume(data.resume);
       setEditedResume(data.resume);
-      setEditingResume(true);
-      if (data.keywords) setKeywords(data.keywords);
-      if (data.filename_base) setFilenameBase(data.filename_base);
-      toast.success('ATS resume ready — review & edit before exporting!', { id });
-    } catch (e) {
-      toast.error((e as Error).message, { id });
-    } finally {
-      setGeneratingResume(false);
-    }
-  }
-
-  // In-place regenerate: keeps the existing resume visible until the new one
-  // arrives. Used after the user clicks missing-keyword chips to add them to
-  // selectedKeywords, then clicks "Regenerate" without losing context.
-  async function regenerateInPlace(extraKeywords?: string[]) {
-    setGeneratingResume(true);
-    const merged = extraKeywords && extraKeywords.length > 0
-      ? [...new Set([...selectedKeywords, ...extraKeywords])]
-      : selectedKeywords;
-    if (extraKeywords && extraKeywords.length > 0) {
-      setSelectedKeywords(merged);
-    }
-    const id = toast.loading(
-      merged.length > 0
-        ? `Regenerating with ${merged.length} prioritized keyword${merged.length > 1 ? 's' : ''}...`
-        : 'Regenerating ATS resume...',
-    );
-    try {
-      const res = await fetch(`/api/match/${matchId}/resume`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          selectedKeywords: merged.length > 0 ? merged : undefined,
-          excludedKeywords: excludedKeywords.length > 0 ? excludedKeywords : undefined,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed');
-      setAtsResume(data.resume);
-      setEditedResume(data.resume);
-      if (data.keywords) setKeywords(data.keywords);
+      if (firstRun) setEditingResume(false);
+      if (data.keywords) {
+        const newScore = data.keywords.ats_match_score ?? 0;
+        setScoreDelta(oldScore != null ? newScore - oldScore : null);
+        setKeywords(data.keywords);
+      }
       if (data.filename_base) setFilenameBase(data.filename_base);
       const newScore = data.keywords?.ats_match_score ?? 0;
-      const oldScore = keywords?.ats_match_score ?? 0;
-      const delta = newScore - oldScore;
-      const sign = delta > 0 ? '+' : '';
-      toast.success(
-        `Regenerated. ATS Match Score: ${newScore}%${oldScore > 0 ? ` (${sign}${delta})` : ''}`,
-        { id },
-      );
+      toast.success(`ATS Match Score: ${newScore}%`, { id });
     } catch (e) {
       toast.error((e as Error).message, { id });
     } finally {
@@ -331,74 +233,33 @@ export function JobActions({
     }
   }
 
-  // One-click: stage all currently-missing keywords (from the generator's
-  // keywords.missing, filtered by excluded — see allMissingKeywords) and
-  // regenerate.
-  async function addAllMissingAndRegenerate() {
-    if (!allMissingKeywords.length) return;
-    await regenerateInPlace(allMissingKeywords);
+  // Stage a keyword to be woven in on the next optimize (case-insensitive).
+  function onStage(kw: string) {
+    setSelectedKeywords(prev =>
+      prev.some(k => k.toLowerCase() === kw.toLowerCase()) ? prev : [...prev, kw],
+    );
   }
 
-  // User-typed custom keyword: stage it for inclusion (selectedKeywords) and
-  // unstage from exclusion if previously excluded. Lets the user force-add
-  // any keyword the auto-extractors missed.
-  function addCustomKeyword() {
-    const t = customKeyword.trim();
-    if (!t) return;
-    if (selectedKeywords.some(k => k.toLowerCase() === t.toLowerCase())) {
-      toast(`"${t}" is already prioritized for next regenerate`);
-      setCustomKeyword('');
-      return;
-    }
-    setExcludedKeywords(prev => prev.filter(k => k.toLowerCase() !== t.toLowerCase()));
-    setSelectedKeywords(prev => [...prev, t]);
-    setCustomKeyword('');
-    toast.success(`"${t}" added - will be forced into resume on next regenerate`);
+  // Un-stage a keyword. Because every optimize regenerates from the MASTER
+  // resume, dropping a keyword from the staged set is all that's needed to
+  // remove it on the next optimize — no separate "exclude" list required.
+  function onUnstage(kw: string) {
+    setSelectedKeywords(prev => prev.filter(k => k.toLowerCase() !== kw.toLowerCase()));
   }
 
-  // User-typed custom keyword: stage it for exclusion. Lets the user force-
-  // remove any term that snuck in but they don't want.
-  function excludeCustomKeyword() {
-    const t = customKeyword.trim();
-    if (!t) return;
-    if (excludedKeywords.some(k => k.toLowerCase() === t.toLowerCase())) {
-      toast(`"${t}" is already staged for removal`);
-      setCustomKeyword('');
-      return;
-    }
-    setSelectedKeywords(prev => prev.filter(k => k.toLowerCase() !== t.toLowerCase()));
-    setExcludedKeywords(prev => [...prev, t]);
-    setCustomKeyword('');
-    toast.success(`"${t}" staged for removal on next regenerate`);
-  }
-
-  // Clicking a single missing chip stages it for the next regenerate.
-  function stageMissingKeyword(kw: string) {
-    if (selectedKeywords.some(k => k.toLowerCase() === kw.toLowerCase())) {
-      setSelectedKeywords(prev => prev.filter(k => k.toLowerCase() !== kw.toLowerCase()));
-      toast(`Removed "${kw}" from priorities`);
-    } else {
-      // If user previously excluded this keyword, un-exclude it first
-      // (intent toggle: now they want it back IN).
-      setExcludedKeywords(prev => prev.filter(k => k.toLowerCase() !== kw.toLowerCase()));
-      setSelectedKeywords(prev => [...prev, kw]);
-      toast.success(`"${kw}" prioritized for next regenerate`);
-    }
-  }
-
-  // Clicking a present (woven-in / already-had) chip stages it for REMOVAL
-  // on the next regenerate. The model will be told it must not appear.
-  function toggleExcludeKeyword(kw: string) {
-    if (excludedKeywords.some(k => k.toLowerCase() === kw.toLowerCase())) {
-      setExcludedKeywords(prev => prev.filter(k => k.toLowerCase() !== kw.toLowerCase()));
-      toast(`"${kw}" will stay in resume`);
-    } else {
-      // If user previously selected this keyword as priority, un-select it
-      // first - they're flipping intent from "must include" to "must exclude".
-      setSelectedKeywords(prev => prev.filter(k => k.toLowerCase() !== kw.toLowerCase()));
-      setExcludedKeywords(prev => [...prev, kw]);
-      toast.success(`"${kw}" will be removed on next regenerate`);
-    }
+  // Stage every keyword in a list (used by "Add all" on the Missing bucket).
+  function onStageMany(kws: string[]) {
+    setSelectedKeywords(prev => {
+      const have = new Set(prev.map(k => k.toLowerCase()));
+      const next = [...prev];
+      for (const kw of kws) {
+        if (!have.has(kw.toLowerCase())) {
+          have.add(kw.toLowerCase());
+          next.push(kw);
+        }
+      }
+      return next;
+    });
   }
 
   async function copyResume() {
@@ -507,91 +368,6 @@ export function JobActions({
       </div>
 
 
-      {/* Skill match panel */}
-      {candidateSkills.length > 0 && (
-        <div className="card space-y-3">
-          <h2 className="font-semibold text-ink flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-amber" /> Skill match
-          </h2>
-          {analyzingSkills && !skills && (
-            <div className="space-y-2">
-              <div className="skeleton h-4 w-2/3" />
-              <div className="skeleton h-4 w-1/2" />
-            </div>
-          )}
-          {skills && (
-            <>
-              {skills.matched.length > 0 ? (
-                <div>
-                  <div className="text-xs text-stone mb-1.5">
-                    JD requirements found in your resume (
-                    {skills.matched.length}/
-                    {skills.matched.length + skills.missing.length})
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {skills.matched.map((s) => (
-                      <span
-                        key={s}
-                        className="inline-flex items-center gap-1 rounded-badge bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 text-xs"
-                      >
-                        <CheckCircle2 className="h-3 w-3" />
-                        {s}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <p className="text-xs text-stone">
-                  No direct matches found in the JD. Score may rely on adjacent experience.
-                </p>
-              )}
-              {skills.missing.length > 0 && (
-                <div>
-                  <div className="text-xs text-stone mb-1.5">
-                    JD requirements not clearly present in your resume - click to stage for next ATS regenerate
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {skills.missing.map((s) => {
-                      const isStaged = selectedKeywords.some(k => k.toLowerCase() === s.toLowerCase());
-                      return (
-                        <button
-                          key={s}
-                          type="button"
-                          onClick={() => stageMissingKeyword(s)}
-                          disabled={generatingResume}
-                          title={isStaged ? 'Click to remove from priorities' : 'Click to prioritize for next regenerate'}
-                          className={[
-                            'inline-flex items-center gap-1 rounded-badge px-2 py-0.5 text-xs transition-all duration-150 cursor-pointer',
-                            'disabled:cursor-wait disabled:opacity-60',
-                            isStaged
-                              ? 'bg-amber/15 text-ink border border-amber/50 font-semibold shadow-sm'
-                              : 'border border-warning-red/30 bg-red-50 text-warning-red hover:bg-amber/10 hover:border-amber/40 hover:text-ink',
-                          ].join(' ')}
-                        >
-                          {isStaged ? (
-                            <>
-                              <CheckCircle2 className="h-3 w-3 text-amber" />
-                              {s}
-                              <span className="text-[9px] uppercase tracking-wide opacity-70">staged</span>
-                            </>
-                          ) : (
-                            <>
-                              <XCircle className="h-3 w-3" />
-                              {s}
-                            </>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
-
-
       {/* Cover letter */}
       <div className="card">
         <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
@@ -675,54 +451,40 @@ export function JobActions({
                 </button>
               </>
             )}
-            {!atsResume && (
-              <button onClick={generateAtsResume} disabled={generatingResume} className="btn-primary">
-                {generatingResume ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Sparkles className="h-3.5 w-3.5" />
-                )}
-                {generatingResume ? 'Generating...' : 'Generate ATS Resume'}
-              </button>
-            )}
           </div>
         </div>
 
-        {/* Keyword Picker — shown before generation */}
-        {!atsResume && !generatingResume && (
-          <div className="space-y-4">
-            {loadingKeywords && !keywordsLoaded && (
-              <div className="space-y-2">
-                <div className="skeleton h-4 w-1/3" />
-                <div className="flex gap-2">
-                  <div className="skeleton h-7 w-20 rounded-full" />
-                  <div className="skeleton h-7 w-24 rounded-full" />
-                  <div className="skeleton h-7 w-16 rounded-full" />
-                  <div className="skeleton h-7 w-28 rounded-full" />
-                  <div className="skeleton h-7 w-20 rounded-full" />
-                </div>
-              </div>
-            )}
-            {keywordsLoaded && jdKeywords.length > 0 && (
-              <div className="border border-border rounded-card p-3 bg-off-white">
-                <KeywordPicker
-                  keywords={jdKeywords}
-                  alreadyHave={alreadyHaveKeywords}
-                  selected={selectedKeywords}
-                  onSelectionChange={setSelectedKeywords}
-                />
-              </div>
-            )}
-            {keywordsLoaded && jdKeywords.length === 0 && (
-              <p className="text-sm text-stone">
-                Click <span className="text-amber font-medium">Generate ATS Resume</span> to create a version optimized for this job&apos;s ATS keywords.
-              </p>
-            )}
+        {/* Keyword manager — the single keyword surface, shown before AND after
+            generation. The Optimize button inside it is the one CTA. */}
+        {loadingKeywords && !keywordsLoaded && (
+          <div className="space-y-2">
+            <div className="skeleton h-4 w-1/3" />
+            <div className="flex gap-2">
+              <div className="skeleton h-7 w-20 rounded-full" />
+              <div className="skeleton h-7 w-24 rounded-full" />
+              <div className="skeleton h-7 w-16 rounded-full" />
+              <div className="skeleton h-7 w-28 rounded-full" />
+              <div className="skeleton h-7 w-20 rounded-full" />
+            </div>
           </div>
         )}
+        {keywordsLoaded && (
+          <KeywordManager
+            jdKeywords={jdKeywords}
+            originalPresent={alreadyHaveKeywords}
+            result={keywords}
+            staged={selectedKeywords}
+            generating={generatingResume}
+            hasResume={!!atsResume}
+            scoreDelta={scoreDelta}
+            onStage={onStage}
+            onUnstage={onUnstage}
+            onStageMany={onStageMany}
+            onOptimize={optimize}
+          />
+        )}
 
-
-        {/* Loading skeleton */}
+        {/* First-run loading skeleton for the resume body */}
         {generatingResume && !atsResume && (
           <div className="space-y-2 mt-3">
             <div className="skeleton h-4 w-full" />
@@ -735,263 +497,7 @@ export function JobActions({
 
         {/* Generated resume — editable preview */}
         {atsResume && (
-          <div className="space-y-3">
-            {/* Keyword analysis */}
-            {keywords && (
-              <div className="space-y-2 border-b border-border pb-3">
-                {/* ATS Match Score — the headline number */}
-                {(() => {
-                  const score = keywords.ats_match_score ?? 0;
-                  const tone =
-                    score >= 80 ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                    : score >= 60 ? 'bg-amber/10 border-amber/30 text-amber-hover'
-                    : 'bg-red-50 border-warning-red/30 text-warning-red';
-                  const label =
-                    score >= 80 ? 'Strong'
-                    : score >= 60 ? 'Decent'
-                    : 'Weak';
-                  return (
-                    <div className={`relative flex items-center justify-between rounded-card border px-3 py-2 ${tone}`}>
-                      <div className="flex items-center gap-2">
-                        <Zap className="h-4 w-4" />
-                        <div>
-                          <div className="text-xs font-semibold leading-tight">
-                            ATS Match Score: {score}% ({label})
-                          </div>
-                          <div className="text-[10px] opacity-80 leading-tight">
-                            {keywords.added.length + keywords.already_had.length} of {keywords.total_jd_keywords} JD keywords present in your resume
-                          </div>
-                        </div>
-                      </div>
-                      <div className="text-2xl font-bold tabular-nums">{score}</div>
-                      {generatingResume && (
-                        <div className="absolute inset-0 flex items-center justify-center rounded-card bg-white/70 backdrop-blur-sm">
-                          <div className="flex items-center gap-2 text-xs font-medium text-ink">
-                            <Loader2 className="h-4 w-4 animate-spin text-amber" />
-                            Regenerating with prioritized keywords...
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
-
-                <div className="text-xs font-medium text-stone flex items-center gap-1.5">
-                  <Zap className="h-3.5 w-3.5 text-amber" />
-                  Keywords analysis ({keywords.total_jd_keywords} detected in JD
-                  {keywords.selected_count ? `, ${keywords.selected_count} prioritized` : ''})
-                </div>
-                {keywords.added.length > 0 && (
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wide text-amber-hover mb-1 font-medium">
-                      + Woven into your resume ({keywords.added.length}) - click to remove
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {keywords.added.map((kw) => {
-                        const isExcluded = excludedKeywords.some(k => k.toLowerCase() === kw.toLowerCase());
-                        return (
-                          <button
-                            key={kw}
-                            type="button"
-                            onClick={() => toggleExcludeKeyword(kw)}
-                            disabled={generatingResume}
-                            title={isExcluded ? 'Click to keep in resume' : 'Click to remove on next regenerate'}
-                            className={[
-                              'inline-flex items-center gap-1 rounded-badge px-2 py-0.5 text-xs font-medium transition-all duration-150 cursor-pointer',
-                              'disabled:cursor-wait disabled:opacity-60',
-                              isExcluded
-                                ? 'border border-warning-red/50 bg-red-50 text-warning-red line-through'
-                                : 'bg-amber/10 text-amber-hover hover:bg-red-50 hover:text-warning-red hover:border hover:border-warning-red/30',
-                            ].join(' ')}
-                          >
-                            {isExcluded ? (
-                              <>
-                                <XCircle className="h-2.5 w-2.5" />
-                                {kw}
-                                <span className="text-[9px] uppercase tracking-wide opacity-70 no-underline">remove</span>
-                              </>
-                            ) : (
-                              <>+ {kw}</>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-                {keywords.already_had.length > 0 && (
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wide text-stone mb-1">
-                      Already in your resume ({keywords.already_had.length}) - click to remove
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {keywords.already_had.map((kw) => {
-                        const isExcluded = excludedKeywords.some(k => k.toLowerCase() === kw.toLowerCase());
-                        return (
-                          <button
-                            key={kw}
-                            type="button"
-                            onClick={() => toggleExcludeKeyword(kw)}
-                            disabled={generatingResume}
-                            title={isExcluded ? 'Click to keep in resume' : 'Click to remove on next regenerate'}
-                            className={[
-                              'inline-flex items-center gap-1 rounded-badge px-2 py-0.5 text-xs transition-all duration-150 cursor-pointer',
-                              'disabled:cursor-wait disabled:opacity-60',
-                              isExcluded
-                                ? 'border border-warning-red/50 bg-red-50 text-warning-red line-through'
-                                : 'border border-border text-stone hover:bg-red-50 hover:text-warning-red hover:border-warning-red/30',
-                            ].join(' ')}
-                          >
-                            {isExcluded ? (
-                              <>
-                                <XCircle className="h-2.5 w-2.5" />
-                                {kw}
-                                <span className="text-[9px] uppercase tracking-wide opacity-70 no-underline">remove</span>
-                              </>
-                            ) : (
-                              <>
-                                <CheckCircle2 className="h-2.5 w-2.5" /> {kw}
-                              </>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-                {allMissingKeywords.length > 0 && (
-                  <div>
-                    <div className="flex items-center justify-between flex-wrap gap-2 mb-1.5">
-                      <div className="text-[10px] uppercase tracking-wide text-warning-red font-medium">
-                        Missing from your resume ({allMissingKeywords.length}) - click to add
-                      </div>
-                      <button
-                        onClick={addAllMissingAndRegenerate}
-                        disabled={generatingResume}
-                        className="text-[11px] font-semibold text-amber-hover hover:text-ink underline-offset-2 hover:underline disabled:opacity-50"
-                      >
-                        {generatingResume ? 'Regenerating...' : '+ Add all & regenerate'}
-                      </button>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {allMissingKeywords.map((kw) => {
-                        const isStaged = selectedKeywords.some(k => k.toLowerCase() === kw.toLowerCase());
-                        return (
-                          <button
-                            key={kw}
-                            type="button"
-                            onClick={() => stageMissingKeyword(kw)}
-                            disabled={generatingResume}
-                            title={isStaged ? 'Click to remove from priorities' : 'Click to prioritize for next regenerate'}
-                            className={[
-                              'inline-flex items-center gap-1 rounded-badge px-2 py-0.5 text-xs transition-all duration-150 cursor-pointer',
-                              'disabled:cursor-wait disabled:opacity-60',
-                              isStaged
-                                ? 'bg-amber/15 text-ink border border-amber/50 font-semibold shadow-sm'
-                                : 'border border-warning-red/30 bg-red-50 text-warning-red hover:bg-amber/10 hover:border-amber/40 hover:text-ink',
-                            ].join(' ')}
-                          >
-                            {isStaged ? (
-                              <>
-                                <CheckCircle2 className="h-2.5 w-2.5 text-amber" />
-                                {kw}
-                                <span className="text-[9px] uppercase tracking-wide opacity-70">staged</span>
-                              </>
-                            ) : (
-                              <>
-                                <XCircle className="h-2.5 w-2.5" />
-                                {kw}
-                              </>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    {(selectedKeywords.length > 0 || excludedKeywords.length > 0) && (
-                      <div className="mt-2 flex items-center justify-between gap-2 rounded-btn bg-amber/10 border border-amber/30 px-3 py-2">
-                        <div className="text-[11px] text-ink">
-                          {selectedKeywords.length > 0 && (
-                            <>
-                              <span className="font-semibold text-amber-hover">+{selectedKeywords.length}</span>{' '}
-                              to add
-                            </>
-                          )}
-                          {selectedKeywords.length > 0 && excludedKeywords.length > 0 && <span className="mx-1.5 text-stone">·</span>}
-                          {excludedKeywords.length > 0 && (
-                            <>
-                              <span className="font-semibold text-warning-red">-{excludedKeywords.length}</span>{' '}
-                              to remove
-                            </>
-                          )}
-                          {' '}staged for next regenerate.
-                        </div>
-                        <button
-                          onClick={() => regenerateInPlace()}
-                          disabled={generatingResume}
-                          className="btn-primary text-xs whitespace-nowrap"
-                        >
-                          {generatingResume ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <RotateCw className="h-3 w-3" />
-                          )}
-                          Regenerate
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Custom-keyword free-text input.
-                    Always rendered after generation so the user can force-add
-                    or force-remove ANY keyword - including ones that the auto-
-                    extractors (matchSkills + extractJdKeywords) missed. */}
-                <div className="mt-3 rounded-card border border-border bg-off-white p-3">
-                  <div className="text-[10px] uppercase tracking-wide text-stone mb-1.5 font-medium">
-                    Custom keyword - type any keyword the auto-detection missed
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <input
-                      type="text"
-                      value={customKeyword}
-                      onChange={(e) => setCustomKeyword(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          addCustomKeyword();
-                        }
-                      }}
-                      disabled={generatingResume}
-                      placeholder="e.g. non-functional requirements, NFR, AppDynamics..."
-                      className="input flex-1 min-w-[180px] py-1.5 text-xs"
-                    />
-                    <button
-                      type="button"
-                      onClick={addCustomKeyword}
-                      disabled={generatingResume || !customKeyword.trim()}
-                      className="btn-primary text-xs disabled:opacity-50"
-                      title="Force-include this keyword on next regenerate"
-                    >
-                      + Add
-                    </button>
-                    <button
-                      type="button"
-                      onClick={excludeCustomKeyword}
-                      disabled={generatingResume || !customKeyword.trim()}
-                      className="btn text-xs border-warning-red/30 text-warning-red hover:bg-red-50 disabled:opacity-50"
-                      title="Force-remove this keyword on next regenerate"
-                    >
-                      <XCircle className="h-3 w-3" /> Remove
-                    </button>
-                  </div>
-                  <div className="text-[10px] text-stone mt-1.5">
-                    Type a keyword and press Enter or click Add. Use Remove to force the model to drop a keyword that's currently in the resume.
-                  </div>
-                </div>
-              </div>
-            )}
-
-
+          <div className="space-y-3 border-t border-border pt-3 mt-3">
             {/* Action bar: Edit / Preview toggle */}
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2">
@@ -1019,18 +525,6 @@ export function JobActions({
                   Preview
                 </button>
               </div>
-              <button
-                onClick={() => regenerateInPlace()}
-                disabled={generatingResume}
-                className="btn text-xs"
-              >
-                {generatingResume ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <RotateCw className="h-3 w-3" />
-                )}
-                {generatingResume ? 'Regenerating...' : 'Regenerate'}
-              </button>
             </div>
 
             {/* Editable textarea or read-only preview */}

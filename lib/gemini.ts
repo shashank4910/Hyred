@@ -528,6 +528,47 @@ export function keywordInText(keyword: string, text: string): boolean {
 }
 
 /**
+ * Defense-in-depth safety net for the "model added a keyword I never selected"
+ * bug. Unselected JD tool/tech keywords (e.g. Grafana, InfluxDB) that the model
+ * invents almost always land as comma-separated items on a TECHNICAL SKILLS
+ * "Category: a, b, c" line. This removes EXACT item matches from those skills
+ * lines only - prose bullets and summaries are never touched (a bullet starts
+ * with "- ", so it never matches the category-line pattern). Returns the cleaned
+ * text and the list of items actually removed.
+ *
+ * This is intentionally conservative: it cannot create dangling commas (it
+ * rebuilds the list from kept items) and drops a category line entirely if every
+ * item on it was unauthorized.
+ */
+export function stripUnauthorizedSkillKeywords(
+  text: string,
+  unauthorized: string[],
+): { text: string; removed: string[] } {
+  if (unauthorized.length === 0) return { text, removed: [] };
+  const unauthSet = new Set(unauthorized.map(k => k.toLowerCase()));
+  const removed = new Set<string>();
+  const out: string[] = [];
+  for (const line of text.split('\n')) {
+    // A skills category line: a label, then a colon, then the list. Bullets
+    // ("- ...") and the contact block never match because they don't have a
+    // leading "Label:" of word characters.
+    const m = line.match(/^(\s*[A-Za-z][A-Za-z0-9 &/+().'-]*:\s*)(.+)$/);
+    if (!m) { out.push(line); continue; }
+    const items = m[2].split(',').map(s => s.trim()).filter(Boolean);
+    // Only treat it as a skills list if it actually looks like a comma list OR
+    // the single item is one of the unauthorized keywords (single-tool category).
+    const kept = items.filter(it => {
+      if (unauthSet.has(it.toLowerCase())) { removed.add(it); return false; }
+      return true;
+    });
+    if (kept.length === items.length) { out.push(line); continue; }
+    if (kept.length === 0) continue; // whole category was unauthorized -> drop line
+    out.push(m[1] + kept.join(', '));
+  }
+  return { text: out.join('\n'), removed: [...removed] };
+}
+
+/**
  * Clean a job-listing title down to a recruiter-presentable role title.
  * The JD's listing title is full of noise that should never reach the
  * candidate's resume - department codes (CX, RX), version numbers (II, III),
@@ -723,19 +764,14 @@ export async function generateAtsResume(args: {
         jobDescription: args.jobDescription,
       });
 
-  // Split the keyword universe into two DISTINCT roles. This is the core fix for
-  // the "unselected JD keywords get auto-added" bug — previously ALL jdKeywords
-  // were merged into one list the prompt told the model to "weave in", so every
-  // JD keyword was injected whether the user picked it or not.
+  // Split the keyword universe by role.
   //   - keywordsToAdd   = ONLY what the user explicitly selected (minus excluded).
   //                       These are the ONLY keywords we permit to be introduced
   //                       as NEW vocabulary, and they MUST appear in the output.
-  //   - contextKeywords = the remaining JD keywords. Emphasis-only: used to decide
-  //                       which EXISTING experience to surface/reorder, but NEVER
-  //                       added as new vocabulary if the candidate lacks them.
-  // excludedKeywords are the user's "remove these" list — dropped from both sets
-  // and called out explicitly in the prompt so any pre-existing mention in the
-  // candidate's current resume is also stripped on regeneration.
+  //   - contextKeywords = the remaining JD keywords. NOT placed in the prompt
+  //                       (see keywordsBlock note) - computed only for diagnostic
+  //                       logging so we can see what was intentionally withheld.
+  // excludedKeywords are the user's "remove these" list - dropped from both sets.
   const excludedSet = new Set(excludedKeywords.map(s => s.toLowerCase()));
   const keywordsToAdd = [...new Set(selectedKeywords)]
     .filter(k => !excludedSet.has(k.toLowerCase()));
@@ -743,6 +779,19 @@ export async function generateAtsResume(args: {
   const contextKeywords = jdKeywords.filter(
     k => !keywordsToAddSet.has(k.toLowerCase()) && !excludedSet.has(k.toLowerCase()),
   );
+
+  // Diagnostic log (visible in Vercel function logs). Evidence trail for the
+  // "unselected keywords got added" investigation: shows exactly what the user
+  // selected, what we will permit as new vocabulary, and what JD keywords we are
+  // deliberately NOT feeding to the model. If a contextKeyword still shows up in
+  // `added` below, the model invented it from the JD text - not from our prompt.
+  console.log('[generateAtsResume] keyword inputs', JSON.stringify({
+    selectedKeywords,
+    excludedKeywords,
+    keywordsToAdd,
+    contextKeywords_withheld: contextKeywords,
+    jdKeywordCount: jdKeywords.length,
+  }));
 
   // ── Conditional directives based on JD content ──────────────────────────────
   const jdLower = args.jobDescription.toLowerCase();
@@ -778,39 +827,37 @@ export async function generateAtsResume(args: {
   // just paste the JD listing into the resume?").
   const targetCurrentRoleTitle = cleanJdTitle(args.jobTitle ?? '');
 
-  const keywordsBlock = (keywordsToAdd.length > 0 || contextKeywords.length > 0)
-    ? `
-${keywordsToAdd.length > 0 ? `
-KEYWORDS TO ADD (the user explicitly selected these - they MUST appear in the final resume):
+  // IMPORTANT: we deliberately do NOT enumerate the unselected JD keywords
+  // (contextKeywords) anywhere in the prompt. Listing them - even under a
+  // "do not add these" caveat - primes the model to weave them in (negation is
+  // a weak instruction against an explicit list). That was the root cause of
+  // "Grafana/InfluxDB got added even though I didn't select them". The full JD
+  // is already in the prompt for relevance/emphasis; the model does not need a
+  // keyword list to know what to surface. The ONLY keyword list we show is the
+  // user's explicit selection. We also avoid naming ANY real tool in examples
+  // (a previous example literally said "Grafana", which the model copied
+  // verbatim into TECHNICAL SKILLS).
+  const keywordsBlock = `
+${keywordsToAdd.length > 0 ? `KEYWORDS TO ADD (the user explicitly selected these - they MUST appear in the final resume):
 ${keywordsToAdd.map(k => `  - ${k}`).join('\n')}
 
 KEYWORDS-TO-ADD RULES:
 - Each keyword above MUST appear at least once in the final resume - the user explicitly flagged these as critical for the ATS scan.
 - Where the candidate has equivalent real experience, weave the keyword naturally into the relevant bullet using the EXACT phrasing above (e.g. write "JMeter" not "Apache JMeter performance tool"; if the keyword is "load testing", use that phrase even if the candidate normally writes "performance testing").
-- If the candidate has no experience with one of these tools, list it under the most appropriate category in TECHNICAL SKILLS (e.g. "Monitoring: Splunk, Dynatrace, Grafana, Prometheus"). TECHNICAL SKILLS is by convention a list of familiarity, not deep experience, so this is acceptable - but do NOT invent fake bullets in Experience.
-- Reorder TECHNICAL SKILLS entries so these tools appear FIRST in their category line.
-` : ''}${contextKeywords.length > 0 ? `
-CONTEXT KEYWORDS (what THIS JD asks for - for relevance/emphasis ONLY, NOT a list of things to add):
-${contextKeywords.map(k => `  - ${k}`).join('\n')}
-
-CONTEXT-KEYWORD RULES:
-- Use these to decide which of the candidate's EXISTING experience to emphasize and surface earlier.
-- If the candidate ALREADY has one of these in their current resume, you MAY use the JD's exact phrasing for it and reorder it to appear earlier in its TECHNICAL SKILLS category.
-- DO NOT introduce any of these as NEW vocabulary. If a context keyword is not already in the candidate's current resume, leave it out - the user did not select it to be added.
-` : ''}
-STRICT KEYWORD SCOPE (this is critical - the user explicitly asked for it):
-- The ONLY NEW tools / technologies / frameworks / methodologies / certifications / named processes you may introduce into the resume are those listed under KEYWORDS TO ADD above.
-- Do NOT pick up vocabulary directly from the TARGET JOB description text or from CONTEXT KEYWORDS. They are provided for relevance context only - to help you decide which of the candidate's existing experience to emphasize. They are NOT a source of new keywords.
-- Tools / skills already present in the candidate's CURRENT RESUME may stay even if they are not listed above - those are the candidate's real, existing experience.
-- If you are tempted to add a tool name that is not in KEYWORDS TO ADD and not in the candidate's current resume, do NOT add it.
+- If the candidate has no real experience with one of these keywords, append ONLY that exact keyword (verbatim, nothing else) to the end of the most appropriate existing "Category: ..." line in TECHNICAL SKILLS. Do NOT invent bullets in Experience, and do NOT add any related, sibling, or commonly-grouped tool that is not in the list above.
+- Reorder TECHNICAL SKILLS entries so these keywords appear FIRST in their category line.
+` : ''}STRICT KEYWORD SCOPE (this is the single most important rule - the user explicitly asked for it and was frustrated when it was violated):
+- The ONLY new tools / technologies / frameworks / methodologies / certifications / named processes you may introduce into the resume are the exact keywords listed under KEYWORDS TO ADD above${keywordsToAdd.length === 0 ? '. That list is currently EMPTY, so you must NOT introduce ANY new tool/technology/skill at all - only reformat, reorder, and re-emphasize what is already in the candidate resume.' : '.'}
+- Do NOT add a tool/technology/platform/skill just because it appears in the TARGET JOB description. The JD below is provided ONLY so you can decide which of the candidate's EXISTING experience to emphasize and reorder. It is NOT a source of keywords to add.
+- Tools/skills already present in the candidate's CURRENT RESUME may stay - those are the candidate's real, existing experience.
+- Before you write ANY tool/technology name, check: is it in KEYWORDS TO ADD, OR already in the candidate's current resume? If neither, DO NOT write it. This applies even to a tool commonly grouped with one you are legitimately adding (e.g. do not add a second monitoring/observability/time-series tool just because you added one the user selected).
 ${excludedKeywords.length > 0 ? `
 EXCLUDED KEYWORDS (the user explicitly does NOT want these in the resume):
 ${excludedKeywords.map(k => `  - ${k}`).join('\n')}
 - These keywords MUST NOT appear ANYWHERE in the final resume - not in PROFESSIONAL SUMMARY, not in KEY ACHIEVEMENTS, not in TECHNICAL SKILLS, not in any bullet, not even inside other words.
 - If any of these keywords are currently in the candidate's CURRENT RESUME (for example because they were added in a previous generation that the user now wants undone), REMOVE every occurrence and rephrase the surrounding sentence so the resume still reads naturally.
-- Exclusion takes precedence over everything: even if an excluded keyword appears in CONTEXT KEYWORDS, it stays out. The user's explicit "remove" decision overrides JD relevance.
-` : ''}`
-    : '';
+- Exclusion takes precedence over everything. The user's explicit "remove" decision is final.
+` : ''}`;
 
   const prompt = `You are an expert ATS resume writer. Tailor this resume to pass the ATS scanner for the target job below.
 
@@ -876,7 +923,7 @@ CRITICAL: do NOT prefix the output with any header label like "Resume", "RESUME"
   );
 
   // Defense-in-depth ASCII normalization in case the model slipped a unicode char in.
-  const resume = normalizeAscii(raw);
+  let resume = normalizeAscii(raw);
 
   // ── ATS Match Score: % of JD keywords actually present in the resume ────────
   // Score over the JD keywords MINUS anything the user explicitly excluded — a
@@ -886,18 +933,48 @@ CRITICAL: do NOT prefix the output with any header label like "Resume", "RESUME"
   // matches "JavaScript".
   const scoredJd = jdKeywords.filter(kw => !excludedSet.has(kw.toLowerCase()));
 
-  const added: string[] = [];
-  const alreadyHad: string[] = [];
-  const missing: string[] = [];
+  // Score the resume against the JD keywords. Splits each keyword into:
+  //   added      = present now, was NOT in the original resume (model added it)
+  //   alreadyHad = present now, was already in the original resume
+  //   missing    = not present
+  function scoreResume(text: string) {
+    const added: string[] = [];
+    const alreadyHad: string[] = [];
+    const missing: string[] = [];
+    for (const kw of scoredJd) {
+      if (keywordInText(kw, text)) {
+        if (keywordInText(kw, args.resumeText)) alreadyHad.push(kw);
+        else added.push(kw);
+      } else {
+        missing.push(kw);
+      }
+    }
+    return { added, alreadyHad, missing };
+  }
 
-  for (const kw of scoredJd) {
-    const inResume = keywordInText(kw, resume);
-    const inOriginal = keywordInText(kw, args.resumeText);
-    if (inResume) {
-      if (inOriginal) alreadyHad.push(kw);
-      else added.push(kw);
-    } else {
-      missing.push(kw);
+  let { added, alreadyHad, missing } = scoreResume(resume);
+
+  // Unauthorized = a JD keyword the model introduced as NEW (not in the original
+  // resume) that the user did NOT select. This is exactly the "Grafana/InfluxDB
+  // got added even though I didn't pick them" symptom. Strip such items from
+  // TECHNICAL SKILLS lines deterministically, then re-score so the returned
+  // numbers reflect the cleaned resume.
+  const unauthorized = added.filter(kw => !keywordsToAddSet.has(kw.toLowerCase()));
+  if (unauthorized.length > 0) {
+    const stripped = stripUnauthorizedSkillKeywords(resume, unauthorized);
+    if (stripped.removed.length > 0) {
+      resume = stripped.text;
+      ({ added, alreadyHad, missing } = scoreResume(resume));
+      console.log('[generateAtsResume] stripped unauthorized keywords from skills lines',
+        JSON.stringify({ removed: stripped.removed }));
+    }
+    // Anything still flagged after the skills-line strip was injected into prose
+    // (a bullet/summary). We don't butcher prose automatically, but we log it as
+    // evidence so we can see exactly what the model did.
+    const survivors = added.filter(kw => !keywordsToAddSet.has(kw.toLowerCase()));
+    if (survivors.length > 0) {
+      console.warn('[generateAtsResume] model injected unselected JD keywords into prose (left intact)',
+        JSON.stringify({ survivors }));
     }
   }
 
@@ -905,6 +982,9 @@ CRITICAL: do NOT prefix the output with any header label like "Resume", "RESUME"
   const ats_match_score = scoredJd.length > 0
     ? Math.round((present / scoredJd.length) * 100)
     : 0;
+
+  console.log('[generateAtsResume] result',
+    JSON.stringify({ ats_match_score, added, alreadyHad_count: alreadyHad.length, missing }));
 
   return {
     resume,

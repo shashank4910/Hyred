@@ -92,13 +92,22 @@ export async function POST(
 
   let selectedKeywords: string[] = [];
   let excludedKeywords: string[] = [];
+  // The client passes the JD keyword list it is already displaying so the
+  // keyword universe stays STABLE across regenerations. Without this the POST
+  // would re-extract keywords from scratch and the set could drift between the
+  // picker (GET) and the result (POST) due to LLM non-determinism, making chips
+  // appear/disappear after optimizing. It also saves one LLM call per generate.
+  let clientJdKeywords: string[] = [];
   try {
     const body = await req.json();
     if (Array.isArray(body?.selectedKeywords)) {
-      selectedKeywords = body.selectedKeywords.map(String).slice(0, 30);
+      selectedKeywords = body.selectedKeywords.map(String).slice(0, 40);
     }
     if (Array.isArray(body?.excludedKeywords)) {
-      excludedKeywords = body.excludedKeywords.map(String).slice(0, 30);
+      excludedKeywords = body.excludedKeywords.map(String).slice(0, 40);
+    }
+    if (Array.isArray(body?.jdKeywords)) {
+      clientJdKeywords = body.jdKeywords.map(String).slice(0, 60);
     }
   } catch { /* no body */ }
 
@@ -141,7 +150,9 @@ export async function POST(
     return NextResponse.json({ error: 'No job description to optimise against' }, { status: 400 });
   }
 
-  // Two-pass ATS-tailored generation
+  // Two-pass ATS-tailored generation. Reuse the client-supplied JD keywords when
+  // present (stable universe); generateAtsResume falls back to extracting them
+  // itself if the list is empty.
   const result = await generateAtsResume({
     resumeText: profile.resume_text,
     jobTitle: job.title,
@@ -153,6 +164,7 @@ export async function POST(
     location: profile.insights?.current_location,
     selectedKeywords,
     excludedKeywords,
+    jdKeywords: clientJdKeywords.length > 0 ? clientJdKeywords : undefined,
   });
 
   if (!result.resume || result.resume.length < 200) {

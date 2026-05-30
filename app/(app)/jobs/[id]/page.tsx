@@ -53,9 +53,6 @@ export default async function JobMatchPage({
     posted_at: string | null;
     tags: string[] | null;
   };
-  const profile = match.profile as unknown as {
-    insights: { top_skills?: string[] } | null;
-  } | null;
   const colorClass = scoreColorClass(match.llm_score);
   const posted = relativeTime(job.posted_at);
 
@@ -142,7 +139,6 @@ export default async function JobMatchPage({
         bookmarked={(match as unknown as { bookmarked: boolean }).bookmarked ?? false}
         coverLetter={match.cover_letter}
         notes={match.notes}
-        candidateSkills={profile?.insights?.top_skills ?? []}
         applyUrl={job.url}
       />
 

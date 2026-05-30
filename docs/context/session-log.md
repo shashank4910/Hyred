@@ -2,6 +2,43 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 10 — ATS keyword feature: injection root-cause fix + simplified UX redesign (May 30, 2026)
+
+Two parts: (a) finished killing the "unselected keywords get added" bug, then (b) redesigned the whole keyword UX to be simple, on the owner's request.
+
+### (a) Why Grafana/InfluxDB were STILL added after session 9
+
+Session 9 split keywords into `keywordsToAdd` (selected) vs `contextKeywords` (rest) and told the model not to add the latter. It didn't work because the injection came from the **prompt text itself**, not the user's selection:
+
+1. **Example leakage (smoking gun).** A `KEYWORDS-TO-ADD RULES` line literally read `e.g. "Monitoring: Splunk, Dynatrace, Grafana, Prometheus"`. The model copied "Grafana" verbatim into TECHNICAL SKILLS; InfluxDB rode along as a sibling time-series/monitoring tool.
+2. **Context priming.** Even with a "do NOT add these" caveat, *enumerating* the unselected JD keywords under `CONTEXT KEYWORDS` primes the model to use them. Negation is a weak instruction against an explicit list sitting in the prompt.
+
+Fixes in `lib/gemini.ts`:
+- Removed the `CONTEXT KEYWORDS` enumeration entirely — the full JD is already in the prompt for relevance; we only list the user's `keywordsToAdd`.
+- Removed every real tool name from prompt examples.
+- Made `STRICT KEYWORD SCOPE` always-on (even when nothing is selected → "introduce NO new tool").
+- Added a deterministic safety net `stripUnauthorizedSkillKeywords()` (exported): after generation, any JD keyword that was added but NOT user-selected and NOT in the master resume is stripped from TECHNICAL SKILLS "Category: a, b, c" lines (prose left intact, logged), then the resume is re-scored.
+- Added `console.log` diagnostics of keyword inputs/outputs for Vercel-log evidence.
+
+### (b) Simplified UX (approved via mockups before building)
+
+Replaced three competing keyword surfaces (Skill-match panel, `KeywordPicker`, post-gen 3-way analysis + custom-keyword input + exclude toggle) with ONE `KeywordManager` component (`app/(app)/jobs/[id]/KeywordManager.tsx`) that looks identical before and after optimizing. Four buckets:
+- **In your resume** (green, read-only) — original real experience.
+- **Added** (green, click to remove) — woven in by optimization and still wanted.
+- **Will be added next** (amber, click to undo) — staged, pending the next optimize.
+- **Missing — tap to add** (red) — not present (incl. pending removals).
+
+One **Optimize My Resume** CTA, a "pending changes" banner when staged≠woven, and a live ATS score with a +/- delta badge. Live transitions: tap red→amber (stage), tap amber/green→red (un-stage). Because every optimize regenerates from the MASTER resume, **un-staging is all that's needed to remove a keyword** — so the explicit `excludedKeywords` UI was dropped.
+
+Supporting changes:
+- `route.ts` POST now accepts the client's `jdKeywords` and passes them through, so the keyword universe is STABLE across regenerations (no LLM re-extraction drift) and saves one LLM call.
+- `JobActions.tsx` rewritten: unified `optimize()` / `onStage` / `onUnstage` / `onStageMany`, `scoreDelta` tracking. Removed the Skill-match panel; `page.tsx` no longer passes `candidateSkills`. Deleted `KeywordPicker.tsx`.
+
+Paywall/entitlement: discussed (recommendation: meter outcomes/exports, NOT regenerations) but **NOT built** this session — owner said "check later".
+
+### Verified
+`npm run typecheck` clean; `npm run build` succeeds with dummy Supabase envs (`/jobs/[id]` bundle shrank 9.65 kB → 8.23 kB). Pitfall rows added to `CONTEXT.md`.
+
 ## Session 9 — ATS keyword add/delete/regenerate correctness fixes (May 30, 2026)
 
 Fixed four compounding bugs in the ATS resume keyword flow that the session-4 keyword UX shipped with. The symptom the owner saw: ticking a couple of keywords still rewrote the resume with *every* JD keyword; the same keyword showed up as both "Woven into your resume" and "Missing from your resume"; the ATS Match Score read higher than reality; and clicking some add/remove chips did nothing.
