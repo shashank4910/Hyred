@@ -663,16 +663,27 @@ const CONCEPT_TERMS = new Set([
   'microservices', 'observability', 'reliability', 'scalability',
 ]);
 
+// Known multi-word tool/product names that would otherwise be mis-read as prose
+// (they have spaces but no tool-ish suffix). A concrete named product belongs in
+// TECHNICAL SKILLS, not CORE COMPETENCIES.
+const KNOWN_TOOL_PHRASES = new Set([
+  'soap ui', 'soapui', 'load runner', 'loadrunner', 'visual studio',
+  'visual studio code', 'sql server', 'power bi', 'azure devops',
+  'apache jmeter', 'rest assured', 'selenium grid', 'spring boot',
+]);
+
 /**
  * Heuristic: is this keyword a concrete tool/technology (belongs in TECHNICAL
- * SKILLS) versus an activity / methodology / metric / concept (belongs woven
- * into prose)? Deliberately conservative - it biases toward "prose" so that
- * activities are never force-listed as skills. This is ONLY consulted by the
- * deterministic last-resort net; the LLM repair pass does the real placement.
+ * SKILLS) versus an activity / methodology / metric / concept (belongs in CORE
+ * COMPETENCIES / woven into prose)? Deliberately conservative - it biases toward
+ * "prose" so activities are never force-listed as skills. Consulted only by the
+ * deterministic guarantee to decide WHICH section a leftover lands in; the LLM
+ * repair pass does the natural placement first.
  */
 export function isSkillLikeKeyword(keyword: string): boolean {
   const lc = keyword.trim().toLowerCase();
   if (!lc) return false;
+  if (KNOWN_TOOL_PHRASES.has(lc)) return true;
   if (CONCEPT_TERMS.has(lc)) return false;
   // Tool-ish suffix (e.g. "JVM monitoring tools", "X framework") => a skill,
   // even if it contains an activity word - checked before ACTIVITY_WORDS.
@@ -684,6 +695,70 @@ export function isSkillLikeKeyword(keyword: string): boolean {
   if (words.length === 1) return true;
   // Multi-word and not a recognised tool pattern: treat as prose to be safe.
   return false;
+}
+
+/**
+ * Hard deterministic guarantee for ACTIVITY / METHODOLOGY / METRIC / CONCEPT
+ * keywords (e.g. "load testing", "KPI", "distributed systems"). These are NOT
+ * tools, so they must never be force-listed under TECHNICAL SKILLS. Instead we
+ * guarantee their presence in a CORE COMPETENCIES section - a standard ATS
+ * section for exactly this kind of term. The LLM repair pass weaves them into
+ * prose first when it can; this net only fires for whatever the model still
+ * skipped, so nothing the user selected is ever silently dropped.
+ *
+ * Existing CORE COMPETENCIES / AREAS OF EXPERTISE section -> append to it.
+ * Otherwise create one (placed right before TECHNICAL SKILLS if present, else at
+ * the end). Returns the updated text and the keywords actually inserted.
+ */
+export function ensureCompetencyKeywordsPresent(
+  text: string,
+  required: string[],
+): { text: string; added: string[] } {
+  if (required.length === 0) return { text, added: [] };
+
+  const missing: string[] = [];
+  const seen = new Set<string>();
+  for (const kw of required) {
+    const k = kw.trim();
+    if (!k) continue;
+    const lc = k.toLowerCase();
+    if (seen.has(lc)) continue;
+    seen.add(lc);
+    if (!keywordInText(k, text)) missing.push(k);
+  }
+  if (missing.length === 0) return { text, added: [] };
+
+  const lines = text.split('\n');
+  const isSectionHeader = (l: string) => {
+    const t = l.trim();
+    return t.length >= 3 && /^[A-Z][A-Z0-9 &/]*$/.test(t) && t === t.toUpperCase();
+  };
+  const compHeaderRe = /^\s*(CORE COMPETENCIES|AREAS OF EXPERTISE|KEY COMPETENCIES)\s*$/i;
+
+  const compIdx = lines.findIndex(l => compHeaderRe.test(l));
+  if (compIdx !== -1) {
+    // Append to the first content line under the header, or insert one.
+    let contentIdx = -1;
+    for (let i = compIdx + 1; i < lines.length; i++) {
+      if (isSectionHeader(lines[i])) break;
+      if (lines[i].trim()) { contentIdx = i; break; }
+    }
+    if (contentIdx !== -1) {
+      const existing = lines[contentIdx].split(',').map(s => s.trim()).filter(Boolean);
+      lines[contentIdx] = [...missing, ...existing].join(', ');
+    } else {
+      lines.splice(compIdx + 1, 0, missing.join(', '));
+    }
+    return { text: lines.join('\n'), added: missing };
+  }
+
+  // No competencies section -> create one, preferably just before TECHNICAL SKILLS.
+  const skillsIdx = lines.findIndex(l => /^\s*TECHNICAL SKILLS\s*$/i.test(l));
+  if (skillsIdx !== -1) {
+    lines.splice(skillsIdx, 0, 'CORE COMPETENCIES', missing.join(', '), '');
+    return { text: lines.join('\n'), added: missing };
+  }
+  return { text: [...lines, '', 'CORE COMPETENCIES', missing.join(', ')].join('\n'), added: missing };
 }
 
 /**
@@ -1142,17 +1217,20 @@ CRITICAL: do NOT prefix the output with any header label like "Resume", "RESUME"
     }
   }
 
-  // Guarantee every user-selected keyword appears - but place each one SMARTLY,
-  // not by force-dumping into TECHNICAL SKILLS (which made activities like
-  // "load testing" / "KPI" look like skills). Strategy:
+  // Guarantee every user-selected keyword appears - placed SMARTLY, and with a
+  // HARD deterministic backstop so nothing is ever silently dropped (the bug in
+  // the previous version: activity/metric keywords were only logged, never
+  // inserted, so when the LLM skipped them they stayed missing). Strategy:
   //   1. If the model skipped some selections, run a focused LLM repair pass
   //      that re-inserts ONLY those keywords in their natural location (tools ->
-  //      skills, activities/metrics/concepts -> woven into prose).
+  //      skills, activities/metrics/concepts -> woven into prose). Best quality.
   //   2. Re-apply the unauthorized strip (the repair could, in theory, surface
   //      a sibling tool) and re-score.
-  //   3. Deterministic LAST resort ONLY for genuine tool-like leftovers the
-  //      repair still missed - never force an activity/metric into the skills
-  //      list. Truly-stubborn prose keywords are logged for visibility.
+  //   3. Deterministic guarantee for whatever the repair STILL missed, by type:
+  //      tool-like  -> TECHNICAL SKILLS (ensureSelectedKeywordsPresent)
+  //      everything else (activities/metrics/concepts) -> CORE COMPETENCIES
+  //      (ensureCompetencyKeywordsPresent). Correctness no longer depends on
+  //      the LLM: every selected keyword is present after this block.
   if (keywordsToAdd.length > 0) {
     let stillMissing = keywordsToAdd.filter(kw => !keywordInText(kw, resume));
     if (stillMissing.length > 0) {
@@ -1180,8 +1258,10 @@ CRITICAL: do NOT prefix the output with any header label like "Resume", "RESUME"
           JSON.stringify({ error: (e as Error).message }));
       }
 
-      // Deterministic last resort: only TOOL-like keywords may be appended to
-      // the skills list. Activity/metric/concept keywords are NOT force-listed.
+      // Deterministic guarantee for whatever the LLM still skipped, placed by
+      // type: tool-like -> TECHNICAL SKILLS; activity/metric/concept -> CORE
+      // COMPETENCIES (never force-listed as a technical skill). After this,
+      // every selected keyword is guaranteed present.
       stillMissing = keywordsToAdd.filter(kw => !keywordInText(kw, resume));
       const toolLeftovers = stillMissing.filter(isSkillLikeKeyword);
       const proseLeftovers = stillMissing.filter(kw => !isSkillLikeKeyword(kw));
@@ -1195,8 +1275,13 @@ CRITICAL: do NOT prefix the output with any header label like "Resume", "RESUME"
         }
       }
       if (proseLeftovers.length > 0) {
-        console.warn('[generateAtsResume] activity/metric keywords still missing after repair (NOT forced into skills)',
-          JSON.stringify({ stillMissing: proseLeftovers }));
+        const comp = ensureCompetencyKeywordsPresent(resume, proseLeftovers);
+        if (comp.added.length > 0) {
+          resume = comp.text;
+          ({ added, alreadyHad, missing } = scoreResume(resume));
+          console.log('[generateAtsResume] guaranteed activity/metric keywords via CORE COMPETENCIES',
+            JSON.stringify({ added: comp.added }));
+        }
       }
     }
   }
