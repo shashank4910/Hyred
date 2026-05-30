@@ -118,15 +118,21 @@ function parse(text: string): ParsedResume {
       // candidate's name and renders huge in the navy band.
       if (!name && HEADER_LABELS_TO_SKIP.test(trimmed)) continue;
 
+      // The FIRST eligible line is ALWAYS the candidate's name — capture it
+      // BEFORE the section-header test. An ALL-CAPS name like "SHASHANK SINGH"
+      // matches the ALL-CAPS section pattern, so without this the name is
+      // misread as a section header: the navy band renders empty and the
+      // contact lines get dumped as body bullets below it.
+      if (!name) {
+        name = trimmed;
+        continue;
+      }
+
       if (isSectionHeader(trimmed)) {
         // No more header lines - we've reached the first section.
         inHeader = false;
         cur = { title: trimmed, lines: [] };
         sections.push(cur);
-        continue;
-      }
-      if (!name) {
-        name = trimmed;
         continue;
       }
       // Second non-section, non-name line: title slot, IF it doesn't look
