@@ -725,6 +725,12 @@ function ensureContactBlockTitle(
 
   const line2 = lines[insertAt].trim();
   if (line2.toLowerCase() === roleTitle.toLowerCase()) {
+    // ALL CAPS titles match isResumeSectionHeader() and break pdf-resume.ts
+    // unless normalized to mixed case (see parse() title-before-section fix).
+    if (isResumeSectionHeader(line2) && line2 !== roleTitle) {
+      lines[insertAt] = roleTitle;
+      return { text: lines.join('\n'), inserted: true };
+    }
     return { text: lines.join('\n'), inserted: false };
   }
 

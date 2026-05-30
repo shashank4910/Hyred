@@ -74,6 +74,10 @@ const contentW = L.pageW - L.mL - L.mR;
 // name (not the literal word "Resume" rendered as if it were a name).
 const HEADER_LABELS_TO_SKIP = /^(resume|curriculum\s+vitae|cv|profile|c\.?v\.?)$/i;
 
+/** Real section headers — never treat as the line-2 title tagline. */
+const KNOWN_BODY_SECTION =
+  /^(PROFESSIONAL SUMMARY|KEY ACHIEVEMENTS|CORE COMPETENCIES|TECHNICAL SKILLS|CERTIFICATIONS|PROFESSIONAL EXPERIENCE|EDUCATION|WORK EXPERIENCE|WORK HISTORY|EXPERIENCE|EMPLOYMENT)$/;
+
 // ─── Plain-text parser ────────────────────────────────────────────────────────
 
 interface Section { title: string; lines: string[] }
@@ -128,18 +132,21 @@ function parse(text: string): ParsedResume {
         continue;
       }
 
+      // Line 2 is the role title tagline — capture BEFORE isSectionHeader().
+      // ALL CAPS titles like "SENIOR PERFORMANCE ENGINEER" match the section
+      // pattern (same bug class as all-caps names in PR #73). Without this,
+      // parsed.title stays null and the navy PDF band renders with no amber
+      // tagline even though the plain-text resume has a title on line 2.
+      if (title === null && !looksLikeContactLine(trimmed) && !KNOWN_BODY_SECTION.test(trimmed)) {
+        title = trimmed;
+        continue;
+      }
+
       if (isSectionHeader(trimmed)) {
         // No more header lines - we've reached the first section.
         inHeader = false;
         cur = { title: trimmed, lines: [] };
         sections.push(cur);
-        continue;
-      }
-      // Second non-section, non-name line: title slot, IF it doesn't look
-      // like contact info. This makes the parser tolerant of older resumes
-      // where line 2 was an email.
-      if (title === null && !looksLikeContactLine(trimmed)) {
-        title = trimmed;
         continue;
       }
       contactLines.push(trimmed);
@@ -156,6 +163,11 @@ function parse(text: string): ParsedResume {
   }
 
   return { name, title, contactLines, sections };
+}
+
+/** Exposed for deterministic header-parse verification. */
+export function parseResumePlainText(text: string): ParsedResume {
+  return parse(asciiSafe(text));
 }
 
 function isSectionHeader(line: string): boolean {
