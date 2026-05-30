@@ -16,9 +16,8 @@ const GENDER_OPTIONS = ['Male', 'Female', 'Non-binary', 'Prefer not to say'];
 const VETERAN_OPTIONS = ['No', 'Yes', 'Prefer not to say'];
 const DISABILITY_OPTIONS = ['No', 'Yes', 'Prefer not to say'];
 
-// ── Pre-filled defaults for first-time load ──────────────────────────────────
-
-const DEFAULTS: Profile = {
+// Non-PII form defaults only — never pre-fill name, email, skills, or essay answers.
+const FORM_DEFAULTS: Profile = {
   country: 'India',
   work_auth_country: 'India',
   authorized_to_work: true,
@@ -29,25 +28,6 @@ const DEFAULTS: Profile = {
   willing_to_travel: 'minimal',
   veteran_status: 'No',
   disability_status: 'No',
-  current_title: 'Senior Performance Engineer',
-  years_experience: 7,
-  city: 'Noida',
-  state_province: 'Uttar Pradesh',
-  zip_code: '201301',
-  full_name: 'Shashank Singh',
-  email: 'Shashank.srmncr@gmail.com',
-  phone: '+91 8077162893',
-  linkedin_url: 'https://linkedin.com/in/shashank-singh-610155b1',
-  answer_about_yourself:
-    'Senior Performance Engineer with 7.7 years of experience building AI-powered automation agents and enterprise-scale performance testing frameworks across BFSI, Healthcare, Retail, and Media domains. I have engineered agentic AI workflows that reduced test execution time by 94% and built a free JMeter Performance Center adopted by multiple teams at Charles Schwab. I combine deep expertise in LoadRunner, JMeter, and APM tools with hands-on AI development to deliver measurable performance improvements at scale.',
-  answer_why_leave:
-    'I am seeking a role that offers greater scope to apply my growing expertise in AI-driven performance engineering and where I can take on broader technical leadership responsibilities. After 7+ years of consistent growth — from performance tester to building production AI agents — I am ready for a challenge that matches my current capabilities and ambitions.',
-  answer_strengths:
-    'My strongest ability is bridging performance engineering with AI automation — I do not just run load tests, I build intelligent systems around them. I have a track record of turning manual, time-consuming workflows into fully automated pipelines (94% time reduction, 40% defect reduction). I am also strong at translating complex performance data into clear, actionable insights for senior stakeholders and business decisions.',
-  answer_weaknesses:
-    'I tend to invest deeply in building robust, reusable solutions even when a quick fix would suffice in the short term. I am actively working on balancing thoroughness with delivery speed by setting explicit time-boxes for exploration phases before committing to a full build.',
-  answer_salary_expectation:
-    'My expected CTC is in the range of 24–28 LPA, open to discussion based on the overall compensation structure, growth opportunity, and role responsibilities.',
 };
 
 export function ApplyProfileForm() {
@@ -58,13 +38,19 @@ export function ApplyProfileForm() {
 
   useEffect(() => {
     fetch('/api/apply-profile')
-      .then(r => r.json())
-      .then(d => {
-        // Merge defaults underneath — existing saved values always win
-        setForm({ ...DEFAULTS, ...(d ?? {}) });
+      .then(async (r) => {
+        const d = await r.json();
+        if (!r.ok) throw new Error((d as { error?: string }).error ?? 'Failed to load profile');
+        const { profile_id: _pid, id: _id, created_at: _ca, updated_at: _ua, error: _err, ...saved } =
+          (d ?? {}) as Profile & { profile_id?: string; id?: string; created_at?: string; updated_at?: string; error?: string };
+        setForm({ ...FORM_DEFAULTS, ...saved });
         setLoading(false);
       })
-      .catch(() => { setForm(DEFAULTS); setLoading(false); });
+      .catch((e) => {
+        toast.error((e as Error).message);
+        setForm(FORM_DEFAULTS);
+        setLoading(false);
+      });
   }, []);
 
   function set(key: string, value: string | boolean | number | null) {
@@ -75,10 +61,12 @@ export function ApplyProfileForm() {
   async function save() {
     setSaving(true);
     try {
+      const { profile_id: _pid, id: _id, created_at: _ca, updated_at: _ua, ...payload } =
+        form as Profile & { profile_id?: string; id?: string; created_at?: string; updated_at?: string };
       const res = await fetch('/api/apply-profile', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error('Save failed');
       toast.success('Application profile saved');
@@ -106,7 +94,7 @@ export function ApplyProfileForm() {
       <Section icon={<User className="h-4 w-4" />} title="Personal Information">
         <Grid>
           <Field label="Full Name">
-            <input className="input" value={f('full_name')} onChange={e => set('full_name', e.target.value)} placeholder="Shashank Singh" />
+            <input className="input" value={f('full_name')} onChange={e => set('full_name', e.target.value)} placeholder="Your full name" />
           </Field>
           <Field label="Email">
             <input className="input" type="email" value={f('email')} onChange={e => set('email', e.target.value)} placeholder="you@email.com" />
@@ -115,16 +103,16 @@ export function ApplyProfileForm() {
             <input className="input" value={f('phone')} onChange={e => set('phone', e.target.value)} placeholder="+91 9876543210" />
           </Field>
           <Field label="City">
-            <input className="input" value={f('city')} onChange={e => set('city', e.target.value)} placeholder="Noida" />
+            <input className="input" value={f('city')} onChange={e => set('city', e.target.value)} placeholder="Your city" />
           </Field>
           <Field label="State / Province">
-            <input className="input" value={f('state_province')} onChange={e => set('state_province', e.target.value)} placeholder="Uttar Pradesh" />
+            <input className="input" value={f('state_province')} onChange={e => set('state_province', e.target.value)} placeholder="Your state or province" />
           </Field>
           <Field label="Country">
             <input className="input" value={f('country') || 'India'} onChange={e => set('country', e.target.value)} placeholder="India" />
           </Field>
           <Field label="Zip / PIN Code">
-            <input className="input" value={f('zip_code')} onChange={e => set('zip_code', e.target.value)} placeholder="201301" />
+            <input className="input" value={f('zip_code')} onChange={e => set('zip_code', e.target.value)} placeholder="PIN / ZIP code" />
           </Field>
         </Grid>
       </Section>
@@ -148,16 +136,16 @@ export function ApplyProfileForm() {
       <Section icon={<Briefcase className="h-4 w-4" />} title="Experience & Compensation">
         <Grid>
           <Field label="Current Job Title">
-            <input className="input" value={f('current_title')} onChange={e => set('current_title', e.target.value)} placeholder="Senior Performance Engineer" />
+            <input className="input" value={f('current_title')} onChange={e => set('current_title', e.target.value)} placeholder="e.g. Senior Software Engineer" />
           </Field>
           <Field label="Total Years of Experience">
-            <input className="input" type="number" min={0} max={50} value={f('years_experience')} onChange={e => set('years_experience', e.target.value)} placeholder="7" />
+            <input className="input" type="number" min={0} max={50} value={f('years_experience')} onChange={e => set('years_experience', e.target.value)} placeholder="e.g. 5" />
           </Field>
           <Field label="Current CTC (e.g. 18 LPA)">
-            <input className="input" value={f('total_ctc')} onChange={e => set('total_ctc', e.target.value)} placeholder="18 LPA" />
+            <input className="input" value={f('total_ctc')} onChange={e => set('total_ctc', e.target.value)} placeholder="e.g. 18 LPA" />
           </Field>
           <Field label="Expected CTC (e.g. 24 LPA)">
-            <input className="input" value={f('expected_ctc')} onChange={e => set('expected_ctc', e.target.value)} placeholder="24 LPA" />
+            <input className="input" value={f('expected_ctc')} onChange={e => set('expected_ctc', e.target.value)} placeholder="e.g. 24 LPA" />
           </Field>
         </Grid>
       </Section>
@@ -248,19 +236,19 @@ export function ApplyProfileForm() {
         <p className="text-xs text-stone mb-3">The agent uses these as a base when filling text fields on application forms. The AI adapts them per company automatically.</p>
         <div className="space-y-4">
           <Field label="Tell me about yourself (2-3 sentences)">
-            <textarea className="input min-h-[80px]" value={f('answer_about_yourself')} onChange={e => set('answer_about_yourself', e.target.value)} />
+            <textarea className="input min-h-[80px]" value={f('answer_about_yourself')} onChange={e => set('answer_about_yourself', e.target.value)} placeholder="Brief summary of your background, domain, and what you bring to a role..." />
           </Field>
           <Field label="Why are you looking to leave your current role?">
-            <textarea className="input min-h-[70px]" value={f('answer_why_leave')} onChange={e => set('answer_why_leave', e.target.value)} />
+            <textarea className="input min-h-[70px]" value={f('answer_why_leave')} onChange={e => set('answer_why_leave', e.target.value)} placeholder="What you are looking for in your next opportunity..." />
           </Field>
           <Field label="What are your key strengths?">
-            <textarea className="input min-h-[70px]" value={f('answer_strengths')} onChange={e => set('answer_strengths', e.target.value)} />
+            <textarea className="input min-h-[70px]" value={f('answer_strengths')} onChange={e => set('answer_strengths', e.target.value)} placeholder="Your top skills and measurable achievements..." />
           </Field>
           <Field label="What is your biggest weakness?">
-            <textarea className="input min-h-[60px]" value={f('answer_weaknesses')} onChange={e => set('answer_weaknesses', e.target.value)} />
+            <textarea className="input min-h-[60px]" value={f('answer_weaknesses')} onChange={e => set('answer_weaknesses', e.target.value)} placeholder="A genuine weakness and how you are improving..." />
           </Field>
           <Field label="Salary expectation (one-liner for forms)">
-            <input className="input" value={f('answer_salary_expectation')} onChange={e => set('answer_salary_expectation', e.target.value)} />
+            <input className="input" value={f('answer_salary_expectation')} onChange={e => set('answer_salary_expectation', e.target.value)} placeholder="e.g. Open to discussion based on role and benefits" />
           </Field>
         </div>
       </Section>

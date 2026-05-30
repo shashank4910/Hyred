@@ -135,7 +135,7 @@ export function ImportForm() {
                   className="input mt-1"
                   value={manualTitle}
                   onChange={(e) => setManualTitle(e.target.value)}
-                  placeholder="Senior Performance Engineer"
+                  placeholder="e.g. Software Engineer"
                 />
               </div>
               <div>

@@ -295,7 +295,7 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
             <input className="input" value={email} onChange={(e) => { setEmail(e.target.value); clearAiFlag('email'); }} type="email" placeholder="you@example.com" required />
           </Field>
           <Field label="Full name" ai={aiFields.has('fullName')}>
-            <input className="input" value={fullName} onChange={(e) => { setFullName(e.target.value); clearAiFlag('fullName'); }} placeholder="Shashank Singh" />
+            <input className="input" value={fullName} onChange={(e) => { setFullName(e.target.value); clearAiFlag('fullName'); }} placeholder="Your full name" />
           </Field>
         </div>
       </section>
@@ -304,10 +304,10 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
         <h2 className="font-semibold text-ink">Job preferences</h2>
         <div className="grid sm:grid-cols-2 gap-3">
           <Field label="Target roles" hint="Comma separated. Used by the LLM to focus matching." ai={aiFields.has('roles')}>
-            <input className="input" value={roles} onChange={(e) => { setRoles(e.target.value); clearAiFlag('roles'); }} placeholder="Senior Performance Engineer, SRE Lead" />
+            <input className="input" value={roles} onChange={(e) => { setRoles(e.target.value); clearAiFlag('roles'); }} placeholder="e.g. Senior Software Engineer, Product Manager" />
           </Field>
-          <Field label="Preferred locations" hint="Comma separated. Used to personalise your LinkedIn job search — e.g. Pune, Noida, Bengaluru. Add 'Remote' for remote roles." ai={aiFields.has('locations')}>
-            <input className="input" value={locations} onChange={(e) => { setLocations(e.target.value); clearAiFlag('locations'); }} placeholder="Pune, Noida, Gurgaon, Remote" />
+          <Field label="Preferred locations" hint="Comma separated. Used to personalise your LinkedIn job search — e.g. Bengaluru, Mumbai, Remote." ai={aiFields.has('locations')}>
+            <input className="input" value={locations} onChange={(e) => { setLocations(e.target.value); clearAiFlag('locations'); }} placeholder="e.g. Bengaluru, Mumbai, Remote" />
           </Field>
           <Field label="Avoid keywords" hint="Skips JDs mentioning these.">
             <input className="input" value={excludeKeywords} onChange={(e) => setExcludeKeywords(e.target.value)} placeholder="Junior, Intern, Contract" />

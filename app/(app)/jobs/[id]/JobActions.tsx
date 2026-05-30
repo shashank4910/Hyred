@@ -58,7 +58,7 @@ export function JobActions({
   const [atsResume, setAtsResume] = useState('');
   const [generatingResume, setGeneratingResume] = useState(false);
   const [resumeCopied, setResumeCopied] = useState(false);
-  const [filenameBase, setFilenameBase] = useState<string>('Shashank_Performance_7.7');
+  const [filenameBase, setFilenameBase] = useState<string>('Resume');
   const [keywords, setKeywords] = useState<GenResult>(null);
   // Change in ATS score vs the previous optimize (for the +N / -N badge).
   const [scoreDelta, setScoreDelta] = useState<number | null>(null);
