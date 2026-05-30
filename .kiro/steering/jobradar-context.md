@@ -17,7 +17,7 @@
 | **0** | Strategic decisions (auth provider, cost model, scope) | ✅ Done |
 | **1** | Real auth & identity (Supabase Auth, replace first-profile pattern) | ✅ Done (session 7) |
 | **2** | Data isolation & security (RLS, ownership checks, private resume bucket) | 🟡 Partial — scoping+ownership+RLS done; **resumes bucket still public (TODO)** |
-| **3** | Scalable ingest & cost control (split shared vs per-user, quotas) | ⬜ Not started |
+| **3** | Scalable ingest & cost control (split shared vs per-user, quotas, **pub/sub by role topic**) | ⬜ Not started — design note in `CONTEXT.md` |
 | **4** | Monetization & abuse protection (tiers, rate limits, legal) | ⬜ Not started |
 | **5** | Scale & ops (pgvector, observability, auto-apply queue) | ⬜ Not started |
 
@@ -54,7 +54,7 @@
 
 - **Phase 1 — Auth & identity:** Supabase Auth via `@supabase/ssr`; retire `APP_PASSWORD`/`jr_session`; migration `0005_multitenant.sql` adds `user_id uuid → auth.users` on `profiles` + backfills Shashank's row; `getCurrentProfile()` helper replaces all first-profile queries; sign-up/login/reset/verify UI.
 - **Phase 2 — Isolation (ship WITH Phase 1):** RLS on `profiles`/`matches`/`apply_profiles`/`ingest_runs` keyed to `auth.uid()`; ownership checks on `match/[id]/*`; **make `resumes` bucket private** + signed URLs; add `profile_id` to `ingest_runs`.
-- **Phase 3 — Cost control (before any public link):** split `lib/ingest.ts` into shared (fetch→upsert→embed, paid once) vs per-user (filter→score→matches); broad shared Adzuna fetch + per-user embedding pre-filter to top ~30 before LLM; `usage` table + hard quotas; per-user work on Supabase scheduled Edge Functions / queue for active users only.
+- **Phase 3 — Cost control (before any public link):** split `lib/ingest.ts` into shared (fetch→upsert→embed, paid once) vs per-user (filter→score→matches); **pub/sub by role topic** (publish scan per topic → users subscribe → score shortlist only); broad shared Adzuna fetch + per-user embedding pre-filter to top ~30 before LLM; `usage` table + hard quotas; per-user work on Supabase scheduled Edge Functions / queue for active users only.
   - **Capacity reality (Groq free, May 2026):** limits are per-KEY/org, NOT per-user ([docs](https://console.groq.com/docs/rate-limits)). 70B free ≈ 30 RPM / ~1,000 RPD / ~12K TPM / ~100K TPD. JobRadar scores ~3,000 tok/job (resume re-sent every call), 30–80 jobs/run → ~400K–1M tok/user/day = **4–10× the free daily cap**. So **one shared free key ≈ 1 user**, not multi-user. Scale only via **(A) BYOK** (each user's own key = own bucket, $0 to us) or **(B)** shrink usage (1×/day cron, pre-filter to ~15, **cache a short resume summary instead of re-sending full resume = biggest token win**, cheaper 8B model). Full analysis in `CONTEXT.md` Phase 3.
   - **OpenAI-primary cost model (May 2026):** gpt-4o-mini $0.15/1M in + $0.60/1M out; ~$0.0005/job scored (the dominant cost). **~$1-2/active user/mo** typical (owner's ~$10-15 = heavy dev usage). Embeddings ~$2-4/mo flat (shared). Scales **linearly**: 1 user ~$3-5, 10 ~$18, 100 ~$150, **1,000 ~$1,500/mo** (heavy ceiling ~$8,000). → confirms BYOK is the only viable free public path. Full table in `CONTEXT.md` Phase 3.
 - **Phase 4 — Monetization:** Stripe tiers; rate limiting (Upstash free); input hardening + prompt-injection guards; Privacy/Terms + delete-account + GDPR.
@@ -65,14 +65,14 @@ Start each chat by reading this tracker → confirm prior phase is ✅ → execu
 
 ---
 
-## 1. What is JobRadar?
+## 1. What is JobRadar / Hyred?
 
-A **multi-user AI-powered job-search dashboard** built by Shashank (Senior Performance Engineer, India, 7+ years). **Multi-tenant as of session 7: anyone signs up (email/Google), onboards their own resume, and sees only their own matches/scans — see ⭐ ACTIVE INITIATIVE above.** UI uses a warm light theme (Runway-inspired: off-white canvas, amber CTA, Inter typography).
+**Hyred** (hyred.in) — multi-user AI job-search dashboard built by Shashank. Repo name remains `JobRadar`. **Multi-tenant as of session 7.** UI: warm light theme (Runway-inspired).
 
 **Core flow:** Fetches jobs from multiple sources → AI-scores against resume → surfaces relevant matches → generates tailored ATS resumes + cover letters per job.
 
-- **Repo:** https://github.com/shashank4910/JobRadar
-- **Live:** https://job-radar-ten-nu.vercel.app
+- **Repo:** https://github.com/shashank4910/JobRadar (**private** as of session 12)
+- **Live:** Hyred on Vercel (`NEXT_PUBLIC_APP_URL`)
 
 ---
 
@@ -210,9 +210,9 @@ This file should be updated every 2-3 significant conversations. Add:
 - Changes to architecture
 - New "NEVER do" / "ALWAYS do" rules learned
 
-Last updated: May 29, 2026 (session 7: **Phase 1 multi-user auth & identity SHIPPED** — Supabase Auth email+Google, `lib/current-user.ts`, `profiles.user_id`, all first-profile lookups + match-route ownership now per-user, per-user scan, admin gating via ADMIN_EMAIL. Migration 0005 + Supabase Auth provider config required — see CONTEXT.md Phase 1 log. ⚠️ resumes bucket still public → Phase 2.)
+Last updated: May 30, 2026 (session 12: owner PII fixes PRs #75–76; Hyred rebrand #77; role-title PDF #78–79; repo **private**; Phase 3 pub/sub design + premium pricing floor in `CONTEXT.md`. Full log → `docs/context/session-log.md`.)
 
-_Earlier: session 6 (Groq migration + capacity/cost docs); session 2 (May 27 2026: backfill + JD fix + UI redesign)._
+_Earlier: session 11 (ATS keyword guarantee); session 7 (Phase 1 auth); session 6 (Groq migration)._
 
 ---
 

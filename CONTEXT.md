@@ -8,7 +8,8 @@
 
 ## Project Overview
 
-JobRadar is a personalized AI-powered job-search dashboard that:
+**Product brand:** **Hyred** (hyred.in) — repo folder/history still `JobRadar`.  
+JobRadar / Hyred is a personalized AI-powered job-search dashboard that:
 1. Fetches jobs from Adzuna, Remotive, RemoteOK, HackerNews, Arbeitnow (cron every 6h)
 2. AI-scores each job against the user's resume (0-100)
 3. Surfaces relevant matches in a polished light-themed dashboard (Runway-inspired warm palette)
@@ -110,6 +111,22 @@ Researched the latest 2026 landscape (web). Key findings:
 - **Hard quotas + metering** (`usage` table): free tier = e.g. 1 scan/day, capped scored jobs, capped resume/cover-letter generations. Stops one user/bot from burning $50 in an afternoon.
 - Move per-user work off GitHub Actions cron → Supabase scheduled Edge Functions or a queue; only process *active* users (logged in within N days).
 
+#### Phase 3 design note — shared ingest / pub-sub by role topic (May 30, 2026)
+
+**Problem:** 1,000 users × 4 cron scans/day ≠ 4,000 tokens — it is **4,000 ingest runs**, each scoring **~30–80 jobs** at **~3,000 tokens/job** → **hundreds of millions of tokens/day** if every user re-fetches and re-scores everything.
+
+**Direction (owner-approved concept, not built yet):** treat ingest like **publish/subscribe**:
+
+| Layer | What happens | Token/API save |
+|---|---|---|
+| **Publish (shared)** | Cron scans **per topic** (role family + region, e.g. `performance-engineering / India`): fetch sources → upsert `jobs` → embed once | Huge — paid once per topic, not per user |
+| **Subscribe (per user)** | User maps `SearchProfile` / roles → 1–3 topics; on new jobs: cosine pre-filter to top **15–30** candidates | Cuts LLM calls before scoring |
+| **Personalize (per user)** | `scoreJob` only on shortlist (resume-specific 0–100) | Cannot pub/sub away — still per user |
+
+`jobs` is already a shared global pool; `matches` is per `profile_id`. Phase 3 work = wire **topic publishers** + **subscriber shortlist** + **usage quotas**, not duplicate full ingest per profile.
+
+**Top MNC** stays cheap: filter existing `matches` / `jobs` by `lib/top-companies.ts` — **$0** extra scan cost.
+
 #### Phase 3 capacity analysis — single shared Groq free key (May 2026, evidence-based)
 
 **Question:** how many users can one shared Groq free API key support, and how many cron runs/day?
@@ -187,6 +204,20 @@ Note: the ~$10-15/mo in this file's "Cost Model" section is the **owner's heavy-
 **Takeaways:** (1) cost scales **linearly** with users — no economy of scale on tokens. (2) **Scoring is ~90% of the bill**; embeddings are negligible → the Phase 3 "don't re-send full resume + pre-filter to ~15 jobs" change can cut per-user cost 50-70% (e.g. $1,500→~$500/mo at 1,000 users). (3) This is the whole case for **BYOK**: with users' own free Groq keys, the $1,500-8,000/mo at 1,000 users → **~$0 to us** (only the small shared embedding cost remains). OpenAI-primary is fine for the owner + a small beta; financially unviable for a free public launch.
 
 ### Phase 4 — Monetization & abuse protection
+
+#### Minimum premium pricing floor (May 2026, evidence-based — planning only)
+
+**Not in code yet.** Grounded in `#### OpenAI-primary cost model` + Groq overflow to OpenAI.
+
+| Assumption | Floor |
+|---|---|
+| Typical active premium user AI COGS | **~$1.50–2/mo** (with quotas + Groq primary) |
+| Heavy premium user (unlimited scans/regens) | **~$8/mo** OpenAI |
+| Infra + Stripe | **~$0.50–1/user/mo** at scale |
+
+**Minimum charge (covers API + ~40% margin + fees):** **≥ ₹999–1,199/mo** or **≥ $12–15/mo** per paying subscriber. **Top MNC** = high margin (no extra API). **Unlimited regenerations/scans** without caps = margin killer.
+
+**1,000 users ≠ 1,000 payers:** break-even on API alone needs roughly **15–20%+ of actives paying** at ~$12, or **~800+ payers** if most users are active on a 4×/day full ingest design.
 
 - **Stripe** for paid tiers (free until you transact). Free tier for acquisition; paid unlocks higher quotas / auto-apply.
 - Rate limiting on auth + AI endpoints (Upstash Redis free tier or Supabase-based).
@@ -372,6 +403,19 @@ scripts/clear-embeddings.sql        ← (Session 5, MERGED) Wipe stale 768-dim v
 | ATS keyword UX was too complex (3 staging entry points, 2 colour languages, different pre/post-gen UIs) | The Skill-match panel, the KeywordPicker, and the post-gen analysis all staged keywords independently, so the same keyword could show 3 times in 2 meanings of "red". Job seekers found it confusing. | Single `KeywordManager` panel (same before/after optimize) with 4 buckets — **In your resume** (green) / **Added** (green, click to remove) / **Will be added next** (amber, pending) / **Missing** (red, click to add) — one **Optimize My Resume** CTA, a "pending changes" banner, and a live score+delta. Removed Skill-match panel, KeywordPicker, custom-keyword input, and the explicit exclude list (un-staging removes a keyword because every optimize regenerates from the MASTER resume). Client passes its `jdKeywords` to the POST so the universe stays stable across regenerations. |
 | Selected keywords still missing after Optimize — esp. "prose" ones (session 11, PRs #67/#69/#70) | The prompt only *asked* the LLM to weave selected keywords in; the model non-deterministically skipped some. Tool-like keywords had a deterministic append, but **activity/metric/concept** keywords ("load testing", "stress testing", "KPI") had no guarantee — a regression pass only `console.log`'d a warning for them, so they silently vanished and stayed in "Will be added next". Re-clicking Optimize is NOT an acceptable fix (user thinks the app is broken). | A code-level guarantee runs after the LLM + the unauthorized-strip pass in `lib/gemini.ts`: `ensureSelectedKeywordsPresent()` appends missing **tool** keywords to `TECHNICAL SKILLS`; `ensureCompetencyKeywordsPresent()` guarantees **activity/metric/concept** keywords via a `CORE COMPETENCIES` section (created if absent). Re-score after inserting so the UI buckets match reality → 100% of selected keywords land in ONE Optimize. **Placement decision (tool vs activity) is LLM-driven, not hardcoded:** `extractJdKeywordsTyped()` tags each JD keyword `type: 'tool'\|'activity'` in the same extraction pass; the `keywordTypes` map is plumbed GET→client→POST→`generateAtsResume`; `isToolKeyword()` trusts the LLM type first and only falls back to the `isSkillLikeKeyword` heuristic. Hardcoded tool lists don't scale — they're last-resort only. |
 | **Resume PDF: blank navy band + name & contacts stacked in the body (session 11, PR #73 — the REAL fix)** | The candidate's name renders as an empty band with the name + every contact line stacked below it in dark text. ROOT CAUSE: `parse()` ran the ALL-CAPS `isSectionHeader()` test (`^[A-Z][A-Z\s&/-]+$`) **before** capturing the name. An all-caps name like "SHASHANK SINGH" matches that pattern → it was treated as a SECTION header, so `parsed.name` was empty (band blank) and the title + contacts became that section's body bullets (stacked). NOTE: PR #71 (ASCII `" \| "` separators + auto-shrink) was a real change but a RED HERRING for this symptom — it never executed because `contactLines` was empty. | In `parse()`, capture the FIRST eligible (non-label) line as the name BEFORE the section-header test. Names are always line 1, even all-caps. Verify PDF changes by dumping the jsPDF page content stream (`doc.internal.pages[1]`) and checking draw order/fill — do NOT trust plain text extraction (it can't tell band vs body). **ATS note:** the PDF is true selectable text, single-column, Helvetica, real `- ` bullets, standard headings = no ATS blockers; `-- N of M --` lines in text dumps are the extractor's page markers, not content. |
+| Owner PII pre-filled for new users (onboarding / apply profile) | `ApplyProfileForm` merged a `DEFAULTS` object (owner name, email, phone, LinkedIn, full essay answers) on first API load when `apply_profiles` row was missing — values appeared as real input text, not just placeholders. `OnboardingForm` placeholders also used owner-specific examples ("Shashank Singh", "Pune, Noida, Gurgaon"). | **PR #76:** `FORM_DEFAULTS` = non-PII only (country, notice period, etc.); generic placeholders; GET `/api/apply-profile` seeds `email`/`full_name` from signed-in `profiles` row only; strip server metadata on save. Never merge hard-coded identity into multi-tenant forms. |
+| Owner contact/achievements baked into `generateAtsResume` prompt | Prompt hard-coded fallback contact (`SHASHANK SINGH`, phone, Noida, owner LinkedIn) + perf-specific summary example + JMeter/Charles Schwab achievement clause → other users' tailored resumes inherited owner details. | **PR #75:** `contactBlock` built only from `args` + resume text; `extractLinkedinFromResume()`; no hard-coded fallbacks; removed owner-specific JMeter achievement injection; never put real names in prompt examples. PDF filename fallback `"Shashank"` → `"Resume"` (`resume/route.ts`, `JobActions.tsx`). |
+| **4 scans × N users ≠ N tokens** | Easy to confuse **ingest run count** with **token count**. One scan ≈ 30–80 `scoreJob` calls × ~3k tokens each. | When estimating cost or designing Phase 3, multiply **runs × jobs scored × tokens/job**, not scans alone. See `#### Phase 3 design note — shared ingest / pub-sub`. |
+
+---
+
+## Repo & deployment notes
+
+| Item | Status (May 30, 2026) |
+|---|---|
+| GitHub visibility | **Private** (`shashank4910/JobRadar`) — code not public; collaborators/Vercel GitHub app need access |
+| Live app | Hyred on Vercel (see env `NEXT_PUBLIC_APP_URL`) |
+| OpenAI usage tracking in-app | **Not yet** — only job-source logs in `api_request_logs`; token metering = Phase 3 `usage` table |
 
 ---
 
@@ -413,7 +457,7 @@ When a feature seems broken:
 - Changes to the file map
 - **Keep the `AGENTS.md` Index in sync** when you add/rename a `##` section here, and append new dated session logs to `docs/context/session-log.md` (not here).
 
-**Last updated:** May 30, 2026 (session 11: ATS keyword **guarantee** — every user-selected keyword now lands in ONE Optimize via deterministic `ensureSelectedKeywordsPresent` (tools→TECHNICAL SKILLS) + `ensureCompetencyKeywordsPresent` (activities/metrics→CORE COMPETENCIES) in `lib/gemini.ts`; PRs #67/#69. Placement made scalable — `extractJdKeywordsTyped()` lets the LLM tag each keyword `tool`/`activity`, plumbed GET→client→POST, so `isToolKeyword` trusts the LLM not hardcoded lists; PR #70. Resume header: contacts on one ASCII `" | "` line in `lib/pdf-resume.ts`; PR #71. ATS visual review = no blockers (text-based, single-column, real bullets). Two new `## Known Pitfalls` rows; full narrative in `docs/context/session-log.md`.)
+**Last updated:** May 30, 2026 (session 12: multi-tenant **owner PII leak** fixed in forms — PR #76; resume prompt **owner contact leak** — PR #75; **Hyred** rebrand PR #77; role-title PDF fixes PRs #78–79; repo set **private**; Phase 3 **pub/sub shared-ingest** design note + premium pricing floor + token-math pitfall; full narrative in `docs/context/session-log.md` → Session 12.)
 
 _Session 6 (May 29, 2026): started the **Enterprise Multi-Tenant Transformation** initiative — added the Master Plan + Progress Tracker (Phases 0-5). Phase 0 + the Groq migration (PR #48 replaced the dead `gemini-2.0-flash` 429 fallback with Groq; PR #50 flipped Groq to FREE PRIMARY with OpenAI fallback + `LLM_PRIMARY` toggle, needs `GROQ_API_KEY`) + the Phase 3 Groq free-tier capacity analysis._
 
