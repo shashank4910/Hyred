@@ -1,6 +1,8 @@
 # JobRadar — Kiro Steering Context
 
 > **This file is auto-loaded by Kiro in every new chat.** It provides full project context so continuity is maintained across sessions.
+>
+> **⚡ Token-efficient reading:** the canonical router + index is **`AGENTS.md`** (repo root). Follow its Read Protocol — open only the `CONTEXT.md` section your task needs instead of reading the whole file. History → `docs/context/session-log.md`.
 
 ---
 
