@@ -7,7 +7,7 @@
 ---
 
 ## 30-second project summary
-JobRadar = a **multi-user** AI job-search dashboard. Next.js 15 + React 19 + TS on Vercel, Supabase (Postgres + Auth + Storage), **Groq Llama 3.3 70B (free) primary + OpenAI gpt-4o-mini fallback** for chat, OpenAI `text-embedding-3-small` for embeddings, GitHub Actions cron for ingest, Python browser-use agent on Render for auto-apply. Owner/admin: Shashank.
+**Hyred** (hyred.in; repo `JobRadar`) = a **multi-user** AI job-search dashboard. Next.js 15 + React 19 + TS on Vercel, Supabase (Postgres + Auth + Storage), **Groq Llama 3.3 70B (free) primary + OpenAI gpt-4o-mini fallback** for chat, OpenAI `text-embedding-3-small` for embeddings, GitHub Actions cron for ingest, Python browser-use agent on Render for auto-apply. GitHub repo is **private**. Owner/admin: Shashank.
 
 ---
 
@@ -36,10 +36,14 @@ How to open one section cheaply: `grep -n "<heading text>" CONTEXT.md` to get th
 | LLM provider strategy (Groq/OpenAI, why not Gemini) | `CONTEXT.md` → Phase 0 research note + the `gemini-2.0-flash` pitfall row | changing AI providers |
 | Capacity limits (Groq free tier, users per key) | `CONTEXT.md` → `#### Phase 3 capacity analysis` | scaling / quota decisions |
 | Cost per user / 1→1000 scaling | `CONTEXT.md` → `#### OpenAI-primary cost model` | budgeting |
+| Premium pricing floor / monetization planning | `CONTEXT.md` → `#### Minimum premium pricing floor` | Stripe tiers, what to charge |
+| Shared ingest / pub-sub by role topic (Phase 3) | `CONTEXT.md` → `#### Phase 3 design note — shared ingest / pub-sub by role topic` | scaling ingest before public launch |
+| Multi-tenant PII in forms / resume prompts | `CONTEXT.md` → `## Known Pitfalls` (owner PII rows) | onboarding, apply-profile, `generateAtsResume` |
+| Repo visibility / deployment | `CONTEXT.md` → `## Repo & deployment notes` | go-live, collaborator access |
 | **Auth / login / Supabase Auth / Google OAuth setup** | `docs/AUTH_SETUP.md` | anything auth, or go-live config |
 | Multi-user identity in code (`getCurrentProfile`, per-user scoping) | `CONTEXT.md` → `### Phase 1 log` | editing pages/routes that read user data |
 | Kiro-specific steering | `.kiro/steering/jobradar-context.md` | Kiro auto-loads it |
-| Past session history | `CONTEXT.md` → `## Session N …` (bottom) | Tier 3 only |
+| Past session history | `docs/context/session-log.md` (newest first) | Tier 3 only |
 
 > Keep this Index in sync when you add/rename a `##` section in `CONTEXT.md`. It is the single source of the map.
 

@@ -2,6 +2,41 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 12 — Multi-tenant PII fixes, Hyred rebrand, economics & Phase 3 pub/sub design (May 30, 2026)
+
+Four threads: (a) stop owner data leaking to new sign-ups, (b) ship Hyred rebrand + resume title fixes, (c) repo privacy + pricing/token economics for scale, (d) document shared-ingest pub/sub direction for Phase 3.
+
+### (a) Owner PII in onboarding / apply profile (PR #76)
+
+**Symptom:** new users saw the owner's name, contact details, locations, and full essay answers pre-filled in Apply Profile (real values, not gray placeholders). Onboarding placeholders also showed owner-specific examples.
+
+**Root cause:** `ApplyProfileForm` `DEFAULTS` merged on first load when API returned only `{ profile_id }`; `OnboardingForm` placeholders hard-coded owner examples.
+
+**Fix:** `FORM_DEFAULTS` = non-PII only; generic placeholders; GET `/api/apply-profile` seeds identity from signed-in `profiles` row; strip metadata on save. Merged PR #76.
+
+### (b) Owner data in tailored resume generation (PR #75)
+
+**Symptom:** other users' ATS resumes could inherit owner contact lines and perf-specific prompt bias.
+
+**Root cause:** `generateAtsResume` prompt had hard-coded fallback contact + owner LinkedIn + JMeter/Charles Schwab achievement clause + perf-heavy summary example.
+
+**Fix:** `contactBlock` from args/resume only; `extractLinkedinFromResume()`; removed owner achievement injection; PDF filename fallback `"Resume"`. Merged PR #75.
+
+### (c) Hyred rebrand + role title in PDF (PRs #77–79)
+
+- **#77** — product rename JobRadar → **Hyred** (hyred.in).
+- **#78–79** — stop hardcoding owner role title in ATS generation; restore role title in PDF header after regeneration.
+
+### (d) Economics, repo private, Phase 3 design (conversation — docs only)
+
+- GitHub repo set to **private** (`shashank4910/JobRadar`).
+- Clarified token math: **1,000 users × 4 scans/day = 4,000 ingest runs**, not 4,000 tokens (~100k–250k tokens **per run**).
+- Owner aligned on **pub/sub shared ingest**: publish jobs per role topic once → users subscribe → LLM score only shortlist. Captured in `CONTEXT.md` → `#### Phase 3 design note — shared ingest / pub-sub by role topic`.
+- Premium **minimum pricing floor** documented: **≥ ₹999–1,199 / $12–15/mo** per payer with quotas; Top MNC = $0 API; unlimited scans/regens without caps loses money at scale.
+
+### Verified
+`npm run typecheck` clean on form/resume fixes. Context system updated: `CONTEXT.md`, `AGENTS.md` Index, this log, `.kiro/steering/jobradar-context.md`.
+
 ## Session 11 — ATS keyword GUARANTEE (selected keywords must land) + LLM-typed placement + resume header polish (May 30, 2026)
 
 Three threads: (a) guarantee every user-selected keyword actually lands in the regenerated resume, (b) make the tool-vs-activity placement decision scale (move it off hardcoded lists onto the LLM), and (c) a visual/ATS review + a header layout fix. PRs #67, #69, #70 (code) and #71 (PDF header).
