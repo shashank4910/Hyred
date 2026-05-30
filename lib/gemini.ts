@@ -569,23 +569,18 @@ export function stripUnauthorizedSkillKeywords(
 }
 
 /**
- * Mirror of stripUnauthorizedSkillKeywords: a deterministic safety net that
- * GUARANTEES every keyword the user explicitly selected ends up in the resume.
+ * Deterministic LAST-RESORT net for TOOL-like keywords only. Appends the given
+ * keywords verbatim to the TECHNICAL SKILLS section - prepended to the first
+ * "Category: ..." line (creating a line or the section if absent). Prose bullets
+ * are never touched.
  *
- * Why this exists: the prompt asks the model to weave/append the selected
- * keywords, but an LLM can silently skip a few when several are selected at
- * once. Those skipped keywords then stay stuck in the UI's "Will be added next"
- * bucket even though the user already clicked Optimize - which makes the app
- * look broken. Re-clicking Optimize is not an acceptable fix, so we close the
- * gap mechanically here.
+ * IMPORTANT: callers must pass only genuine tool/technology keywords here (see
+ * isSkillLikeKeyword). Activities, methodologies, metrics, and concepts
+ * (e.g. "load testing", "KPI", "distributed systems") must NEVER be force-listed
+ * as skills - they are placed in prose by the LLM repair pass instead. This net
+ * exists purely so a skipped TOOL keyword (e.g. "JMeter") never silently drops.
  *
- * Placement: keywords are appended verbatim (exact selected wording) to the
- * TECHNICAL SKILLS section - prepended to the first "Category: ..." line so
- * they surface first (consistent with the prompt's "appear FIRST" rule). If
- * there is no skills category line we insert one; if there is no TECHNICAL
- * SKILLS section at all we append a fresh one. Prose bullets are never touched.
- *
- * Because we insert the EXACT selected text, keywordInText() matches it on the
+ * Because we insert the EXACT keyword text, keywordInText() matches it on the
  * re-score, so the chip reliably moves to "Added". Returns the cleaned text and
  * the keywords actually inserted.
  */
@@ -643,6 +638,95 @@ export function ensureSelectedKeywordsPresent(
   // Skills section exists but has no category line -> insert one under it.
   lines.splice(skillsHeaderIdx + 1, 0, `Additional Skills: ${missing.join(', ')}`);
   return { text: lines.join('\n'), added: missing };
+}
+
+// Activity / process words. A keyword containing any of these (as a whole word)
+// is an action or methodology, not a tool, and must NOT be listed under
+// TECHNICAL SKILLS (e.g. "load testing", "performance test reports").
+const ACTIVITY_WORDS = new Set([
+  'testing', 'test', 'tests', 'analysis', 'analytics', 'analyzing', 'analysing',
+  'reporting', 'report', 'reports', 'tuning', 'optimization', 'optimisation',
+  'planning', 'management', 'engineering', 'assessment', 'tracking',
+  'troubleshooting', 'benchmarking', 'monitoring', 'governance', 'strategy',
+  'methodology', 'methodologies', 'lifecycle', 'process', 'processes',
+  'migration', 'administration', 'mentoring', 'leadership', 'collaboration',
+  'coordination', 'debugging', 'diagnostics', 'design', 'development',
+  'validation', 'verification', 'review', 'reviews',
+]);
+
+// Concept / metric keywords that read as jargon in a skills list and belong in
+// prose (summary / achievements / experience) instead.
+const CONCEPT_TERMS = new Set([
+  'kpi', 'kpis', 'sla', 'slo', 'sli', 'sla/slo/sli', 'roi', 'mttr', 'mtbf',
+  'distributed systems', 'distributed system', 'shift-left', 'shift left',
+  'shift-left testing', 'agile', 'scrum', 'agile/scrum', 'devops', 'waterfall',
+  'microservices', 'observability', 'reliability', 'scalability',
+]);
+
+/**
+ * Heuristic: is this keyword a concrete tool/technology (belongs in TECHNICAL
+ * SKILLS) versus an activity / methodology / metric / concept (belongs woven
+ * into prose)? Deliberately conservative - it biases toward "prose" so that
+ * activities are never force-listed as skills. This is ONLY consulted by the
+ * deterministic last-resort net; the LLM repair pass does the real placement.
+ */
+export function isSkillLikeKeyword(keyword: string): boolean {
+  const lc = keyword.trim().toLowerCase();
+  if (!lc) return false;
+  if (CONCEPT_TERMS.has(lc)) return false;
+  // Tool-ish suffix (e.g. "JVM monitoring tools", "X framework") => a skill,
+  // even if it contains an activity word - checked before ACTIVITY_WORDS.
+  if (/(tools?|frameworks?|platforms?|suites?|libraries|library|sdk|db)$/.test(lc)) return true;
+  const words = lc.split(/[^a-z0-9+#.]+/).filter(Boolean);
+  if (words.some(w => ACTIVITY_WORDS.has(w))) return false;
+  // A single non-concept token is almost always a concrete tool/language
+  // (JMeter, Splunk, Python, Gatling, k6, Docker).
+  if (words.length === 1) return true;
+  // Multi-word and not a recognised tool pattern: treat as prose to be safe.
+  return false;
+}
+
+/**
+ * Focused LLM repair pass. Runs only when the main generation skipped some of
+ * the user's selected keywords. It re-inserts ONLY those few missing keywords,
+ * each in its natural place: tools go to TECHNICAL SKILLS, but activities /
+ * methodologies / metrics / concepts (load testing, KPI, distributed systems,
+ * etc.) are woven into the summary / achievements / experience instead of being
+ * force-listed as skills. Returns the full updated resume (ASCII-normalised).
+ */
+async function weaveKeywordsIntoResume(args: {
+  resume: string;
+  missingKeywords: string[];
+  jobTitle: string;
+}): Promise<string> {
+  const prompt = `You are editing an already-formatted ATS resume. Insert each of the MISSING KEYWORDS below so it appears at least once, placing EACH in the MOST NATURAL location.
+
+PLACEMENT RULES (this is the whole point of this edit):
+- If a keyword is a concrete TOOL / TECHNOLOGY / FRAMEWORK / PROGRAMMING LANGUAGE / PLATFORM / LIBRARY (a named product or language, e.g. JMeter, Splunk, Kubernetes, Python), add it to the most appropriate "Category: ..." line under TECHNICAL SKILLS.
+- If a keyword is an ACTIVITY, TESTING TYPE, METHODOLOGY, METRIC, or CONCEPT (e.g. load testing, stress testing, endurance testing, baseline testing, distributed systems, KPI, SLA), it is NOT a skill. DO NOT list it under TECHNICAL SKILLS. Instead weave it naturally into the PROFESSIONAL SUMMARY, a KEY ACHIEVEMENTS bullet, or a relevant PROFESSIONAL EXPERIENCE bullet, rephrasing the sentence minimally and truthfully so it reads like real experience.
+- Use the EXACT keyword wording given (e.g. write "load testing", not "load tests").
+
+HARD RULES:
+- Insert ONLY the MISSING KEYWORDS listed below. Do NOT introduce any other new tool, technology, methodology, or skill.
+- Preserve every existing fact, company, date, number, section header, and bullet. Do not delete content; only the minimal rephrasing needed to weave a keyword in is allowed.
+- Do NOT fabricate experience. The candidate's resume already describes performance/QA/testing work - attach each activity keyword to that existing work.
+- Output plain ASCII only. No markdown fences, no preamble, no commentary.
+- The FIRST non-empty line MUST stay the candidate's name; the SECOND line the role title tagline.
+
+MISSING KEYWORDS (insert each at least once, placed per the rules above):
+${args.missingKeywords.map(k => `  - ${k}`).join('\n')}
+
+TARGET ROLE (for natural phrasing context only): ${args.jobTitle}
+
+CURRENT RESUME (return the COMPLETE updated resume):
+${args.resume.slice(0, 16000)}`;
+
+  const raw = await chat(
+    'You make minimal, truthful edits to an ATS resume so specific keywords appear in the most natural place. Tools go in the skills section; activities and metrics are woven into prose. Output ONLY the full updated resume in plain ASCII.',
+    prompt,
+    0.2,
+  );
+  return normalizeAscii(raw);
 }
 
 /**
@@ -920,9 +1004,12 @@ ${keywordsToAdd.map(k => `  - ${k}`).join('\n')}
 
 KEYWORDS-TO-ADD RULES:
 - Each keyword above MUST appear at least once in the final resume - the user explicitly flagged these as critical for the ATS scan.
-- Where the candidate has equivalent real experience, weave the keyword naturally into the relevant bullet using the EXACT phrasing above (e.g. write "JMeter" not "Apache JMeter performance tool"; if the keyword is "load testing", use that phrase even if the candidate normally writes "performance testing").
-- If the candidate has no real experience with one of these keywords, append ONLY that exact keyword (verbatim, nothing else) to the end of the most appropriate existing "Category: ..." line in TECHNICAL SKILLS. Do NOT invent bullets in Experience, and do NOT add any related, sibling, or commonly-grouped tool that is not in the list above.
-- Reorder TECHNICAL SKILLS entries so these keywords appear FIRST in their category line.
+- PLACE EACH KEYWORD WHERE IT NATURALLY BELONGS - do NOT dump them all into TECHNICAL SKILLS:
+  - TOOLS / TECHNOLOGIES / FRAMEWORKS / PROGRAMMING LANGUAGES / PLATFORMS / LIBRARIES (a named product or language, e.g. JMeter, Splunk, Kubernetes, Python) go in the most appropriate "Category: ..." line under TECHNICAL SKILLS.
+  - ACTIVITIES / TESTING TYPES / METHODOLOGIES / METRICS / CONCEPTS (e.g. load testing, stress testing, endurance testing, baseline testing, distributed systems, KPI, SLA) are NOT skills. DO NOT list them under TECHNICAL SKILLS. Weave them naturally into the PROFESSIONAL SUMMARY, a KEY ACHIEVEMENTS bullet, or a relevant PROFESSIONAL EXPERIENCE bullet.
+- Use the keyword's EXACT wording (e.g. write "JMeter" not "Apache JMeter performance tool"; if the keyword is "load testing", use that phrase even if the candidate normally writes "performance testing").
+- Do NOT fabricate experience. The candidate already describes related performance/QA/testing work - attach each activity keyword to that existing work rather than inventing new jobs or bullets. Do NOT add any related, sibling, or commonly-grouped tool that is not in the list above.
+- For genuine TOOL keywords only, reorder TECHNICAL SKILLS entries so they appear FIRST in their category line.
 ` : ''}STRICT KEYWORD SCOPE (this is the single most important rule - the user explicitly asked for it and was frustrated when it was violated):
 - The ONLY new tools / technologies / frameworks / methodologies / certifications / named processes you may introduce into the resume are the exact keywords listed under KEYWORDS TO ADD above${keywordsToAdd.length === 0 ? '. That list is currently EMPTY, so you must NOT introduce ANY new tool/technology/skill at all - only reformat, reorder, and re-emphasize what is already in the candidate resume.' : '.'}
 - Do NOT add a tool/technology/platform/skill just because it appears in the TARGET JOB description. The JD below is provided ONLY so you can decide which of the candidate's EXISTING experience to emphasize and reorder. It is NOT a source of keywords to add.
@@ -1055,20 +1142,61 @@ CRITICAL: do NOT prefix the output with any header label like "Resume", "RESUME"
     }
   }
 
-  // Deterministic guarantee: every keyword the user explicitly selected MUST be
-  // present. The model occasionally skips some when several are selected at once,
-  // which previously left them stuck in the UI's "Will be added next" bucket even
-  // after the user optimized (looks broken). Append any still-missing selection
-  // verbatim to TECHNICAL SKILLS, then re-score so the chip moves to "Added".
+  // Guarantee every user-selected keyword appears - but place each one SMARTLY,
+  // not by force-dumping into TECHNICAL SKILLS (which made activities like
+  // "load testing" / "KPI" look like skills). Strategy:
+  //   1. If the model skipped some selections, run a focused LLM repair pass
+  //      that re-inserts ONLY those keywords in their natural location (tools ->
+  //      skills, activities/metrics/concepts -> woven into prose).
+  //   2. Re-apply the unauthorized strip (the repair could, in theory, surface
+  //      a sibling tool) and re-score.
+  //   3. Deterministic LAST resort ONLY for genuine tool-like leftovers the
+  //      repair still missed - never force an activity/metric into the skills
+  //      list. Truly-stubborn prose keywords are logged for visibility.
   if (keywordsToAdd.length > 0) {
-    const stillMissing = keywordsToAdd.filter(kw => !keywordInText(kw, resume));
+    let stillMissing = keywordsToAdd.filter(kw => !keywordInText(kw, resume));
     if (stillMissing.length > 0) {
-      const ensured = ensureSelectedKeywordsPresent(resume, stillMissing);
-      if (ensured.added.length > 0) {
-        resume = ensured.text;
-        ({ added, alreadyHad, missing } = scoreResume(resume));
-        console.log('[generateAtsResume] force-added selected keywords the model skipped',
-          JSON.stringify({ forced: ensured.added }));
+      try {
+        const repaired = await weaveKeywordsIntoResume({
+          resume,
+          missingKeywords: stillMissing,
+          jobTitle: args.jobTitle,
+        });
+        if (repaired && repaired.length >= 200) {
+          resume = repaired;
+          // The repair pass may surface a sibling tool; re-strip unauthorized.
+          ({ added, alreadyHad, missing } = scoreResume(resume));
+          const unauth = added.filter(kw => !keywordsToAddSet.has(kw.toLowerCase()));
+          if (unauth.length > 0) {
+            const s = stripUnauthorizedSkillKeywords(resume, unauth);
+            if (s.removed.length > 0) resume = s.text;
+          }
+          ({ added, alreadyHad, missing } = scoreResume(resume));
+          console.log('[generateAtsResume] repair pass wove in skipped keywords',
+            JSON.stringify({ requested: stillMissing }));
+        }
+      } catch (e) {
+        console.warn('[generateAtsResume] repair pass failed, falling back to deterministic net',
+          JSON.stringify({ error: (e as Error).message }));
+      }
+
+      // Deterministic last resort: only TOOL-like keywords may be appended to
+      // the skills list. Activity/metric/concept keywords are NOT force-listed.
+      stillMissing = keywordsToAdd.filter(kw => !keywordInText(kw, resume));
+      const toolLeftovers = stillMissing.filter(isSkillLikeKeyword);
+      const proseLeftovers = stillMissing.filter(kw => !isSkillLikeKeyword(kw));
+      if (toolLeftovers.length > 0) {
+        const ensured = ensureSelectedKeywordsPresent(resume, toolLeftovers);
+        if (ensured.added.length > 0) {
+          resume = ensured.text;
+          ({ added, alreadyHad, missing } = scoreResume(resume));
+          console.log('[generateAtsResume] appended tool-like leftovers to TECHNICAL SKILLS',
+            JSON.stringify({ appended: ensured.added }));
+        }
+      }
+      if (proseLeftovers.length > 0) {
+        console.warn('[generateAtsResume] activity/metric keywords still missing after repair (NOT forced into skills)',
+          JSON.stringify({ stillMissing: proseLeftovers }));
       }
     }
   }
