@@ -1,5 +1,6 @@
 export type Profile = {
   id: string;
+  user_id: string | null;
   email: string;
   full_name: string | null;
   resume_text: string | null;

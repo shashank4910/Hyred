@@ -56,6 +56,7 @@ const MAX_JOB_AGE_DAYS = 45;
  *  10. Persist matches and close run
  */
 export async function runIngest(opts?: {
+  profileId?: string;
   profileEmail?: string;
   triggeredBy?: 'manual' | 'cron' | 'api';
   sources?: import('./sources').SourceName[];
@@ -90,10 +91,23 @@ export async function runIngest(opts?: {
 
   try {
     // ---------- 1. Pick the profile ----------
-    const wantedEmail = opts?.profileEmail?.trim().toLowerCase();
+    // Preferred: explicit profileId (multi-user: the signed-in user). Then
+    // profileEmail (legacy cron). Last resort: the first/only profile.
     let profile: Profile | null = null;
 
-    if (wantedEmail) {
+    if (opts?.profileId) {
+      const { data, error } = await sb
+        .from('profiles')
+        .select('*')
+        .eq('id', opts.profileId)
+        .maybeSingle();
+      if (error) throw new Error(`Profile lookup failed: ${error.message}`);
+      profile = (data as Profile | null) ?? null;
+      if (!profile) throw new Error(`No profile found for id ${opts.profileId}.`);
+    }
+
+    const wantedEmail = opts?.profileEmail?.trim().toLowerCase();
+    if (!profile && wantedEmail) {
       const { data, error } = await sb
         .from('profiles')
         .select('*')
@@ -124,6 +138,11 @@ export async function runIngest(opts?: {
       throw new Error('Profile is missing resume_text or resume_embedding.');
     }
     const p = profile;
+    // Tag this run with the owning profile so the dashboard "last scan" and
+    // Stats can be scoped per-user.
+    if (runId) {
+      await sb.from('ingest_runs').update({ profile_id: p.id }).eq('id', runId);
+    }
     const minScore = p.preferences?.min_score ?? MIN_SCORE_TO_KEEP;
     const blacklist = new Set(
       (p.preferences?.blacklist_companies ?? []).map((s) =>
@@ -501,3 +520,56 @@ async function upsertJobs(rawJobs: RawJob[]): Promise<string[]> {
 }
 
 export { upsertJobs };
+
+/**
+ * Multi-user cron entry point: run the per-user ingest for EVERY profile that
+ * has completed onboarding (resume_text + resume_embedding present).
+ *
+ * NOTE (Phase 3 optimization): this currently fetches + embeds jobs once PER
+ * profile, which is wasteful at scale. The planned split is a single shared
+ * fetch/embed pass followed by per-user scoring. For the current small
+ * multi-user/testing phase, the simple per-profile loop is correct and clear.
+ */
+export async function runIngestForAllProfiles(opts?: {
+  triggeredBy?: 'manual' | 'cron' | 'api';
+  sources?: import('./sources').SourceName[];
+}): Promise<{
+  profiles: number;
+  results: { profileId: string; email: string; result?: IngestResult; error?: string }[];
+}> {
+  const sb = supabaseAdmin();
+  const { data: profiles, error } = await sb
+    .from('profiles')
+    .select('id, email')
+    .not('resume_text', 'is', null)
+    .not('resume_embedding', 'is', null)
+    .order('created_at', { ascending: true });
+
+  if (error) throw new Error(`Failed to list profiles: ${error.message}`);
+
+  const results: {
+    profileId: string;
+    email: string;
+    result?: IngestResult;
+    error?: string;
+  }[] = [];
+
+  for (const prof of profiles ?? []) {
+    try {
+      const result = await runIngest({
+        profileId: prof.id as string,
+        triggeredBy: opts?.triggeredBy ?? 'cron',
+        sources: opts?.sources,
+      });
+      results.push({ profileId: prof.id as string, email: prof.email as string, result });
+    } catch (e) {
+      results.push({
+        profileId: prof.id as string,
+        email: prof.email as string,
+        error: (e as Error).message,
+      });
+    }
+  }
+
+  return { profiles: (profiles ?? []).length, results };
+}

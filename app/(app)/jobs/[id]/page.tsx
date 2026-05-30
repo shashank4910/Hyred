@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, MapPin, Building2, Clock } from 'lucide-react';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { getCurrentProfile } from '@/lib/current-user';
 import { ensureFullDescription } from '@/lib/jd-fetcher';
 import { JobActions } from './JobActions';
 import { AutoApplyButton } from './AutoApplyButton';
@@ -15,12 +16,15 @@ export default async function JobMatchPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const profile0 = await getCurrentProfile();
+  if (!profile0) notFound();
   const sb = supabaseAdmin();
 
   await sb
     .from('matches')
     .update({ status: 'viewed' })
     .eq('id', id)
+    .eq('profile_id', profile0.id)
     .eq('status', 'new');
 
   const { data: match } = await sb
@@ -31,6 +35,7 @@ export default async function JobMatchPage({
        job:jobs(id, title, company, location, remote, url, source, salary, description, posted_at, tags)`,
     )
     .eq('id', id)
+    .eq('profile_id', profile0.id)
     .maybeSingle();
 
   if (!match) notFound();

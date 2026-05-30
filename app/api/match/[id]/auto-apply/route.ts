@@ -12,6 +12,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { getCurrentProfile } from '@/lib/current-user';
 import { generateAtsResume, generateCoverLetter } from '@/lib/gemini';
 import { ensureFullDescription } from '@/lib/jd-fetcher';
 import { generateBeautifulPdf } from '@/lib/pdf-resume';
@@ -24,6 +25,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  const profile0 = await getCurrentProfile();
+  if (!profile0) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   const sb = supabaseAdmin();
 
   // ── 1. Fetch all data needed ──────────────────────────────────────────────
@@ -36,6 +39,7 @@ export async function POST(
        job:jobs(id, title, company, location, url, description, tags)`,
     )
     .eq('id', id)
+    .eq('profile_id', profile0.id)
     .single();
 
   if (matchErr || !match) {

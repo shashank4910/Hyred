@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { getCurrentProfile } from '@/lib/current-user';
 import { embed, scoreJob } from '@/lib/gemini';
 import { jobToEmbeddingText } from '@/lib/matcher';
 
@@ -433,13 +434,8 @@ export async function POST(req: NextRequest) {
 
   const sb = supabaseAdmin();
 
-  const { data: profile, error: profileErr } = await sb
-    .from('profiles')
-    .select('id, resume_text, resume_embedding')
-    .order('created_at')
-    .limit(1)
-    .maybeSingle();
-  if (profileErr || !profile?.resume_text) {
+  const profile = await getCurrentProfile();
+  if (!profile?.resume_text) {
     return NextResponse.json(
       { error: 'No profile/resume found. Complete onboarding first.' },
       { status: 400 },

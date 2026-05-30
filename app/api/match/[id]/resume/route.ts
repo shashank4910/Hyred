@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { getCurrentProfile } from '@/lib/current-user';
 import { ensureFullDescription } from '@/lib/jd-fetcher';
 import { generateAtsResume, extractJdKeywords } from '@/lib/gemini';
 
@@ -18,12 +19,15 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  const profile0 = await getCurrentProfile();
+  if (!profile0) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   const sb = supabaseAdmin();
 
   const { data: match, error } = await sb
     .from('matches')
     .select(`id, profile:profiles(resume_text), job:jobs(id, title, description, tags, url)`)
     .eq('id', id)
+    .eq('profile_id', profile0.id)
     .single();
 
   if (error || !match) {
@@ -79,6 +83,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  const profile0 = await getCurrentProfile();
+  if (!profile0) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   const sb = supabaseAdmin();
 
   let selectedKeywords: string[] = [];
@@ -101,6 +107,7 @@ export async function POST(
        job:jobs(id, title, company, location, description, tags, url)`,
     )
     .eq('id', id)
+    .eq('profile_id', profile0.id)
     .single();
 
   if (matchErr || !match) {

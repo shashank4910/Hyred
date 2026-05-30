@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { getCurrentProfile } from '@/lib/current-user';
 import { relativeTime, SOURCE_LABELS } from '@/lib/ui';
 import {
   CheckCircle2,
@@ -16,6 +17,8 @@ export const metadata = { title: 'Stats · JobRadar' };
 
 export default async function StatsPage() {
   const sb = supabaseAdmin();
+  const profile = await getCurrentProfile();
+  const profileId = profile?.id ?? '__none__';
 
   const [
     { count: totalJobs },
@@ -25,16 +28,21 @@ export default async function StatsPage() {
     { data: bySourceRaw },
   ] = await Promise.all([
     sb.from('jobs').select('id', { count: 'exact', head: true }),
-    sb.from('matches').select('id', { count: 'exact', head: true }),
     sb
       .from('matches')
       .select('id', { count: 'exact', head: true })
+      .eq('profile_id', profileId),
+    sb
+      .from('matches')
+      .select('id', { count: 'exact', head: true })
+      .eq('profile_id', profileId)
       .eq('status', 'applied'),
     sb
       .from('ingest_runs')
       .select(
         'id, started_at, finished_at, duration_ms, fetched, new_jobs, embedded, scored, matches_created, errors, status, triggered_by',
       )
+      .eq('profile_id', profileId)
       .order('started_at', { ascending: false })
       .limit(20),
     sb.from('jobs').select('source'),

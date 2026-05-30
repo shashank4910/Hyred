@@ -9,6 +9,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { getCurrentProfile } from '@/lib/current-user';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -18,6 +19,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  const profile0 = await getCurrentProfile();
+  if (!profile0) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   const sb = supabaseAdmin();
 
   // Fetch match — need tailored_resume_text (already generated) or resume_text fallback
@@ -29,6 +32,7 @@ export async function POST(
        job:jobs(title, company)`,
     )
     .eq('id', id)
+    .eq('profile_id', profile0.id)
     .single();
 
   if (error || !match) {

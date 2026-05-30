@@ -1,21 +1,17 @@
 import { AppShell } from './_components/AppShell';
-import { supabaseAdmin } from '@/lib/supabase/server';
+import { getCurrentProfile, isAdminEmail } from '@/lib/current-user';
 
 export default async function AuthedLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const sb = supabaseAdmin();
-  const { data: profile } = await sb
-    .from('profiles')
-    .select('email, full_name, insights')
-    .order('created_at')
-    .limit(1)
-    .maybeSingle();
+  const profile = await getCurrentProfile();
+  const isAdmin = isAdminEmail(profile?.email);
 
   return (
     <AppShell
+      isAdmin={isAdmin}
       profile={
         profile
           ? {

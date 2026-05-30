@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '@/lib/supabase/server';
+import { getCurrentProfile } from '@/lib/current-user';
 import { OnboardingForm } from './OnboardingForm';
 import type { ResumeInsights } from '@/lib/types';
 
@@ -6,13 +6,7 @@ export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Profile · JobRadar' };
 
 export default async function OnboardingPage() {
-  const sb = supabaseAdmin();
-  const { data: profile } = await sb
-    .from('profiles')
-    .select('id, email, full_name, resume_text, preferences, insights')
-    .order('created_at')
-    .limit(1)
-    .maybeSingle();
+  const profile = await getCurrentProfile();
 
   return (
     <div className="space-y-4">

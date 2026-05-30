@@ -17,30 +17,35 @@ import {
   Shield,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { supabaseBrowser } from '@/lib/supabase/client';
 
-const NAV: { href: string; label: string; icon: typeof LayoutDashboard; premium?: boolean }[] = [
+const NAV: { href: string; label: string; icon: typeof LayoutDashboard; premium?: boolean; admin?: boolean }[] = [
   { href: '/', label: 'Matches', icon: LayoutDashboard },
   { href: '/top-mnc', label: 'Top MNC Hiring', icon: Crown, premium: true },
   { href: '/import', label: 'Import', icon: Link2 },
   { href: '/onboarding', label: 'Resume', icon: User },
   { href: '/apply-profile', label: 'Apply Profile', icon: Rocket },
   { href: '/stats', label: 'Stats', icon: BarChart3 },
-  { href: '/admin', label: 'Admin', icon: Shield },
+  { href: '/admin', label: 'Admin', icon: Shield, admin: true },
 ];
 
 export function AppShell({
   children,
   profile,
+  isAdmin = false,
 }: {
   children: React.ReactNode;
   profile: { email: string; full_name: string | null } | null;
+  isAdmin?: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  const nav = NAV.filter((item) => !item.admin || isAdmin);
+
   async function logout() {
-    await fetch('/api/login', { method: 'DELETE' });
+    await supabaseBrowser.auth.signOut();
     toast.success('Signed out');
     router.push('/login');
     router.refresh();
@@ -63,7 +68,7 @@ export function AppShell({
 
         {/* Desktop nav */}
         <nav className="hidden md:flex items-center gap-1">
-          {NAV.map(({ href, label, icon: Icon, premium }) => {
+          {nav.map(({ href, label, icon: Icon, premium }) => {
             const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
             return (
               <Link
@@ -104,7 +109,7 @@ export function AppShell({
 
       {/* Mobile bottom nav */}
       <nav className="md:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-2 py-2 bg-surface/95 backdrop-blur-md border-t border-border-muted">
-        {NAV.map(({ href, label, icon: Icon, premium }) => {
+        {nav.map(({ href, label, icon: Icon, premium }) => {
           const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
           return (
             <Link

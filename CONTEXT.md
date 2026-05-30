@@ -26,9 +26,9 @@ JobRadar is a personalized AI-powered job-search dashboard that:
 
 | Phase | Title | Status |
 |---|---|---|
-| **0** | Strategic decisions (auth provider, cost model, scope) | 🟡 IN PROGRESS |
-| **1** | Real authentication & identity (Supabase Auth, replace first-profile pattern) | ⬜ Not started |
-| **2** | Data isolation & security (RLS, ownership checks, private resume bucket) | ⬜ Not started |
+| **0** | Strategic decisions (auth provider, cost model, scope) | ✅ Done |
+| **1** | Real authentication & identity (Supabase Auth, replace first-profile pattern) | ✅ Done (session 7) |
+| **2** | Data isolation & security (RLS, ownership checks, private resume bucket) | 🟡 Partial — per-user scoping + ownership checks + RLS shipped; **resumes bucket still public (TODO)** |
 | **3** | Scalable ingest & cost control (split shared vs per-user, quotas) | ⬜ Not started |
 | **4** | Monetization & abuse protection (tiers, rate limits, legal) | ⬜ Not started |
 | **5** | Scale & operations (pgvector, observability, queue for auto-apply) | ⬜ Not started |
@@ -57,10 +57,10 @@ These shape everything. **Recorded answers will be filled in here as Shashank de
 
 | # | Decision | Recommendation | Shashank's answer |
 |---|---|---|---|
-| Q1 | Auth provider | **Supabase Auth** (email/pass + Google OAuth) — already on Supabase, native Postgres RLS, free tier, email verify + reset built in | _pending_ |
-| Q2 | Who pays for LLM calls? | Free tier + hard quotas, OR paid tiers (Stripe), OR bring-your-own-key. **Open question this session: can we use FREE models to avoid paid OpenAI entirely?** (research in progress) | _pending Shashank's pick: (A) free-tier swap / (B) BYOK / (C) hybrid — see research note below_ |
-| Q3 | Auto-apply at launch? | **Gate off / waitlist** — Render 512MB agent already crashes for one user; multi-user needs a queue + workers | _pending_ |
-| Q4 | Hosting reality | Free tiers fine for beta; budget paid Supabase/Vercel at scale | _pending_ |
+| Q1 | Auth provider | **Supabase Auth** (email/pass + Google OAuth) — already on Supabase, native Postgres RLS, free tier, email verify + reset built in | ✅ **Supabase Auth (email/password + Google)** — shipped in Phase 1 |
+| Q2 | Who pays for LLM calls? | Free tier + hard quotas, OR paid tiers (Stripe), OR bring-your-own-key. | ✅ for now: **shared OpenAI key for testing** (Groq primary in code, OpenAI fallback). BYOK/quotas deferred to Phase 3/4. |
+| Q3 | Auto-apply at launch? | **Gate off / waitlist** — Render 512MB agent already crashes for one user; multi-user needs a queue + workers | ✅ kept available but **secondary/untested for multi-user**; per-user browser-agent scaling deferred to Phase 5 |
+| Q4 | Hosting reality | Free tiers fine for beta; budget paid Supabase/Vercel at scale | ✅ **stay on free tiers** for the multi-user beta |
 
 ### Phase 0 research note — Free / open-source models vs paid OpenAI (May 29, 2026)
 
@@ -200,6 +200,35 @@ Note: the ~$10-15/mo in this file's "Cost Model" section is the **owner's heavy-
 ### Execution rule
 
 **One phase per chat.** Start each new chat by reading this tracker, confirm the previous phase is ✅, then execute only the next phase. Update the tracker + add a phase log when done. Never juggle phases.
+
+### Phase 1 log — multi-user auth & identity (session 7)
+
+Shipped the full single-user → multi-user transformation. Anyone can sign up (email/password or Google), onboard their own resume, and see only their own matches/scans.
+
+**What changed (code):**
+- **Auth:** `@supabase/ssr` added. `lib/supabase/server.ts` → `supabaseAdmin()` (service role, bypasses RLS) + `createServerSupabase()` (cookie-bound anon, resolves the user). `lib/supabase/client.ts` → `createBrowserClient`. `middleware.ts` rewritten to refresh the Supabase session + redirect unauthed (public: `/login`, `/auth`, `/api/extension`, `/api/ingest`).
+- **Identity:** `lib/current-user.ts` — `getCurrentUser()`, `getCurrentProfile()` (lazy: link existing same-email profile or create new, keyed by `profiles.user_id`), `requireProfile()`, `isAdminEmail()`. `profiles.user_id → auth.users` added (migration `0005_multiuser.sql`).
+- **Auth UI:** `/login` `LoginForm` = email/password sign-in + sign-up + "Continue with Google"; `app/auth/callback/route.ts` exchanges the OAuth/confirm code; logout via `supabaseBrowser.auth.signOut()`. Old password `/api/login` deleted; `lib/auth.ts` trimmed to the two helpers the extension still needs.
+- **Per-user everywhere:** all ~10 first-profile lookups replaced with `getCurrentProfile()` (dashboard, onboarding, top-mnc, layout, `/api/profile`, `/api/apply-profile`, `/api/import-job`). `/api/profile` updates the authed user's own row (identity from session, not body).
+- **Ownership checks:** every `match/[id]/*` route + `/api/coverletter` + job detail page now scope by `profile_id = current user`. Stats + dashboard "last scan" scoped per-user.
+- **Per-user scan:** `runIngest({ profileId })`; `/api/ingest` (dashboard button) scans only the signed-in user; new `runIngestForAllProfiles()` for the cron; `scripts/ingest.ts` loops all onboarded profiles; `ingest_runs.profile_id` recorded.
+- **Admin:** `/admin` page + `/api/admin/*` gated to `ADMIN_EMAIL`; Admin nav link hidden for non-admins.
+- **RLS:** own-rows policies on profiles/matches/apply_profiles/ingest_runs (defense-in-depth; server uses service role).
+
+**Verified:** `tsc --noEmit` clean; `next build` succeeds (all routes compile, middleware builds, `/api/login` gone).
+
+**MANUAL SETUP REQUIRED before it works live (Supabase dashboard + Vercel):**
+1. Run `supabase/migrations/0005_multiuser.sql` in the Supabase SQL editor.
+2. Authentication → Providers → enable **Email** (toggle "Confirm email" as desired) and **Google** (paste Google OAuth client id/secret).
+3. Authentication → URL Configuration → Site URL = your app URL; add `<app-url>/auth/callback` + `http://localhost:3000/auth/callback` to Redirect URLs.
+4. Vercel env: set **`ADMIN_EMAIL`** (your email) so you keep Admin access. `AUTH_SECRET` no longer used.
+5. First login with Shashank's existing email auto-adopts the existing profile (so current data/matches stay yours).
+
+**Deferred (carried forward):**
+- ⚠️ **`resumes` storage bucket is still PUBLIC** (PII leak risk for a real public launch) → make private + signed URLs in Phase 2.
+- Extension routes (`/api/extension/*`) still resolve the first profile (owner tool, separate Bearer auth) — fine for now.
+- `scripts/backfill-jds.ts` still single-profile (manual owner maintenance tool).
+- Per-user cron currently re-fetches/re-embeds per profile (cost) → split shared vs per-user in Phase 3.
 
 ---
 

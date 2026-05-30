@@ -12,9 +12,9 @@
 
 | Phase | Title | Status |
 |---|---|---|
-| **0** | Strategic decisions (auth provider, cost model, scope) | 🟡 IN PROGRESS |
-| **1** | Real auth & identity (Supabase Auth, replace first-profile pattern) | ⬜ Not started |
-| **2** | Data isolation & security (RLS, ownership checks, private resume bucket) | ⬜ Not started |
+| **0** | Strategic decisions (auth provider, cost model, scope) | ✅ Done |
+| **1** | Real auth & identity (Supabase Auth, replace first-profile pattern) | ✅ Done (session 7) |
+| **2** | Data isolation & security (RLS, ownership checks, private resume bucket) | 🟡 Partial — scoping+ownership+RLS done; **resumes bucket still public (TODO)** |
 | **3** | Scalable ingest & cost control (split shared vs per-user, quotas) | ⬜ Not started |
 | **4** | Monetization & abuse protection (tiers, rate limits, legal) | ⬜ Not started |
 | **5** | Scale & ops (pgvector, observability, auto-apply queue) | ⬜ Not started |
@@ -65,7 +65,7 @@ Start each chat by reading this tracker → confirm prior phase is ✅ → execu
 
 ## 1. What is JobRadar?
 
-A **personalized AI-powered job-search dashboard** built by Shashank (Senior Performance Engineer, India, 7+ years). **Currently single-user; actively being converted to public multi-tenant SaaS — see ⭐ ACTIVE INITIATIVE above.** UI uses a warm light theme (Runway-inspired: off-white canvas, amber CTA, Inter typography).
+A **multi-user AI-powered job-search dashboard** built by Shashank (Senior Performance Engineer, India, 7+ years). **Multi-tenant as of session 7: anyone signs up (email/Google), onboards their own resume, and sees only their own matches/scans — see ⭐ ACTIVE INITIATIVE above.** UI uses a warm light theme (Runway-inspired: off-white canvas, amber CTA, Inter typography).
 
 **Core flow:** Fetches jobs from multiple sources → AI-scores against resume → surfaces relevant matches → generates tailored ATS resumes + cover letters per job.
 
@@ -80,7 +80,7 @@ A **personalized AI-powered job-search dashboard** built by Shashank (Senior Per
 |---|---|
 | Framework | Next.js 15 (App Router), React 19, TypeScript |
 | Database | Supabase (Postgres + pgvector) |
-| Auth | Custom JWT cookie (HS256 via `jose`) — **being replaced by Supabase Auth in Phase 1** |
+| Auth | **Supabase Auth** (email/password + Google OAuth) via `@supabase/ssr`. Identity in `lib/current-user.ts`; `profiles.user_id → auth.users`. Old single-password gate removed (session 7). |
 | AI | **Groq `llama-3.3-70b-versatile` = free chat PRIMARY** + OpenAI `gpt-4o-mini` (paid chat fallback) + `text-embedding-3-small` (embeddings, OpenAI-only). Order via `LLM_PRIMARY` env (default `groq`). Gemini removed (session 6). |
 | AI module | `lib/gemini.ts` (named historically; Groq primary + OpenAI fallback) |
 | Ingestion | GitHub Actions cron every 6h → `scripts/ingest.ts` |
@@ -208,9 +208,9 @@ This file should be updated every 2-3 significant conversations. Add:
 - Changes to architecture
 - New "NEVER do" / "ALWAYS do" rules learned
 
-Last updated: May 29, 2026 (session 6: launched the **Enterprise Multi-Tenant Transformation** initiative — added the Master Plan + Progress Tracker (Phases 0-5) to the top of this file. Phase 0 in progress: strategic decisions + researching free/open-source LLM + embedding alternatives to paid OpenAI. Documentation only, no code changed.)
+Last updated: May 29, 2026 (session 7: **Phase 1 multi-user auth & identity SHIPPED** — Supabase Auth email+Google, `lib/current-user.ts`, `profiles.user_id`, all first-profile lookups + match-route ownership now per-user, per-user scan, admin gating via ADMIN_EMAIL. Migration 0005 + Supabase Auth provider config required — see CONTEXT.md Phase 1 log. ⚠️ resumes bucket still public → Phase 2.)
 
-_Earlier: May 27, 2026 (session 2: backfill + JD fix + UI redesign + status='viewed' bug identified)_
+_Earlier: session 6 (Groq migration + capacity/cost docs); session 2 (May 27 2026: backfill + JD fix + UI redesign)._
 
 ---
 

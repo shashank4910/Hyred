@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { getCurrentProfile } from '@/lib/current-user';
 import { MatchCard } from '../_components/MatchCard';
 import { Crown, Building2, Sparkles } from 'lucide-react';
 import { matchTopCompany, CATEGORY_LABELS, type CompanyEntry } from '@/lib/top-companies';
@@ -31,12 +32,7 @@ export default async function TopMncPage({
 
   const sb = supabaseAdmin();
 
-  const { data: profile } = await sb
-    .from('profiles')
-    .select('id, email, full_name, resume_text')
-    .order('created_at')
-    .limit(1)
-    .maybeSingle();
+  const profile = await getCurrentProfile();
 
   if (!profile || !profile.resume_text) {
     return (

@@ -1,47 +1,10 @@
-import { SignJWT, jwtVerify } from 'jose';
-
-const COOKIE_NAME = 'jr_session';
-const ALG = 'HS256';
-
-function getSecret(): Uint8Array {
-  const s = process.env.AUTH_SECRET;
-  if (!s || s.length < 16) {
-    throw new Error('AUTH_SECRET must be set and at least 16 chars');
-  }
-  return new TextEncoder().encode(s);
-}
-
-export const COOKIE = {
-  name: COOKIE_NAME,
-  options: {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax' as const,
-    path: '/',
-    maxAge: 60 * 60 * 24 * 30, // 30 days
-  },
-};
-
 /**
- * Sign a session token. Single-user app: payload is just an `ok` flag and issuance time.
+ * Legacy password helpers — retained ONLY for the browser-extension auth
+ * exchange (`/api/extension/auth`), which trades APP_PASSWORD for a long-lived
+ * extension JWT. The web app's user auth is now Supabase Auth (see
+ * lib/supabase/* and lib/current-user.ts); the old single-password session
+ * (jr_session cookie) has been removed.
  */
-export async function signSession(): Promise<string> {
-  return await new SignJWT({ ok: true })
-    .setProtectedHeader({ alg: ALG })
-    .setIssuedAt()
-    .setExpirationTime('30d')
-    .sign(getSecret());
-}
-
-export async function verifySession(token: string | undefined): Promise<boolean> {
-  if (!token) return false;
-  try {
-    await jwtVerify(token, getSecret(), { algorithms: [ALG] });
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 /**
  * Constant-time password comparison.

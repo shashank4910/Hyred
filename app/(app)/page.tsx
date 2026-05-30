@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { getCurrentProfile } from '@/lib/current-user';
 import { StatusFilter } from './_components/StatusFilter';
 import { RunIngestButton } from './_components/RunIngestButton';
 import { MatchFilters } from './_components/MatchFilters';
@@ -36,12 +37,7 @@ export default async function Dashboard({
 
   const sb = supabaseAdmin();
 
-  const { data: profile } = await sb
-    .from('profiles')
-    .select('id, email, full_name, resume_text, insights, preferences')
-    .order('created_at')
-    .limit(1)
-    .maybeSingle();
+  const profile = await getCurrentProfile();
 
   if (!profile || !profile.resume_text) {
     return <EmptyOnboarding />;
@@ -84,6 +80,7 @@ export default async function Dashboard({
       sb
         .from('ingest_runs')
         .select('finished_at, matches_created, status')
+        .eq('profile_id', profile.id)
         .order('started_at', { ascending: false })
         .limit(1)
         .maybeSingle(),

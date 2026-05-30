@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { getCurrentProfile } from '@/lib/current-user';
 import { matchSkills } from '@/lib/gemini';
 import { ensureFullDescription } from '@/lib/jd-fetcher';
 
@@ -11,6 +12,10 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+
+  const viewer = await getCurrentProfile();
+  if (!viewer) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+
   const sb = supabaseAdmin();
 
   // We need full job + url so we can fetch the complete JD if it's truncated.
@@ -22,6 +27,7 @@ export async function POST(
        job:jobs(id, description, url)`,
     )
     .eq('id', id)
+    .eq('profile_id', viewer.id)
     .maybeSingle();
 
   if (!m) return NextResponse.json({ error: 'not found' }, { status: 404 });

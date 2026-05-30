@@ -1,42 +1,74 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifySession, COOKIE } from '@/lib/auth';
+import { createServerClient } from '@supabase/ssr';
 
-const PUBLIC_PATHS = [
-  '/login',
-  '/api/login',
-  '/api/ingest',
-  // Extension API: each route enforces its own Bearer-JWT check;
-  // skip cookie-based middleware entirely so CORS preflight/Authorization
-  // works without a user session cookie.
-  '/api/extension',
-];
+/**
+ * Supabase Auth session middleware.
+ *  - Refreshes the auth session cookie on every request (required for SSR).
+ *  - Redirects unauthenticated users to /login for app pages.
+ *  - Returns 401 JSON for unauthenticated /api/* calls.
+ *
+ * Public (no session required):
+ *   /login, /auth/* (OAuth callback), /api/extension/* (own Bearer auth),
+ *   /api/ingest (cron uses INGEST_SECRET), Next internals + static assets.
+ */
+const PUBLIC_PATHS = ['/login', '/auth', '/api/extension', '/api/ingest'];
+
+function isPublic(pathname: string): boolean {
+  return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'));
+}
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Allow Next internals + static assets
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/favicon') ||
-    pathname.startsWith('/static') ||
-    PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'))
+    pathname.startsWith('/static')
   ) {
     return NextResponse.next();
   }
 
-  const token = req.cookies.get(COOKIE.name)?.value;
-  const ok = await verifySession(token);
-  if (ok) return NextResponse.next();
+  let response = NextResponse.next({ request: req });
 
-  // For API routes, return 401 JSON
-  if (pathname.startsWith('/api/')) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return req.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) => req.cookies.set(name, value));
+          response = NextResponse.next({ request: req });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options),
+          );
+        },
+      },
+    },
+  );
+
+  // IMPORTANT: getUser() refreshes the session and must run for every request.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (isPublic(pathname)) {
+    return response;
   }
 
-  const url = req.nextUrl.clone();
-  url.pathname = '/login';
-  url.searchParams.set('next', pathname);
-  return NextResponse.redirect(url);
+  if (!user) {
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+    }
+    const url = req.nextUrl.clone();
+    url.pathname = '/login';
+    url.searchParams.set('next', pathname);
+    return NextResponse.redirect(url);
+  }
+
+  return response;
 }
 
 export const config = {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { getCurrentProfile } from '@/lib/current-user';
 import { embed, extractResumeInsights } from '@/lib/gemini';
 import { parseResume } from '@/lib/resume';
 import type { Preferences, ResumeInsights } from '@/lib/types';
@@ -89,9 +90,6 @@ export async function POST(req: NextRequest) {
     providedInsights = body.insights ?? null;
   }
 
-  if (!email) {
-    return NextResponse.json({ error: 'email is required' }, { status: 400 });
-  }
   if (resumeText.length < 50) {
     return NextResponse.json(
       { error: 'resume text is too short' },
@@ -99,21 +97,24 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const sb = supabaseAdmin();
+  // Identity comes from the Supabase Auth session — NOT the request body.
+  // getCurrentProfile() returns (creating/linking if needed) the row owned by
+  // the signed-in user, so a user can only ever write their own profile.
+  const profile = await getCurrentProfile();
+  if (!profile) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
 
-  const { data: existing } = await sb
-    .from('profiles')
-    .select('id, resume_text, resume_embedding, insights')
-    .eq('email', email)
-    .maybeSingle();
+  const sb = supabaseAdmin();
+  const existing = profile;
 
   const resumeChanged =
-    !existing ||
+    !existing.resume_text ||
     existing.resume_text !== resumeText ||
     !existing.resume_embedding;
 
-  let embedding: number[] | null = (existing?.resume_embedding as number[]) ?? null;
-  let insights = providedInsights ?? existing?.insights ?? null;
+  let embedding: number[] | null = existing.resume_embedding ?? null;
+  let insights = providedInsights ?? existing.insights ?? null;
 
   if (resumeChanged) {
     try {
@@ -137,8 +138,14 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const upsertPayload = {
-    email,
+  // email stays bound to the auth identity; the form value is only a fallback
+  // for a freshly-created profile that has no email yet (placeholder).
+  const canonicalEmail = existing.email && !existing.email.endsWith('@users.noreply')
+    ? existing.email
+    : email || existing.email;
+
+  const updatePayload = {
+    email: canonicalEmail,
     full_name: fullName,
     resume_text: resumeText,
     resume_embedding: embedding,
@@ -148,7 +155,8 @@ export async function POST(req: NextRequest) {
 
   const { data, error } = await sb
     .from('profiles')
-    .upsert(upsertPayload, { onConflict: 'email' })
+    .update(updatePayload)
+    .eq('id', profile.id)
     .select('id, email, insights')
     .single();
 

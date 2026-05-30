@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifySession, COOKIE } from '@/lib/auth';
+import { getCurrentUser, isAdminEmail } from '@/lib/current-user';
 import { getUsageSummary } from '@/lib/api-tracker';
 
 export const runtime = 'nodejs';
@@ -9,8 +9,8 @@ export const runtime = 'nodejs';
  * Returns per-source totals, per-key breakdown, and recent errors.
  */
 export async function GET(req: NextRequest) {
-  const token = req.cookies.get(COOKIE.name)?.value;
-  if (!(await verifySession(token))) {
+  const user = await getCurrentUser();
+  if (!isAdminEmail(user?.email)) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 

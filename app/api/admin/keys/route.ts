@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifySession, COOKIE } from '@/lib/auth';
+import { getCurrentUser, isAdminEmail } from '@/lib/current-user';
 import { supabaseAdmin } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
@@ -21,9 +21,9 @@ export const runtime = 'nodejs';
  * );
  */
 
-async function requireAdmin(req: NextRequest): Promise<boolean> {
-  const token = req.cookies.get(COOKIE.name)?.value;
-  return verifySession(token);
+async function requireAdmin(_req: NextRequest): Promise<boolean> {
+  const user = await getCurrentUser();
+  return isAdminEmail(user?.email);
 }
 
 export async function GET(req: NextRequest) {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { getCurrentProfile } from '@/lib/current-user';
 
 export const runtime = 'nodejs';
 
@@ -24,11 +25,18 @@ export async function POST(
     return NextResponse.json({ error: 'invalid status' }, { status: 400 });
   }
 
+  const profile = await getCurrentProfile();
+  if (!profile) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+
   const sb = supabaseAdmin();
   const update: Record<string, unknown> = { status };
   if (status === 'applied') update.applied_at = new Date().toISOString();
 
-  const { error } = await sb.from('matches').update(update).eq('id', id);
+  const { error } = await sb
+    .from('matches')
+    .update(update)
+    .eq('id', id)
+    .eq('profile_id', profile.id);
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
