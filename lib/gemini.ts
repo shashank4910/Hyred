@@ -559,6 +559,91 @@ function extractLinkedinFromResume(resume: string): string | null {
   return m[0].replace(/^https?:\/\//i, '').replace(/^www\./i, '');
 }
 
+/** Role-word detector shared by JD title cleaning and resume title extraction. */
+const ROLE_TITLE_WORD_RE =
+  /\b(engineer|engineering|tester|testing|developer|development|analyst|architect|consultant|specialist|sdet|sre|administrator|coordinator|lead|manager|designer|technician|scientist|programmer)\b/i;
+
+const EXPERIENCE_SECTION_RE =
+  /^PROFESSIONAL EXPERIENCE$|^WORK EXPERIENCE$|^WORK HISTORY$|^EMPLOYMENT$|^EXPERIENCE$/i;
+
+function looksLikeResumeContactLine(s: string): boolean {
+  const t = s.trim();
+  if (!t) return true;
+  if (t.includes('@')) return true;
+  if (/^\+?\d/.test(t)) return true;
+  if (/(linkedin|github|http|www\.|\.com|\.in|\.io|\.dev)/i.test(t)) return true;
+  if (/^[A-Za-z .'-]{3,30},\s*[A-Za-z .'-]{2,30}$/.test(t)) return true;
+  return false;
+}
+
+/** Pull the job title from a PROFESSIONAL EXPERIENCE header line. */
+function parseJobHeaderTitle(line: string): string | null {
+  const t = line.trim();
+  if (!t || t.startsWith('-') || /^Client:/i.test(t)) return null;
+
+  if (t.includes('|')) {
+    const title = t.split('|')[0].trim();
+    if (title.length >= 3 && title.length <= 80) return title;
+  }
+
+  const atMatch = t.match(/^(.+?)\s+at\s+.+/i);
+  if (atMatch) {
+    const title = atMatch[1].trim();
+    if (title.length >= 3 && title.length <= 80) return title;
+  }
+
+  return null;
+}
+
+/**
+ * Extract the candidate's current/most-recent role title from THEIR resume text.
+ * Never returns a hard-coded default — multi-tenant safety.
+ */
+function extractCurrentRoleTitleFromResume(resume: string): string | null {
+  const lines = resume
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  // Generated / structured resumes: line 2 is often the title tagline.
+  if (lines.length >= 2) {
+    const line2 = lines[1];
+    if (
+      !looksLikeResumeContactLine(line2) &&
+      line2.length >= 4 &&
+      line2.length <= 70 &&
+      ROLE_TITLE_WORD_RE.test(line2)
+    ) {
+      return line2;
+    }
+  }
+
+  const expIdx = lines.findIndex((l) => EXPERIENCE_SECTION_RE.test(l));
+  if (expIdx >= 0) {
+    for (let i = expIdx + 1; i < lines.length; i++) {
+      const line = lines[i];
+      if (/^[A-Z][A-Z\s&/-]+$/.test(line) && line.length <= 60) break;
+      const title = parseJobHeaderTitle(line);
+      if (title) return title;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Resolve the title to align the candidate's current role with the JD.
+ * Priority: cleaned JD title → candidate's own resume title → null (keep as-is).
+ */
+function resolveTargetCurrentRoleTitle(
+  jdTitle: string,
+  resumeText: string,
+): string | null {
+  const fromJd = cleanJdTitle(jdTitle);
+  if (fromJd) return fromJd;
+  return extractCurrentRoleTitleFromResume(resumeText);
+}
+
 /**
  * Whole-token, case-insensitive keyword matcher. Replaces the old
  * `text.toLowerCase().includes(kw.toLowerCase())` substring check, which
@@ -877,10 +962,10 @@ ${args.resume.slice(0, 16000)}`;
  *   "Performance Tester | Bangalore | Hybrid"                   -> "Performance Tester"
  *   "Senior SDET (BFSI)"                                        -> "Senior SDET"
  *   "QA Engineer III"                                           -> "QA Engineer"
- *   ""                                                          -> "Senior Performance Engineer" (fallback)
+ *   ""                                                          -> null (caller uses resume title)
  */
-function cleanJdTitle(raw: string): string {
-  const ROLE_RE = /\b(engineer|engineering|tester|testing|developer|development|analyst|architect|consultant|specialist|sdet|sre|administrator|coordinator|lead|manager|designer|technician|scientist|programmer)\b/i;
+function cleanJdTitle(raw: string): string | null {
+  const ROLE_RE = ROLE_TITLE_WORD_RE;
   // Domain / specialization words. A title side that has one of these names
   // the ACTUAL role (e.g. "Performance Engineering"), and should win over a
   // bare seniority phrase like "Senior Lead" that only has a generic role word.
@@ -1000,12 +1085,11 @@ function cleanJdTitle(raw: string): string {
   // 10. Final tidy.
   t = t.replace(/[,;:\-]\s*$/, '').trim();
 
-  // 11. Sanity check. Fallback if the result is too short, too long, or has
-  //     no recognizable role word.
-  const fallback = 'Senior Performance Engineer';
-  if (t.length < 4 || t.length > 70) return fallback;
-  if (t.split(/\s+/).length > 8) return fallback;
-  if (!ROLE_RE.test(t)) return fallback;
+  // 11. Sanity check. Return null if unusable — NEVER fall back to a
+  //     hard-coded title (that leaked the owner's role into every tenant).
+  if (t.length < 4 || t.length > 70) return null;
+  if (t.split(/\s+/).length > 8) return null;
+  if (!ROLE_RE.test(t)) return null;
   return t;
 }
 
@@ -1131,7 +1215,10 @@ export async function generateAtsResume(args: {
   // role hints, and trailing "openings/WFH/Pune" phrases never reach the
   // candidate's resume - that noise is a recruiter red flag ("did the AI
   // just paste the JD listing into the resume?").
-  const targetCurrentRoleTitle = cleanJdTitle(args.jobTitle ?? '');
+  const targetCurrentRoleTitle = resolveTargetCurrentRoleTitle(
+    args.jobTitle ?? '',
+    args.resumeText,
+  );
 
   // ── Contact block — built ENTIRELY from THIS candidate's data ───────────────
   // Every line comes from the signed-in user's profile/resume. Missing fields
@@ -1188,6 +1275,21 @@ ${excludedKeywords.map(k => `  - ${k}`).join('\n')}
 - Exclusion takes precedence over everything. The user's explicit "remove" decision is final.
 ` : ''}`;
 
+  const roleTitleDirective = targetCurrentRoleTitle
+    ? `ROLE TITLE ALIGNMENT (important for ATS scoring):
+- Set the candidate's CURRENT (most recent) role title in PROFESSIONAL EXPERIENCE to: ${targetCurrentRoleTitle}
+- The title above has ALREADY been cleaned of department codes (CX, RX), version numbers (II, III), parenthetical noise, year ranges, location/hiring tails, and dash-separated designations (e.g. "- Assistant Manager", "- Senior Manager", "- Vice President", "/ Backend"). Use it EXACTLY AS GIVEN. Do NOT append anything from the original JD posting like ", CX", ", Product", "II", "WFH", "- Assistant Manager", or any parenthetical - those would tip off a recruiter that the title was machine-pasted from a job listing.
+- This replaces whatever current-role title is in the candidate's input resume. The candidate's actual responsibilities are unchanged - only the title label is aligned with the JD's wording so the ATS title-match component scores higher.
+- Past roles (every role except the most recent one) MUST keep their original titles from the input resume. Do not change historical titles.
+- Use the exact same title as a tagline on line 2 of the contact block (described below).`
+    : `ROLE TITLE (multi-tenant safety):
+- Keep the candidate's CURRENT (most recent) role title EXACTLY as it appears in the input resume. Do NOT rename it to match the JD or any invented/default title.
+- For the contact block: reproduce line 2 ONLY if a role title tagline is already present in the input resume header; otherwise omit line 2 entirely (name on line 1, then email/contact lines).`;
+
+  const line2Directive = targetCurrentRoleTitle
+    ? `LINE 2 IS THE TITLE TAGLINE: the second line of the contact block is the candidate's CURRENT role title (from ROLE TITLE ALIGNMENT above). It must appear immediately under the name, BEFORE the email line. The PDF renderer treats this as the title tagline below the name. Do not omit it.`
+    : `LINE 2 (optional title tagline): include a role title on line 2 ONLY if the input resume already has one between the name and contact lines. Otherwise skip straight from name to contact info.`;
+
   const prompt = `You are an expert ATS resume writer. Tailor this resume to pass the ATS scanner for the target job below.
 
 PRIMARY GOAL: emphasize the candidate's EXISTING experience that maps to what this JD asks for, and ensure the user's explicitly selected KEYWORDS TO ADD appear - WITHOUT fabricating experience and WITHOUT adding any new keyword the user did not select.
@@ -1203,14 +1305,9 @@ CRITICAL RULES:
    b. Weave KEYWORDS TO ADD naturally into existing bullets where the candidate truthfully has that experience.
    c. Rewrite the Professional Summary per the directive below.
    d. Reorder Skills entries inside TECHNICAL SKILLS to put JD-priority tools first.
-   e. Apply ROLE TITLE ALIGNMENT (below) to the candidate's CURRENT/most-recent role only.
+   e. Apply the ROLE TITLE directive (below) to the candidate's CURRENT/most-recent role only.
 
-ROLE TITLE ALIGNMENT (important for ATS scoring - the candidate explicitly asked for this):
-- Set the candidate's CURRENT (most recent) role title in PROFESSIONAL EXPERIENCE to: ${targetCurrentRoleTitle}
-- The title above has ALREADY been cleaned of department codes (CX, RX), version numbers (II, III), parenthetical noise, year ranges, location/hiring tails, and dash-separated designations (e.g. "- Assistant Manager", "- Senior Manager", "- Vice President", "/ Backend"). Use it EXACTLY AS GIVEN. Do NOT append anything from the original JD posting like ", CX", ", Product", "II", "WFH", "- Assistant Manager", or any parenthetical - those would tip off a recruiter that the title was machine-pasted from a job listing.
-- This replaces whatever current-role title is in the candidate's input resume. The candidate's actual responsibilities are unchanged - only the title label is aligned with the JD's wording so the ATS title-match component scores higher.
-- Past roles (every role except the most recent one) MUST keep their original titles from the input resume. Do not change historical titles.
-- Use the exact same cleaned title as a tagline on line 2 of the contact block (described below).
+${roleTitleDirective}
 
 PROFESSIONAL SUMMARY DIRECTIVE:
 ${summaryDirective}
@@ -1226,7 +1323,7 @@ ${keywordsBlock}
 CANDIDATE CONTACT BLOCK (reproduce these lines EXACTLY as given, at the very top, one item per line, in this order — do NOT add, invent, or guess any contact line, e.g. a LinkedIn/GitHub/website/phone that is not listed here):
 ${contactBlock}
 
-LINE 2 IS THE TITLE TAGLINE: the second line of the contact block is the candidate's CURRENT role title (the JD-aligned title from ROLE TITLE ALIGNMENT above). It must appear immediately under the name, BEFORE the email line. The PDF renderer treats this as the title tagline below the name. Do not omit it.
+${line2Directive}
 
 CANDIDATE'S CURRENT RESUME (this is the only source of truth - never add experience that is not here):
 ${args.resumeText.slice(0, 14000)}
@@ -1239,7 +1336,7 @@ ${args.jobDescription.slice(0, 5000)}
 
 Output the complete tailored resume in plain ASCII text. No preamble, no explanation, no markdown fences. Start with the candidate's name on the first line.
 
-CRITICAL: do NOT prefix the output with any header label like "Resume", "RESUME", "Curriculum Vitae", "CV", or "PROFILE". The PDF renderer treats the first non-empty line of your output as the candidate's NAME - if you put "Resume" first, the literal word "Resume" will be rendered huge in the header band where the candidate's name should be. The very first non-empty line MUST be the candidate's full name (exactly as given in the contact block above). The very second line MUST be the role title tagline.`;
+CRITICAL: do NOT prefix the output with any header label like "Resume", "RESUME", "Curriculum Vitae", "CV", or "PROFILE". The PDF renderer treats the first non-empty line of your output as the candidate's NAME - if you put "Resume" first, the literal word "Resume" will be rendered huge in the header band where the candidate's name should be. The very first non-empty line MUST be the candidate's full name (exactly as given in the contact block above).${targetCurrentRoleTitle ? ' The very second line MUST be the role title tagline.' : ''}`;
 
   const raw = await chat(
     'You reformat resumes into ATS-friendly plain ASCII text. Preserve all real content. Never fabricate experience. Output ONLY the resume.',

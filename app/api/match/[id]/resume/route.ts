@@ -195,7 +195,7 @@ export async function POST(
 
   // Build a recruiter-friendly default download filename:
   //   {FirstName}_{Specialization}_{Years}
-  // e.g. "Alex_Engineering_5"
+  // e.g. "Shashank_Performance_7.7"
   const filename_base = buildResumeFilenameBase({
     fullName: profile.full_name,
     jobTitle: job.title,
@@ -220,16 +220,15 @@ export async function POST(
 /**
  * Build the default download filename base for the generated resume.
  * Format: {FirstName}_{Specialization}_{Years}
- * Example: "Alex_Engineering_5"
+ * Example: "Shashank_Performance_7.7"
  *
  * - First name: first word of the candidate's full_name, A-Z only.
- *   Falls back to "Resume" if the profile has no name.
+ *   Falls back to "Candidate" if the profile has no name.
  * - Specialization: the first non-seniority word of the JD title (Senior /
  *   Sr / Lead / Principal / Junior / Jr / Associate / Staff are skipped),
- *   stripped to letters, capitalized. Falls back to "Performance".
- * - Years: profile.insights.years_experience if a positive number; otherwise
- *   omitted when unknown. Integers render without a trailing ".0" (e.g. "8");
- *   decimals render with one place (e.g. "7.7").
+ *   stripped to letters, capitalized. Falls back to "Role".
+ * - Years: profile.insights.years_experience if a positive number; omitted
+ *   from the filename when unknown (never hard-code another user's tenure).
  *
  * The returned string is filesystem-safe (only [A-Za-z0-9._]). Caller
  * appends ".pdf" / ".txt".
@@ -242,7 +241,7 @@ function buildResumeFilenameBase(args: {
   const safe = (s: string) => s.replace(/[^A-Za-z0-9]/g, '');
 
   const firstName =
-    safe((args.fullName ?? '').trim().split(/\s+/)[0] ?? '') || 'Resume';
+    safe((args.fullName ?? '').trim().split(/\s+/)[0] ?? '') || 'Candidate';
 
   const stopWords = new Set([
     'senior', 'sr', 'lead', 'principal', 'junior', 'jr', 'associate', 'staff',
@@ -256,11 +255,12 @@ function buildResumeFilenameBase(args: {
     }
   }
 
-  const hasYears =
-    typeof args.yearsExperience === 'number' && args.yearsExperience > 0;
-  if (!hasYears) return `${firstName}_${specialization}`;
+  const yearsRaw =
+    typeof args.yearsExperience === 'number' && args.yearsExperience > 0
+      ? args.yearsExperience
+      : null;
+  if (yearsRaw == null) return `${firstName}_${specialization}`;
 
-  const yearsRaw = args.yearsExperience as number;
   const yearsStr = Number.isInteger(yearsRaw)
     ? String(yearsRaw)
     : yearsRaw.toFixed(1);
