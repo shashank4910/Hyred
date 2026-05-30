@@ -79,21 +79,35 @@ async function resolveProfileForUser(user: User): Promise<Profile> {
     if (adopted) return adopted;
   }
 
-  // 3. Create a fresh profile for this user. If a concurrent/duplicate row
-  //    races us to the unique email, fall back to adopting it instead of
-  //    crashing on profiles_email_key.
+  // 3. Create-or-adopt ATOMICALLY via INSERT ... ON CONFLICT (email) DO UPDATE.
+  //
+  //    A read-then-INSERT (steps 1-2) cannot close the time-of-check/
+  //    time-of-use window: on first sign-in the dashboard Server Component
+  //    can render concurrently (prefetch + navigation), so two
+  //    resolveProfileForUser calls both see "no profile" and both INSERT —
+  //    the loser then crashes on the unique email index (profiles_email_key,
+  //    Vercel digests 943845339 / 4079527518). Letting Postgres resolve the
+  //    conflict in one statement removes the race: if a row for this email
+  //    already exists (a concurrent insert, a legacy null-user_id row, or a
+  //    row owned by another auth identity for the same address) its user_id
+  //    is re-pointed to us; otherwise a fresh row is inserted. Either way we
+  //    get exactly one row back and never throw on a duplicate email.
   const insertEmail = user.email ?? `${user.id}@users.noreply`;
-  const { data: created, error } = await sb
+  const { data: upserted, error } = await sb
     .from('profiles')
-    .insert({ user_id: user.id, email: insertEmail })
+    .upsert({ user_id: user.id, email: insertEmail }, { onConflict: 'email' })
     .select(PROFILE_COLUMNS)
     .single();
-  if (!error && created) return created as Profile;
+  if (!error && upserted) return upserted as Profile;
 
+  // Last-ditch read in case the conflict target couldn't be matched (e.g. an
+  // email-casing edge) — adopt whatever row owns this email before failing.
   const fallback = await adoptProfileByEmail(sb, insertEmail, user.id);
   if (fallback) return fallback;
 
-  throw new Error(`Failed to create profile: ${error?.message ?? 'unknown error'}`);
+  throw new Error(
+    `Failed to create profile for ${insertEmail}: ${error?.message ?? 'unknown error'}`,
+  );
 }
 
 /**
