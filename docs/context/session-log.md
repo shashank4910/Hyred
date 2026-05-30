@@ -2,6 +2,27 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 9 — ATS keyword add/delete/regenerate correctness fixes (May 30, 2026)
+
+Fixed four compounding bugs in the ATS resume keyword flow that the session-4 keyword UX shipped with. The symptom the owner saw: ticking a couple of keywords still rewrote the resume with *every* JD keyword; the same keyword showed up as both "Woven into your resume" and "Missing from your resume"; the ATS Match Score read higher than reality; and clicking some add/remove chips did nothing.
+
+### Root causes (verified by reading the code, not guessing)
+
+1. **Unselected keywords were auto-added.** `generateAtsResume` (`lib/gemini.ts`) built `allKeywords = jdKeywords ∪ selectedKeywords` and the prompt told the model to "weave them in". So the entire extracted JD keyword set was injected as new vocabulary regardless of what the user actually selected.
+2. **Stale "missing" merge → Woven *and* Missing.** `allMissingKeywords` in `JobActions.tsx` merged the generator's `keywords.missing` (computed against the just-generated resume) with `skills.missing` from `matchSkills` (computed against the *original* resume, never recomputed after a regenerate). A keyword the generator had just woven in still appeared as missing.
+3. **Substring scoring + excluded keywords counted.** The ATS-score loop used `resume.toLowerCase().includes(kw.toLowerCase())`, so "AI" matched "available", "Java" matched "JavaScript" → inflated score; and it iterated all `jdKeywords` including ones the user had explicitly excluded.
+4. **Case-sensitive membership checks.** `stageMissingKeyword`/`toggleExcludeKeyword` and three render-time checks used `Array.includes(kw)`, so a chip whose casing differed from the stored value wouldn't toggle (and `selected`/`excluded` could drift out of sync).
+
+### Fixes
+
+- **`lib/gemini.ts`** — split the keyword universe in `generateAtsResume`: `keywordsToAdd` = user-selected only (minus excluded) = the ONLY keywords allowed in as NEW vocabulary and that MUST appear; `contextKeywords` = the rest of the JD keywords, now **emphasis-only** ("use to decide which existing experience to surface; do NOT add if not already in the resume"). Rewrote the prompt's keyword block into `KEYWORDS TO ADD` / `CONTEXT KEYWORDS` / `STRICT KEYWORD SCOPE` / `EXCLUDED KEYWORDS` sections and updated `PRIMARY GOAL` + transformation rule 5b accordingly. Added and **exported `keywordInText()`** — a whole-token, case-insensitive matcher (boundary = string edge or non-alphanumeric char, so "C++"/"CI/CD"/".NET" still match but "Java" no longer matches inside "JavaScript"). Scoring now runs over `scoredJd = jdKeywords` minus excluded, uses `keywordInText` for both in-resume and in-original checks, and returns `jd_keywords: scoredJd`.
+- **`app/api/match/[id]/resume/route.ts`** — GET route's already-have / available split now uses the exported `keywordInText` instead of substring `includes`, so the picker agrees with the generator's score.
+- **`app/(app)/jobs/[id]/JobActions.tsx`** — `allMissingKeywords` now sources ONLY `keywords.missing`, filtered by `excludedKeywords` (dropped the stale `skills.missing` merge). All keyword membership checks (`stageMissingKeyword`, `toggleExcludeKeyword`, and the `keywords.added` / `keywords.already_had` / `allMissingKeywords` render maps) are now case-insensitive `.some()`.
+
+### Verified
+
+`npm run typecheck` clean. `npm run build` succeeds with dummy Supabase envs (the only build failure was the pre-existing `/import` static-prerender needing `NEXT_PUBLIC_SUPABASE_URL`/`ANON_KEY` — an env gap, not a code error). Added a Known Pitfalls row in `CONTEXT.md`.
+
 ## Session 8 — Multi-user auth hardening: duplicate-email crash, data-loss footgun, migration 0006 (May 30, 2026)
 
 Follow-up hardening to Phase 1 (multi-user auth): fixed a sign-in crash, diagnosed/recovered lost data, and shipped a data-safety migration.

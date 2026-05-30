@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { getCurrentProfile } from '@/lib/current-user';
 import { ensureFullDescription } from '@/lib/jd-fetcher';
-import { generateAtsResume, extractJdKeywords } from '@/lib/gemini';
+import { generateAtsResume, extractJdKeywords, keywordInText } from '@/lib/gemini';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -56,12 +56,15 @@ export async function GET(
     ? jdKeywords
     : (job.tags ?? []);
 
-  const resumeLower = (profile?.resume_text ?? '').toLowerCase();
+  // Whole-token matching (keywordInText) — same matcher the generator uses for
+  // its ATS score — so the picker's "already have" split agrees with the
+  // generator instead of diverging on substring false positives.
+  const resumeText = profile?.resume_text ?? '';
   const alreadyHave: string[] = [];
   const available: string[] = [];
 
   for (const kw of finalKeywords) {
-    if (resumeLower.includes(kw.toLowerCase())) alreadyHave.push(kw);
+    if (keywordInText(kw, resumeText)) alreadyHave.push(kw);
     else available.push(kw);
   }
 

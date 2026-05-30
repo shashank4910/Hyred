@@ -91,26 +91,29 @@ export function JobActions({
   // extractJdKeywords output) and stage it for the next regenerate.
   const [customKeyword, setCustomKeyword] = useState('');
 
-  // Unified missing-keywords list. The Skill Match section (matchSkills) and
-  // the ATS keyword analysis (extractJdKeywords) sometimes return slightly
-  // different sets - a JD term like "non-functional requirements" may be
-  // flagged as missing in one but not the other. Merging them here ensures
-  // every flagged-missing keyword has an actionable add chip.
+  // Missing-keywords list. Source ONLY from the generator's keywords.missing —
+  // that set is computed against the ACTUAL generated resume (whole-token match)
+  // in generateAtsResume. Previously we merged in skills.missing (from
+  // matchSkills, computed against the ORIGINAL resume), which went stale after
+  // the first regenerate and caused the same keyword to show as both "Woven in"
+  // and "Missing" simultaneously. We additionally drop anything the user has
+  // staged for removal (excludedKeywords) so a deliberately-removed keyword never
+  // reappears as actionable-missing.
   const allMissingKeywords = useMemo(() => {
     const fromKeywords = keywords?.missing ?? [];
-    const fromSkills = skills?.missing ?? [];
     const seen = new Set<string>();
     const merged: string[] = [];
-    for (const kw of [...fromKeywords, ...fromSkills]) {
+    for (const kw of fromKeywords) {
       const t = kw.trim();
       if (!t) continue;
       const lower = t.toLowerCase();
       if (seen.has(lower)) continue;
+      if (excludedKeywords.some(k => k.toLowerCase() === lower)) continue;
       seen.add(lower);
       merged.push(t);
     }
     return merged;
-  }, [keywords?.missing, skills?.missing]);
+  }, [keywords?.missing, excludedKeywords]);
 
 
   // Load skills if we have any candidate skills
@@ -370,8 +373,8 @@ export function JobActions({
 
   // Clicking a single missing chip stages it for the next regenerate.
   function stageMissingKeyword(kw: string) {
-    if (selectedKeywords.includes(kw)) {
-      setSelectedKeywords(prev => prev.filter(k => k !== kw));
+    if (selectedKeywords.some(k => k.toLowerCase() === kw.toLowerCase())) {
+      setSelectedKeywords(prev => prev.filter(k => k.toLowerCase() !== kw.toLowerCase()));
       toast(`Removed "${kw}" from priorities`);
     } else {
       // If user previously excluded this keyword, un-exclude it first
@@ -385,8 +388,8 @@ export function JobActions({
   // Clicking a present (woven-in / already-had) chip stages it for REMOVAL
   // on the next regenerate. The model will be told it must not appear.
   function toggleExcludeKeyword(kw: string) {
-    if (excludedKeywords.includes(kw)) {
-      setExcludedKeywords(prev => prev.filter(k => k !== kw));
+    if (excludedKeywords.some(k => k.toLowerCase() === kw.toLowerCase())) {
+      setExcludedKeywords(prev => prev.filter(k => k.toLowerCase() !== kw.toLowerCase()));
       toast(`"${kw}" will stay in resume`);
     } else {
       // If user previously selected this keyword as priority, un-select it
@@ -784,7 +787,7 @@ export function JobActions({
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {keywords.added.map((kw) => {
-                        const isExcluded = excludedKeywords.includes(kw);
+                        const isExcluded = excludedKeywords.some(k => k.toLowerCase() === kw.toLowerCase());
                         return (
                           <button
                             key={kw}
@@ -822,7 +825,7 @@ export function JobActions({
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {keywords.already_had.map((kw) => {
-                        const isExcluded = excludedKeywords.includes(kw);
+                        const isExcluded = excludedKeywords.some(k => k.toLowerCase() === kw.toLowerCase());
                         return (
                           <button
                             key={kw}
@@ -871,7 +874,7 @@ export function JobActions({
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {allMissingKeywords.map((kw) => {
-                        const isStaged = selectedKeywords.includes(kw);
+                        const isStaged = selectedKeywords.some(k => k.toLowerCase() === kw.toLowerCase());
                         return (
                           <button
                             key={kw}

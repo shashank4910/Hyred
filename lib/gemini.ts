@@ -508,6 +508,26 @@ function normalizeAscii(s: string): string {
 }
 
 /**
+ * Whole-token, case-insensitive keyword matcher. Replaces the old
+ * `text.toLowerCase().includes(kw.toLowerCase())` substring check, which
+ * produced false positives — "AI" matched "available", "Java" matched
+ * "JavaScript", "SRE" matched "ensure" — inflating the ATS Match Score and
+ * making the same keyword show as both present and missing.
+ *
+ * Instead of `\b` (which breaks on keywords ending in non-word chars like
+ * "C++", "CI/CD", ".NET"), we require the keyword to be bounded by either the
+ * string edge or a non-alphanumeric character on each side. Multi-word
+ * keywords ("load testing") and symbol-bearing keywords ("C++") are handled.
+ */
+export function keywordInText(keyword: string, text: string): boolean {
+  const kw = keyword.trim();
+  if (!kw) return false;
+  const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i');
+  return re.test(text);
+}
+
+/**
  * Clean a job-listing title down to a recruiter-presentable role title.
  * The JD's listing title is full of noise that should never reach the
  * candidate's resume - department codes (CX, RX), version numbers (II, III),
@@ -703,18 +723,26 @@ export async function generateAtsResume(args: {
         jobDescription: args.jobDescription,
       });
 
-  // Combine JD keywords with anything the user manually ticked in the picker.
-  // JD keywords come first because they're what the ATS will actually score on.
-  // selectedKeywords are tracked separately so we can give them stronger
-  // emphasis in the prompt - "MUST appear" rather than "should weave in".
-  // excludedKeywords are the user's "remove these" list - they are filtered
-  // out of allKeywords so they're never recommended, AND they're called out
-  // explicitly in the prompt so any pre-existing mention in the candidate's
-  // current resume is also stripped on regeneration.
-  const selectedSet = new Set(selectedKeywords.map(s => s.toLowerCase()));
+  // Split the keyword universe into two DISTINCT roles. This is the core fix for
+  // the "unselected JD keywords get auto-added" bug — previously ALL jdKeywords
+  // were merged into one list the prompt told the model to "weave in", so every
+  // JD keyword was injected whether the user picked it or not.
+  //   - keywordsToAdd   = ONLY what the user explicitly selected (minus excluded).
+  //                       These are the ONLY keywords we permit to be introduced
+  //                       as NEW vocabulary, and they MUST appear in the output.
+  //   - contextKeywords = the remaining JD keywords. Emphasis-only: used to decide
+  //                       which EXISTING experience to surface/reorder, but NEVER
+  //                       added as new vocabulary if the candidate lacks them.
+  // excludedKeywords are the user's "remove these" list — dropped from both sets
+  // and called out explicitly in the prompt so any pre-existing mention in the
+  // candidate's current resume is also stripped on regeneration.
   const excludedSet = new Set(excludedKeywords.map(s => s.toLowerCase()));
-  const allKeywords = [...new Set([...jdKeywords, ...selectedKeywords])]
+  const keywordsToAdd = [...new Set(selectedKeywords)]
     .filter(k => !excludedSet.has(k.toLowerCase()));
+  const keywordsToAddSet = new Set(keywordsToAdd.map(k => k.toLowerCase()));
+  const contextKeywords = jdKeywords.filter(
+    k => !keywordsToAddSet.has(k.toLowerCase()) && !excludedSet.has(k.toLowerCase()),
+  );
 
   // ── Conditional directives based on JD content ──────────────────────────────
   const jdLower = args.jobDescription.toLowerCase();
@@ -750,39 +778,43 @@ export async function generateAtsResume(args: {
   // just paste the JD listing into the resume?").
   const targetCurrentRoleTitle = cleanJdTitle(args.jobTitle ?? '');
 
-  const keywordsBlock = allKeywords.length > 0
+  const keywordsBlock = (keywordsToAdd.length > 0 || contextKeywords.length > 0)
     ? `
+${keywordsToAdd.length > 0 ? `
+KEYWORDS TO ADD (the user explicitly selected these - they MUST appear in the final resume):
+${keywordsToAdd.map(k => `  - ${k}`).join('\n')}
 
-TARGET JD KEYWORDS (extracted from THIS specific JD - incorporate them where truthful):
-${allKeywords.map(k => {
-  const isPriority = selectedSet.has(k.toLowerCase());
-  return `  - ${k}${isPriority ? '   [USER PRIORITY - this keyword MUST appear in the final resume, at minimum in TECHNICAL SKILLS]' : ''}`;
-}).join('\n')}
+KEYWORDS-TO-ADD RULES:
+- Each keyword above MUST appear at least once in the final resume - the user explicitly flagged these as critical for the ATS scan.
+- Where the candidate has equivalent real experience, weave the keyword naturally into the relevant bullet using the EXACT phrasing above (e.g. write "JMeter" not "Apache JMeter performance tool"; if the keyword is "load testing", use that phrase even if the candidate normally writes "performance testing").
+- If the candidate has no experience with one of these tools, list it under the most appropriate category in TECHNICAL SKILLS (e.g. "Monitoring: Splunk, Dynatrace, Grafana, Prometheus"). TECHNICAL SKILLS is by convention a list of familiarity, not deep experience, so this is acceptable - but do NOT invent fake bullets in Experience.
+- Reorder TECHNICAL SKILLS entries so these tools appear FIRST in their category line.
+` : ''}${contextKeywords.length > 0 ? `
+CONTEXT KEYWORDS (what THIS JD asks for - for relevance/emphasis ONLY, NOT a list of things to add):
+${contextKeywords.map(k => `  - ${k}`).join('\n')}
 
-KEYWORD RULES:
-- Where the candidate has equivalent real experience, use the EXACT phrasing from this list (e.g. write "JMeter" not "Apache JMeter performance tool"; if the JD says "load testing", use that phrase even if the candidate normally writes "performance testing").
-- For TECHNICAL SKILLS: reorder entries so JD-priority tools appear FIRST in their category line.
-- For tools the candidate has never used, list them ONLY in TECHNICAL SKILLS (do NOT invent fake bullets in Experience).
-- Items marked [USER PRIORITY] MUST appear at least once in the final resume - the user has explicitly flagged these as critical for the ATS scan. If the candidate has no experience with a USER PRIORITY tool, list it under the most appropriate category in TECHNICAL SKILLS (e.g. "Monitoring: Splunk, Dynatrace, Grafana, Prometheus") - this is acceptable because TECHNICAL SKILLS is by convention a list of familiarity, not deep experience.
-- Do NOT fabricate experience. Truthfulness is the highest priority - even higher than keyword density.
-
+CONTEXT-KEYWORD RULES:
+- Use these to decide which of the candidate's EXISTING experience to emphasize and surface earlier.
+- If the candidate ALREADY has one of these in their current resume, you MAY use the JD's exact phrasing for it and reorder it to appear earlier in its TECHNICAL SKILLS category.
+- DO NOT introduce any of these as NEW vocabulary. If a context keyword is not already in the candidate's current resume, leave it out - the user did not select it to be added.
+` : ''}
 STRICT KEYWORD SCOPE (this is critical - the user explicitly asked for it):
-- The ONLY new tools / technologies / frameworks / methodologies / certifications / named processes you may introduce into the resume are those listed under TARGET JD KEYWORDS above.
-- Do NOT pick up vocabulary directly from the TARGET JOB description text. The JD is provided for relevance context only - to help you decide which of the candidate's existing experience to emphasize. It is NOT a source of new keywords.
-- Tools / skills already present in the candidate's CURRENT RESUME may stay even if they are not in TARGET JD KEYWORDS - those are the candidate's real, existing experience.
-- If you are tempted to add a tool name not in TARGET JD KEYWORDS and not in the candidate's current resume, do NOT add it.
+- The ONLY NEW tools / technologies / frameworks / methodologies / certifications / named processes you may introduce into the resume are those listed under KEYWORDS TO ADD above.
+- Do NOT pick up vocabulary directly from the TARGET JOB description text or from CONTEXT KEYWORDS. They are provided for relevance context only - to help you decide which of the candidate's existing experience to emphasize. They are NOT a source of new keywords.
+- Tools / skills already present in the candidate's CURRENT RESUME may stay even if they are not listed above - those are the candidate's real, existing experience.
+- If you are tempted to add a tool name that is not in KEYWORDS TO ADD and not in the candidate's current resume, do NOT add it.
 ${excludedKeywords.length > 0 ? `
 EXCLUDED KEYWORDS (the user explicitly does NOT want these in the resume):
 ${excludedKeywords.map(k => `  - ${k}`).join('\n')}
 - These keywords MUST NOT appear ANYWHERE in the final resume - not in PROFESSIONAL SUMMARY, not in KEY ACHIEVEMENTS, not in TECHNICAL SKILLS, not in any bullet, not even inside other words.
 - If any of these keywords are currently in the candidate's CURRENT RESUME (for example because they were added in a previous generation that the user now wants undone), REMOVE every occurrence and rephrase the surrounding sentence so the resume still reads naturally.
-- Exclusion takes precedence over everything: even if an excluded keyword appears in TARGET JD KEYWORDS, it stays out. The user's explicit "remove" decision overrides the JD priority.
+- Exclusion takes precedence over everything: even if an excluded keyword appears in CONTEXT KEYWORDS, it stays out. The user's explicit "remove" decision overrides JD relevance.
 ` : ''}`
     : '';
 
   const prompt = `You are an expert ATS resume writer. Tailor this resume to pass the ATS scanner for the target job below.
 
-PRIMARY GOAL: maximize the overlap between the resume's vocabulary and the TARGET JD KEYWORDS, without fabricating any experience.
+PRIMARY GOAL: emphasize the candidate's EXISTING experience that maps to what this JD asks for, and ensure the user's explicitly selected KEYWORDS TO ADD appear - WITHOUT fabricating experience and WITHOUT adding any new keyword the user did not select.
 
 CRITICAL RULES:
 1. PRESERVE every real fact: same companies, same dates, same achievements. Never invent jobs, dates, or numbers. (Note: the CURRENT/most-recent role TITLE is governed by the ROLE TITLE ALIGNMENT directive below - past role titles stay as-is.)
@@ -791,7 +823,7 @@ CRITICAL RULES:
 4. CLIENT NAME PRIVACY: any client / end-customer name (for example "Charles Schwab" or any other client the candidate has worked for) must appear ONLY in the "Client: ClientName (Domain)" subline directly under the relevant job header in PROFESSIONAL EXPERIENCE - that is the only allowed location. Do NOT mention the client name anywhere else: not in PROFESSIONAL SUMMARY, not in KEY ACHIEVEMENTS, not in any bullet, not in skills. Replace any such mention with neutral phrasing like "the organization", "a major BFSI client", or simply omit it.
 5. Allowed transformations:
    a. Convert any tables to "Category: Tool1, Tool2, Tool3" plain-text lines.
-   b. Weave TARGET JD KEYWORDS naturally into existing bullets where the candidate truthfully has that experience.
+   b. Weave KEYWORDS TO ADD naturally into existing bullets where the candidate truthfully has that experience.
    c. Rewrite the Professional Summary per the directive below.
    d. Reorder Skills entries inside TECHNICAL SKILLS to put JD-priority tools first.
    e. Apply ROLE TITLE ALIGNMENT (below) to the candidate's CURRENT/most-recent role only.${jmeterAchievementClause ? '\n   ' + jmeterAchievementClause.replace(/^e\. /, 'f. ') : ''}
@@ -847,16 +879,20 @@ CRITICAL: do NOT prefix the output with any header label like "Resume", "RESUME"
   const resume = normalizeAscii(raw);
 
   // ── ATS Match Score: % of JD keywords actually present in the resume ────────
-  const resumeLower = resume.toLowerCase();
-  const originalLower = args.resumeText.toLowerCase();
+  // Score over the JD keywords MINUS anything the user explicitly excluded — a
+  // deliberately-removed keyword must not count against the score or surface as
+  // "missing". Use whole-token matching (keywordInText) instead of substring
+  // includes() so "AI" no longer matches "available" and "Java" no longer
+  // matches "JavaScript".
+  const scoredJd = jdKeywords.filter(kw => !excludedSet.has(kw.toLowerCase()));
 
   const added: string[] = [];
   const alreadyHad: string[] = [];
   const missing: string[] = [];
 
-  for (const kw of jdKeywords) {
-    const inResume = resumeLower.includes(kw.toLowerCase());
-    const inOriginal = originalLower.includes(kw.toLowerCase());
+  for (const kw of scoredJd) {
+    const inResume = keywordInText(kw, resume);
+    const inOriginal = keywordInText(kw, args.resumeText);
     if (inResume) {
       if (inOriginal) alreadyHad.push(kw);
       else added.push(kw);
@@ -866,14 +902,14 @@ CRITICAL: do NOT prefix the output with any header label like "Resume", "RESUME"
   }
 
   const present = added.length + alreadyHad.length;
-  const ats_match_score = jdKeywords.length > 0
-    ? Math.round((present / jdKeywords.length) * 100)
+  const ats_match_score = scoredJd.length > 0
+    ? Math.round((present / scoredJd.length) * 100)
     : 0;
 
   return {
     resume,
     ats_match_score,
-    jd_keywords: jdKeywords,
+    jd_keywords: scoredJd,
     added,
     alreadyHad,
     missing,
