@@ -119,10 +119,23 @@ async function resolveProfileForUser(user: User): Promise<Profile> {
     .single();
   if (!userIdError && byUserId) return byUserId as Profile;
 
-  // Same email, different/null user_id (re-signup, legacy row) — re-point by email.
+  // Same email, different/null user_id (re-signup, legacy row) — re-point by
+  // email BUT clear stale personal data so the new user starts fresh. The old
+  // profile's resume, insights, and preferences belong to the prior account
+  // and must NOT leak to the new user.
   const { data: byEmail, error: emailError } = await sb
     .from('profiles')
-    .upsert(row, { onConflict: 'email' })
+    .upsert(
+      {
+        ...row,
+        full_name: null,
+        resume_text: null,
+        resume_embedding: null,
+        insights: null,
+        preferences: {},
+      },
+      { onConflict: 'email' },
+    )
     .select(PROFILE_COLUMNS)
     .single();
   if (!emailError && byEmail) return byEmail as Profile;

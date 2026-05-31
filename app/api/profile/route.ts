@@ -157,9 +157,17 @@ export async function POST(req: NextRequest) {
 
   // email stays bound to the auth identity; the form value is only a fallback
   // for a freshly-created profile that has no email yet (placeholder).
-  const canonicalEmail = existing.email && !existing.email.endsWith('@users.noreply')
-    ? existing.email
-    : email || existing.email;
+  // Always prefer the authenticated user's email from the session — it is the
+  // source of truth and prevents stale emails from prior profile adoptions.
+  const authUser = await (async () => {
+    const { getCurrentUser } = await import('@/lib/current-user');
+    return getCurrentUser();
+  })();
+  const canonicalEmail = authUser?.email
+    ? authUser.email
+    : existing.email && !existing.email.endsWith('@users.noreply')
+      ? existing.email
+      : email || existing.email;
 
   const updatePayload = {
     email: canonicalEmail,
