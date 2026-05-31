@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Hanken+Grotesk:wght@600;700;800&family=Geist:wght@500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
 :root {
   color-scheme: light;
@@ -10,16 +10,15 @@
 
 html,
 body {
-  background: #f8f9ff;
-  color: #121c2a;
+  background: #f9f9ff;
+  color: #111c2d;
   -webkit-font-smoothing: antialiased;
 }
 
 *::selection {
-  background: rgba(70, 72, 212, 0.15);
+  background: rgba(0, 106, 101, 0.15);
 }
 
-/* Subtle scrollbars */
 *::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -28,73 +27,78 @@ body {
   background: transparent;
 }
 *::-webkit-scrollbar-thumb {
-  background: #c7c4d7;
+  background: #bbcac7;
   border-radius: 999px;
-  border: 2px solid #f8f9ff;
+  border: 2px solid #f9f9ff;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: #767586;
+  background: #6c7a78;
 }
 
 @layer components {
-  /* Glass morphism card */
+  .teal-gradient {
+    background: linear-gradient(135deg, #006a65 0%, #2cc9c0 100%);
+  }
+
   .glass-card {
-    @apply bg-white/70 backdrop-blur-[10px] border border-border-muted/50 rounded-xl shadow-glass;
+    @apply bg-surface-container-lowest backdrop-blur-[10px] rounded-2xl shadow-card;
+  }
+
+  .soft-shadow {
+    box-shadow: 0px 8px 32px rgba(0, 106, 101, 0.04);
   }
 
   .btn {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-btn border border-border-muted bg-white px-3 py-1.5 text-sm font-medium text-on-surface hover:border-primary/40 hover:text-primary transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-card;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-xl border border-outline-variant/50 bg-surface-container-lowest px-3 py-2 text-sm font-semibold text-on-surface hover:border-primary/30 hover:text-primary transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-card;
   }
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-btn bg-primary px-4 py-2 text-sm font-semibold text-on-primary hover:bg-primary-container transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-elevated;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-xl teal-gradient px-4 py-2.5 text-sm font-semibold text-on-primary hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-primary-glow;
   }
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-btn px-3 py-1.5 text-sm font-medium text-on-surface-variant hover:text-primary hover:bg-primary-fixed/40 transition-colors;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold text-on-surface-variant hover:text-primary hover:bg-surface-container-low transition-colors;
   }
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-btn bg-secondary px-4 py-2 text-sm font-semibold text-on-secondary hover:bg-secondary-container transition-all disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-xl bg-secondary px-4 py-2.5 text-sm font-semibold text-on-secondary hover:bg-secondary-container transition-all disabled:opacity-50 disabled:cursor-not-allowed;
   }
   .input {
-    @apply w-full rounded-field border border-border-muted bg-white px-3 py-2 text-sm text-on-surface placeholder:text-outline focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all;
+    @apply w-full rounded-xl border border-outline-variant bg-surface-container-lowest px-3 py-2.5 text-sm text-on-surface placeholder:text-text-muted focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/15 transition-all;
   }
   .card {
-    @apply rounded-xl border border-border-muted bg-surface-card p-5 shadow-card;
+    @apply rounded-2xl bg-surface-container-lowest p-6 shadow-card;
   }
   .card-hover {
-    @apply rounded-xl border border-border-muted bg-surface-card p-5 shadow-card transition-all hover:shadow-elevated hover:border-primary/30 hover:-translate-y-0.5;
+    @apply rounded-2xl bg-surface-container-lowest p-6 shadow-card transition-all hover:shadow-elevated hover:border-primary/10 hover:-translate-y-1;
   }
   .badge {
-    @apply inline-flex items-center rounded-full bg-surface-container text-on-surface-variant px-2.5 py-0.5 text-xs font-medium;
+    @apply inline-flex items-center rounded-full bg-surface-container text-on-surface-variant px-2.5 py-0.5 text-xs font-semibold;
   }
   .badge-primary {
-    @apply inline-flex items-center rounded-full bg-primary-fixed text-on-primary-fixed px-2.5 py-0.5 text-xs font-medium;
+    @apply inline-flex items-center rounded-full bg-primary/10 text-primary px-2.5 py-0.5 text-xs font-semibold;
   }
   .badge-grape {
-    @apply inline-flex items-center rounded-full bg-secondary-fixed text-on-secondary-fixed-variant px-2.5 py-0.5 text-xs font-medium;
+    @apply inline-flex items-center rounded-full bg-secondary-container/30 text-secondary px-2.5 py-0.5 text-xs font-semibold;
   }
   .badge-success {
-    @apply inline-flex items-center rounded-full bg-success-green/10 text-success-green px-2.5 py-0.5 text-xs font-medium;
+    @apply inline-flex items-center rounded-full bg-match-success/10 text-match-success px-2.5 py-0.5 text-xs font-semibold;
   }
   .stat-card {
-    @apply rounded-xl border border-border-muted bg-surface-card p-4 shadow-card;
+    @apply rounded-2xl bg-surface-container-lowest p-5 shadow-card;
   }
 
-  /* Score color bands */
   .score-band-90 {
-    @apply text-success-green;
+    @apply text-match-success;
   }
   .score-band-75 {
-    @apply text-primary;
+    @apply text-primary-container;
   }
   .score-band-60 {
-    @apply text-secondary;
+    @apply text-secondary-fixed-dim;
   }
   .score-band-low {
-    @apply text-outline;
+    @apply text-text-muted;
   }
 }
 
-/* Skeleton shimmer */
 @keyframes shimmer {
   0% {
     background-position: -400px 0;
@@ -104,10 +108,10 @@ body {
   }
 }
 .skeleton {
-  background: linear-gradient(90deg, #e6eeff 0%, #f8f9ff 50%, #e6eeff 100%);
+  background: linear-gradient(90deg, #e7eeff 0%, #f9f9ff 50%, #e7eeff 100%);
   background-size: 800px 100%;
   animation: shimmer 1.4s infinite linear;
-  border-radius: 6px;
+  border-radius: 8px;
 }
 
 .legal-prose {
@@ -120,7 +124,7 @@ body {
   @apply list-disc pl-5 space-y-1.5;
 }
 .legal-prose a {
-  @apply text-amber hover:underline;
+  @apply text-primary hover:underline;
 }
 .legal-prose strong {
   @apply font-medium text-ink;
