@@ -6,6 +6,7 @@ import {
   Shield, Key, BarChart3, AlertTriangle, RefreshCw,
   Loader2, Plus, Trash2, CheckCircle2, XCircle,
 } from 'lucide-react';
+import { LlmKeysPanel } from './LlmKeysPanel';
 
 type UsageSummary = {
   bySource: Record<string, { total: number; success: number; rateLimited: number; errors: number }>;
@@ -154,10 +155,14 @@ export function AdminDashboard() {
       </div>
 
 
-      {/* === SECTION 1: Usage Overview === */}
+      {/* === LLM KEYS & TOKEN USAGE (Primary — Cerebras/Groq/OpenAI) === */}
+      <LlmKeysPanel />
+
+
+      {/* === SECTION 1: Job Source Usage Overview === */}
       <section className="glass-card p-6">
         <h2 className="font-headline text-headline-md font-bold text-on-background flex items-center gap-2 mb-4">
-          <BarChart3 className="h-5 w-5 text-primary" /> Usage Overview
+          <BarChart3 className="h-5 w-5 text-primary" /> Job Source API Usage
         </h2>
         {loading && !stats && <div className="skeleton h-32 w-full" />}
         {error && (
