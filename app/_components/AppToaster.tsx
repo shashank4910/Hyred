@@ -15,10 +15,11 @@ export function AppToaster() {
         duration: 8000,
         style: {
           background: '#ffffff',
-          color: '#121c2a',
-          border: '1px solid #E5E7EB',
-          boxShadow: '0 4px 6px -1px rgba(18, 28, 42, 0.06)',
-          borderRadius: '0.75rem',
+          color: '#111c2d',
+          border: '1px solid #bbcac7',
+          boxShadow: '0px 8px 32px rgba(0, 106, 101, 0.06)',
+          borderRadius: '1rem',
+          fontFamily: "'Plus Jakarta Sans', sans-serif",
         },
       }}
     />

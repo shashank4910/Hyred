@@ -222,11 +222,11 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
 
       <section className="card space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="font-semibold text-ink flex items-center gap-2">
-            <FileText className="h-4 w-4 text-amber" /> Resume
+          <h2 className="font-semibold text-on-surface flex items-center gap-2">
+            <FileText className="h-4 w-4 text-primary" /> Resume
           </h2>
           {analyzing && (
-            <span className="inline-flex items-center gap-1.5 text-xs text-amber font-medium">
+            <span className="inline-flex items-center gap-1.5 text-xs text-primary font-medium">
               <Loader2 className="h-3 w-3 animate-spin" /> Analyzing with AI
             </span>
           )}
@@ -237,12 +237,12 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
           onDragLeave={() => setDragOver(false)}
           onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFile(e.dataTransfer.files[0] ?? null); }}
           className={
-            'rounded-card border-2 border-dashed p-6 text-center transition-colors cursor-pointer ' +
+            'rounded-2xl border-2 border-dashed p-6 text-center transition-colors cursor-pointer ' +
             (analyzing
-              ? 'border-amber/60 bg-amber/5 animate-pulse'
+              ? 'border-primary/60 bg-primary/5 animate-pulse'
               : dragOver
-                ? 'border-amber bg-amber/5'
-                : 'border-faded-stone hover:border-amber/40')
+                ? 'border-primary bg-primary/5'
+                : 'border-outline-variant hover:border-primary/40')
           }
           onClick={() => !analyzing && fileInputRef.current?.click()}
         >
@@ -255,13 +255,13 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
           />
           {resumeFile ? (
             <div className="flex items-center justify-center gap-2 text-sm">
-              <FileText className="h-4 w-4 text-amber" />
-              <span className="truncate text-ink">{resumeFile.name}</span>
-              <span className="text-stone text-xs">({(resumeFile.size / 1024).toFixed(0)}KB)</span>
+              <FileText className="h-4 w-4 text-primary" />
+              <span className="truncate text-on-surface">{resumeFile.name}</span>
+              <span className="text-on-surface-variant text-xs">({(resumeFile.size / 1024).toFixed(0)}KB)</span>
               {!analyzing && (
                 <button
                   onClick={(e) => { e.stopPropagation(); setResumeFile(null); setParsedText(''); if (fileInputRef.current) fileInputRef.current.value = ''; }}
-                  className="ml-2 text-stone hover:text-warning-red"
+                  className="ml-2 text-on-surface-variant hover:text-error"
                   aria-label="Remove"
                 >
                   <X className="h-4 w-4" />
@@ -270,11 +270,11 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
             </div>
           ) : (
             <div>
-              <Upload className="h-6 w-6 mx-auto text-shadow-tint mb-2" />
-              <p className="text-sm text-ink">
-                Drop your resume here or <span className="text-amber font-medium">click to browse</span>
+              <Upload className="h-6 w-6 mx-auto text-text-muted mb-2" />
+              <p className="text-sm text-on-surface">
+                Drop your resume here or <span className="text-primary font-medium">click to browse</span>
               </p>
-              <p className="text-xs text-stone mt-1">
+              <p className="text-xs text-on-surface-variant mt-1">
                 .pdf, .doc, .docx, or .txt · max 5MB · AI auto-fills your details
               </p>
             </div>
@@ -282,14 +282,14 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
         </div>
 
         {initial.resumeChars > 0 && !resumeFile && (
-          <p className="text-xs text-stone inline-flex items-center gap-1">
-            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+          <p className="text-xs text-on-surface-variant inline-flex items-center gap-1">
+            <CheckCircle2 className="h-3.5 w-3.5 text-match-success" />
             Resume on file ({initial.resumeChars.toLocaleString()} chars). Upload a new file to replace.
           </p>
         )}
 
         <details className="text-xs">
-          <summary className="cursor-pointer text-stone hover:text-ink font-medium">Or paste resume text</summary>
+          <summary className="cursor-pointer text-on-surface-variant hover:text-on-surface font-medium">Or paste resume text</summary>
           <textarea
             className="input mt-2 min-h-[200px] font-mono text-xs"
             value={resumeText}
@@ -297,7 +297,7 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
             placeholder="Paste your full resume here..."
           />
           <div className="flex items-center justify-between mt-1">
-            <p className="text-xs text-stone">{resumeText.length} chars</p>
+            <p className="text-xs text-on-surface-variant">{resumeText.length} chars</p>
             {resumeText.length >= 200 && (
               <button type="button" onClick={reanalyze} disabled={analyzing} className="btn">
                 {analyzing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
@@ -310,7 +310,7 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
 
 
       <section className="card space-y-3">
-        <h2 className="font-semibold text-ink">About you</h2>
+        <h2 className="font-semibold text-on-surface">About you</h2>
         <div className="grid sm:grid-cols-2 gap-3">
           <Field label="Email" ai={aiFields.has('email')}>
             <input className="input" value={email} onChange={(e) => { setEmail(e.target.value); clearAiFlag('email'); }} type="email" placeholder="you@example.com" required />
@@ -322,7 +322,7 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
       </section>
 
       <section className="card space-y-3">
-        <h2 className="font-semibold text-ink">Job preferences</h2>
+        <h2 className="font-semibold text-on-surface">Job preferences</h2>
         <div className="grid sm:grid-cols-2 gap-3">
           <Field label="Target roles" hint="Comma separated. Used by the LLM to focus matching." ai={aiFields.has('roles')}>
             <input className="input" value={roles} onChange={(e) => { setRoles(e.target.value); clearAiFlag('roles'); }} placeholder="e.g. Senior Software Engineer, Product Manager" />
@@ -339,10 +339,10 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
         </div>
         <div className="grid sm:grid-cols-2 gap-3 items-end">
           <Field label={`Minimum score to keep: ${minScore}`}>
-            <input type="range" min={50} max={95} step={5} value={minScore} onChange={(e) => setMinScore(Number(e.target.value))} className="w-full accent-amber" />
+            <input type="range" min={50} max={95} step={5} value={minScore} onChange={(e) => setMinScore(Number(e.target.value))} className="w-full" />
           </Field>
-          <label className="inline-flex items-center gap-2 text-sm text-ink">
-            <input type="checkbox" checked={remoteOnly} onChange={(e) => setRemoteOnly(e.target.checked)} className="accent-amber" />
+          <label className="inline-flex items-center gap-2 text-sm text-on-surface">
+            <input type="checkbox" checked={remoteOnly} onChange={(e) => setRemoteOnly(e.target.checked)} />
             Remote only
           </label>
         </div>
@@ -377,15 +377,15 @@ function Field({
   return (
     <div>
       <div className="flex items-center justify-between">
-        <label className="text-xs text-stone font-medium">{label}</label>
+        <label className="text-xs text-on-surface-variant font-medium">{label}</label>
         {ai && (
-          <span className="inline-flex items-center gap-0.5 text-[10px] text-amber font-medium" title="Auto-filled by AI from your resume. Edit to override.">
+          <span className="inline-flex items-center gap-0.5 text-[10px] text-primary font-medium" title="Auto-filled by AI from your resume. Edit to override.">
             <Sparkles className="h-2.5 w-2.5" /> AI
           </span>
         )}
       </div>
       <div className="mt-1">{children}</div>
-      {hint && <p className="text-xs text-stone mt-1">{hint}</p>}
+      {hint && <p className="text-xs text-on-surface-variant mt-1">{hint}</p>}
     </div>
   );
 }
@@ -400,9 +400,9 @@ function InsightsPanel({
   analyzing: boolean;
 }) {
   return (
-    <section className="card border-amber/30 bg-amber/5 space-y-3 animate-fade-in">
+    <section className="card border-primary/30 bg-primary/5 space-y-3 animate-fade-in">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h2 className="font-semibold flex items-center gap-2 text-amber-hover">
+        <h2 className="font-semibold flex items-center gap-2 text-primary">
           <Sparkles className="h-4 w-4" /> Resume insights
         </h2>
         <button onClick={onReanalyze} disabled={analyzing} className="btn">
@@ -410,7 +410,7 @@ function InsightsPanel({
           Re-analyze
         </button>
       </div>
-      {insights.summary && <p className="text-sm text-ink">{insights.summary}</p>}
+      {insights.summary && <p className="text-sm text-on-surface">{insights.summary}</p>}
       <div className="grid sm:grid-cols-3 gap-3 text-sm">
         {insights.years_experience != null && <KV label="Experience" value={`${insights.years_experience} years`} />}
         {insights.seniority && <KV label="Seniority" value={insights.seniority} capitalize />}
@@ -418,7 +418,7 @@ function InsightsPanel({
       </div>
       {insights.top_skills && insights.top_skills.length > 0 && (
         <div>
-          <div className="text-xs text-stone mb-1 font-medium">Skills detected</div>
+          <div className="text-xs text-on-surface-variant mb-1 font-medium">Skills detected</div>
           <div className="flex flex-wrap gap-1.5">
             {insights.top_skills.map((s) => (<span key={s} className="badge-primary">{s}</span>))}
           </div>
@@ -426,7 +426,7 @@ function InsightsPanel({
       )}
       {insights.suggested_roles && insights.suggested_roles.length > 0 && (
         <div>
-          <div className="text-xs text-stone mb-1 font-medium">Suggested target roles</div>
+          <div className="text-xs text-on-surface-variant mb-1 font-medium">Suggested target roles</div>
           <div className="flex flex-wrap gap-1.5">
             {insights.suggested_roles.map((r) => (<span key={r} className="badge">{r}</span>))}
           </div>
@@ -439,9 +439,9 @@ function InsightsPanel({
 
 function KV({ label, value, capitalize }: { label: string; value: string; capitalize?: boolean }) {
   return (
-    <div className="rounded-btn border border-border bg-off-white px-3 py-2">
-      <div className="text-xs text-stone">{label}</div>
-      <div className={`font-medium text-ink ${capitalize ? 'capitalize' : ''}`}>{value}</div>
+    <div className="rounded-xl border border-outline-variant bg-surface-container-low px-3 py-2">
+      <div className="text-xs text-on-surface-variant">{label}</div>
+      <div className={`font-medium text-on-surface ${capitalize ? 'capitalize' : ''}`}>{value}</div>
     </div>
   );
 }

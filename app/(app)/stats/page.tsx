@@ -97,8 +97,8 @@ export default async function StatsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-heading-sm font-semibold text-ink">Stats</h1>
-        <p className="text-body-sm text-stone mt-1">
+        <h1 className="font-headline text-heading-sm font-bold text-on-background">Stats</h1>
+        <p className="text-body-md text-on-surface-variant mt-1">
           Your personal matches and scan history — not the shared job pool.
         </p>
       </div>
@@ -123,8 +123,8 @@ export default async function StatsPage() {
         <BigStat label="Applied" value={appliedCount ?? 0} icon={<CheckCircle2 className="h-4 w-4" />} />
       </div>
 
-      <div className="card text-sm text-stone">
-        <span className="font-medium text-ink">Last scan: </span>
+      <div className="card text-sm text-on-surface-variant">
+        <span className="font-medium text-on-surface">Last scan: </span>
         {activeRun
           ? `In progress (started ${relativeTime(activeRun.started_at)}) · ${activeRun.matches_created ?? 0} kept so far`
           : lastRun?.finished_at
@@ -136,9 +136,9 @@ export default async function StatsPage() {
 
       {isAdmin && (
       <section className="card">
-        <h2 className="font-semibold text-ink mb-3">Your matches by source</h2>
+        <h2 className="font-semibold text-on-surface mb-3">Your matches by source</h2>
         {Object.keys(bySource).length === 0 ? (
-          <p className="text-sm text-stone">
+          <p className="text-sm text-on-surface-variant">
             No matches for your profile yet. Go to Matches and run a scan to find roles suited to your resume.
           </p>
         ) : (
@@ -151,13 +151,13 @@ export default async function StatsPage() {
                 return (
                   <li key={source}>
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-ink">{SOURCE_LABELS[source] ?? source}</span>
-                      <span className="text-stone">
+                      <span className="text-on-surface">{SOURCE_LABELS[source] ?? source}</span>
+                      <span className="text-on-surface-variant">
                         {count.toLocaleString()} ({pct.toFixed(0)}%)
                       </span>
                     </div>
-                    <div className="mt-1 h-1.5 rounded-full bg-off-white overflow-hidden">
-                      <div className="h-full bg-amber rounded-full" style={{ width: `${pct}%` }} />
+                    <div className="mt-1 h-1.5 rounded-full bg-surface-container overflow-hidden">
+                      <div className="h-full teal-gradient rounded-full" style={{ width: `${pct}%` }} />
                     </div>
                   </li>
                 );
@@ -168,20 +168,20 @@ export default async function StatsPage() {
       )}
 
       <section className="card">
-        <h2 className="font-semibold text-ink mb-1 flex items-center gap-2">
-          <Clock className="h-4 w-4 text-amber" /> Recent ingest runs
+        <h2 className="font-semibold text-on-surface mb-1 flex items-center gap-2">
+          <Clock className="h-4 w-4 text-primary" /> Recent ingest runs
         </h2>
-        <p className="text-xs text-stone mb-3">
+        <p className="text-xs text-on-surface-variant mb-3">
           Pipeline time = fetch + embed + score + persist. GitHub Actions
           adds ~20–30s overhead for checkout, setup-node, and npm install.
         </p>
         {(runs ?? []).length === 0 ? (
-          <p className="text-sm text-stone">No runs yet.</p>
+          <p className="text-sm text-on-surface-variant">No runs yet.</p>
         ) : (
           <div className="overflow-x-auto -mx-5 px-5">
             <table className="w-full text-sm min-w-[640px]">
               <thead>
-                <tr className="text-stone text-xs border-b border-border">
+                <tr className="text-on-surface-variant text-xs border-b border-outline-variant">
                   <th className="py-2 text-left font-medium">When</th>
                   <th className="py-2 text-left font-medium">Status</th>
                   <th className="py-2 text-right font-medium">Fetched</th>
@@ -194,17 +194,17 @@ export default async function StatsPage() {
               </thead>
               <tbody>
                 {(runs ?? []).map((r) => (
-                  <tr key={r.id} className="border-b border-faded-stone/50 last:border-0">
-                    <td className="py-2 text-xs text-stone">{relativeTime(r.started_at)}</td>
+                  <tr key={r.id} className="border-b border-outline-variant/50 last:border-0">
+                    <td className="py-2 text-xs text-on-surface-variant">{relativeTime(r.started_at)}</td>
                     <td className="py-2"><RunStatus status={r.status} errors={r.errors} /></td>
-                    <td className="py-2 text-right tabular-nums text-ink">{r.fetched}</td>
-                    <td className="py-2 text-right tabular-nums text-ink">{r.new_jobs}</td>
-                    <td className="py-2 text-right tabular-nums text-ink">{r.scored}</td>
-                    <td className="py-2 text-right tabular-nums text-amber font-medium">{r.matches_created}</td>
-                    <td className="py-2 text-right tabular-nums text-stone">
+                    <td className="py-2 text-right tabular-nums text-on-surface">{r.fetched}</td>
+                    <td className="py-2 text-right tabular-nums text-on-surface">{r.new_jobs}</td>
+                    <td className="py-2 text-right tabular-nums text-on-surface">{r.scored}</td>
+                    <td className="py-2 text-right tabular-nums text-primary font-medium">{r.matches_created}</td>
+                    <td className="py-2 text-right tabular-nums text-on-surface-variant">
                       {r.duration_ms ? `${(r.duration_ms / 1000).toFixed(1)}s` : '—'}
                     </td>
-                    <td className="py-2 text-xs text-stone">{r.triggered_by}</td>
+                    <td className="py-2 text-xs text-on-surface-variant">{r.triggered_by}</td>
                   </tr>
                 ))}
               </tbody>
@@ -229,11 +229,11 @@ function BigStat({
 }) {
   return (
     <div className="stat-card">
-      <div className="flex items-center justify-between text-caption text-stone">
+      <div className="flex items-center justify-between text-caption text-on-surface-variant">
         <span>{label}</span>
-        <span className={accent ? 'text-amber' : 'text-shadow-tint'}>{icon}</span>
+        <span className={accent ? 'text-primary' : 'text-text-muted'}>{icon}</span>
       </div>
-      <div className={`mt-1.5 text-heading-sm font-semibold ${accent ? 'text-amber' : 'text-ink'}`}>
+      <div className={`mt-1.5 text-heading-sm font-semibold ${accent ? 'text-primary' : 'text-on-surface'}`}>
         {value.toLocaleString()}
       </div>
     </div>
@@ -258,7 +258,7 @@ function RunStatus({
   if (status === 'partial') {
     return (
       <span
-        className="inline-flex items-center gap-1 text-xs text-amber-hover font-medium"
+        className="inline-flex items-center gap-1 text-xs text-primary-container font-medium"
         title={(errors ?? []).map((e) => `${e.source}: ${e.error}`).join('\n')}
       >
         <AlertTriangle className="h-3.5 w-3.5" />
@@ -270,7 +270,7 @@ function RunStatus({
     const timedOut = (errors ?? []).some((e) => e.source === 'timeout');
     return (
       <span
-        className="inline-flex items-center gap-1 text-xs text-warning-red font-medium"
+        className="inline-flex items-center gap-1 text-xs text-error font-medium"
         title={(errors ?? []).map((e) => `${e.source}: ${e.error}`).join('\n')}
       >
         <XCircle className="h-3.5 w-3.5" />
@@ -279,7 +279,7 @@ function RunStatus({
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 text-xs text-stone">
+    <span className="inline-flex items-center gap-1 text-xs text-on-surface-variant">
       <Loader2 className="h-3.5 w-3.5 animate-spin" />
       running
     </span>

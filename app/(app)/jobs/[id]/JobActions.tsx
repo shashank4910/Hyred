@@ -316,13 +316,13 @@ export function JobActions({
   return (
     <div className="space-y-3">
       {/* Apply CTA */}
-      <div className="card border-amber/30 bg-gradient-to-r from-amber/5 to-transparent">
+      <div className="card border-primary/20 bg-gradient-to-r from-primary/5 to-transparent">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div>
-            <h2 className="font-semibold text-ink flex items-center gap-2">
-              <Rocket className="h-4 w-4 text-amber" /> Ready to apply?
+            <h2 className="font-semibold text-on-surface flex items-center gap-2">
+              <Rocket className="h-4 w-4 text-primary" /> Ready to apply?
             </h2>
-            <p className="text-xs text-stone mt-0.5">
+            <p className="text-xs text-on-surface-variant mt-0.5">
               Opens the original posting. Generate your ATS resume + cover letter first.
             </p>
           </div>
@@ -334,7 +334,7 @@ export function JobActions({
               title={bookmarked ? 'Remove bookmark' : 'Bookmark this job'}
               className={[
                 'btn',
-                bookmarked ? 'border-amber text-amber bg-amber/10 hover:bg-amber/20' : '',
+                bookmarked ? 'border-primary text-primary bg-primary/10 hover:bg-primary/20' : '',
               ].join(' ')}
             >
               <Bookmark
@@ -377,8 +377,8 @@ export function JobActions({
               onClick={() => setStatus(s)}
               className={
                 s === status
-                  ? 'rounded-btn bg-amber text-ink px-3 py-1.5 text-xs font-semibold'
-                  : 'rounded-btn border border-border px-3 py-1.5 text-xs text-stone hover:text-ink hover:border-amber/40 hover:bg-amber/5 transition-colors'
+                  ? 'rounded-xl bg-primary-container text-on-primary-container px-3 py-1.5 text-xs font-semibold'
+                  : 'rounded-xl border border-outline-variant px-3 py-1.5 text-xs text-on-surface-variant hover:text-on-surface hover:border-primary/40 hover:bg-primary/5 transition-colors'
               }
             >
               {s}
@@ -391,8 +391,8 @@ export function JobActions({
       {/* Cover letter */}
       <div className="card">
         <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-          <h2 className="font-semibold text-ink flex items-center gap-2">
-            <Pencil className="h-4 w-4 text-amber" /> Cover letter
+          <h2 className="font-semibold text-on-surface flex items-center gap-2">
+            <Pencil className="h-4 w-4 text-primary" /> Cover letter
           </h2>
           <div className="flex gap-2 flex-wrap">
             {letter && (
@@ -436,14 +436,14 @@ export function JobActions({
               className="input min-h-[260px] font-sans text-sm leading-relaxed"
             />
           ) : (
-            <pre className="whitespace-pre-wrap text-sm text-stone font-sans leading-relaxed">
+            <pre className="whitespace-pre-wrap text-sm text-on-surface-variant font-sans leading-relaxed">
               {letter}
             </pre>
           )
         ) : (
           !generating && (
-            <p className="text-sm text-stone">
-              Click <span className="text-amber font-medium">Generate</span> to draft a
+            <p className="text-sm text-on-surface-variant">
+              Click <span className="text-primary font-medium">Generate</span> to draft a
               tailored cover letter using your resume and this JD.
             </p>
           )
@@ -454,8 +454,8 @@ export function JobActions({
       {/* ATS-Optimized Resume */}
       <div className="card">
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-          <h2 className="font-semibold text-ink flex items-center gap-2">
-            <FileText className="h-4 w-4 text-amber" /> ATS Resume
+          <h2 className="font-semibold text-on-surface flex items-center gap-2">
+            <FileText className="h-4 w-4 text-primary" /> ATS Resume
           </h2>
           <div className="flex gap-2 flex-wrap">
             {atsResume && (
@@ -517,15 +517,15 @@ export function JobActions({
 
         {/* Generated resume — editable preview */}
         {atsResume && (
-          <div className="space-y-3 border-t border-border pt-3 mt-3">
+          <div className="space-y-3 border-t border-outline-variant pt-3 mt-3">
             {/* Action bar: Edit / Preview toggle */}
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setEditingResume(true)}
                   className={editingResume
-                    ? 'text-xs font-medium text-amber border-b border-amber pb-0.5'
-                    : 'text-xs text-stone hover:text-ink'
+                    ? 'text-xs font-medium text-primary border-b border-primary pb-0.5'
+                    : 'text-xs text-on-surface-variant hover:text-on-surface'
                   }
                 >
                   <Pencil className="h-3 w-3 inline mr-1" />
@@ -537,8 +537,8 @@ export function JobActions({
                     setAtsResume(editedResume);
                   }}
                   className={!editingResume
-                    ? 'text-xs font-medium text-amber border-b border-amber pb-0.5'
-                    : 'text-xs text-stone hover:text-ink'
+                    ? 'text-xs font-medium text-primary border-b border-primary pb-0.5'
+                    : 'text-xs text-on-surface-variant hover:text-on-surface'
                   }
                 >
                   <FileText className="h-3 w-3 inline mr-1" />
@@ -557,7 +557,7 @@ export function JobActions({
                   placeholder="Edit your resume here..."
                 />
                 <div className="flex items-center justify-between">
-                  <p className="text-[11px] text-stone">
+                  <p className="text-[11px] text-on-surface-variant">
                     Edit anything above — your changes will be used when exporting PDF or copying.
                   </p>
                   <button
@@ -575,11 +575,11 @@ export function JobActions({
               </div>
             ) : (
               <div className="space-y-2">
-                <pre className="whitespace-pre-wrap text-sm text-stone font-sans leading-relaxed bg-off-white border border-border rounded-card p-3 max-h-[420px] overflow-y-auto">
+                <pre className="whitespace-pre-wrap text-sm text-on-surface-variant font-sans leading-relaxed bg-surface-container-low border border-outline-variant rounded-2xl p-4 max-h-[420px] overflow-y-auto">
                   {editedResume || atsResume}
                 </pre>
-                <div className="flex items-center gap-1.5 text-xs text-stone">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                <div className="flex items-center gap-1.5 text-xs text-on-surface-variant">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-match-success" />
                   Tailored for this job. Click Edit to make changes, then export as PDF.
                 </div>
               </div>
@@ -592,8 +592,8 @@ export function JobActions({
       {/* Notes */}
       <div className="card">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="font-semibold text-ink flex items-center gap-2">
-            <StickyNote className="h-4 w-4 text-amber" /> Notes
+          <h2 className="font-semibold text-on-surface flex items-center gap-2">
+            <StickyNote className="h-4 w-4 text-primary" /> Notes
           </h2>
           {notesDirty && (
             <button onClick={saveNotes} disabled={savingNotes} className="btn-primary">
