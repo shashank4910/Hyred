@@ -17,6 +17,13 @@ import {
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Stats' };
 
+const TRIGGER_LABELS: Record<string, string> = {
+  manual: 'You',
+  onboarding: 'Resume upload',
+  cron: 'Automatic',
+  api: 'Automatic',
+};
+
 export default async function StatsPage() {
   // Never serve a cached RSC payload — counts change live during ingest scans.
   noStore();
@@ -154,27 +161,27 @@ export default async function StatsPage() {
 
       <section className="card">
         <h2 className="font-semibold text-ink mb-1 flex items-center gap-2">
-          <Clock className="h-4 w-4 text-amber" /> Recent ingest runs
+          <Clock className="h-4 w-4 text-amber" /> Recent job scans
         </h2>
         <p className="text-xs text-stone mb-3">
-          Pipeline time = fetch + embed + score + persist. GitHub Actions
-          adds ~20–30s overhead for checkout, setup-node, and npm install.
+          Each row is one search: we find jobs online, compare them to your
+          resume, and save the ones that fit.
         </p>
         {(runs ?? []).length === 0 ? (
-          <p className="text-sm text-stone">No runs yet.</p>
+          <p className="text-sm text-stone">No scans yet.</p>
         ) : (
           <div className="overflow-x-auto -mx-5 px-5">
             <table className="w-full text-sm min-w-[640px]">
               <thead>
                 <tr className="text-stone text-xs border-b border-border">
                   <th className="py-2 text-left font-medium">When</th>
-                  <th className="py-2 text-left font-medium">Status</th>
-                  <th className="py-2 text-right font-medium">Fetched</th>
-                  <th className="py-2 text-right font-medium">New</th>
-                  <th className="py-2 text-right font-medium">Scored</th>
-                  <th className="py-2 text-right font-medium">Kept</th>
-                  <th className="py-2 text-right font-medium" title="Pipeline execution time">Pipeline time</th>
-                  <th className="py-2 text-left font-medium">Trigger</th>
+                  <th className="py-2 text-left font-medium">Result</th>
+                  <th className="py-2 text-right font-medium" title="Jobs seen from boards this scan">Found</th>
+                  <th className="py-2 text-right font-medium" title="New listings added">New</th>
+                  <th className="py-2 text-right font-medium" title="Jobs compared to your resume">Checked</th>
+                  <th className="py-2 text-right font-medium" title="Jobs saved to your matches">Matches</th>
+                  <th className="py-2 text-right font-medium" title="How long the scan took">Duration</th>
+                  <th className="py-2 text-left font-medium">Started by</th>
                 </tr>
               </thead>
               <tbody>
@@ -189,7 +196,9 @@ export default async function StatsPage() {
                     <td className="py-2 text-right tabular-nums text-stone">
                       {r.duration_ms ? `${(r.duration_ms / 1000).toFixed(1)}s` : '—'}
                     </td>
-                    <td className="py-2 text-xs text-stone">{r.triggered_by}</td>
+                    <td className="py-2 text-xs text-stone">
+                      {TRIGGER_LABELS[r.triggered_by] ?? r.triggered_by}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -236,7 +245,7 @@ function RunStatus({
     return (
       <span className="inline-flex items-center gap-1 text-xs text-emerald-600 font-medium">
         <CheckCircle2 className="h-3.5 w-3.5" />
-        success
+        Done
       </span>
     );
   }
@@ -247,7 +256,7 @@ function RunStatus({
         title={(errors ?? []).map((e) => `${e.source}: ${e.error}`).join('\n')}
       >
         <AlertTriangle className="h-3.5 w-3.5" />
-        partial ({(errors ?? []).length})
+        Some issues ({(errors ?? []).length})
       </span>
     );
   }
@@ -259,14 +268,14 @@ function RunStatus({
         title={(errors ?? []).map((e) => `${e.source}: ${e.error}`).join('\n')}
       >
         <XCircle className="h-3.5 w-3.5" />
-        {timedOut ? 'timed out' : 'failed'}
+        {timedOut ? 'Timed out' : 'Failed'}
       </span>
     );
   }
   return (
     <span className="inline-flex items-center gap-1 text-xs text-stone">
       <Loader2 className="h-3.5 w-3.5 animate-spin" />
-      running
+      In progress
     </span>
   );
 }
