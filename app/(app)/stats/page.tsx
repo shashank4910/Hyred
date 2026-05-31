@@ -126,21 +126,6 @@ export default async function StatsPage() {
         <BigStat label="Applied" value={appliedCount ?? 0} icon={<CheckCircle2 className="h-4 w-4" />} />
       </div>
 
-      {(totalTracked ?? 0) > (visibleCount ?? 0) && (
-        <p className="text-xs text-stone -mt-3">
-          {((totalTracked ?? 0) - (visibleCount ?? 0)).toLocaleString()} stored matches are hidden on Matches
-          (below score {minScore} or older than 45 days).
-        </p>
-      )}
-
-      {(visibleCount ?? 0) > 0 &&
-        (inboxCount ?? 0) === (visibleCount ?? 0) &&
-        (appliedCount ?? 0) === 0 && (
-          <p className="text-xs text-stone -mt-3">
-            In inbox equals On Matches page because every visible match is still new or viewed — none applied yet.
-          </p>
-        )}
-
       <div className="card text-sm text-stone">
         <span className="font-medium text-ink">Last scan: </span>
         {activeRun
