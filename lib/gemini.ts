@@ -45,7 +45,6 @@ import {
   recordUsage,
   markKeyExhausted,
   PROVIDER_DEFAULTS,
-  type LlmKey,
 } from './llm-keys';
 
 const OPENAI_CHAT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';

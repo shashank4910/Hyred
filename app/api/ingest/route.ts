@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runIngest, runIngestForAllProfiles } from '@/lib/ingest';
-import { getCurrentProfile, isCurrentUserAdmin } from '@/lib/current-user';
+import { getCurrentProfile } from '@/lib/current-user';
 import type { SourceName } from '@/lib/sources';
 
 export const runtime = 'nodejs';

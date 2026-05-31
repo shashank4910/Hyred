@@ -148,41 +148,36 @@ export async function recordUsage(opts: {
   const sb = supabaseAdmin();
   const totalTokens = opts.tokensIn + opts.tokensOut;
 
-  // Update key counters (fire and forget)
-  sb.from('llm_keys')
-    .update({
-      tokens_used_today: sb.rpc ? undefined : undefined, // Can't do atomic increment easily
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', opts.keyId)
-    .then(() => {});
+  // Atomic increment via RPC (best), with fallback to read-then-write
+  try {
+    const { error: rpcError } = await sb.rpc('increment_llm_key_usage', {
+      key_id: opts.keyId,
+      token_count: totalTokens,
+    });
+    if (rpcError) {
+      // RPC doesn't exist yet (pre-migration) — do a simple update
+      const { data: current } = await sb
+        .from('llm_keys')
+        .select('tokens_used_today, requests_today')
+        .eq('id', opts.keyId)
+        .single();
+      if (current) {
+        const row = current as { tokens_used_today: number; requests_today: number };
+        await sb
+          .from('llm_keys')
+          .update({
+            tokens_used_today: row.tokens_used_today + totalTokens,
+            requests_today: row.requests_today + 1,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', opts.keyId);
+      }
+    }
+  } catch {
+    // Never crash the pipeline for usage tracking failures
+  }
 
-  // Atomic increment of tokens_used_today and requests_today
-  // Using raw RPC since Supabase JS doesn't have atomic increment
-  await sb.rpc('increment_llm_key_usage', {
-    key_id: opts.keyId,
-    token_count: totalTokens,
-  }).then(() => {}).catch(() => {
-    // Fallback: non-atomic update (race-safe enough for our scale)
-    sb.from('llm_keys')
-      .select('tokens_used_today, requests_today')
-      .eq('id', opts.keyId)
-      .single()
-      .then(({ data }) => {
-        if (data) {
-          sb.from('llm_keys')
-            .update({
-              tokens_used_today: (data.tokens_used_today ?? 0) + totalTokens,
-              requests_today: (data.requests_today ?? 0) + 1,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', opts.keyId)
-            .then(() => {});
-        }
-      });
-  });
-
-  // Insert usage log entry
+  // Insert usage log entry (fire and forget)
   sb.from('llm_usage_log')
     .insert({
       key_id: opts.keyId,
