@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, MapPin, Building2, Clock } from 'lucide-react';
 import { supabaseAdmin } from '@/lib/supabase/server';
-import { getCurrentProfile } from '@/lib/current-user';
+import { getCurrentProfile, isCurrentUserAdmin } from '@/lib/current-user';
 import { ensureFullDescription } from '@/lib/jd-fetcher';
 import { JobActions } from './JobActions';
 import { AutoApplyButton } from './AutoApplyButton';
@@ -18,6 +18,7 @@ export default async function JobMatchPage({
   const { id } = await params;
   const profile0 = await getCurrentProfile();
   if (!profile0) notFound();
+  const isAdmin = await isCurrentUserAdmin();
   const sb = supabaseAdmin();
 
   await sb
@@ -104,7 +105,9 @@ export default async function JobMatchPage({
               )}
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
-              <span className="badge">{SOURCE_LABELS[job.source] ?? job.source}</span>
+              {isAdmin && (
+                <span className="badge">{SOURCE_LABELS[job.source] ?? job.source}</span>
+              )}
               {job.salary && <span className="badge-success">{job.salary}</span>}
               {(job.tags ?? []).slice(0, 8).map((t) => (
                 <span key={t} className="badge">
