@@ -59,7 +59,10 @@ export default function PrivacyPage() {
         <li>respond to your requests and legal obligations.</li>
       </ul>
       <p>
-        We rely on your <strong>consent</strong> for resume processing and AI analysis, and on{' '}
+        We rely on your <strong>consent</strong> for resume processing and AI analysis. You give
+        this consent when you create an account and accept our Terms of Service and Privacy Policy
+        at sign-up. That covers resumes you upload or paste later, including analysis by third-party
+        AI providers (Groq, OpenAI) for matching, scoring, and suggestions. We also rely on{' '}
         <strong>contract / legitimate use</strong> where needed to provide the service you signed
         up for.
       </p>

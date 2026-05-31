@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { Mail, Lock, Loader2 } from 'lucide-react';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { SignUpLegalConsent } from '@/app/_components/LegalConsentFields';
-import { LegalFooterLinks } from '@/app/_components/LegalFooterLinks';
 
 type Mode = 'signin' | 'signup';
 
@@ -22,9 +21,9 @@ export function LoginForm({ next }: { next?: string }) {
 
   const safeNext = next && next.startsWith('/') ? next : '/';
 
-  function requireLegalConsent(forGoogle = false): boolean {
+  function requireLegalConsent(): boolean {
+    if (mode === 'signin') return true;
     if (acceptedLegal) return true;
-    if (mode === 'signin' && !forGoogle) return true;
     setError('Please confirm you are 18+ and accept the Terms and Privacy Policy.');
     return false;
   }
@@ -75,7 +74,7 @@ export function LoginForm({ next }: { next?: string }) {
   }
 
   async function googleSignIn() {
-    if (!requireLegalConsent(true)) return;
+    if (!requireLegalConsent()) return;
     setGoogleLoading(true);
     setError(null);
     try {
@@ -98,7 +97,7 @@ export function LoginForm({ next }: { next?: string }) {
       <button
         type="button"
         onClick={googleSignIn}
-        disabled={googleLoading || loading || !acceptedLegal}
+        disabled={googleLoading || loading || (mode === 'signup' && !acceptedLegal)}
         className="btn w-full justify-center gap-2"
       >
         {googleLoading ? (
@@ -143,7 +142,9 @@ export function LoginForm({ next }: { next?: string }) {
         </div>
         {error && <p className="text-xs text-warning-red">{error}</p>}
         {info && <p className="text-xs text-emerald-600">{info}</p>}
-        <SignUpLegalConsent checked={acceptedLegal} onChange={setAcceptedLegal} />
+        {mode === 'signup' && (
+          <SignUpLegalConsent checked={acceptedLegal} onChange={setAcceptedLegal} />
+        )}
         <button
           type="submit"
           disabled={loading || (mode === 'signup' && !acceptedLegal)}
@@ -174,8 +175,6 @@ export function LoginForm({ next }: { next?: string }) {
           {mode === 'signin' ? 'Sign up' : 'Sign in'}
         </button>
       </p>
-
-      <LegalFooterLinks className="text-center" />
     </div>
   );
 }
