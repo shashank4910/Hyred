@@ -482,10 +482,6 @@ When a feature seems broken:
 
 **Last updated:** May 31, 2026 (session 13: **legacy `.doc` resume upload** + **Stats scan table** plain-language labels; **Vercel build fix** — split `resume-upload.ts`, `serverExternalPackages`, `force-dynamic` authed layout; `main` @ `26cd62d` deployed green. Full narrative in `docs/context/session-log.md` → Session 13.)
 
-_Session 13 (May 31, 2026): legacy `.doc` parsing (`word-extractor`); Stats "Recent job scans" copy; Vercel failures on `7e5cd85`/`c521b17` from client importing `lib/resume.ts` → fixed `d08e5ca`/`26cd62d`._
-
-_Session 12 (May 30, 2026): multi-tenant **owner PII leak** fixed in forms — PR #76; resume prompt **owner contact leak** — PR #75; **Hyred** rebrand PR #77; role-title PDF fixes PRs #78–79; repo set **private**; Phase 3 **pub/sub shared-ingest** design note + premium pricing floor + token-math pitfall._
-
 _Session 6 (May 29, 2026): started the **Enterprise Multi-Tenant Transformation** initiative — added the Master Plan + Progress Tracker (Phases 0-5). Phase 0 + the Groq migration (PR #48 replaced the dead `gemini-2.0-flash` 429 fallback with Groq; PR #50 flipped Groq to FREE PRIMARY with OpenAI fallback + `LLM_PRIMARY` toggle, needs `GROQ_API_KEY`) + the Phase 3 Groq free-tier capacity analysis._
 
 _Session 5 (May 29, 2026): OpenAI text-embedding-3-small migration shipped; matches sort dropdown bug fixed (foreignTable alias) + per-card discovery date stamp; UI UX Pro Max design skill installed for Kiro, Cursor, and Antigravity from the official `uipro-cli`. PRs #25-#28 + #29 all merged._
