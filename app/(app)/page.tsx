@@ -5,6 +5,7 @@ import { closeStaleIngestRuns } from '@/lib/ingest-runs';
 import { StatusFilter } from './_components/StatusFilter';
 import { MatchFilters } from './_components/MatchFilters';
 import { MatchCard } from './_components/MatchCard';
+import { MatchList } from './_components/MatchList';
 import { DashboardInsights } from './_components/DashboardInsights';
 import { RunIngestButton } from './_components/RunIngestButton';
 import { Inbox, Sparkles, TrendingUp, Briefcase, ArrowRight } from 'lucide-react';
@@ -20,6 +21,7 @@ type SearchParams = {
   remote?: string;
   bookmarked?: string;
   sort?: 'newest' | 'posted' | 'score' | 'activity' | 'oldest';
+  from?: string; // match ID to highlight on back-navigation
 };
 
 type SortMode = NonNullable<SearchParams['sort']>;
@@ -99,12 +101,14 @@ export default async function Dashboard({
         .maybeSingle(),
     ]);
 
-  // Match query with filters
+  // Match query — first page only (20 items); client loads more via /api/matches
+  const PAGE_SIZE = 20;
   let query = sb
     .from('matches')
     .select(
       `id, llm_score, similarity, reason, status, bookmarked, matched_skills, missing_skills, applied_at, created_at, updated_at,
        job:jobs!inner(id, title, company, location, remote, url, source, salary, posted_at, fetched_at, description, tags)`,
+      { count: 'exact' },
     )
     .eq('profile_id', profile.id)
     .gte('llm_score', effectiveMinScore);
@@ -158,22 +162,14 @@ export default async function Dashboard({
     });
   }
 
-  const { data: matches } = await query.limit(100);
+  const { data: matches, count: matchCount } = await query.limit(PAGE_SIZE);
 
-  let totalInStatusQuery = sb
-    .from('matches')
-    .select('id', { count: 'exact', head: true })
-    .eq('profile_id', profile.id);
-  if (onlyBookmarked) {
-    totalInStatusQuery = totalInStatusQuery.eq('bookmarked', true);
-  } else if (status === 'inbox') {
-    totalInStatusQuery = totalInStatusQuery.in('status', ['new', 'viewed']);
-  } else {
-    totalInStatusQuery = totalInStatusQuery.eq('status', status);
-  }
-  const { count: totalInStatus } = await totalInStatusQuery;
-  const hiddenBelowThreshold =
-    (totalInStatus ?? 0) - ((matches ?? []).length || 0);
+  const totalInFilter = matchCount ?? 0;
+  const hasMore = totalInFilter > PAGE_SIZE;
+  const hiddenBelowThreshold = (totalInFilter > 0 && (matches ?? []).length === 0)
+    ? totalInFilter : 0;
+
+  const highlightId = sp.from ?? null;
 
   const lastScanLabel = activeRun
     ? 'In progress…'
@@ -246,37 +242,23 @@ export default async function Dashboard({
               effectiveMinScore={effectiveMinScore}
             />
           ) : (
-            <ul className="grid grid-cols-1 gap-6">
-              {(matches ?? []).map((m) => {
-                const job = m.job as unknown as {
-                  id: string;
-                  title: string;
-                  company: string | null;
-                  location: string | null;
-                  remote: boolean;
-                  url: string;
-                  source: string;
-                  salary: string | null;
-                  posted_at: string | null;
-                  fetched_at: string | null;
-                };
-                return (
-                  <li key={m.id}>
-                    <MatchCard
-                      matchId={m.id}
-                      score={m.llm_score}
-                      reason={m.reason}
-                      status={m.status}
-                      bookmarked={(m as unknown as { bookmarked: boolean }).bookmarked ?? false}
-                      matchedSkills={(m as unknown as { matched_skills: string[] | null }).matched_skills ?? []}
-                      missingSkills={(m as unknown as { missing_skills: string[] | null }).missing_skills ?? []}
-                      job={job}
-                      showSource={isAdmin}
-                    />
-                  </li>
-                );
-              })}
-            </ul>
+            <MatchList
+              initialMatches={(matches ?? []).map((m) => ({
+                ...m,
+                bookmarked: (m as unknown as { bookmarked: boolean }).bookmarked ?? false,
+                matched_skills: (m as unknown as { matched_skills: string[] | null }).matched_skills ?? null,
+                missing_skills: (m as unknown as { missing_skills: string[] | null }).missing_skills ?? null,
+                job: m.job as unknown as {
+                  id: string; title: string; company: string | null; location: string | null;
+                  remote: boolean; url: string; source: string; salary: string | null;
+                  posted_at: string | null; fetched_at: string | null;
+                },
+              }))}
+              total={totalInFilter}
+              initialHasMore={hasMore}
+              showSource={isAdmin}
+              highlightId={highlightId}
+            />
           )}
         </div>
 
