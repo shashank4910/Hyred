@@ -110,8 +110,8 @@ export function AppShell({
         </div>
       </aside>
 
-      {/* Top header */}
-      <header className="fixed top-0 z-40 flex h-20 w-full items-center justify-between gap-4 border-b border-outline-variant/20 bg-surface/80 px-4 backdrop-blur-md lg:pl-[calc(theme(spacing.sidebar)+24px)] lg:pr-6">
+      {/* Top header — above sidebar so scan source picker is not clipped */}
+      <header className="fixed top-0 z-[60] flex h-20 w-full items-center justify-between gap-4 overflow-visible border-b border-outline-variant/20 bg-surface/80 px-4 backdrop-blur-md lg:pl-[calc(theme(spacing.sidebar)+24px)] lg:pr-6">
         <div className="flex items-center gap-3 lg:hidden">
           <Brand compact />
         </div>
@@ -120,7 +120,7 @@ export function AppShell({
           <HeaderSearch />
         </Suspense>
 
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="ml-auto flex shrink-0 items-center gap-3">
           <div className="hidden sm:block">
             <RunIngestButton isAdmin={isAdmin} luminous />
           </div>
