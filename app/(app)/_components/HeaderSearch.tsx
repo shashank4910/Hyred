@@ -27,7 +27,9 @@ export function HeaderSearch() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q, pathname]);
 
-  if (pathname !== '/') return null;
+  if (pathname !== '/') {
+    return <div className="hidden flex-1 lg:block" aria-hidden />;
+  }
 
   return (
     <div className="relative flex-1 max-w-xl">

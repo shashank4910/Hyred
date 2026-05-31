@@ -85,7 +85,7 @@ export function RunIngestButton({
       </div>
 
       {isAdmin && showSourcePicker && (
-        <div className="absolute right-0 top-full mt-2 z-50 w-72 rounded-xl border border-border-muted bg-surface-card shadow-elevated p-3 animate-fade-in">
+        <div className="absolute right-0 top-full z-[100] mt-2 w-72 rounded-xl border border-outline-variant bg-surface-container-lowest p-3 shadow-elevated animate-fade-in">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-medium text-on-background">Select sources to scan</span>
             <button
