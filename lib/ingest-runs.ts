@@ -108,3 +108,21 @@ export async function assertNoActiveIngest(
     );
   }
 }
+
+
+
+/**
+ * Check if the current ingest run has been cancelled by the user.
+ * Call this between pipeline stages so the scan aborts early.
+ */
+export async function isRunCancelled(
+  sb: AdminClient,
+  runId: string,
+): Promise<boolean> {
+  const { data } = await sb
+    .from('ingest_runs')
+    .select('status')
+    .eq('id', runId)
+    .maybeSingle();
+  return data?.status === 'cancelled';
+}
