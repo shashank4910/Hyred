@@ -40,15 +40,35 @@
 
 import OpenAI from 'openai';
 import type { ResumeInsights } from './types';
+import {
+  getNextAvailableKey,
+  recordUsage,
+  markKeyExhausted,
+  PROVIDER_DEFAULTS,
+  type LlmKey,
+} from './llm-keys';
 
 const OPENAI_CHAT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const GROQ_CHAT_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+const CEREBRAS_CHAT_MODEL = process.env.CEREBRAS_MODEL || 'llama-3.3-70b';
 const GROQ_BASE_URL = 'https://api.groq.com/openai/v1';
+const CEREBRAS_BASE_URL = 'https://api.cerebras.ai/v1';
 const EMBED_MODEL = 'text-embedding-3-small';
 
-// Which provider to try FIRST. Default 'groq' (free); set 'openai' to prefer
-// the paid model (e.g. on the ingest cron if Groq's free TPM cap throttles).
-const LLM_PRIMARY = (process.env.LLM_PRIMARY || 'groq').toLowerCase();
+// Provider priority order. Default: cerebras (free, fast) → groq (free) → openai (paid).
+// Override with LLM_PRIMARY env var for specific deployments.
+const LLM_PRIMARY = (process.env.LLM_PRIMARY || 'cerebras').toLowerCase();
+
+/**
+ * Provider priority chain. Cerebras keys from DB are tried first (round-robin),
+ * then Groq from DB, then env-var fallbacks, then OpenAI (paid, last resort).
+ */
+const PROVIDER_ORDER: string[] = (() => {
+  const primary = LLM_PRIMARY;
+  const all = ['cerebras', 'groq', 'openai'];
+  // Put primary first, then the rest in order
+  return [primary, ...all.filter((p) => p !== primary)];
+})();
 
 function getOpenAIClient(): OpenAI | null {
   const key = process.env.OPENAI_API_KEY;
@@ -56,51 +76,109 @@ function getOpenAIClient(): OpenAI | null {
   return new OpenAI({ apiKey: key });
 }
 
-/**
- * Groq exposes an OpenAI-compatible API, so we reuse the OpenAI SDK with a
- * different base URL + key. Returns null when GROQ_API_KEY is not set.
- */
 function getGroqClient(): OpenAI | null {
   const key = process.env.GROQ_API_KEY;
   if (!key) return null;
   return new OpenAI({ apiKey: key, baseURL: GROQ_BASE_URL });
 }
 
+function getCerebrasClient(): OpenAI | null {
+  const key = process.env.CEREBRAS_API_KEY;
+  if (!key) return null;
+  return new OpenAI({ apiKey: key, baseURL: CEREBRAS_BASE_URL });
+}
+
+type ProviderEntry = {
+  name: string;
+  client: OpenAI;
+  model: string;
+  keyId?: string;   // DB key ID (for usage tracking); undefined = env-var key
+  provider: string; // provider name
+};
+
+/**
+ * Build the provider chain: DB keys first (with rotation), then env-var fallbacks.
+ * DB keys are tried in priority order (lowest priority number first, then least-used).
+ */
+async function buildProviderChain(): Promise<ProviderEntry[]> {
+  const chain: ProviderEntry[] = [];
+
+  // 1. Try DB keys for each provider in priority order
+  for (const providerName of PROVIDER_ORDER) {
+    const dbKey = await getNextAvailableKey(providerName);
+    if (dbKey) {
+      const defaults = PROVIDER_DEFAULTS[providerName];
+      const baseUrl = dbKey.base_url || defaults?.baseUrl;
+      const model = dbKey.model || defaults?.model || '';
+      const client = new OpenAI({ apiKey: dbKey.api_key, baseURL: baseUrl });
+      chain.push({
+        name: `${providerName}[DB:${dbKey.label || dbKey.id.slice(0, 6)}]`,
+        client,
+        model,
+        keyId: dbKey.id,
+        provider: providerName,
+      });
+    }
+  }
+
+  // 2. Env-var fallbacks (for providers without DB keys or as last resort)
+  const cerebrasClient = getCerebrasClient();
+  if (cerebrasClient && !chain.some((p) => p.provider === 'cerebras' && !p.keyId)) {
+    chain.push({
+      name: `Cerebras[env] ${CEREBRAS_CHAT_MODEL}`,
+      client: cerebrasClient,
+      model: CEREBRAS_CHAT_MODEL,
+      provider: 'cerebras',
+    });
+  }
+
+  const groqClient = getGroqClient();
+  if (groqClient && !chain.some((p) => p.provider === 'groq' && !p.keyId)) {
+    chain.push({
+      name: `Groq[env] ${GROQ_CHAT_MODEL}`,
+      client: groqClient,
+      model: GROQ_CHAT_MODEL,
+      provider: 'groq',
+    });
+  }
+
+  const openaiClient = getOpenAIClient();
+  if (openaiClient) {
+    chain.push({
+      name: `OpenAI[env] ${OPENAI_CHAT_MODEL}`,
+      client: openaiClient,
+      model: OPENAI_CHAT_MODEL,
+      provider: 'openai',
+    });
+  }
+
+  return chain;
+}
+
+/**
+ * Core chat function with DB-aware provider rotation and usage tracking.
+ *
+ * Tries each provider in the chain. On success, logs usage. On 429/rate-limit,
+ * marks the DB key as exhausted and tries the next. If all fail, throws combined error.
+ */
 async function chat(
   systemPrompt: string,
   userPrompt: string,
   temperature = 0.3,
   jsonMode = false,
+  operation = 'chat',
 ): Promise<string> {
-  // Build the provider chain ordered by LLM_PRIMARY. Default: Groq first
-  // (free, fast), OpenAI second (paid, reliable). Both speak the OpenAI
-  // chat-completions API. Only providers whose API key is set are included.
-  const openaiClient = getOpenAIClient();
-  const groqClient = getGroqClient();
-
-  const openaiProvider = openaiClient
-    ? { name: `OpenAI ${OPENAI_CHAT_MODEL}`, client: openaiClient, model: OPENAI_CHAT_MODEL }
-    : null;
-  const groqProvider = groqClient
-    ? { name: `Groq ${GROQ_CHAT_MODEL}`, client: groqClient, model: GROQ_CHAT_MODEL }
-    : null;
-
-  const ordered =
-    LLM_PRIMARY === 'openai'
-      ? [openaiProvider, groqProvider]
-      : [groqProvider, openaiProvider];
-  const providers = ordered.filter(
-    (p): p is { name: string; client: OpenAI; model: string } => p !== null,
-  );
+  const providers = await buildProviderChain();
 
   if (providers.length === 0) {
     throw new Error(
-      'No chat LLM configured. Set GROQ_API_KEY (free primary) and/or OPENAI_API_KEY (paid fallback).',
+      'No chat LLM configured. Add keys in Admin Center or set CEREBRAS_API_KEY / GROQ_API_KEY / OPENAI_API_KEY env vars.',
     );
   }
 
   const errors: string[] = [];
   for (const provider of providers) {
+    const startMs = Date.now();
     try {
       const res = await provider.client.chat.completions.create({
         model: provider.model,
@@ -111,13 +189,58 @@ async function chat(
           { role: 'user', content: userPrompt },
         ],
       });
-      return (res.choices[0]?.message?.content ?? '').trim();
+      const content = (res.choices[0]?.message?.content ?? '').trim();
+      const tokensIn = res.usage?.prompt_tokens ?? Math.ceil((systemPrompt.length + userPrompt.length) / 4);
+      const tokensOut = res.usage?.completion_tokens ?? Math.ceil(content.length / 4);
+
+      // Log usage for DB-tracked keys
+      if (provider.keyId) {
+        recordUsage({
+          keyId: provider.keyId,
+          provider: provider.provider,
+          model: provider.model,
+          operation,
+          tokensIn,
+          tokensOut,
+          durationMs: Date.now() - startMs,
+          status: 'success',
+        });
+      }
+
+      return content;
     } catch (e) {
-      // Record and try the next provider — do NOT swallow silently. If this is
-      // the last provider, the combined error below surfaces every reason.
       const msg = (e as Error).message;
+      const is429 = msg.includes('429') || msg.toLowerCase().includes('rate') || msg.toLowerCase().includes('limit');
       errors.push(`${provider.name} → ${msg}`);
       console.warn(`[chat] ${provider.name} failed, trying next provider: ${msg}`);
+
+      // Mark DB key as exhausted on rate limit so rotation picks the next key
+      if (provider.keyId && is429) {
+        markKeyExhausted(provider.keyId);
+        recordUsage({
+          keyId: provider.keyId,
+          provider: provider.provider,
+          model: provider.model,
+          operation,
+          tokensIn: 0,
+          tokensOut: 0,
+          durationMs: Date.now() - startMs,
+          status: 'rate_limited',
+          errorMessage: msg,
+        });
+      } else if (provider.keyId) {
+        recordUsage({
+          keyId: provider.keyId,
+          provider: provider.provider,
+          model: provider.model,
+          operation,
+          tokensIn: 0,
+          tokensOut: 0,
+          durationMs: Date.now() - startMs,
+          status: 'error',
+          errorMessage: msg,
+        });
+      }
     }
   }
 
@@ -218,6 +341,7 @@ matchedSkills/missingSkills RULES:
     userPrompt,
     0.2,
     true,
+    'scoreJob',
   );
   try {
     const parsed = JSON.parse(text);
@@ -273,6 +397,8 @@ Output the cover letter only, no preamble.`;
     'You write tailored cover letters for senior tech roles.',
     userPrompt,
     0.7,
+    false,
+    'generateCoverLetter',
   );
 }
 
@@ -314,6 +440,7 @@ Rules:
     userPrompt,
     0.2,
     true,
+    'extractResumeInsights',
   );
   try {
     const parsed = JSON.parse(text);
@@ -402,6 +529,7 @@ INVARIANTS: matched ∪ missing = jdRequirements, matched ∩ missing = ∅`;
     userPrompt,
     0.1,
     true,
+    'matchSkills',
   );
 
   let parsed: { jdRequirements?: unknown; matched?: unknown; missing?: unknown } = {};
@@ -482,6 +610,7 @@ Return strict JSON: {"keywords": [{"keyword": "JMeter", "type": "tool"}, {"keywo
     userPrompt,
     0.1,
     true,
+    'extractJdKeywords',
   );
 
   try {
@@ -1058,6 +1187,8 @@ ${args.resume.slice(0, 16000)}`;
     'You make minimal, truthful edits to an ATS resume so specific keywords appear in the most natural place. Tools go in the skills section; activities and metrics are woven into prose. Output ONLY the full updated resume in plain ASCII.',
     prompt,
     0.2,
+    false,
+    'generateAtsResume',
   );
   return normalizeAscii(raw);
 }
