@@ -1,6 +1,7 @@
 import { unstable_noStore as noStore } from 'next/cache';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { getCurrentProfile } from '@/lib/current-user';
+import { closeStaleIngestRuns } from '@/lib/ingest-runs';
 import { relativeTime, SOURCE_LABELS } from '@/lib/ui';
 import {
   CheckCircle2,
@@ -24,6 +25,10 @@ export default async function StatsPage() {
   const profile = await getCurrentProfile();
   const profileId = profile?.id ?? '__none__';
 
+  if (profile?.id) {
+    await closeStaleIngestRuns(sb, profile.id);
+  }
+
   const [
     { count: totalMatches },
     { count: newCount },
@@ -32,6 +37,7 @@ export default async function StatsPage() {
     { data: runs },
     { data: userMatchJobs },
     { data: lastRun },
+    { data: activeRun },
   ] = await Promise.all([
     sb
       .from('matches')
@@ -68,6 +74,15 @@ export default async function StatsPage() {
       .from('ingest_runs')
       .select('finished_at, matches_created')
       .eq('profile_id', profileId)
+      .not('finished_at', 'is', null)
+      .order('finished_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    sb
+      .from('ingest_runs')
+      .select('started_at, fetched, scored, matches_created')
+      .eq('profile_id', profileId)
+      .eq('status', 'running')
       .order('started_at', { ascending: false })
       .limit(1)
       .maybeSingle(),
@@ -97,11 +112,13 @@ export default async function StatsPage() {
 
       <div className="card text-sm text-stone">
         <span className="font-medium text-ink">Last scan: </span>
-        {lastRun?.finished_at
-          ? `${relativeTime(lastRun.finished_at)}${
-              lastRun.matches_created != null ? ` · ${lastRun.matches_created} matches kept` : ''
-            }`
-          : 'No scan yet — run one from Matches.'}
+        {activeRun
+          ? `In progress (started ${relativeTime(activeRun.started_at)}) · ${activeRun.matches_created ?? 0} kept so far`
+          : lastRun?.finished_at
+            ? `${relativeTime(lastRun.finished_at)}${
+                lastRun.matches_created != null ? ` · ${lastRun.matches_created} matches kept` : ''
+              }`
+            : 'No scan yet — run one from Matches.'}
       </div>
 
       <section className="card">
@@ -235,10 +252,14 @@ function RunStatus({
     );
   }
   if (status === 'failed') {
+    const timedOut = (errors ?? []).some((e) => e.source === 'timeout');
     return (
-      <span className="inline-flex items-center gap-1 text-xs text-warning-red font-medium">
+      <span
+        className="inline-flex items-center gap-1 text-xs text-warning-red font-medium"
+        title={(errors ?? []).map((e) => `${e.source}: ${e.error}`).join('\n')}
+      >
         <XCircle className="h-3.5 w-3.5" />
-        failed
+        {timedOut ? 'timed out' : 'failed'}
       </span>
     );
   }
