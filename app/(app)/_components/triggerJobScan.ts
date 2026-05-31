@@ -1,12 +1,15 @@
 'use client';
 
 import { toast } from 'sonner';
+import { formatIngestWarnings, readableError } from '@/lib/ui';
 
 export type JobScanResult = {
   matchesCreated: number;
   fetched: number;
   scored: number;
 };
+
+const DONE_TOAST = { duration: 8000 } as const;
 
 /**
  * Run a per-user ingest scan (POST /api/ingest). For auto-onboarding flows, shows
@@ -33,7 +36,6 @@ export async function triggerJobScan(options?: {
       : sourceCount > 0
         ? `Scanning ${sourceCount} source${sourceCount > 1 ? 's' : ''}…`
         : 'Scanning job boards…',
-    { duration: 600_000 },
   );
 
   try {
@@ -46,14 +48,32 @@ export async function triggerJobScan(options?: {
       headers: { 'content-type': 'application/json' },
       body: Object.keys(body).length > 0 ? JSON.stringify(body) : undefined,
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Scan failed');
+
+    let data: Record<string, unknown> = {};
+    try {
+      data = (await res.json()) as Record<string, unknown>;
+    } catch {
+      if (!res.ok) {
+        throw new Error(`Scan failed (${res.status})`);
+      }
+    }
+
+    if (!res.ok) {
+      throw new Error(readableError(data.error ?? data, 'Scan failed'));
+    }
 
     const result: JobScanResult = {
-      matchesCreated: data.matchesCreated ?? 0,
-      fetched: data.fetched ?? 0,
-      scored: data.scored ?? 0,
+      matchesCreated: Number(data.matchesCreated ?? 0),
+      fetched: Number(data.fetched ?? 0),
+      scored: Number(data.scored ?? 0),
     };
+
+    toast.dismiss(toastId);
+
+    const warnings = formatIngestWarnings(data.errors);
+    if (warnings) {
+      toast.warning(warnings, { duration: 12_000 });
+    }
 
     if (options?.autoFlow) {
       const n = result.matchesCreated;
@@ -61,19 +81,20 @@ export async function triggerJobScan(options?: {
         n > 0
           ? `Scan complete! We found ${n} relevant job${n === 1 ? '' : 's'} for you.`
           : 'Scan complete. No strong matches yet — try broadening roles or locations in your profile.',
-        { id: toastId, duration: 10_000 },
+        DONE_TOAST,
       );
     } else {
       toast.success(
         `${result.matchesCreated} new match${result.matchesCreated === 1 ? '' : 'es'} · ${result.fetched} jobs scanned`,
-        { id: toastId },
+        DONE_TOAST,
       );
     }
 
     options?.onComplete?.(result);
     return result;
   } catch (e) {
-    toast.error((e as Error).message, { id: toastId });
+    toast.dismiss(toastId);
+    toast.error(readableError(e, 'Scan failed'), DONE_TOAST);
     return null;
   }
 }
