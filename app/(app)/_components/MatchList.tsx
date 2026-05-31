@@ -41,17 +41,22 @@ type Props = {
   highlightId?: string | null;
 };
 
+const SCROLL_KEY = 'hyred_dashboard_scroll';
+const LAST_CLICKED_KEY = 'hyred_last_clicked_match';
+
 export function MatchList({ initialMatches, total, initialHasMore, showSource = false, highlightId }: Props) {
   const [matches, setMatches] = useState<MatchItem[]>(initialMatches);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [loading, setLoading] = useState(false);
+  const [flashId, setFlashId] = useState<string | null>(null);
   const sp = useSearchParams();
   const sentinelRef = useRef<HTMLDivElement>(null);
-  const highlightRef = useRef<HTMLLIElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  const didRestore = useRef(false);
 
-  // Stable scroll key — only use status + sort (not volatile params like 'from')
-  const scrollKey = `hyred_scroll_${sp.get('status') ?? 'inbox'}_${sp.get('sort') ?? 'score'}`;
+  // Determine which card to highlight: from URL param or sessionStorage
+  const targetHighlightId = highlightId || (typeof window !== 'undefined' ? sessionStorage.getItem(LAST_CLICKED_KEY) : null);
 
   const buildQuery = useCallback((pageNum: number) => {
     const params = new URLSearchParams();
@@ -72,7 +77,7 @@ export function MatchList({ initialMatches, total, initialHasMore, showSource = 
     setLoading(true);
     try {
       const nextPage = page + 1;
-      const res = await fetch(`/api/matches?${buildQuery(nextPage)}`, { cache: 'default' });
+      const res = await fetch(`/api/matches?${buildQuery(nextPage)}`);
       if (!res.ok) throw new Error('Failed');
       const data = await res.json();
       const newMatches = (data.matches ?? []) as MatchItem[];
@@ -97,43 +102,59 @@ export function MatchList({ initialMatches, total, initialHasMore, showSource = 
     return () => obs.disconnect();
   }, [loadMore]);
 
-  // Save scroll on card click
+  // Save scroll position + clicked match ID when user clicks a card
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       const link = (e.target as HTMLElement).closest('a[href^="/jobs/"]');
-      if (link) sessionStorage.setItem(scrollKey, String(window.scrollY));
+      if (link) {
+        // Extract match ID from the href: /jobs/{matchId}
+        const href = link.getAttribute('href') ?? '';
+        const matchId = href.replace('/jobs/', '');
+        sessionStorage.setItem(SCROLL_KEY, String(window.scrollY));
+        sessionStorage.setItem(LAST_CLICKED_KEY, matchId);
+      }
     };
     document.addEventListener('click', handler, { capture: true });
     return () => document.removeEventListener('click', handler, { capture: true });
-  }, [scrollKey]);
+  }, []);
 
-  // Restore scroll on mount (one-time only, never re-fires)
-  const scrollRestored = useRef(false);
+  // Scroll restore + highlight on mount (runs ONCE)
   useEffect(() => {
-    if (scrollRestored.current) return;
-    const saved = sessionStorage.getItem(scrollKey);
-    if (saved) {
-      scrollRestored.current = true;
-      // Delay slightly to ensure DOM is painted
+    if (didRestore.current) return;
+    didRestore.current = true;
+
+    const savedScroll = sessionStorage.getItem(SCROLL_KEY);
+    const savedMatchId = sessionStorage.getItem(LAST_CLICKED_KEY);
+
+    if (savedScroll && savedMatchId) {
+      // Clear immediately so it doesn't fire again on next mount
+      sessionStorage.removeItem(SCROLL_KEY);
+      sessionStorage.removeItem(LAST_CLICKED_KEY);
+
+      // Wait for DOM to be fully painted, then restore scroll + flash
       setTimeout(() => {
-        window.scrollTo({ top: parseInt(saved, 10), behavior: 'instant' });
-        sessionStorage.removeItem(scrollKey);
-      }, 50);
+        // Restore scroll position
+        window.scrollTo({ top: parseInt(savedScroll, 10), behavior: 'instant' });
+
+        // Find the card and flash it
+        setTimeout(() => {
+          const card = listRef.current?.querySelector(`[data-match-id="${savedMatchId}"]`);
+          if (card) {
+            // Scroll into view in case position restoration wasn't perfect
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // Flash highlight
+            card.classList.add('ring-2', 'ring-primary', 'ring-offset-2', 'ring-offset-surface-container-lowest');
+            setFlashId(savedMatchId);
+            setTimeout(() => {
+              card.classList.remove('ring-2', 'ring-primary', 'ring-offset-2', 'ring-offset-surface-container-lowest');
+              setFlashId(null);
+            }, 2000);
+          }
+        }, 150);
+      }, 80);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Highlight card on back-navigation
-  useEffect(() => {
-    if (highlightId && highlightRef.current) {
-      highlightRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      highlightRef.current.classList.add('ring-2', 'ring-primary', 'ring-offset-2');
-      const t = setTimeout(() => {
-        highlightRef.current?.classList.remove('ring-2', 'ring-primary', 'ring-offset-2');
-      }, 1500);
-      return () => clearTimeout(t);
-    }
-  }, [highlightId]);
 
   // Reset on filter change
   useEffect(() => {
@@ -149,29 +170,26 @@ export function MatchList({ initialMatches, total, initialHasMore, showSource = 
       <p className="text-xs text-text-muted mb-2">
         Showing {matches.length} of {total}
       </p>
-      <ul className="grid grid-cols-1 gap-6">
-        {matches.map((m) => {
-          const isHL = m.id === highlightId;
-          return (
-            <li
-              key={m.id}
-              ref={isHL ? highlightRef : undefined}
-              className={`transition-all duration-300 rounded-2xl ${isHL ? 'ring-2 ring-primary ring-offset-2' : ''}`}
-            >
-              <MatchCard
-                matchId={m.id}
-                score={m.llm_score}
-                reason={m.reason}
-                status={m.status}
-                bookmarked={m.bookmarked ?? false}
-                matchedSkills={m.matched_skills ?? []}
-                missingSkills={m.missing_skills ?? []}
-                job={m.job as unknown as MatchJob}
-                showSource={showSource}
-              />
-            </li>
-          );
-        })}
+      <ul ref={listRef} className="grid grid-cols-1 gap-6">
+        {matches.map((m) => (
+          <li
+            key={m.id}
+            data-match-id={m.id}
+            className={`transition-all duration-500 rounded-2xl ${flashId === m.id ? 'ring-2 ring-primary ring-offset-2' : ''}`}
+          >
+            <MatchCard
+              matchId={m.id}
+              score={m.llm_score}
+              reason={m.reason}
+              status={m.status}
+              bookmarked={m.bookmarked ?? false}
+              matchedSkills={m.matched_skills ?? []}
+              missingSkills={m.missing_skills ?? []}
+              job={m.job as unknown as MatchJob}
+              showSource={showSource}
+            />
+          </li>
+        ))}
       </ul>
 
       <div ref={sentinelRef} className="h-1" />

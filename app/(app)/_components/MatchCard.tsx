@@ -58,7 +58,6 @@ export function MatchCard({
   const tooltip = isAdded
     ? `Added to Hyred on ${fullDate} (source did not provide a posted date)`
     : `Posted on the source on ${fullDate}`;
-  const isViewed = status === 'viewed' || status !== 'new';
   const isNew = status === 'new';
   const [bookmarked, setBookmarked] = useState(initialBookmarked);
   const [saving, setSaving] = useState(false);
@@ -108,7 +107,7 @@ export function MatchCard({
               <h3 className="text-headline-md font-semibold leading-tight text-on-surface group-hover:text-primary transition-colors">
                 {job.title}
               </h3>
-              {!isViewed && (
+              {isNew && (
                 <span className="inline-flex rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">
                   New
                 </span>
