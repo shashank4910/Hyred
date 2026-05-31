@@ -143,6 +143,7 @@ When you ship UI work: add a row here, link the PR, and update **Current UI** if
 | Logout toast stuck after scan | `dismissAllAppToasts()` + login cleanup | #96 |
 | Resume AI consent checkbox friction | Removed from onboarding; covered at sign-up in Terms/Privacy | #99 |
 | Admin **source picker** clipped by sidebar on Stats/other pages | Header `z-[60]`, `ml-auto` on actions, flex spacer when search hidden | #101 |
+| **Match activity** sidebar overlapping status tabs / match cards on dashboard | Stack main + insights until `xl`; flex layout with `min-w-0`; explicit `lg:pl-[284px]`; lower sidebar z-index | #103 |
 | Stitch HTML pasted into repo pages | Don't — translate to React + existing data hooks | — |
 
 ---
