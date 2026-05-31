@@ -1,6 +1,9 @@
 import { AppShell } from './_components/AppShell';
 import { getCurrentProfile, isCurrentUserAdmin } from '@/lib/current-user';
 
+// Auth shell: never statically prerender at build (needs Supabase session/env).
+export const dynamic = 'force-dynamic';
+
 export default async function AuthedLayout({
   children,
 }: {
