@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { getCurrentProfile } from '@/lib/current-user';
+import { closeStaleIngestRuns } from '@/lib/ingest-runs';
 import { StatusFilter } from './_components/StatusFilter';
 import { RunIngestButton } from './_components/RunIngestButton';
 import { MatchFilters } from './_components/MatchFilters';
@@ -43,6 +44,8 @@ export default async function Dashboard({
     return <EmptyOnboarding />;
   }
 
+  await closeStaleIngestRuns(sb, profile.id);
+
   const effectiveMinScore = sp.min ? Number(sp.min) : 50;
 
   // Status counts
@@ -70,19 +73,29 @@ export default async function Dashboard({
     .eq('profile_id', profile.id)
     .eq('bookmarked', true);
 
-  const [{ count: totalMatches }, { data: lastRun }] = await Promise.all([
-    sb
-      .from('matches')
-      .select('id', { count: 'exact', head: true })
-      .eq('profile_id', profile.id),
-    sb
-      .from('ingest_runs')
-      .select('finished_at, matches_created, status')
-      .eq('profile_id', profile.id)
-      .order('started_at', { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-  ]);
+  const [{ count: totalMatches }, { data: lastRun }, { data: activeRun }] =
+    await Promise.all([
+      sb
+        .from('matches')
+        .select('id', { count: 'exact', head: true })
+        .eq('profile_id', profile.id),
+      sb
+        .from('ingest_runs')
+        .select('finished_at, matches_created, status')
+        .eq('profile_id', profile.id)
+        .not('finished_at', 'is', null)
+        .order('finished_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      sb
+        .from('ingest_runs')
+        .select('started_at, matches_created')
+        .eq('profile_id', profile.id)
+        .eq('status', 'running')
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
 
   // Match query with filters
   let query = sb
@@ -200,14 +213,18 @@ export default async function Dashboard({
         <StatCard
           label="Last scan"
           value={
-            lastRun?.finished_at
-              ? relativeTime(lastRun.finished_at)
-              : 'Never'
+            activeRun
+              ? 'In progress…'
+              : lastRun?.finished_at
+                ? relativeTime(lastRun.finished_at)
+                : 'Never'
           }
           subValue={
-            lastRun?.matches_created != null
-              ? `+${lastRun.matches_created} kept`
-              : undefined
+            activeRun
+              ? `${activeRun.matches_created ?? 0} kept so far`
+              : lastRun?.matches_created != null
+                ? `+${lastRun.matches_created} kept`
+                : undefined
           }
           icon={<Clock className="h-4 w-4" />}
           isText

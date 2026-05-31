@@ -1,4 +1,8 @@
 import { supabaseAdmin } from './supabase/server';
+import {
+  assertNoActiveIngest,
+  patchIngestRun,
+} from './ingest-runs';
 import { fetchAllSources } from './sources';
 import { embed, scoreJob } from './gemini';
 import { cosineSimilarity, jobToEmbeddingText } from './matcher';
@@ -80,6 +84,29 @@ export async function runIngest(opts?: {
   let scored = 0;
   let kept = 0;
   let runErrors: { source: string; error: string }[] = [];
+  let fatalError: Error | null = null;
+  let runFinalized = false;
+
+  const finalizeRun = async () => {
+    if (!runId || runFinalized) return;
+    runFinalized = true;
+    const status = fatalError ? 'failed' : runErrors.length ? 'partial' : 'success';
+    const errors = fatalError
+      ? [...runErrors, { source: 'fatal', error: fatalError.message }]
+      : runErrors;
+    await patchIngestRun(sb, runId, {
+      finished_at: new Date().toISOString(),
+      duration_ms: Date.now() - startedAt,
+      fetched,
+      new_jobs: newJobsCount,
+      embedded,
+      scored,
+      matches_created: kept,
+      errors,
+      status,
+    });
+  };
+
   const prefilter: IngestResult['prefilter'] = {
     profileGenerated: false,
     titleAccepted: 0,
@@ -143,6 +170,7 @@ export async function runIngest(opts?: {
     if (runId) {
       await sb.from('ingest_runs').update({ profile_id: p.id }).eq('id', runId);
     }
+    await assertNoActiveIngest(sb, p.id, runId);
     const minScore = p.preferences?.min_score ?? MIN_SCORE_TO_KEEP;
     const blacklist = new Set(
       (p.preferences?.blacklist_companies ?? []).map((s) =>
@@ -223,6 +251,13 @@ export async function runIngest(opts?: {
     // ---------- 4. Upsert jobs ----------
     const newJobIds = await upsertJobs(freshJobs);
     newJobsCount = newJobIds.length;
+    if (runId) {
+      await patchIngestRun(sb, runId, {
+        fetched,
+        new_jobs: newJobsCount,
+        errors: runErrors,
+      });
+    }
 
     // ---------- 5. Embed jobs missing embeddings ----------
     const { data: needEmbed } = await sb
@@ -267,6 +302,12 @@ export async function runIngest(opts?: {
           error: `${j.id}: ${msg}`,
         });
       }
+    }
+    if (runId) {
+      await patchIngestRun(sb, runId, {
+        embedded,
+        errors: runErrors,
+      });
     }
 
     // ---------- 6. Build candidate pool (recently fetched, unseen) ----------
@@ -429,6 +470,13 @@ export async function runIngest(opts?: {
           { onConflict: 'profile_id,job_id' },
         );
         if (!error && score >= minScore) kept++;
+        if (runId && scored % 5 === 0) {
+          await patchIngestRun(sb, runId, {
+            scored,
+            matches_created: kept,
+            errors: runErrors,
+          });
+        }
       } catch (e) {
         runErrors.push({
           source: 'score',
@@ -437,44 +485,12 @@ export async function runIngest(opts?: {
       }
     }
   } catch (e) {
-    if (runId) {
-      await sb
-        .from('ingest_runs')
-        .update({
-          finished_at: new Date().toISOString(),
-          duration_ms: Date.now() - startedAt,
-          fetched,
-          new_jobs: newJobsCount,
-          embedded,
-          scored,
-          matches_created: kept,
-          errors: [
-            ...runErrors,
-            { source: 'fatal', error: (e as Error).message },
-          ],
-          status: 'failed',
-        })
-        .eq('id', runId);
-    }
-    throw e;
+    fatalError = e as Error;
+  } finally {
+    await finalizeRun();
   }
 
-  if (runId) {
-    await sb
-      .from('ingest_runs')
-      .update({
-        finished_at: new Date().toISOString(),
-        duration_ms: Date.now() - startedAt,
-        fetched,
-        new_jobs: newJobsCount,
-        embedded,
-        scored,
-        matches_created: kept,
-        errors: runErrors,
-        status: runErrors.length ? 'partial' : 'success',
-      })
-      .eq('id', runId);
-  }
+  if (fatalError) throw fatalError;
 
   return {
     fetched,
