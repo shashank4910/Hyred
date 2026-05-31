@@ -2,6 +2,18 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 15 — Luminous UI redesign + CONTEXT UI index (May 31, 2026)
+
+**UI shipped (PRs #96–#101 on `main`):**
+- **#100** — Google Stitch **Luminous** redesign: teal tokens, 260px sidebar, bento dashboard, `MatchScoreRing`, `DashboardInsights`, Plus Jakarta Sans. Source: Stitch project `3444316686130112255`, screen **Matches Dashboard (Luminous)** `5bfaf7f2edd94ffca0cb356e70ce7c2b`. Reference in `.stitch/`.
+- **#101** — Admin Run Scan source picker clipped under sidebar on Stats (search hidden → button left-aligned; fixed header z-index + `ml-auto`).
+- **#99** — Legal friction: no onboarding consent checkbox; sign-up-only Terms/Privacy; no logged-in footer links.
+- **#96** — Toasts bottom-right; dismiss on logout; no persistent scan loader.
+
+**Docs:** added `CONTEXT.md` → **`## UI & Design System`** with UI index (current UI, tokens, component map, Stitch source, UI change log, UI pitfalls). `AGENTS.md` Index row added.
+
+---
+
 ## Session 14 — Multi-tenant ghost data, Stats UX, ingest run lifecycle, admin-only sources (May 31, 2026)
 
 Five production bugs reported by the owner while testing fresh sign-ups on Hyred. All fixed with evidence-based root-cause analysis; merged PRs **#83–#87**.

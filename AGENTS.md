@@ -32,6 +32,7 @@ How to open one section cheaply: `grep -n "<heading text>" CONTEXT.md` to get th
 | **Coding rules / gotchas** (the must-nots) | `CONTEXT.md` → `## Known Pitfalls` | before editing AI/ingest/resume/auth code |
 | How the AI pipeline works (search profile, JD fetch, 4-phase skill match, scoring) | `CONTEXT.md` → `## Key Architecture Decisions` | touching `lib/gemini.ts`, `lib/ingest.ts`, `lib/search-profile.ts` |
 | Where a file/feature lives | `CONTEXT.md` → `## File Map` | locating code |
+| **Current UI / design tokens / Stitch / UI PRs** | `CONTEXT.md` → `## UI & Design System` | any frontend styling, layout, or UX work |
 | Multi-tenant plan & phase status | `CONTEXT.md` → `## ⭐ ACTIVE INITIATIVE` → `### Progress Tracker` | planning the next phase |
 | LLM provider strategy (Groq/OpenAI, why not Gemini) | `CONTEXT.md` → Phase 0 research note + the `gemini-2.0-flash` pitfall row | changing AI providers |
 | Capacity limits (Groq free tier, users per key) | `CONTEXT.md` → `#### Phase 3 capacity analysis` | scaling / quota decisions |
