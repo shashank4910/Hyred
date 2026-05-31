@@ -41,9 +41,7 @@
 import OpenAI from 'openai';
 import type { ResumeInsights } from './types';
 import {
-  getNextAvailableKey,
   recordUsage,
-  markKeyExhausted,
   PROVIDER_DEFAULTS,
 } from './llm-keys';
 
@@ -96,51 +94,127 @@ type ProviderEntry = {
 };
 
 /**
- * Build the provider chain: DB keys first (with rotation), then env-var fallbacks.
- * DB keys are tried in priority order (lowest priority number first, then least-used).
+ * In-memory cooldown map: keyId → timestamp when cooldown expires.
+ * On RPM 429, we cooldown the key for 60s instead of marking it "daily exhausted".
+ * This means the key becomes available again after the cooldown, not after midnight.
+ */
+const KEY_COOLDOWNS: Map<string, number> = new Map();
+const RPM_COOLDOWN_MS = 65_000; // 65 seconds (slightly over 1 minute to be safe)
+
+function isKeyOnCooldown(keyId: string): boolean {
+  const until = KEY_COOLDOWNS.get(keyId);
+  if (!until) return false;
+  if (Date.now() >= until) {
+    KEY_COOLDOWNS.delete(keyId);
+    return false;
+  }
+  return true;
+}
+
+function cooldownKey(keyId: string): void {
+  KEY_COOLDOWNS.set(keyId, Date.now() + RPM_COOLDOWN_MS);
+}
+
+/**
+ * Global round-robin index per provider. Ensures sequential rotation across
+ * multiple keys so requests spread evenly (avoids hammering one key).
+ */
+const ROUND_ROBIN_INDEX: Map<string, number> = new Map();
+
+/**
+ * Get ALL active DB keys for a provider, ordered for round-robin rotation.
+ * Skips keys that are on cooldown or have exceeded their daily token limit.
+ */
+async function getAvailableKeysForProvider(provider: string): Promise<ProviderEntry[]> {
+  const { supabaseAdmin } = await import('./supabase/server');
+  const sb = supabaseAdmin();
+
+  const { data: keys } = await sb
+    .from('llm_keys')
+    .select('*')
+    .eq('provider', provider)
+    .eq('is_active', true)
+    .order('priority', { ascending: true });
+
+  if (!keys?.length) return [];
+
+  const entries: ProviderEntry[] = [];
+  const defaults = PROVIDER_DEFAULTS[provider];
+
+  for (const k of keys) {
+    const key = k as { id: string; api_key: string; label: string | null; model: string | null; base_url: string | null; daily_token_limit: number; tokens_used_today: number };
+    // Skip keys on RPM cooldown
+    if (isKeyOnCooldown(key.id)) continue;
+    // Skip keys that exceeded daily token limit
+    if (key.tokens_used_today >= key.daily_token_limit) continue;
+
+    const baseUrl = key.base_url || defaults?.baseUrl || '';
+    const model = key.model || defaults?.model || '';
+    const client = new OpenAI({ apiKey: key.api_key, baseURL: baseUrl });
+    entries.push({
+      name: `${provider}[DB:${key.label || key.id.slice(0, 6)}]`,
+      client,
+      model,
+      keyId: key.id,
+      provider,
+    });
+  }
+
+  // Round-robin: rotate starting position so each call uses a different key
+  if (entries.length > 1) {
+    const idx = (ROUND_ROBIN_INDEX.get(provider) ?? 0) % entries.length;
+    ROUND_ROBIN_INDEX.set(provider, idx + 1);
+    // Rotate array so the "next" key is first
+    return [...entries.slice(idx), ...entries.slice(0, idx)];
+  }
+
+  return entries;
+}
+
+/**
+ * Build the full provider chain: ALL DB keys (round-robin) per provider,
+ * then env-var fallbacks. This maximizes RPM by spreading across keys.
+ *
+ * With 5 Cerebras keys at 5 RPM each = 25 effective RPM when round-robined.
  */
 async function buildProviderChain(): Promise<ProviderEntry[]> {
   const chain: ProviderEntry[] = [];
 
-  // 1. Try DB keys for each provider in priority order
+  // 1. DB keys for each provider (ALL available, not just one)
   for (const providerName of PROVIDER_ORDER) {
-    const dbKey = await getNextAvailableKey(providerName);
-    if (dbKey) {
-      const defaults = PROVIDER_DEFAULTS[providerName];
-      const baseUrl = dbKey.base_url || defaults?.baseUrl;
-      const model = dbKey.model || defaults?.model || '';
-      const client = new OpenAI({ apiKey: dbKey.api_key, baseURL: baseUrl });
+    const dbKeys = await getAvailableKeysForProvider(providerName);
+    chain.push(...dbKeys);
+  }
+
+  // 2. Env-var fallbacks (only if no DB keys for that provider are in the chain)
+  const hasDbCerebras = chain.some((p) => p.provider === 'cerebras');
+  const hasDbGroq = chain.some((p) => p.provider === 'groq');
+
+  if (!hasDbCerebras) {
+    const cerebrasClient = getCerebrasClient();
+    if (cerebrasClient) {
       chain.push({
-        name: `${providerName}[DB:${dbKey.label || dbKey.id.slice(0, 6)}]`,
-        client,
-        model,
-        keyId: dbKey.id,
-        provider: providerName,
+        name: `Cerebras[env] ${CEREBRAS_CHAT_MODEL}`,
+        client: cerebrasClient,
+        model: CEREBRAS_CHAT_MODEL,
+        provider: 'cerebras',
       });
     }
   }
 
-  // 2. Env-var fallbacks (for providers without DB keys or as last resort)
-  const cerebrasClient = getCerebrasClient();
-  if (cerebrasClient && !chain.some((p) => p.provider === 'cerebras' && !p.keyId)) {
-    chain.push({
-      name: `Cerebras[env] ${CEREBRAS_CHAT_MODEL}`,
-      client: cerebrasClient,
-      model: CEREBRAS_CHAT_MODEL,
-      provider: 'cerebras',
-    });
+  if (!hasDbGroq) {
+    const groqClient = getGroqClient();
+    if (groqClient) {
+      chain.push({
+        name: `Groq[env] ${GROQ_CHAT_MODEL}`,
+        client: groqClient,
+        model: GROQ_CHAT_MODEL,
+        provider: 'groq',
+      });
+    }
   }
 
-  const groqClient = getGroqClient();
-  if (groqClient && !chain.some((p) => p.provider === 'groq' && !p.keyId)) {
-    chain.push({
-      name: `Groq[env] ${GROQ_CHAT_MODEL}`,
-      client: groqClient,
-      model: GROQ_CHAT_MODEL,
-      provider: 'groq',
-    });
-  }
-
+  // OpenAI (paid) is always last resort
   const openaiClient = getOpenAIClient();
   if (openaiClient) {
     chain.push({
@@ -155,10 +229,16 @@ async function buildProviderChain(): Promise<ProviderEntry[]> {
 }
 
 /**
- * Core chat function with DB-aware provider rotation and usage tracking.
+ * Core chat function with intelligent multi-key rotation and usage tracking.
  *
- * Tries each provider in the chain. On success, logs usage. On 429/rate-limit,
- * marks the DB key as exhausted and tries the next. If all fail, throws combined error.
+ * Strategy (best practice for free-tier multi-key LLM):
+ * 1. Round-robin across ALL keys of the primary provider (spreads RPM load)
+ * 2. On 429: cooldown that key for 60s (NOT mark as daily-exhausted) + try next key
+ * 3. On success: record ACTUAL tokens from API response (accurate tracking)
+ * 4. Only after ALL keys of a provider are exhausted/cooling → try next provider
+ * 5. OpenAI (paid) is the absolute last resort
+ *
+ * This means 5 Cerebras keys with 5 RPM each = effectively 25 RPM (one every 2.4s).
  */
 async function chat(
   systemPrompt: string,
@@ -189,11 +269,13 @@ async function chat(
         ],
       });
       const content = (res.choices[0]?.message?.content ?? '').trim();
-      const tokensIn = res.usage?.prompt_tokens ?? Math.ceil((systemPrompt.length + userPrompt.length) / 4);
-      const tokensOut = res.usage?.completion_tokens ?? Math.ceil(content.length / 4);
 
-      // Log usage for DB-tracked keys
-      if (provider.keyId) {
+      // Use ACTUAL token counts from the API response (accurate tracking!)
+      const tokensIn = res.usage?.prompt_tokens ?? 0;
+      const tokensOut = res.usage?.completion_tokens ?? 0;
+
+      // Log usage for DB-tracked keys — only real tokens, never guesses
+      if (provider.keyId && (tokensIn > 0 || tokensOut > 0)) {
         recordUsage({
           keyId: provider.keyId,
           provider: provider.provider,
@@ -213,32 +295,35 @@ async function chat(
       errors.push(`${provider.name} → ${msg}`);
       console.warn(`[chat] ${provider.name} failed, trying next provider: ${msg}`);
 
-      // Mark DB key as exhausted on rate limit so rotation picks the next key
-      if (provider.keyId && is429) {
-        markKeyExhausted(provider.keyId);
-        recordUsage({
-          keyId: provider.keyId,
-          provider: provider.provider,
-          model: provider.model,
-          operation,
-          tokensIn: 0,
-          tokensOut: 0,
-          durationMs: Date.now() - startMs,
-          status: 'rate_limited',
-          errorMessage: msg,
-        });
-      } else if (provider.keyId) {
-        recordUsage({
-          keyId: provider.keyId,
-          provider: provider.provider,
-          model: provider.model,
-          operation,
-          tokensIn: 0,
-          tokensOut: 0,
-          durationMs: Date.now() - startMs,
-          status: 'error',
-          errorMessage: msg,
-        });
+      if (provider.keyId) {
+        if (is429) {
+          // RPM hit: cooldown this key for 60s so round-robin skips it temporarily.
+          // Do NOT mark as daily-exhausted (tokens might be fine, it's just RPM).
+          cooldownKey(provider.keyId);
+          recordUsage({
+            keyId: provider.keyId,
+            provider: provider.provider,
+            model: provider.model,
+            operation,
+            tokensIn: 0,
+            tokensOut: 0,
+            durationMs: Date.now() - startMs,
+            status: 'rate_limited',
+            errorMessage: msg,
+          });
+        } else {
+          recordUsage({
+            keyId: provider.keyId,
+            provider: provider.provider,
+            model: provider.model,
+            operation,
+            tokensIn: 0,
+            tokensOut: 0,
+            durationMs: Date.now() - startMs,
+            status: 'error',
+            errorMessage: msg,
+          });
+        }
       }
     }
   }

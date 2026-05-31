@@ -40,9 +40,11 @@ const SIMILARITY_TOP_N = 45;
 const TOP_COMPANY_CAP = 12;
 const EMBED_PER_RUN = 50;
 const EMBED_CONCURRENCY = 6;
-const SCORE_CONCURRENCY = 6;
+const SCORE_CONCURRENCY = 5; // Matches free-tier RPM (one call per key per batch cycle)
 /** Vercel `/api/ingest` maxDuration is 300s — stop heavy work before hard kill. */
 const INGEST_WALL_BUDGET_MS = 260_000;
+/** Delay between scoring batches to respect RPM limits across providers. */
+const SCORE_BATCH_DELAY_MS = 3_000; // 3 seconds between batches → ~20 RPM effective
 
 /**
  * Maximum age (in days) for a job to be ingested. Any job whose posted_at
@@ -467,6 +469,10 @@ export async function runIngest(opts?: {
       if (Date.now() - startedAt > INGEST_WALL_BUDGET_MS) {
         budgetStopped = true;
         break;
+      }
+      // Delay between batches to spread RPM across free-tier keys
+      if (i > 0) {
+        await new Promise((r) => setTimeout(r, SCORE_BATCH_DELAY_MS));
       }
       const batch = ranked.slice(i, i + SCORE_CONCURRENCY);
       await Promise.all(
