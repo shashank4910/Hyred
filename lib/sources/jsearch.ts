@@ -1,4 +1,5 @@
 import type { RawJob } from '../types';
+import { stripHtml } from '../jd-fetcher';
 
 /**
  * JSearch — RapidAPI job aggregator.
@@ -237,6 +238,9 @@ export async function fetchJSearch(opts?: JSearchFetchOpts): Promise<RawJob[]> {
       const description = j.job_description ?? '';
       const tags = j.job_required_skills ?? null;
 
+      // JSearch sometimes returns HTML in job_description — strip it.
+      const cleanDesc = description.includes('<') ? stripHtml(description) : description;
+
       return {
         source: 'jsearch',
         source_id: j.job_id,
@@ -245,7 +249,7 @@ export async function fetchJSearch(opts?: JSearchFetchOpts): Promise<RawJob[]> {
         location: buildLocation(j),
         remote: j.job_is_remote ?? false,
         url: j.job_apply_link || j.job_google_link || '',
-        description,
+        description: cleanDesc,
         salary: formatSalary(j),
         tags,
         posted_at: j.job_posted_at_datetime_utc ?? null,

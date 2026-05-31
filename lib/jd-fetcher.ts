@@ -25,16 +25,33 @@ const USER_AGENT =
 const TRUNCATED_LENGTH_THRESHOLD = 1000;
 
 /**
- * Strip HTML to plain text.
+ * Robust HTML → plain-text converter. Exported so all sources can share
+ * a single high-quality implementation instead of ad-hoc regex strippers.
+ *
+ * Handles: style/script removal, structural tags (br, p, div, li, headings)
+ * converted to newlines, all remaining tags stripped, HTML entities decoded,
+ * whitespace normalized.
  */
-function stripHtml(s: string): string {
+export function stripHtml(s: string): string {
+  if (!s) return '';
   return s
+    // Remove entire style/script blocks (content + tags)
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, '')
+    // Structural tags → newlines (preserve document flow)
     .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/(p|div|li|h[1-6])>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<\/(div|section|article|header|footer|main|aside)>/gi, '\n')
+    .replace(/<\/(h[1-6])>/gi, '\n\n')
+    .replace(/<\/li>/gi, '\n')
     .replace(/<li[^>]*>/gi, '\n- ')
+    .replace(/<\/tr>/gi, '\n')
+    .replace(/<\/td>/gi, ' | ')
+    .replace(/<hr[^>]*\/?>/gi, '\n---\n')
+    // Strip all remaining HTML tags
     .replace(/<[^>]+>/g, ' ')
+    // Decode common HTML entities
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
@@ -42,9 +59,34 @@ function stripHtml(s: string): string {
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/&apos;/g, "'")
+    .replace(/&#x2F;/g, '/')
+    .replace(/&#x27;/g, "'")
+    .replace(/&rsquo;/g, '\u2019')
+    .replace(/&lsquo;/g, '\u2018')
+    .replace(/&rdquo;/g, '\u201D')
+    .replace(/&ldquo;/g, '\u201C')
+    .replace(/&mdash;/g, '\u2014')
+    .replace(/&ndash;/g, '\u2013')
+    .replace(/&bull;/g, '\u2022')
+    .replace(/&hellip;/g, '\u2026')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    // Normalize whitespace
     .replace(/[ \t]+/g, ' ')
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+/**
+ * Detect whether a string contains HTML tags. Used to decide whether
+ * an already-stored description needs stripping.
+ */
+export function containsHtml(s: string): boolean {
+  if (!s) return false;
+  // Check for common HTML patterns (tags, entities beyond plain &)
+  return /<[a-z][^>]*>/i.test(s) || /&(nbsp|lt|gt|amp|quot|#\d+|#x[0-9a-f]+);/i.test(s);
 }
 
 /**
@@ -204,26 +246,39 @@ export async function ensureFullDescription(args: {
 }): Promise<string> {
   const current = args.currentDescription ?? '';
 
-  // Already substantial — no need to fetch
-  if (current.length >= TRUNCATED_LENGTH_THRESHOLD) return current;
-  if (!args.url) return current;
+  // If the stored description contains HTML tags, strip them first.
+  // Some sources (JSearch, LinkedIn) occasionally store raw HTML that was
+  // never cleaned. Clean it now regardless of length.
+  const cleaned = containsHtml(current) ? stripHtml(current) : current;
+  if (cleaned !== current && cleaned.length > 0 && args.jobId) {
+    // Persist the cleaned version back to DB
+    try {
+      const sb = supabaseAdmin();
+      await sb.from('jobs').update({ description: cleaned }).eq('id', args.jobId);
+      console.log(`[jd-fetcher] Stripped HTML from job ${args.jobId}: ${current.length} → ${cleaned.length} chars`);
+    } catch { /* non-fatal */ }
+  }
+
+  // Already substantial after cleaning — no need to re-fetch from URL
+  if (cleaned.length >= TRUNCATED_LENGTH_THRESHOLD) return cleaned;
+  if (!args.url) return cleaned;
 
   console.log(
-    `[jd-fetcher] Fetching full JD for job ${args.jobId} (current: ${current.length} chars)`,
+    `[jd-fetcher] Fetching full JD for job ${args.jobId} (current: ${cleaned.length} chars)`,
   );
 
   const full = await fetchFullJobDescription(args.url);
 
   // No improvement — keep the current one
-  if (!full || full.length <= current.length) {
+  if (!full || full.length <= cleaned.length) {
     if (full == null) {
       console.log(`[jd-fetcher] Fetch returned null for job ${args.jobId}`);
     } else {
       console.log(
-        `[jd-fetcher] Fetched ${full.length} chars but not better than current ${current.length} for job ${args.jobId}`,
+        `[jd-fetcher] Fetched ${full.length} chars but not better than current ${cleaned.length} for job ${args.jobId}`,
       );
     }
-    return current;
+    return cleaned;
   }
 
   // Persist the upgraded description back to DB so subsequent calls are fast.
@@ -241,7 +296,7 @@ export async function ensureFullDescription(args: {
       // Still return the full description for this request
     } else {
       console.log(
-        `[jd-fetcher] Job ${args.jobId} description: ${current.length} → ${full.length} chars`,
+        `[jd-fetcher] Job ${args.jobId} description: ${cleaned.length} → ${full.length} chars`,
       );
     }
   } catch (e) {
