@@ -16,7 +16,7 @@ import {
   Crown,
   Shield,
 } from 'lucide-react';
-import { toast } from 'sonner';
+import { dismissAllAppToasts } from '@/lib/toast-app';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { LegalFooterLinks } from '@/app/_components/LegalFooterLinks';
 
@@ -46,8 +46,8 @@ export function AppShell({
   const nav = NAV.filter((item) => !item.admin || isAdmin);
 
   async function logout() {
+    dismissAllAppToasts();
     await supabaseBrowser.auth.signOut();
-    toast.success('Signed out');
     router.push('/login');
     router.refresh();
   }
