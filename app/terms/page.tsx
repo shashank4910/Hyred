@@ -35,9 +35,11 @@ export default function TermsPage() {
 
       <h2>3. Your content</h2>
       <p>
-        You retain ownership of your resume and other content you upload. You grant us a limited
-        licence to store, process, and display it only to provide the service (including sending
-        relevant portions to AI providers as described in our Privacy Policy).
+        You retain ownership of your resume and other content you upload. By creating an account
+        and accepting these Terms together with our Privacy Policy, you grant us a limited licence
+        to store, process, and display your content to provide the service — including automated
+        analysis and sending relevant portions to AI providers (as listed in the Privacy Policy)
+        for job matching, scoring, and related suggestions.
       </p>
 
       <h2>4. Acceptable use</h2>

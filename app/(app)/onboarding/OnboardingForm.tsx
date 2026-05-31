@@ -16,7 +16,6 @@ import {
 import type { Preferences, ResumeInsights } from '@/lib/types';
 import { isResumeFilename, RESUME_FILE_ACCEPT } from '@/lib/resume-upload';
 import { triggerJobScan } from '../_components/triggerJobScan';
-import { ResumeAiConsent } from '@/app/_components/LegalConsentFields';
 
 type Initial = {
   email: string;
@@ -59,7 +58,6 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
   const [insights, setInsights] = useState<ResumeInsights | null>(initial.insights);
   const [analyzing, setAnalyzing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [aiProcessingConsent, setAiProcessingConsent] = useState(false);
   const [aiFields, setAiFields] = useState<Set<AiField>>(new Set());
 
 
@@ -159,20 +157,10 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
     finally { setAnalyzing(false); }
   }
 
-  function resumeIsChanging(): boolean {
-    if (resumeFile || parsedText) return true;
-    const text = resumeText.trim();
-    return text.length >= 50 && text !== initial.resumeText.trim();
-  }
-
   async function save() {
     if (!email) { toast.error('Email is required'); return; }
     if (!resumeFile && !resumeText.trim() && !parsedText) {
       toast.error('Upload a resume or paste text'); return;
-    }
-    if (resumeIsChanging() && !aiProcessingConsent) {
-      toast.error('Please consent to AI processing of your resume before saving.');
-      return;
     }
     const prefs: Preferences = {
       roles: csvToList(roles),
@@ -360,17 +348,10 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
         </div>
       </section>
 
-      {resumeIsChanging() && (
-        <ResumeAiConsent
-          checked={aiProcessingConsent}
-          onChange={setAiProcessingConsent}
-        />
-      )}
-
       <div className="flex justify-end sticky bottom-4">
         <button
           onClick={save}
-          disabled={saving || (resumeIsChanging() && !aiProcessingConsent)}
+          disabled={saving}
           className="btn-primary shadow-card"
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
