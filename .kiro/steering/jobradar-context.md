@@ -63,6 +63,12 @@
 ### Execution rule
 Start each chat by reading this tracker → confirm prior phase is ✅ → execute ONLY the next phase → update tracker + add a phase log when done.
 
+### Session 14 snapshot (May 31, 2026 — PRs #83–#87, full log in `docs/context/session-log.md`)
+- **Ghost data on re-signup:** 0006 SET NULL + email re-adoption → fixed by 0008 CASCADE + orphan purge in `lib/current-user.ts`.
+- **Stats:** user match counts only — never global `jobs` pool; ingest runs finalize via `lib/ingest-runs.ts`.
+- **Source privacy:** LinkedIn/Adzuna/etc. UI admin-only (`isCurrentUserAdmin()`); job sources still power ingest internally.
+- **Run migrations:** **0008** (CASCADE), **0007** (`is_admin`) if not done.
+
 ---
 
 ## 1. What is JobRadar / Hyred?

@@ -2,6 +2,68 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 14 — Multi-tenant ghost data, Stats UX, ingest run lifecycle, admin-only sources (May 31, 2026)
+
+Five production bugs reported by the owner while testing fresh sign-ups on Hyred. All fixed with evidence-based root-cause analysis; merged PRs **#83–#87**.
+
+### (a) Deleted auth user still sees old profile + matches (PR #83)
+
+**Symptom:** delete user in Supabase Auth → re-sign in with same email → old resume, matches, and ingest history still there.
+
+**Root cause:** migration **0006** changed `profiles.user_id` FK to **`ON DELETE SET NULL`**. Deleting auth only orphaned the profile (`user_id = NULL`); matches stayed. `resolveProfileForUser()` re-adopted that row by email on next login — by design in 0006, opposite of user expectation.
+
+**Fix:**
+- App: on sign-in, **delete detached profiles** (`user_id IS NULL`) for that email before creating fresh row; only `ADMIN_EMAIL` legacy row gets one-time link.
+- Migration **0008_profiles_user_fk_cascade.sql**: restore **`ON DELETE CASCADE`** so auth delete wipes profile + matches going forward. **Run in Supabase SQL editor.**
+- Manual cleanup for existing orphans: `DELETE FROM profiles WHERE user_id IS NULL AND lower(email) = lower('…');`
+
+### (b) Wrong job preferences after fresh resume upload (PR #83)
+
+**Symptom:** upload digital-marketing resume → job preferences still show HR/recruitment roles from a prior session.
+
+**Root cause:** stale `preferences.roles` from re-adopted profile; `applyInsights()` only filled empty fields (`force=false`); `/api/profile` did not refresh roles from new `insights.suggested_roles` and kept cached `insights.search_profile`.
+
+**Fix:** `lib/profile-insights.ts` — `stripSearchProfile()`, `preferencesFromResumeInsights()`. Onboarding upload calls `applyInsights(ins, true)`; profile save overwrites roles when resume changes.
+
+### (c) Stats showed global job pool (~12k) to new users (PR #85)
+
+**Symptom:** fresh user sees **"Jobs in DB: 12,613"** with **0 matches** — scary and misleading.
+
+**Root cause:** `app/(app)/stats/page.tsx` counted `jobs` table globally (`jobs` is intentionally a shared pool). Matches were already scoped by `profile_id`.
+
+**Fix:** Stats cards = user match counts only (Your matches / New / In inbox / Applied). "Matches by source" from user's `matches` join (admin-only after #87). `noStore()` + disable Link prefetch on `/stats`. Dashboard empty state no longer references global job count. Auto-scan on first resume via `triggerJobScan.ts`.
+
+### (d) Ingest run stuck on "running" forever (PR #86)
+
+**Symptom:** matches visible in portal; Stats shows ingest row **running** 10+ min with all zeros; "Last scan: No scan yet".
+
+**Root cause:** `ingest_runs` counters + `status` only written in **one final UPDATE** at pipeline end. Vercel **300s** limit or dropped client connection → matches saved mid-loop but run row never finalized.
+
+**Fix:** `lib/ingest-runs.ts` — `patchIngestRun()` progress after fetch/embed/score; `finalizeRun()` in `finally`; `closeStaleIngestRuns()` (>12 min) on Stats/Matches load with `matches_created` backfill; `assertNoActiveIngest()` blocks overlapping scans; last-scan query uses latest row with `finished_at NOT NULL`.
+
+### (e) Job source names visible to regular users — data lake (PR #87)
+
+**Symptom:** users see LinkedIn/Adzuna/JSearch in Stats breakdown, "All sources" filter, match badges, scan source picker.
+
+**Fix:** gate all source-identifying UI behind `isCurrentUserAdmin()` — Stats "matches by source", `MatchFilters` source dropdown, `RunIngestButton` source chevron, `MatchCard` / job detail source badges. Non-admins: ignore `?source=` and `/api/ingest` `sources` body.
+
+### Migrations to run manually (if not yet)
+
+| Migration | Purpose |
+|---|---|
+| **0008** | `ON DELETE CASCADE` on `profiles.user_id` (pairs with #83 app purge) |
+| **0007** | `profiles.is_admin` + grant owner (admin surfaces) |
+
+### PRs merged this session
+
+#83 deleted-user ghost data + stale preferences · #85 user-scoped Stats · #86 stuck ingest running · #87 admin-only source visibility
+
+### Verified
+
+`npm run typecheck` clean on each PR. Context updated: `CONTEXT.md`, `AGENTS.md` Index, this log.
+
+---
+
 ## Session 13 — Legacy `.doc` resumes, Stats UX copy, Vercel build fix (May 31, 2026)
 
 Three threads: (a) users could not upload legacy Word `.doc` resumes, (b) Stats "Recent ingest runs" table was too technical, (c) multiple Vercel Preview/Production deploys failed after merging resume work without a client/server split.
