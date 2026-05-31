@@ -69,11 +69,20 @@ Start each chat by reading this tracker → confirm prior phase is ✅ → execu
 - **Source privacy:** LinkedIn/Adzuna/etc. UI admin-only (`isCurrentUserAdmin()`); job sources still power ingest internally.
 - **Run migrations:** **0008** (CASCADE), **0007** (`is_admin`) if not done.
 
+### Session 15 snapshot (May 31, 2026 — PR #104, Kiro)
+- **Full Luminous Mint polish:** migrated ALL legacy tokens (`text-ink`, `text-stone`, `text-amber`, `bg-off-white`, etc.) to M3 semantic tokens across 19 files.
+- **Mint-green background:** body `#f0f7f6` + 5 fixed `radial-gradient` blobs for organic depth. Removed all `bg-background` from wrapper divs.
+- **Custom form controls:** `select.input` with SVG chevron; global `accent-color: #006a65` for radio/checkbox/range.
+- **StatusFilter overflow fix:** tabs now `overflow-x-auto` within column bounds; dashboard left column has `min-w-0`.
+- **AppToaster:** updated to Luminous palette (border, shadow, radius, font).
+- **LlmKeysPanel modal:** palette-based backdrop + click-outside-to-close.
+- **Design inspiration:** Behance Wallet Dashboard (mint-green organic gradient bg).
+
 ---
 
 ## 1. What is JobRadar / Hyred?
 
-**Hyred** (hyred.in) — multi-user AI job-search dashboard built by Shashank. Repo name remains `JobRadar`. **Multi-tenant as of session 7.** UI: warm light theme (Runway-inspired).
+**Hyred** (hyred.in) — multi-user AI job-search dashboard built by Shashank. Repo name remains `JobRadar`. **Multi-tenant as of session 7.** UI: **Luminous Mint** — teal primary (`#006a65`), mint-green background (`#f0f7f6`) with organic gradient blobs, Plus Jakarta Sans font, Google Stitch + Behance wallet dashboard inspiration.
 
 **Core flow:** Fetches jobs from multiple sources → AI-scores against resume → surfaces relevant matches → generates tailored ATS resumes + cover letters per job.
 

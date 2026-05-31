@@ -39,34 +39,46 @@ JobRadar / Hyred is a personalized AI-powered job-search dashboard that:
 
 ### Current UI (live on hyred.in)
 
-**As of May 31, 2026** — merged **PR #100** (Luminous redesign) + **PR #101** (scan picker overlap fix).
+**As of May 31, 2026** — merged **PR #100** (Luminous redesign) + **PR #101** (scan picker overlap fix) + **PR #104** (full Luminous polish + mint background).
 
-| Aspect | Current (Luminous) | Previous (pre-#100) |
+| Aspect | Current (Luminous Mint) | Previous (pre-#104) |
 |---|---|---|
-| **Codename** | Luminous (Stitch) | Indigo Insight / MD3 |
-| **Primary** | Teal `#006a65` → gradient `#006a65` → `#2cc9c0` | Indigo `#4648d4` + purple secondary |
-| **Background** | Cool off-white `#f9f9ff` | Blue-tint `#f8f9ff` |
-| **Headline font** | Plus Jakarta Sans | Hanken Grotesk |
-| **Body font** | Plus Jakarta Sans | Inter |
-| **Desktop layout** | Fixed **260px left sidebar** + top header | Sticky **top nav bar** only |
-| **Dashboard** | Bento grid: match list (8 col) + insights sidebar (4 col) | Single column + stat cards row |
-| **Match cards** | Circular score ring, italic AI quote, skill pills | Numeric score + inline badges |
-| **Run scan** | Teal gradient button in **header** (⚡ Run Scan) | Top-right on dashboard only |
-| **Toasts** | Bottom-right (`AppToaster`) | Top-right (covered header) |
-| **Legal links** | Sign-up checkbox only; **none** in logged-in shell | Footer on AppShell (removed #99) |
+| **Codename** | Luminous Mint (Stitch + Behance wallet ref) | Luminous (blue-tinted flat bg) |
+| **Primary** | Teal `#006a65` → gradient `#006a65` → `#2cc9c0` | Same |
+| **Background** | Mint-green `#f0f7f6` + **organic radial-gradient blobs** (5 layered `radial-gradient` on body, `background-attachment: fixed`) | Flat blue-tinted `#f9f9ff` |
+| **Surface tokens** | Green-tinted: container `#e4f0ee`, low `#eaf5f3`, high `#dceae8` | Blue-tinted: `#e7eeff`, `#f0f3ff`, `#dee8ff` |
+| **Headline font** | Plus Jakarta Sans | Same |
+| **Body font** | Plus Jakarta Sans | Same |
+| **Desktop layout** | Fixed **260px left sidebar** + top header | Same |
+| **Dashboard** | Bento grid: match list (8 col, `min-w-0`) + insights sidebar (4 col) | Same but tabs overflowed into sidebar |
+| **StatusFilter tabs** | Horizontal scroll (`overflow-x-auto`, `max-w-full`) within column bounds | `inline-flex` with no width constraint — overflowed |
+| **Dropdowns/selects** | Custom styled (`appearance-none` + SVG chevron, teal stroke on focus) | Browser default arrow appearance |
+| **Radio/Checkbox/Range** | `accent-color: #006a65` globally via `globals.css` | Browser default blue |
+| **Toasts** | Bottom-right, Luminous palette (`#bbcac7` border, teal shadow, `1rem` radius, Plus Jakarta Sans) | Hardcoded non-palette colors (`#E5E7EB` border, old shadow) |
+| **Token vocabulary** | Semantic M3 everywhere: `text-on-surface`, `text-on-surface-variant`, `text-primary`, `bg-primary/10`, `border-outline-variant`, `text-error` | Mixed: legacy `text-ink`, `text-stone`, `text-amber`, `bg-off-white` on Stats, Job detail, Import, Onboarding, Legal pages |
+| **Match cards** | Circular score ring, italic AI quote, skill pills | Same |
+| **Run scan** | Teal gradient button in **header** (⚡ Run Scan) | Same |
+| **Legal links** | Sign-up checkbox only; **none** in logged-in shell | Same |
 
-**Pages not fully restyled yet:** Job detail (`/jobs/[id]`), onboarding form layout, Stats/Admin/Import inner tables — they inherit **tokens + buttons/inputs** from `globals.css` but not the full bento/sidebar patterns from the Stitch dashboard screen.
+**All pages now fully styled with Luminous tokens** — Job detail (`/jobs/[id]`), Onboarding, Stats, Admin, Import, Apply Profile, Login, Legal (Privacy/Terms), Error, Not Found. No legacy `text-ink`/`text-stone`/`text-amber` remain in core app files.
+
+**Design inspiration:** [Behance Wallet Dashboard](https://www.behance.net/gallery/130352871/) — the mint-green background with organic soft gradient blobs creating subtle cloudy depth. Color palette + layout from Google Stitch "Luminous" screen.
 
 ### Design tokens
 
 | Layer | File | Notes |
 |---|---|---|
-| Tailwind theme | `tailwind.config.ts` | Luminous palette, `sidebar: 260px`, `shadow-card` / `shadow-elevated` |
-| Global components | `app/globals.css` | `.teal-gradient`, `.btn-primary`, `.card`, `.input`, `.glass-card` |
-| Toaster | `app/_components/AppToaster.tsx` | Bottom-right; mobile offset above bottom nav |
+| Tailwind theme | `tailwind.config.ts` | Luminous Mint palette (green-tinted surfaces), `sidebar: 260px`, `shadow-card` / `shadow-elevated` / `shadow-primary-glow` |
+| Global components | `app/globals.css` | `.teal-gradient`, `.btn-primary`, `.card`, `.input`, `select.input` (custom chevron), `.glass-card`, organic gradient blobs on `body` |
+| Form controls | `app/globals.css` | Global `accent-color: #006a65` for radio/checkbox/range inputs |
+| Toaster | `app/_components/AppToaster.tsx` | Bottom-right; Luminous palette inline styles (border `#bbcac7`, shadow teal-tinted, `1rem` radius, Plus Jakarta Sans) |
 | Fonts | Google Fonts import in `globals.css` | Plus Jakarta Sans 400–800 |
 
-**Semantic colors (common):** `primary`, `primary-container`, `match-success` (`#2cc9c0`), `text-muted`, `surface-container-lowest` (card white), `outline-variant` (borders).
+**Background system:** Body uses `background-color: #f0f7f6` + `background-image` with 5 fixed radial-gradient blobs (low-opacity teal/mint) for a soft organic depth. No `bg-background` on any wrapper element — body handles it globally with `!important`. The gradient is `background-attachment: fixed` so it doesn't scroll.
+
+**Semantic colors (common):** `primary` (`#006a65`), `primary-container` (`#2cc9c0`), `match-success` (`#2cc9c0`), `text-muted` (`#6c7a78`), `surface-container-lowest` (`#ffffff` — card bg), `outline-variant` (`#bbcac7` — borders), `surface-container` (`#e4f0ee`), `surface-container-low` (`#eaf5f3`).
+
+**⚠️ RULE:** Never add `bg-background` or `bg-surface` (without opacity) to page wrapper divs — it creates an opaque layer that hides the body gradient blobs. The body CSS handles the background globally.
 
 ### App shell & layout
 
@@ -123,6 +135,7 @@ app/_components/
 
 | Date | PR | Summary |
 |---|---|---|
+| May 31, 2026 | **#104** | **Full Luminous polish + Mint background** — migrated all legacy tokens (`text-ink`/`text-stone`/`text-amber`) to M3 semantic tokens across ALL pages; added mint-green `#f0f7f6` background with organic gradient blobs; custom `<select>` chevron styling; global radio/checkbox/range accent-color; fixed StatusFilter overflow into insights sidebar (`overflow-x-auto` + `min-w-0`); AppToaster Luminous palette; LlmKeysPanel modal click-outside-to-close |
 | May 31, 2026 | **#100** | **Luminous redesign** — Stitch tokens, sidebar shell, bento dashboard, `MatchScoreRing`, `DashboardInsights`, login refresh |
 | May 31, 2026 | **#101** | Run Scan **source picker** no longer clips under sidebar (`ml-auto`, header `z-[60]`, spacer when search hidden) |
 | May 31, 2026 | **#99** | Legal: remove onboarding consent checkbox; sign-up-only Terms/Privacy; no footer links when logged in |
@@ -144,6 +157,13 @@ When you ship UI work: add a row here, link the PR, and update **Current UI** if
 | Resume AI consent checkbox friction | Removed from onboarding; covered at sign-up in Terms/Privacy | #99 |
 | Admin **source picker** clipped by sidebar on Stats/other pages | Header `z-[60]`, `ml-auto` on actions, flex spacer when search hidden | #101 |
 | Stitch HTML pasted into repo pages | Don't — translate to React + existing data hooks | — |
+| **StatusFilter tabs overflow into insights sidebar** | `inline-flex` -> `flex` + `overflow-x-auto` + `max-w-full`; left column gets `min-w-0` | #104 |
+| **Old blue bg bleeds on load** | body gradient on `background-image` with `!important`; removed `bg-background` from wrapper divs | #104 |
+| **Skeleton shimmer old blue** | `#e7eeff` -> `#dceae8` (green-tinted) | #104 |
+| **Browser-default dropdowns** | `select.input`: `appearance-none` + SVG chevron, teal on focus | #104 |
+| **Radio/checkbox blue** | Global `accent-color: #006a65` | #104 |
+| **Toast non-palette colors** | Border/shadow/radius/font updated to Luminous palette | #104 |
+| **Legacy tokens on many pages** | Full migration to M3 across 19 files | #104 |
 
 ---
 
@@ -610,7 +630,7 @@ When a feature seems broken:
 - Changes to the file map
 - **Keep the `AGENTS.md` Index in sync** when you add/rename a `##` section here, and append new dated session logs to `docs/context/session-log.md` (not here).
 
-**Last updated:** May 31, 2026 (session 15: **UI & Design System** index added — Luminous Stitch current UI, component map, change log PRs #96–#101; `main` includes #100 redesign + #101 scan picker fix. Full narrative in `docs/context/session-log.md`.)
+**Last updated:** May 31, 2026 (session 15: **Luminous Mint polish PR #104** — full token migration across 19 files, mint-green `#f0f7f6` background with organic gradient blobs, custom select/radio/checkbox styling, StatusFilter overflow fix, AppToaster palette fix. Design inspiration: Behance Wallet Dashboard. All pages now use M3 semantic tokens consistently.)
 
 _Session 6 (May 29, 2026): started the **Enterprise Multi-Tenant Transformation** initiative — added the Master Plan + Progress Tracker (Phases 0-5). Phase 0 + the Groq migration (PR #48 replaced the dead `gemini-2.0-flash` 429 fallback with Groq; PR #50 flipped Groq to FREE PRIMARY with OpenAI fallback + `LLM_PRIMARY` toggle, needs `GROQ_API_KEY`) + the Phase 3 Groq free-tier capacity analysis._
 
