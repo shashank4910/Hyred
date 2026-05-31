@@ -18,7 +18,6 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabaseBrowser } from '@/lib/supabase/client';
-import { LegalFooterLinks } from '@/app/_components/LegalFooterLinks';
 
 const NAV: { href: string; label: string; icon: typeof LayoutDashboard; premium?: boolean; admin?: boolean }[] = [
   { href: '/', label: 'Matches', icon: LayoutDashboard },
@@ -138,9 +137,6 @@ export function AppShell({
       {/* Main content */}
       <main className="flex-1 px-4 sm:px-6 py-6 pb-24 md:pb-6 max-w-page w-full mx-auto">
         {children}
-        <footer className="mt-10 pt-4 border-t border-border-muted">
-          <LegalFooterLinks />
-        </footer>
       </main>
     </div>
   );
