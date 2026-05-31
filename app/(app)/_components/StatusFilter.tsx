@@ -46,7 +46,7 @@ export function StatusFilter({
   ];
 
   return (
-    <div className="inline-flex items-center gap-1 rounded-2xl bg-surface-container-lowest p-1.5 shadow-card">
+    <div className="flex items-center gap-1 rounded-2xl bg-surface-container-lowest p-1.5 shadow-card overflow-x-auto max-w-full">
       {tabs.map(({ id, label, count, icon }) => {
         const isBookmarkTab = id === 'bookmarked';
         const isActive = isBookmarkTab ? onlyBookmarked : !onlyBookmarked && id === active;

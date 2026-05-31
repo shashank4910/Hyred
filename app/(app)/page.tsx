@@ -228,7 +228,7 @@ export default async function Dashboard({
       </div>
 
       <div className="grid grid-cols-12 gap-6">
-        <div className="col-span-12 space-y-6 lg:col-span-8">
+        <div className="col-span-12 space-y-6 lg:col-span-8 min-w-0">
           <StatusFilter
             counts={counts}
             active={status}
