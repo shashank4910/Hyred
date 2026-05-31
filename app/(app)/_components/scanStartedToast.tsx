@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { BarChart3, FileText, Sparkles, X, Zap } from 'lucide-react';
 
@@ -13,62 +14,110 @@ const QUICK_LINKS = [
 ] as const;
 
 /**
- * Progressive scan status steps. The toast card re-renders at each
- * interval with updated copy so the user always knows what's happening
- * and never feels ghosted — even if their scan takes 5+ minutes.
+ * Progressive scan steps. The ScanCard React component below progresses
+ * through these internally — one toast.custom() call, one card, evolving
+ * heading + body + CTA. Granular delays so the user never feels ghosted.
  */
-const PROGRESS_STEPS = [
+type Step = {
+  delay: number;
+  heading: string;
+  body: string;
+  cta: string;
+};
+
+const STEPS: Step[] = [
   {
     delay: 0,
     heading: 'Scan started \u2014 we\u2019re on it',
-    body: 'Fetching fresh roles from job boards and scoring them against your resume. This usually takes',
-    time: '1\u20135 minutes',
-    hint: 'depending on your roles, locations, and how many sources we scan.',
-    cta: 'Feel free to keep browsing \u2014 we\u2019ll notify you when it\u2019s done.',
+    body: 'Reaching out to job boards now to fetch fresh roles tailored to your resume.',
+    cta: 'Hang tight \u2014 usually takes 1\u20135 minutes. We\u2019ll notify you when it\u2019s done.',
   },
   {
-    delay: 45_000,
-    heading: 'Still working on it\u2026',
-    body: 'Filtering through hundreds of listings to find ones actually worth scoring. Your personalized matches are being prepared.',
-    time: null,
-    hint: null,
-    cta: 'This is normal \u2014 we\u2019re being thorough so you don\u2019t miss anything good.',
+    delay: 12_000,
+    heading: 'Pulling listings\u2026',
+    body: 'Sources are responding. Collecting jobs that match your search keywords.',
+    cta: 'Feel free to keep browsing \u2014 we\u2019ll handle this in the background.',
   },
   {
-    delay: 120_000,
-    heading: 'AI is scoring your matches',
-    body: 'Each potential job is being individually analyzed against your resume \u2014 checking skills, experience level, and location fit.',
-    time: null,
-    hint: null,
-    cta: 'Almost there! Results will appear on your dashboard automatically.',
+    delay: 28_000,
+    heading: 'Filtering by relevance',
+    body: 'Sifting through hundreds of listings to find the ones actually worth scoring.',
+    cta: 'This smart filter saves time on the AI scoring step.',
   },
   {
-    delay: 210_000,
-    heading: 'Hang tight \u2014 lots of matches!',
-    body: 'Looks like there are quite a few potential matches this time. The AI is being thorough with each one so your scores are accurate.',
-    time: null,
-    hint: null,
-    cta: 'Your results are coming \u2014 we haven\u2019t forgotten about you!',
+    delay: 50_000,
+    heading: 'AI scoring is starting',
+    body: 'Each shortlisted job is being analyzed against your resume \u2014 skills, experience, and location fit.',
+    cta: 'This is the longest step. Each job takes a few seconds individually.',
   },
   {
-    delay: 300_000,
+    delay: 90_000,
+    heading: 'Scoring in progress\u2026',
+    body: 'About halfway through your shortlist. Each match is getting a score and a personalized reason.',
+    cta: 'Almost there \u2014 your matches will appear automatically.',
+  },
+  {
+    delay: 150_000,
+    heading: 'Hang tight \u2014 lots of matches',
+    body: 'Looks like you have many potential matches. The AI is being thorough so your scores are accurate.',
+    cta: 'Quality over speed \u2014 your dashboard will update soon.',
+  },
+  {
+    delay: 220_000,
+    heading: 'Wrapping up',
+    body: 'Final scoring rounds + saving the top matches to your dashboard.',
+    cta: 'Any moment now \u2014 thanks for your patience!',
+  },
+  {
+    delay: 320_000,
     heading: 'Final stretch',
-    body: 'This is taking a bit longer than usual \u2014 likely because your profile matches many roles across multiple sources.',
-    time: null,
-    hint: null,
-    cta: 'Your matches will appear any moment now. Thanks for your patience!',
+    body: 'A few stubborn jobs are taking extra time to score. Your matches are nearly ready.',
+    cta: 'We haven\u2019t forgotten about you \u2014 results coming any second!',
   },
 ];
 
-type Step = typeof PROGRESS_STEPS[number];
+function formatElapsed(sec: number): string {
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}m ${s.toString().padStart(2, '0')}s`;
+}
 
-/** Module-level timer handles so they persist across re-renders */
-let progressTimers: ReturnType<typeof setTimeout>[] = [];
+/**
+ * The actual toast card. Lives as a React component so it can manage its
+ * own progressive state (current step + live elapsed counter) inside a
+ * SINGLE toast.custom() call — no risk of duplicate cards from repeated
+ * toast.custom calls.
+ */
+function ScanCard({ onboarding }: { onboarding: boolean }) {
+  const [stepIndex, setStepIndex] = useState(0);
+  const [elapsedSec, setElapsedSec] = useState(0);
 
-function renderCard(step: Step, onboarding: boolean) {
+  useEffect(() => {
+    const startedAt = Date.now();
+
+    // Live elapsed-time counter (ticks every second so the user always
+    // sees movement and never thinks the app is dead).
+    const counter = setInterval(() => {
+      setElapsedSec(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+
+    // Schedule each step transition. We skip index 0 because it's already
+    // the initial state.
+    const stepTimers = STEPS.slice(1).map((step, i) =>
+      setTimeout(() => setStepIndex(i + 1), step.delay),
+    );
+
+    return () => {
+      clearInterval(counter);
+      stepTimers.forEach(clearTimeout);
+    };
+  }, []);
+
+  const step = STEPS[stepIndex];
   const bodyText =
-    onboarding && step.delay === 0
-      ? 'Pulling roles matched to your new resume from job boards across the web. This usually takes'
+    onboarding && stepIndex === 0
+      ? 'Pulling roles matched to your new resume from job boards across the web.'
       : step.body;
 
   return (
@@ -84,16 +133,18 @@ function renderCard(step: Step, onboarding: boolean) {
         </div>
 
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold text-on-surface">{step.heading}</p>
+          <div className="flex items-baseline justify-between gap-2">
+            <p className="text-sm font-bold text-on-surface truncate">{step.heading}</p>
+            <span
+              className="inline-flex items-center gap-1 shrink-0 text-[10px] font-mono font-semibold tabular-nums text-primary"
+              title="Elapsed time"
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+              {formatElapsed(elapsedSec)}
+            </span>
+          </div>
           <p className="mt-1 text-xs leading-relaxed text-on-surface-variant">
             {bodyText}
-            {step.time && (
-              <>
-                {' '}
-                <span className="font-semibold text-on-surface">{step.time}</span>
-              </>
-            )}
-            {step.hint && <> {step.hint}</>}
           </p>
           <p className="mt-2 text-xs font-medium text-primary">{step.cta}</p>
 
@@ -114,7 +165,7 @@ function renderCard(step: Step, onboarding: boolean) {
 
         <button
           type="button"
-          onClick={() => dismissScanStartedToast()}
+          onClick={() => toast.dismiss(SCAN_STARTED_TOAST_ID)}
           className="shrink-0 rounded-lg p-1 text-on-surface-variant transition-colors hover:bg-surface-container-low hover:text-on-surface"
           aria-label="Dismiss scan notice"
         >
@@ -129,40 +180,20 @@ function renderCard(step: Step, onboarding: boolean) {
   );
 }
 
-function showStep(step: Step, onboarding: boolean) {
-  toast.custom(() => renderCard(step, onboarding), {
+/**
+ * Show the scan-started card. Called once at scan start.
+ * The ScanCard component handles its own progressive state.
+ */
+export function showScanStartedToast(options?: { onboarding?: boolean }) {
+  const onboarding = options?.onboarding ?? false;
+  toast.custom(() => <ScanCard onboarding={onboarding} />, {
     id: SCAN_STARTED_TOAST_ID,
     duration: Infinity,
     dismissible: true,
   });
 }
 
-/**
- * Show the scan-started toast with progressive updates.
- * The card's heading and body evolve at 0s / 45s / 2m / 3.5m / 5m
- * so the user always knows what's happening regardless of how long
- * their specific scan takes.
- */
-export function showScanStartedToast(options?: { onboarding?: boolean }) {
-  const onboarding = options?.onboarding ?? false;
-
-  // Clear any previous timers from a prior scan
-  progressTimers.forEach(clearTimeout);
-  progressTimers = [];
-
-  // Schedule each progressive step
-  for (const step of PROGRESS_STEPS) {
-    const timer = setTimeout(() => showStep(step, onboarding), step.delay);
-    progressTimers.push(timer);
-  }
-}
-
-/**
- * Dismiss the scan toast and cancel all pending progressive updates.
- * Called when scan completes, fails, or user cancels.
- */
+/** Dismiss the scan card. Sonner unmounts ScanCard which clears its timers. */
 export function dismissScanStartedToast() {
-  progressTimers.forEach(clearTimeout);
-  progressTimers = [];
   toast.dismiss(SCAN_STARTED_TOAST_ID);
 }
