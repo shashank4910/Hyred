@@ -1,5 +1,7 @@
 import type { Preferences, ResumeInsights } from './types';
 
+const MATCH_STATUSES_CLEARED_ON_RESUME_CHANGE = ['new', 'viewed', 'rejected'] as const;
+
 /** Drop cached ingest search profile so the next scan re-derives from resume. */
 export function stripSearchProfile(
   insights: ResumeInsights | null | undefined,
@@ -34,4 +36,19 @@ export function preferencesFromResumeInsights(
   }
 
   return next;
+}
+
+/** Drop match rows that should be re-scored after a resume upload. Keeps saved/applied pipeline rows. */
+export async function clearMatchesForResumeChange(
+  sb: ReturnType<typeof import('./supabase/server').supabaseAdmin>,
+  profileId: string,
+): Promise<number> {
+  const { data, error } = await sb
+    .from('matches')
+    .delete()
+    .eq('profile_id', profileId)
+    .in('status', [...MATCH_STATUSES_CLEARED_ON_RESUME_CHANGE])
+    .select('id');
+  if (error) throw new Error(`Failed to clear matches after resume change: ${error.message}`);
+  return data?.length ?? 0;
 }

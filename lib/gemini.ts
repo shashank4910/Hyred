@@ -124,6 +124,49 @@ async function chat(
   throw new Error(`All chat providers failed. ${errors.join(' || ')}`);
 }
 
+/** JSON-mode chat shared by ingest helpers (Groq primary, OpenAI fallback). */
+export async function llmJsonChat(
+  systemPrompt: string,
+  userPrompt: string,
+  temperature = 0.2,
+): Promise<string> {
+  return chat(systemPrompt, userPrompt, temperature, true);
+}
+
+const RESUME_EXCERPT_CHARS = 2800;
+
+/**
+ * Compact resume context for scoring — avoids re-sending the full 6k resume
+ * on every scoreJob call while keeping enough raw text for niche tools.
+ */
+export function buildResumeContextForScoring(
+  resume: string,
+  insights?: ResumeInsights | null,
+): string {
+  if (!insights) return resume.slice(0, 6000);
+
+  const lines: string[] = ['CANDIDATE PROFILE (structured):'];
+  if (insights.summary) lines.push(`Summary: ${insights.summary}`);
+  if (insights.years_experience != null) {
+    lines.push(
+      `Experience: ${insights.years_experience} years${insights.seniority ? ` (${insights.seniority})` : ''}`,
+    );
+  }
+  if (insights.top_skills?.length) {
+    lines.push(`Core skills: ${insights.top_skills.slice(0, 15).join(', ')}`);
+  }
+  if (insights.suggested_roles?.length) {
+    lines.push(`Target roles: ${insights.suggested_roles.join(', ')}`);
+  }
+  if (insights.current_location) {
+    lines.push(`Location: ${insights.current_location}`);
+  }
+  lines.push('');
+  lines.push('Resume excerpt (full details):');
+  lines.push(resume.slice(0, RESUME_EXCERPT_CHARS));
+  return lines.join('\n');
+}
+
 /**
  * Embed a piece of text using OpenAI text-embedding-3-small (1536 dims).
  * Throws if OPENAI_API_KEY is not set — embeddings are OpenAI-only. Groq has no
@@ -147,16 +190,18 @@ export async function embed(text: string): Promise<number[]> {
  */
 export async function scoreJob(args: {
   resume: string;
+  insights?: ResumeInsights | null;
   preferences?: string;
   jobTitle: string;
   jobCompany: string | null;
   jobLocation: string | null;
   jobDescription: string | null;
 }): Promise<{ score: number; reason: string; matchedSkills: string[]; missingSkills: string[] }> {
+  const resumeBlock = buildResumeContextForScoring(args.resume, args.insights);
   const userPrompt = `Score how well this job matches the candidate.
 
 CANDIDATE RESUME:
-${args.resume.slice(0, 6000)}
+${resumeBlock}
 
 ${args.preferences ? `CANDIDATE PREFERENCES:\n${args.preferences}\n` : ''}
 

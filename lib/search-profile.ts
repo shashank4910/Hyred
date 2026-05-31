@@ -11,10 +11,8 @@
  * This profile is cached in the DB and only regenerated when stale.
  */
 
-import OpenAI from 'openai';
+import { llmJsonChat } from './gemini';
 import type { Preferences, ResumeInsights } from './types';
-
-const CHAT_MODEL = 'gpt-4o-mini';
 
 export type SearchProfile = {
   /** Single-word or short keywords optimized for job board keyword search.
@@ -67,10 +65,6 @@ export async function generateSearchProfile(args: {
   preferences?: Preferences;
   insights?: ResumeInsights | null;
 }): Promise<SearchProfile> {
-  const key = process.env.OPENAI_API_KEY;
-  if (!key) throw new Error('Missing OPENAI_API_KEY env var');
-  const client = new OpenAI({ apiKey: key });
-
   const prefsBlock = args.preferences
     ? `\nUSER PREFERENCES:\nTarget roles: ${(args.preferences.roles ?? []).join(', ')}\nLocations: ${(args.preferences.locations ?? []).join(', ')}\nRemote-only: ${args.preferences.remote_only ?? false}\n`
     : '';
@@ -111,21 +105,11 @@ GUIDANCE:
 
 Output strict JSON only.`;
 
-  const res = await client.chat.completions.create({
-    model: CHAT_MODEL,
-    response_format: { type: 'json_object' },
-    temperature: 0.3,
-    messages: [
-      {
-        role: 'system',
-        content:
-          'You are a precision job-search strategist. You generate optimal keyword search strategies and title pattern filters for keyword-based job board APIs. Output strict JSON.',
-      },
-      { role: 'user', content: prompt },
-    ],
-  });
-
-  const text = res.choices[0]?.message?.content ?? '{}';
+  const text = await llmJsonChat(
+    'You are a precision job-search strategist. You generate optimal keyword search strategies and title pattern filters for keyword-based job board APIs. Output strict JSON.',
+    prompt,
+    0.3,
+  );
 
   try {
     const parsed = JSON.parse(text);
@@ -209,10 +193,6 @@ export async function aiRelevanceFilter(args: {
 }): Promise<{ relevantIds: Set<string>; checked: number }> {
   if (args.jobs.length === 0) return { relevantIds: new Set(), checked: 0 };
 
-  const key = process.env.OPENAI_API_KEY;
-  if (!key) throw new Error('Missing OPENAI_API_KEY env var');
-  const client = new OpenAI({ apiKey: key });
-
   const relevantIds = new Set<string>();
   const BATCH_SIZE = 15;
   let checked = 0;
@@ -244,20 +224,12 @@ Be strict: completely unrelated domains (different field entirely) → exclude.
 Output strict JSON: {"relevant": [<indices that are relevant>]}`;
 
     try {
-      const res = await client.chat.completions.create({
-        model: CHAT_MODEL,
-        response_format: { type: 'json_object' },
-        temperature: 0.1,
-        messages: [
-          {
-            role: 'system',
-            content: 'You quickly classify jobs as relevant/irrelevant for a candidate. Output JSON only.',
-          },
-          { role: 'user', content: prompt },
-        ],
-      });
-
-      const parsed = JSON.parse(res.choices[0]?.message?.content ?? '{}');
+      const text = await llmJsonChat(
+        'You quickly classify jobs as relevant/irrelevant for a candidate. Output JSON only.',
+        prompt,
+        0.1,
+      );
+      const parsed = JSON.parse(text || '{}');
       const indices = Array.isArray(parsed.relevant) ? parsed.relevant : [];
       for (const idx of indices) {
         const i = Number(idx);
