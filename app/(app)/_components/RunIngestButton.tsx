@@ -16,7 +16,7 @@ const ALL_SOURCES = [
   { id: 'arbeitnow', label: 'Arbeitnow', tokens: 'free' },
 ];
 
-export function RunIngestButton() {
+export function RunIngestButton({ isAdmin = false }: { isAdmin?: boolean }) {
   const [running, setRunning] = useState(false);
   const [, startTransition] = useTransition();
   const router = useRouter();
@@ -46,14 +46,23 @@ export function RunIngestButton() {
   return (
     <div className="relative">
       <div className="flex items-center gap-0">
-        <button onClick={run} disabled={running} className="btn-primary rounded-r-none">
+        <button
+          onClick={run}
+          disabled={running}
+          className={isAdmin ? 'btn-primary rounded-r-none' : 'btn-primary'}
+        >
           {running ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
             <RefreshCw className="h-4 w-4" />
           )}
-          {running ? 'Scanning...' : selectedSources.length > 0 ? `Scan (${selectedSources.length})` : 'Run scan'}
+          {running
+            ? 'Scanning...'
+            : isAdmin && selectedSources.length > 0
+              ? `Scan (${selectedSources.length})`
+              : 'Run scan'}
         </button>
+        {isAdmin && (
         <button
           onClick={() => setShowSourcePicker((v) => !v)}
           disabled={running}
@@ -62,9 +71,10 @@ export function RunIngestButton() {
         >
           <ChevronDown className={`h-4 w-4 transition-transform ${showSourcePicker ? 'rotate-180' : ''}`} />
         </button>
+        )}
       </div>
 
-      {showSourcePicker && (
+      {isAdmin && showSourcePicker && (
         <div className="absolute right-0 top-full mt-2 z-50 w-72 rounded-xl border border-border-muted bg-surface-card shadow-elevated p-3 animate-fade-in">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-medium text-on-background">Select sources to scan</span>

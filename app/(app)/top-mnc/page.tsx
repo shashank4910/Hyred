@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { supabaseAdmin } from '@/lib/supabase/server';
-import { getCurrentProfile } from '@/lib/current-user';
+import { getCurrentProfile, isCurrentUserAdmin } from '@/lib/current-user';
 import { MatchCard } from '../_components/MatchCard';
 import { Crown, Building2, Sparkles } from 'lucide-react';
 import { matchTopCompany, CATEGORY_LABELS, type CompanyEntry } from '@/lib/top-companies';
@@ -33,6 +33,7 @@ export default async function TopMncPage({
   const sb = supabaseAdmin();
 
   const profile = await getCurrentProfile();
+  const isAdmin = await isCurrentUserAdmin();
 
   if (!profile || !profile.resume_text) {
     return (
@@ -183,6 +184,7 @@ export default async function TopMncPage({
                   status={m.status}
                   bookmarked={(m as unknown as { bookmarked: boolean }).bookmarked ?? false}
                   job={job}
+                  showSource={isAdmin}
                   mncCategory={CATEGORY_LABELS[(m as unknown as MatchWithMnc)._mnc.category]}
                 />
               </li>

@@ -28,9 +28,11 @@ type Props = {
   matchedSkills?: string[];
   /** Top skills the JD wants but resume lacks (the gaps) */
   missingSkills?: string[];
+  /** When false, hide the job-board source badge (admin-only data). */
+  showSource?: boolean;
 };
 
-export function MatchCard({ matchId, score, reason, status, bookmarked: initialBookmarked, job, mncCategory, matchedSkills = [], missingSkills = [] }: Props) {
+export function MatchCard({ matchId, score, reason, status, bookmarked: initialBookmarked, job, mncCategory, matchedSkills = [], missingSkills = [], showSource = false }: Props) {
   const colorClass = scoreColorClass(score);
   const dateSource = job.posted_at ?? job.fetched_at ?? null;
   const relative = relativeTime(dateSource);
@@ -92,7 +94,9 @@ export function MatchCard({ matchId, score, reason, status, bookmarked: initialB
             >
               {job.title}
             </h3>
-            <span className="badge">{SOURCE_LABELS[job.source] ?? job.source}</span>
+            {showSource && (
+              <span className="badge">{SOURCE_LABELS[job.source] ?? job.source}</span>
+            )}
             {mncCategory && (
               <span className="inline-flex items-center gap-1 rounded-full bg-secondary-fixed text-on-secondary-fixed-variant px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
                 <Crown className="h-2.5 w-2.5" />
