@@ -2,6 +2,10 @@
 
 import { toast } from 'sonner';
 import { formatIngestWarnings, readableError } from '@/lib/ui';
+import {
+  dismissScanStartedToast,
+  showScanStartedToast,
+} from './scanStartedToast';
 
 export type JobScanResult = {
   matchesCreated: number;
@@ -12,8 +16,8 @@ export type JobScanResult = {
 const DONE_TOAST = { duration: 8000 } as const;
 
 /**
- * Run a per-user ingest scan (POST /api/ingest). Manual scans rely on the Run scan
- * button state; auto-onboarding shows a brief info toast then success when done.
+ * Run a per-user ingest scan (POST /api/ingest). Shows an immediate "scan started"
+ * toast so users can browse the app while the request runs (typically 1–2 min).
  */
 export async function triggerJobScan(options?: {
   /** First-time onboarding auto-scan copy */
@@ -21,11 +25,7 @@ export async function triggerJobScan(options?: {
   sources?: string[];
   onComplete?: (result: JobScanResult) => void;
 }): Promise<JobScanResult | null> {
-  if (options?.autoFlow) {
-    toast.info('Your job scan has started. Check Matches in about 1–2 minutes.', {
-      duration: 8000,
-    });
-  }
+  showScanStartedToast({ onboarding: options?.autoFlow });
 
   try {
     const body: { triggeredBy?: string; sources?: string[] } = {};
@@ -64,6 +64,7 @@ export async function triggerJobScan(options?: {
 
     if (options?.autoFlow) {
       const n = result.matchesCreated;
+      dismissScanStartedToast();
       toast.success(
         n > 0
           ? `Scan complete! We found ${n} relevant job${n === 1 ? '' : 's'} for you.`
@@ -71,6 +72,7 @@ export async function triggerJobScan(options?: {
         DONE_TOAST,
       );
     } else {
+      dismissScanStartedToast();
       toast.success(
         `${result.matchesCreated} new match${result.matchesCreated === 1 ? '' : 'es'} · ${result.fetched} jobs scanned`,
         DONE_TOAST,
@@ -80,6 +82,7 @@ export async function triggerJobScan(options?: {
     options?.onComplete?.(result);
     return result;
   } catch (e) {
+    dismissScanStartedToast();
     toast.error(readableError(e, 'Scan failed'), DONE_TOAST);
     return null;
   }

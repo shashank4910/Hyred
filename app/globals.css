@@ -135,6 +135,18 @@ input[type="range"] {
   border-radius: 8px;
 }
 
+@keyframes scan-started-shimmer {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+.scan-started-shimmer {
+  animation: scan-started-shimmer 1.8s ease-in-out infinite;
+}
+
 .legal-prose {
   @apply text-sm text-on-surface leading-relaxed space-y-4;
 }
