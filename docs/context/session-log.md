@@ -2,6 +2,38 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 13 — Legacy `.doc` resumes, Stats UX copy, Vercel build fix (May 31, 2026)
+
+Three threads: (a) users could not upload legacy Word `.doc` resumes, (b) Stats "Recent ingest runs" table was too technical, (c) multiple Vercel Preview/Production deploys failed after merging resume work without a client/server split.
+
+### (a) Legacy `.doc` resume upload
+
+**Symptom:** PDF and `.docx` parsed; a common `.doc` export (OLE, magic `D0 CF 11 E0`) did not — looked like "Word is broken" but only **binary `.doc`** was unsupported (`mammoth` = `.docx` only).
+
+**Fix:** `word-extractor` in `lib/resume.ts` (buffer); magic-byte sniff for OLE; accept `.pdf`, `.doc`, `.docx`, `.txt`. Client validation via `lib/resume-upload.ts`. Types: `types/word-extractor.d.ts`.
+
+### (b) Stats page — plain-language scan history
+
+Renamed section to **Recent job scans**; simplified column headers (Found / Checked / Matches / Duration / Started by); humanized result badges and trigger labels (`You`, `Resume upload`, `Automatic`).
+
+### (c) Vercel deploy failures (`7e5cd85`, `c521b17`, redeploys)
+
+**Symptom:** Preview builds failed in ~48s; Production failed on `main` after PR #87 merged on top of `7e5cd85` without the bundle fix.
+
+**Root cause:** `OnboardingForm` (`'use client'`) imported `@/lib/resume`, pulling `word-extractor` / `pdf-parse-fork` / `mammoth` into the client webpack graph → `Module not found: Can't resolve 'fs'`.
+
+**Fix (commits `d08e5ca`, `26cd62d` on `cursor/legacy-doc-resume-stats-copy`, fast-forwarded to `main`):**
+- `lib/resume-upload.ts` — client-safe helpers only; form imports this, not `lib/resume.ts`.
+- `next.config.mjs` — `serverExternalPackages: ['word-extractor', 'mammoth', 'pdf-parse-fork']`.
+- `app/(app)/layout.tsx` — `export const dynamic = 'force-dynamic'` (avoids static prerender of authed pages without local Supabase env).
+
+### Verified
+
+- GitHub/Vercel status on `26cd62d`: **success** (Production + Preview Ready per dashboard).
+- Local `npm run build`: compiles after split; full build without env vars completes once authed routes are dynamic.
+
+---
+
 ## Session 12 — Multi-tenant PII fixes, Hyred rebrand, economics & Phase 3 pub/sub design (May 30, 2026)
 
 Four threads: (a) stop owner data leaking to new sign-ups, (b) ship Hyred rebrand + resume title fixes, (c) repo privacy + pricing/token economics for scale, (d) document shared-ingest pub/sub direction for Phase 3.

@@ -39,6 +39,7 @@ How to open one section cheaply: `grep -n "<heading text>" CONTEXT.md` to get th
 | Premium pricing floor / monetization planning | `CONTEXT.md` → `#### Minimum premium pricing floor` | Stripe tiers, what to charge |
 | Shared ingest / pub-sub by role topic (Phase 3) | `CONTEXT.md` → `#### Phase 3 design note — shared ingest / pub-sub by role topic` | scaling ingest before public launch |
 | Multi-tenant PII in forms / resume prompts | `CONTEXT.md` → `## Known Pitfalls` (owner PII rows) | onboarding, apply-profile, `generateAtsResume` |
+| Resume upload / `.doc` vs `.docx` / Vercel `fs` build | `CONTEXT.md` → `## Known Pitfalls` (resume parser + client bundle rows) + `lib/resume-upload.ts` | onboarding upload, `lib/resume.ts`, deploy failures |
 | Repo visibility / deployment | `CONTEXT.md` → `## Repo & deployment notes` | go-live, collaborator access |
 | **Auth / login / Supabase Auth / Google OAuth setup** | `docs/AUTH_SETUP.md` | anything auth, or go-live config |
 | Multi-user identity in code (`getCurrentProfile`, per-user scoping) | `CONTEXT.md` → `### Phase 1 log` | editing pages/routes that read user data |

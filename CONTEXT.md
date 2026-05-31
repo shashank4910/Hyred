@@ -329,6 +329,8 @@ lib/ingest.ts              ← Main ingest pipeline (10 steps)
 lib/sources/adzuna.ts      ← Adzuna API (multi-query, pagination, dedup)
 lib/sources/index.ts       ← Source dispatcher
 lib/pdf-resume.ts          ← Beautiful PDF resume generator (matches Shashank's exact format)
+lib/resume.ts              ← Server-only resume parsers (.pdf / .doc / .docx / .txt) — API routes only
+lib/resume-upload.ts       ← Client-safe upload helpers (`RESUME_FILE_ACCEPT`, `isResumeFilename`) — use from `'use client'` forms
 lib/matcher.ts             ← Cosine similarity + embedding text builder
 
 app/(app)/jobs/[id]/        ← Job detail page + actions + AutoApplyButton
@@ -406,15 +408,18 @@ scripts/clear-embeddings.sql        ← (Session 5, MERGED) Wipe stale 768-dim v
 | Owner PII pre-filled for new users (onboarding / apply profile) | `ApplyProfileForm` merged a `DEFAULTS` object (owner name, email, phone, LinkedIn, full essay answers) on first API load when `apply_profiles` row was missing — values appeared as real input text, not just placeholders. `OnboardingForm` placeholders also used owner-specific examples ("Shashank Singh", "Pune, Noida, Gurgaon"). | **PR #76:** `FORM_DEFAULTS` = non-PII only (country, notice period, etc.); generic placeholders; GET `/api/apply-profile` seeds `email`/`full_name` from signed-in `profiles` row only; strip server metadata on save. Never merge hard-coded identity into multi-tenant forms. |
 | Owner contact/achievements baked into `generateAtsResume` prompt | Prompt hard-coded fallback contact (`SHASHANK SINGH`, phone, Noida, owner LinkedIn) + perf-specific summary example + JMeter/Charles Schwab achievement clause → other users' tailored resumes inherited owner details. | **PR #75:** `contactBlock` built only from `args` + resume text; `extractLinkedinFromResume()`; no hard-coded fallbacks; removed owner-specific JMeter achievement injection; never put real names in prompt examples. PDF filename fallback `"Shashank"` → `"Resume"` (`resume/route.ts`, `JobActions.tsx`). |
 | **4 scans × N users ≠ N tokens** | Easy to confuse **ingest run count** with **token count**. One scan ≈ 30–80 `scoreJob` calls × ~3k tokens each. | When estimating cost or designing Phase 3, multiply **runs × jobs scored × tokens/job**, not scans alone. See `#### Phase 3 design note — shared ingest / pub-sub`. |
+| **Resume parsers bundled into client** (Vercel build `Can't resolve 'fs'`) | `OnboardingForm` (client) imported `@/lib/resume`, which statically pulls `word-extractor`, `pdf-parse-fork`, and `mammoth` → webpack tries to ship Node `fs` to the browser. Broke preview deploys on `7e5cd85` and **production** on `c521b17` (PR #87 merged before the bundle split landed on `main`). | **Never import `lib/resume.ts` from client components.** Use `lib/resume-upload.ts` for `accept` / filename validation only. Keep parsers in `lib/resume.ts` (API routes + server). `next.config.mjs` → `serverExternalPackages` for those three libs. `(app)/layout.tsx` → `export const dynamic = 'force-dynamic'` so authed pages are not statically prerendered without Supabase env (local `npm run build` pitfall on `/import`). Fixed on `main` @ `26cd62d`. |
+| **Legacy Word `.doc` vs `.docx`** | Users upload OLE binary `.doc` (magic `D0 CF 11 E0`); `mammoth` only reads `.docx`. Error looked like "Word doesn't work" but **only old `.doc` failed** — PDF and `.docx` were fine. | Parse `.doc` with `word-extractor` (buffer) in `lib/resume.ts`. Accept `.pdf`, `.doc`, `.docx`, `.txt` in onboarding + `/api/profile/parse`. |
 
 ---
 
 ## Repo & deployment notes
 
-| Item | Status (May 30, 2026) |
+| Item | Status (May 31, 2026) |
 |---|---|
-| GitHub visibility | **Private** (`shashank4910/JobRadar`) — code not public; collaborators/Vercel GitHub app need access |
-| Live app | Hyred on Vercel (see env `NEXT_PUBLIC_APP_URL`) |
+| GitHub visibility | **Private** (`shashank4910/JobRadar`, remote may show as `Hyred`) — code not public; collaborators/Vercel GitHub app need access |
+| Live app | Hyred on Vercel (see env `NEXT_PUBLIC_APP_URL`) — **Production + Preview Ready** on `main` @ `26cd62d` (Vercel status: success) |
+| Failed deploys (resolved) | `7e5cd85` / `c521b17` — client bundle `fs` error (see pitfall above); fixed by `d08e5ca` + `26cd62d` on `cursor/legacy-doc-resume-stats-copy`, fast-forwarded to `main` |
 | OpenAI usage tracking in-app | **Not yet** — only job-source logs in `api_request_logs`; token metering = Phase 3 `usage` table |
 
 ---
@@ -457,7 +462,11 @@ When a feature seems broken:
 - Changes to the file map
 - **Keep the `AGENTS.md` Index in sync** when you add/rename a `##` section here, and append new dated session logs to `docs/context/session-log.md` (not here).
 
-**Last updated:** May 30, 2026 (session 12: multi-tenant **owner PII leak** fixed in forms — PR #76; resume prompt **owner contact leak** — PR #75; **Hyred** rebrand PR #77; role-title PDF fixes PRs #78–79; repo set **private**; Phase 3 **pub/sub shared-ingest** design note + premium pricing floor + token-math pitfall; full narrative in `docs/context/session-log.md` → Session 12.)
+**Last updated:** May 31, 2026 (session 13: **legacy `.doc` resume upload** + **Stats scan table** plain-language labels; **Vercel build fix** — split `resume-upload.ts`, `serverExternalPackages`, `force-dynamic` authed layout; `main` @ `26cd62d` deployed green. Full narrative in `docs/context/session-log.md` → Session 13.)
+
+_Session 13 (May 31, 2026): legacy `.doc` parsing (`word-extractor`); Stats "Recent job scans" copy; Vercel failures on `7e5cd85`/`c521b17` from client importing `lib/resume.ts` → fixed `d08e5ca`/`26cd62d`._
+
+_Session 12 (May 30, 2026): multi-tenant **owner PII leak** fixed in forms — PR #76; resume prompt **owner contact leak** — PR #75; **Hyred** rebrand PR #77; role-title PDF fixes PRs #78–79; repo set **private**; Phase 3 **pub/sub shared-ingest** design note + premium pricing floor + token-math pitfall._
 
 _Session 6 (May 29, 2026): started the **Enterprise Multi-Tenant Transformation** initiative — added the Master Plan + Progress Tracker (Phases 0-5). Phase 0 + the Groq migration (PR #48 replaced the dead `gemini-2.0-flash` 429 fallback with Groq; PR #50 flipped Groq to FREE PRIMARY with OpenAI fallback + `LLM_PRIMARY` toggle, needs `GROQ_API_KEY`) + the Phase 3 Groq free-tier capacity analysis._
 
