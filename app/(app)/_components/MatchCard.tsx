@@ -91,7 +91,7 @@ export function MatchCard({
     <Link
       href={`/jobs/${matchId}`}
       className={[
-        'group block animate-fade-in rounded-2xl bg-surface-container-lowest p-6 shadow-card transition-all hover:-translate-y-1 hover:border-primary/10 hover:shadow-elevated',
+        'group block min-w-0 animate-fade-in rounded-2xl bg-surface-container-lowest p-6 shadow-card transition-all hover:-translate-y-1 hover:border-primary/10 hover:shadow-elevated',
         isViewed ? 'opacity-90 hover:opacity-100' : '',
       ].join(' ')}
     >

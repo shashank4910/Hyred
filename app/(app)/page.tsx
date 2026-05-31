@@ -227,8 +227,8 @@ export default async function Dashboard({
         <RunIngestButton isAdmin={isAdmin} luminous />
       </div>
 
-      <div className="grid grid-cols-12 gap-6">
-        <div className="col-span-12 space-y-6 lg:col-span-8">
+      <div className="flex flex-col gap-6 xl:flex-row xl:items-start">
+        <div className="min-w-0 flex-1 space-y-6">
           <StatusFilter
             counts={counts}
             active={status}
@@ -280,14 +280,14 @@ export default async function Dashboard({
           )}
         </div>
 
-        <div className="col-span-12 lg:col-span-4">
+        <aside className="min-w-0 w-full shrink-0 xl:w-72">
           <DashboardInsights
             inboxCount={inboxCount ?? 0}
             lastScanMatches={activeRun ? activeRun.matches_created : lastRun?.matches_created ?? null}
             totalMatches={totalMatches ?? 0}
             lastScanLabel={lastScanLabel}
           />
-        </div>
+        </aside>
       </div>
 
       <section className="mt-4">

@@ -68,8 +68,8 @@ export function AppShell({
 
   return (
     <div className="min-h-screen bg-background text-on-surface">
-      {/* Desktop sidebar */}
-      <aside className="fixed left-0 top-0 z-50 hidden h-screen w-sidebar flex-col gap-y-6 bg-surface-container-lowest px-4 py-8 shadow-glass lg:flex">
+      {/* Desktop sidebar — below header dropdowns, above page content */}
+      <aside className="fixed left-0 top-0 z-40 hidden h-screen w-[260px] flex-col gap-y-6 bg-surface-container-lowest px-4 py-8 shadow-glass lg:flex">
         <Brand />
 
         <nav className="flex-1 space-y-1">
@@ -111,7 +111,7 @@ export function AppShell({
       </aside>
 
       {/* Top header — above sidebar so scan source picker is not clipped */}
-      <header className="fixed top-0 z-[60] flex h-20 w-full items-center justify-between gap-4 overflow-visible border-b border-outline-variant/20 bg-surface/80 px-4 backdrop-blur-md lg:pl-[calc(theme(spacing.sidebar)+24px)] lg:pr-6">
+      <header className="fixed top-0 z-[60] flex h-20 w-full items-center justify-between gap-4 overflow-visible border-b border-outline-variant/20 bg-surface/80 px-4 backdrop-blur-md lg:pl-[284px] lg:pr-6">
         <div className="flex items-center gap-3 lg:hidden">
           <Brand compact />
         </div>
@@ -154,7 +154,7 @@ export function AppShell({
         })}
       </nav>
 
-      <main className="mx-auto w-full max-w-page px-4 pb-24 pt-24 sm:px-6 lg:pl-[calc(theme(spacing.sidebar)+24px)] lg:pb-12 lg:pr-6">
+      <main className="relative z-0 mx-auto w-full min-w-0 max-w-page px-4 pb-24 pt-24 sm:px-6 lg:pl-[284px] lg:pb-12 lg:pr-6">
         {children}
       </main>
     </div>

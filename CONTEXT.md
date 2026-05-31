@@ -39,7 +39,7 @@ JobRadar / Hyred is a personalized AI-powered job-search dashboard that:
 
 ### Current UI (live on hyred.in)
 
-**As of May 31, 2026** — merged **PR #100** (Luminous redesign) + **PR #101** (scan picker overlap fix).
+**As of May 31, 2026** — merged **PR #100** (Luminous redesign) + **PR #101** (scan picker overlap fix) + **PR #102** (UI index docs).
 
 | Aspect | Current (Luminous) | Previous (pre-#100) |
 |---|---|---|

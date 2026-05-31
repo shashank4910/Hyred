@@ -15,8 +15,8 @@ export function DashboardInsights({
   const bars = [40, 60, 45, 90, 75, Math.min(100, Math.max(20, inboxCount * 8))];
 
   return (
-    <div className="space-y-6">
-      <div className="rounded-2xl bg-surface-container-lowest p-6 shadow-card">
+    <div className="space-y-6 overflow-hidden">
+      <div className="overflow-hidden rounded-2xl bg-surface-container-lowest p-6 shadow-card">
         <div className="mb-6 flex items-center justify-between">
           <h4 className="text-label-md font-bold uppercase tracking-wider text-text-muted">
             Match activity
