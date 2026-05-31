@@ -15,6 +15,7 @@ import {
   type SearchProfile,
 } from './search-profile';
 import type { Profile, RawJob } from './types';
+import { dashboardMinScore } from './match-stats';
 
 export type IngestResult = {
   fetched: number;
@@ -42,7 +43,6 @@ const EMBED_CONCURRENCY = 6;
 const SCORE_CONCURRENCY = 6;
 /** Vercel `/api/ingest` maxDuration is 300s — stop heavy work before hard kill. */
 const INGEST_WALL_BUDGET_MS = 260_000;
-const MIN_SCORE_TO_KEEP = 40;
 
 /**
  * Maximum age (in days) for a job to be ingested. Any job whose posted_at
@@ -177,7 +177,7 @@ export async function runIngest(opts?: {
       await sb.from('ingest_runs').update({ profile_id: p.id }).eq('id', runId);
     }
     await assertNoActiveIngest(sb, p.id, runId);
-    const minScore = p.preferences?.min_score ?? MIN_SCORE_TO_KEEP;
+    const minScore = dashboardMinScore(p.preferences);
     const blacklist = new Set(
       (p.preferences?.blacklist_companies ?? []).map((s) =>
         s.toLowerCase().trim(),
@@ -480,6 +480,9 @@ export async function runIngest(opts?: {
               jobLocation: c.location,
               jobDescription: c.description,
             });
+            if (score < minScore) {
+              return { scored: 1, kept: 0 };
+            }
             const { error } = await sb.from('matches').upsert(
               {
                 profile_id: p.id,
@@ -489,11 +492,11 @@ export async function runIngest(opts?: {
                 reason,
                 matched_skills: matchedSkills,
                 missing_skills: missingSkills,
-                status: 'new',
+                // Omit status — new rows default to 'new'; updates keep viewed/saved/applied.
               },
               { onConflict: 'profile_id,job_id' },
             );
-            return { scored: 1, kept: !error && score >= minScore ? 1 : 0 };
+            return { scored: 1, kept: !error ? 1 : 0 };
           } catch (e) {
             runErrors.push({
               source: 'score',
