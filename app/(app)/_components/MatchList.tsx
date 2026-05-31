@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Loader2, ChevronDown } from 'lucide-react';
 import { MatchCard } from './MatchCard';
@@ -41,29 +41,82 @@ type Props = {
   highlightId?: string | null;
 };
 
-const SCROLL_KEY = 'hyred_dashboard_scroll';
-const LAST_CLICKED_KEY = 'hyred_last_clicked_match';
+/**
+ * sessionStorage snapshot of the full list state, written when the user clicks
+ * a job card. On back-navigation, MatchList rehydrates from this snapshot so
+ * ALL infinite-scroll-loaded cards are present (not just the server's page 1)
+ * — which is what makes scroll-restore + flash land on the exact clicked card.
+ */
+const SNAPSHOT_KEY = 'hyred_matchlist_snapshot';
+const SNAPSHOT_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+type Snapshot = {
+  signature: string;
+  matches: MatchItem[];
+  page: number;
+  hasMore: boolean;
+  total: number;
+  scrollY: number;
+  clickedId: string;
+  savedAt: number;
+};
+
+function readSnapshot(): Snapshot | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(SNAPSHOT_KEY);
+    if (!raw) return null;
+    const snap = JSON.parse(raw) as Snapshot;
+    if (Date.now() - snap.savedAt > SNAPSHOT_TTL_MS) {
+      sessionStorage.removeItem(SNAPSHOT_KEY);
+      return null;
+    }
+    return snap;
+  } catch {
+    return null;
+  }
+}
+
+// Run a layout effect on the client, but fall back to a no-op effect during
+// SSR (avoids the "useLayoutEffect does nothing on the server" warning).
+const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
 export function MatchList({ initialMatches, total, initialHasMore, showSource = false, highlightId }: Props) {
+  const sp = useSearchParams();
+
+  // Filter signature — a snapshot only restores for the SAME filters.
+  const signature = [
+    sp.get('status') ?? 'inbox',
+    sp.get('sort') ?? 'score',
+    sp.get('min') ?? '',
+    sp.get('q') ?? '',
+    sp.get('remote') ?? '',
+    sp.get('bookmarked') ?? '',
+    sp.get('source') ?? '',
+  ].join('|');
+
+  // IMPORTANT: initialize with the SERVER data so the client hydration render
+  // matches the server HTML exactly (no hydration mismatch). We swap to the
+  // snapshot in a layout effect below — before the browser paints.
   const [matches, setMatches] = useState<MatchItem[]>(initialMatches);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [loading, setLoading] = useState(false);
   const [flashId, setFlashId] = useState<string | null>(null);
-  const sp = useSearchParams();
+
   const sentinelRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
-  const didRestore = useRef(false);
-
-  // Determine which card to highlight: from URL param or sessionStorage
-  const targetHighlightId = highlightId || (typeof window !== 'undefined' ? sessionStorage.getItem(LAST_CLICKED_KEY) : null);
+  const didInit = useRef(false);
+  const hydratedFromSnapshot = useRef(false);
+  // Live ref of state so the click handler can snapshot without re-binding.
+  const stateRef = useRef({ matches, page, hasMore, total });
+  stateRef.current = { matches, page, hasMore, total };
 
   const buildQuery = useCallback((pageNum: number) => {
     const params = new URLSearchParams();
     params.set('page', String(pageNum));
     params.set('status', sp.get('status') ?? 'inbox');
-    if (sp.get('sort')) params.set('sort', sp.get('sort')!);
-    else params.set('sort', 'score');
+    params.set('sort', sp.get('sort') ?? 'score');
     if (sp.get('min')) params.set('min', sp.get('min')!);
     if (sp.get('q')) params.set('q', sp.get('q')!);
     if (sp.get('remote')) params.set('remote', sp.get('remote')!);
@@ -81,15 +134,65 @@ export function MatchList({ initialMatches, total, initialHasMore, showSource = 
       if (!res.ok) throw new Error('Failed');
       const data = await res.json();
       const newMatches = (data.matches ?? []) as MatchItem[];
-      setMatches((prev) => {
-        const ids = new Set(prev.map((m) => m.id));
-        return [...prev, ...newMatches.filter((m) => !ids.has(m.id))];
+      setMatches((prev: MatchItem[]) => {
+        const ids = new Set(prev.map((m: MatchItem) => m.id));
+        return [...prev, ...newMatches.filter((m: MatchItem) => !ids.has(m.id))];
       });
       setPage(nextPage);
       setHasMore(data.hasMore ?? false);
     } catch { /* retry on next scroll */ }
     finally { setLoading(false); }
   }, [loading, hasMore, page, buildQuery]);
+
+  // ── Hydrate from snapshot BEFORE paint (client only, no hydration mismatch) ──
+  useIsoLayoutEffect(() => {
+    if (didInit.current) return;
+    didInit.current = true;
+
+    const snap = readSnapshot();
+    if (snap && snap.signature === signature && snap.clickedId) {
+      hydratedFromSnapshot.current = true;
+      setMatches(snap.matches);
+      setPage(snap.page);
+      setHasMore(snap.hasMore);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Restore scroll + flash the clicked card (after the snapshot is applied) ──
+  useEffect(() => {
+    // Run only on first mount.
+    const snap = readSnapshot();
+    const fromSnapshot = !!(snap && snap.signature === signature && snap.clickedId);
+    const restoreId = fromSnapshot ? snap!.clickedId : highlightId;
+    if (!restoreId) return;
+
+    const targetScroll = fromSnapshot ? snap!.scrollY : null;
+
+    // Consume the snapshot so a refresh / fresh nav won't re-trigger it.
+    if (snap) sessionStorage.removeItem(SNAPSHOT_KEY);
+
+    const restore = () => {
+      const card = listRef.current?.querySelector<HTMLElement>(`[data-match-id="${restoreId}"]`);
+      if (targetScroll != null) {
+        window.scrollTo({ top: targetScroll, behavior: 'instant' as ScrollBehavior });
+      }
+      if (card) {
+        const rect = card.getBoundingClientRect();
+        const offscreen = rect.top < 64 || rect.bottom > window.innerHeight;
+        if (offscreen) {
+          card.scrollIntoView({ behavior: 'instant' as ScrollBehavior, block: 'center' });
+        }
+        setFlashId(restoreId);
+        window.setTimeout(() => setFlashId(null), 2000);
+      }
+    };
+
+    // Two rAFs so the snapshot-applied DOM is laid out before we scroll.
+    const r = requestAnimationFrame(() => requestAnimationFrame(restore));
+    return () => cancelAnimationFrame(r);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Infinite scroll observer
   useEffect(() => {
@@ -102,62 +205,43 @@ export function MatchList({ initialMatches, total, initialHasMore, showSource = 
     return () => obs.disconnect();
   }, [loadMore]);
 
-  // Save scroll position + clicked match ID when user clicks a card
+  // Save a full snapshot when the user clicks a job card (capture-phase so it
+  // runs before navigation begins).
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      const link = (e.target as HTMLElement).closest('a[href^="/jobs/"]');
-      if (link) {
-        // Extract match ID from the href: /jobs/{matchId}
-        const href = link.getAttribute('href') ?? '';
-        const matchId = href.replace('/jobs/', '');
-        sessionStorage.setItem(SCROLL_KEY, String(window.scrollY));
-        sessionStorage.setItem(LAST_CLICKED_KEY, matchId);
-      }
+      const el = e.target as HTMLElement;
+      // Ignore clicks on inner buttons (e.g. bookmark) — they preventDefault and
+      // do NOT navigate, so they must not write a (stale) restore snapshot.
+      if (el.closest('button')) return;
+      const link = el.closest('a[href^="/jobs/"]');
+      if (!link) return;
+      const href = link.getAttribute('href') ?? '';
+      const clickedId = href.replace('/jobs/', '').split('?')[0];
+      const snap: Snapshot = {
+        signature,
+        matches: stateRef.current.matches.slice(0, 200),
+        page: stateRef.current.page,
+        hasMore: stateRef.current.hasMore,
+        total: stateRef.current.total,
+        scrollY: window.scrollY,
+        clickedId,
+        savedAt: Date.now(),
+      };
+      try {
+        sessionStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snap));
+      } catch { /* storage full — ignore */ }
     };
     document.addEventListener('click', handler, { capture: true });
     return () => document.removeEventListener('click', handler, { capture: true });
-  }, []);
+  }, [signature]);
 
-  // Scroll restore + highlight on mount (runs ONCE)
+  // Reset when the server sends a different first page (filters changed).
+  // Skip once if we just hydrated from a snapshot for the SAME signature.
   useEffect(() => {
-    if (didRestore.current) return;
-    didRestore.current = true;
-
-    const savedScroll = sessionStorage.getItem(SCROLL_KEY);
-    const savedMatchId = sessionStorage.getItem(LAST_CLICKED_KEY);
-
-    if (savedScroll && savedMatchId) {
-      // Clear immediately so it doesn't fire again on next mount
-      sessionStorage.removeItem(SCROLL_KEY);
-      sessionStorage.removeItem(LAST_CLICKED_KEY);
-
-      // Wait for DOM to be fully painted, then restore scroll + flash
-      setTimeout(() => {
-        // Restore scroll position
-        window.scrollTo({ top: parseInt(savedScroll, 10), behavior: 'instant' });
-
-        // Find the card and flash it
-        setTimeout(() => {
-          const card = listRef.current?.querySelector(`[data-match-id="${savedMatchId}"]`);
-          if (card) {
-            // Scroll into view in case position restoration wasn't perfect
-            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            // Flash highlight
-            card.classList.add('ring-2', 'ring-primary', 'ring-offset-2', 'ring-offset-surface-container-lowest');
-            setFlashId(savedMatchId);
-            setTimeout(() => {
-              card.classList.remove('ring-2', 'ring-primary', 'ring-offset-2', 'ring-offset-surface-container-lowest');
-              setFlashId(null);
-            }, 2000);
-          }
-        }, 150);
-      }, 80);
+    if (hydratedFromSnapshot.current) {
+      hydratedFromSnapshot.current = false;
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Reset on filter change
-  useEffect(() => {
     setMatches(initialMatches);
     setPage(1);
     setHasMore(initialHasMore);
@@ -171,11 +255,13 @@ export function MatchList({ initialMatches, total, initialHasMore, showSource = 
         Showing {matches.length} of {total}
       </p>
       <ul ref={listRef} className="grid grid-cols-1 gap-6">
-        {matches.map((m) => (
+        {matches.map((m: MatchItem) => (
           <li
             key={m.id}
             data-match-id={m.id}
-            className={`transition-all duration-500 rounded-2xl ${flashId === m.id ? 'ring-2 ring-primary ring-offset-2' : ''}`}
+            className={`rounded-2xl transition-shadow duration-500 ${
+              flashId === m.id ? 'ring-2 ring-primary ring-offset-2 ring-offset-surface-container-lowest' : ''
+            }`}
           >
             <MatchCard
               matchId={m.id}
