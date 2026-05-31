@@ -49,7 +49,7 @@ import {
 
 const OPENAI_CHAT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const GROQ_CHAT_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
-const CEREBRAS_CHAT_MODEL = process.env.CEREBRAS_MODEL || 'llama-3.3-70b';
+const CEREBRAS_CHAT_MODEL = process.env.CEREBRAS_MODEL || 'gpt-oss-120b';
 const GROQ_BASE_URL = 'https://api.groq.com/openai/v1';
 const CEREBRAS_BASE_URL = 'https://api.cerebras.ai/v1';
 const EMBED_MODEL = 'text-embedding-3-small';
