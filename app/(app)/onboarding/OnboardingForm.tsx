@@ -4,6 +4,12 @@ import { useState, useRef, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
+  finishAppToast,
+  showAppToastLoading,
+  TOAST_IDS,
+  TOAST_MS,
+} from '@/lib/toast-app';
+import {
   Upload,
   FileText,
   X,
@@ -106,7 +112,10 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
 
   async function analyzeFile(file: File) {
     setAnalyzing(true);
-    const id = toast.loading('Analyzing your resume...');
+    const id = showAppToastLoading(
+      'Analyzing your resume...',
+      TOAST_IDS.resumeAnalysis,
+    );
     try {
       const fd = new FormData();
       fd.append('resume', file);
@@ -121,13 +130,19 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
         // preferences (e.g. HR roles from a deleted/re-linked account) must not
         // block updating target roles for this resume.
         const count = applyInsights(ins, true);
-        toast.success(count > 0 ? `Auto-filled ${count} field${count === 1 ? '' : 's'} from resume` : 'Resume analyzed', { id });
+        finishAppToast(
+          id,
+          count > 0
+            ? `Auto-filled ${count} field${count === 1 ? '' : 's'} from resume`
+            : 'Resume analyzed',
+          'success',
+        );
       } else {
         const detail = data.analysis_error ? truncate(data.analysis_error, 220) : 'AI auto-fill is unavailable right now.';
-        toast.warning(`Resume parsed. ${detail}`, { id, duration: 12000 });
+        finishAppToast(id, `Resume parsed. ${detail}`, 'warning', TOAST_MS.long);
       }
     } catch (e) {
-      toast.error((e as Error).message, { id });
+      finishAppToast(id, (e as Error).message, 'error');
       setResumeFile(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
     } finally { setAnalyzing(false); }
@@ -138,7 +153,7 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
     const text = parsedText || resumeText;
     if (!text || text.length < 50) { toast.error('No resume content to analyze'); return; }
     setAnalyzing(true);
-    const id = toast.loading('Re-analyzing...');
+    const id = showAppToastLoading('Re-analyzing...', TOAST_IDS.resumeAnalysis);
     try {
       const res = await fetch('/api/profile/parse', {
         method: 'POST',
@@ -148,14 +163,26 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed');
       if (!data.insights) {
-        toast.warning(data.analysis_error ? `AI unavailable: ${truncate(data.analysis_error, 100)}` : 'AI returned no insights', { id, duration: 8000 });
+        finishAppToast(
+          id,
+          data.analysis_error
+            ? `AI unavailable: ${truncate(data.analysis_error, 100)}`
+            : 'AI returned no insights',
+          'warning',
+        );
         return;
       }
       const ins = data.insights as ResumeInsights;
       setInsights(ins);
       const count = applyInsights(ins, true);
-      toast.success(count > 0 ? `Refreshed ${count} field${count === 1 ? '' : 's'}` : 'Done', { id });
-    } catch (e) { toast.error((e as Error).message, { id }); }
+      finishAppToast(
+        id,
+        count > 0 ? `Refreshed ${count} field${count === 1 ? '' : 's'}` : 'Done',
+        'success',
+      );
+    } catch (e) {
+      finishAppToast(id, (e as Error).message, 'error');
+    }
     finally { setAnalyzing(false); }
   }
 
@@ -183,7 +210,7 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
       min_score: Number(minScore) || 70,
     };
     setSaving(true);
-    const id = toast.loading('Saving profile...');
+    const id = showAppToastLoading('Saving profile...', TOAST_IDS.profileSave);
     try {
       const fd = new FormData();
       fd.append('email', email);
@@ -197,13 +224,14 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
       if (!res.ok) throw new Error(data.error || 'Save failed');
       if (data.profile?.insights) setInsights(data.profile.insights);
       const isFirstResume = initial.resumeChars === 0 && data.reembedded;
-      toast.success(
+      finishAppToast(
+        id,
         data.reembedded
           ? isFirstResume
             ? `Profile saved · resume ready (${data.resume_chars.toLocaleString()} chars)`
             : `Saved · resume embedded (${data.resume_chars.toLocaleString()} chars)`
           : 'Preferences saved',
-        { id },
+        'success',
       );
       setResumeFile(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -221,8 +249,9 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
           },
         });
       }
-    } catch (e) { toast.error((e as Error).message, { id }); }
-    finally { setSaving(false); }
+    } catch (e) {
+      finishAppToast(id, (e as Error).message, 'error');
+    } finally { setSaving(false); }
   }
 
 

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { finishAppToast, showAppToastLoading, TOAST_MS } from '@/lib/toast-app';
 import {
   Link2,
   Loader2,
@@ -32,8 +33,9 @@ export function ImportForm() {
     }
 
     setSubmitting(true);
-    const id = toast.loading(
+    const id = showAppToastLoading(
       manualJd ? 'Saving and scoring...' : 'Fetching & scoring this job...',
+      'toast-import-job',
     );
 
     try {
@@ -56,16 +58,17 @@ export function ImportForm() {
           setErrorMsg(data.error || 'Could not fetch this URL automatically.');
           toast.dismiss(id);
           toast.warning('Auto-fetch failed. Paste the JD below to continue.', {
-            duration: 6000,
+            duration: TOAST_MS.long,
           });
           return;
         }
         throw new Error(data.error || 'Import failed');
       }
 
-      toast.success(
+      finishAppToast(
+        id,
         `Imported! Score: ${data.score}/100 — opening match...`,
-        { id },
+        'success',
       );
 
       setUrl('');
@@ -76,7 +79,7 @@ export function ImportForm() {
 
       router.push(`/jobs/${data.match_id}`);
     } catch (e) {
-      toast.error((e as Error).message, { id });
+      finishAppToast(id, (e as Error).message, 'error');
     } finally {
       setSubmitting(false);
     }

@@ -3,6 +3,7 @@
 import { useState, useTransition, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { finishAppToast, showAppToastLoading, TOAST_MS } from '@/lib/toast-app';
 import {
   Sparkles,
   Loader2,
@@ -99,7 +100,7 @@ export function JobActions({
 
   async function generate() {
     setGenerating(true);
-    const id = toast.loading('Drafting cover letter...');
+    const id = showAppToastLoading('Drafting cover letter...', 'toast-job-cover');
     try {
       const res = await fetch(`/api/coverletter`, {
         method: 'POST',
@@ -109,17 +110,17 @@ export function JobActions({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed');
       setLetter(data.cover_letter);
-      toast.success('Cover letter ready', { id });
+      finishAppToast(id, 'Cover letter ready', 'success');
       startTransition(() => router.refresh());
     } catch (e) {
-      toast.error((e as Error).message, { id });
+      finishAppToast(id, (e as Error).message, 'error');
     } finally {
       setGenerating(false);
     }
   }
 
   async function setStatus(next: string) {
-    const id = toast.loading('Updating...');
+    const id = showAppToastLoading('Updating...', 'toast-job-status');
     try {
       const res = await fetch(`/api/match/${matchId}/status`, {
         method: 'POST',
@@ -130,10 +131,10 @@ export function JobActions({
         const d = await res.json().catch(() => ({}));
         throw new Error(d.error || 'Failed');
       }
-      toast.success(`Marked as ${next}`, { id });
+      finishAppToast(id, `Marked as ${next}`, 'success');
       startTransition(() => router.refresh());
     } catch (e) {
-      toast.error((e as Error).message, { id });
+      finishAppToast(id, (e as Error).message, 'error');
     }
   }
 
@@ -206,7 +207,10 @@ export function JobActions({
   async function optimize() {
     setGeneratingResume(true);
     const firstRun = !atsResume;
-    const id = toast.loading(firstRun ? 'Optimizing your resume...' : 'Re-optimizing...');
+    const id = showAppToastLoading(
+      firstRun ? 'Optimizing your resume...' : 'Re-optimizing...',
+      'toast-job-resume',
+    );
     const oldScore = keywords?.ats_match_score ?? null;
     try {
       const res = await fetch(`/api/match/${matchId}/resume`, {
@@ -230,9 +234,9 @@ export function JobActions({
       }
       if (data.filename_base) setFilenameBase(data.filename_base);
       const newScore = data.keywords?.ats_match_score ?? 0;
-      toast.success(`ATS Match Score: ${newScore}%`, { id });
+      finishAppToast(id, `ATS Match Score: ${newScore}%`, 'success');
     } catch (e) {
-      toast.error((e as Error).message, { id });
+      finishAppToast(id, (e as Error).message, 'error');
     } finally {
       setGeneratingResume(false);
     }
@@ -286,7 +290,7 @@ export function JobActions({
   }
 
   async function downloadResumePdf() {
-    const id = toast.loading('Generating beautiful PDF...');
+    const id = showAppToastLoading('Generating beautiful PDF...', 'toast-job-pdf');
     try {
       const { generateBeautifulPdf } = await import('@/lib/pdf-resume');
       const text = editedResume || atsResume;
@@ -306,9 +310,9 @@ export function JobActions({
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
 
-      toast.success('PDF downloaded!', { id });
+      finishAppToast(id, 'PDF downloaded!', 'success');
     } catch (e) {
-      toast.error(`PDF generation failed: ${(e as Error).message}`, { id });
+      finishAppToast(id, `PDF generation failed: ${(e as Error).message}`, 'error');
     }
   }
 

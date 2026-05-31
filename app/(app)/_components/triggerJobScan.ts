@@ -2,6 +2,7 @@
 
 import { toast } from 'sonner';
 import { formatIngestWarnings, readableError } from '@/lib/ui';
+import { TOAST_IDS, TOAST_MS } from '@/lib/toast-app';
 
 export type JobScanResult = {
   matchesCreated: number;
@@ -9,7 +10,7 @@ export type JobScanResult = {
   scored: number;
 };
 
-const DONE_TOAST = { duration: 8000 } as const;
+const DONE_TOAST = { id: TOAST_IDS.jobScan, duration: TOAST_MS.default } as const;
 
 /**
  * Run a per-user ingest scan (POST /api/ingest). Manual scans rely on the Run scan
@@ -23,7 +24,8 @@ export async function triggerJobScan(options?: {
 }): Promise<JobScanResult | null> {
   if (options?.autoFlow) {
     toast.info('Your job scan has started. Check Matches in about 1–2 minutes.', {
-      duration: 8000,
+      id: TOAST_IDS.jobScan,
+      duration: TOAST_MS.long,
     });
   }
 
@@ -59,7 +61,7 @@ export async function triggerJobScan(options?: {
 
     const warnings = formatIngestWarnings(data.errors);
     if (warnings) {
-      toast.warning(warnings, { duration: 12_000 });
+      toast.warning(warnings, { id: TOAST_IDS.jobScan, duration: TOAST_MS.long });
     }
 
     if (options?.autoFlow) {

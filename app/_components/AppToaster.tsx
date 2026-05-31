@@ -1,6 +1,7 @@
 'use client';
 
 import { Toaster } from 'sonner';
+import { TOAST_MS } from '@/lib/toast-app';
 
 /** Bottom-right toasts so they do not cover header actions (Run scan, Sign out). */
 export function AppToaster() {
@@ -11,8 +12,10 @@ export function AppToaster() {
       closeButton
       offset={16}
       mobileOffset={{ bottom: 88, right: 16, left: 16 }}
+      duration={TOAST_MS.default}
+      visibleToasts={1}
       toastOptions={{
-        duration: 8000,
+        duration: TOAST_MS.default,
         style: {
           background: '#ffffff',
           color: '#121c2a',
