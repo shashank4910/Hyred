@@ -73,7 +73,7 @@ export default async function JobMatchPage({
   return (
     <div className="space-y-5">
       <Link
-        href="/"
+        href={`/?from=${id}`}
         className="inline-flex items-center gap-1.5 text-sm text-on-surface-variant hover:text-primary transition-colors"
       >
         <ArrowLeft className="h-4 w-4" /> All matches
