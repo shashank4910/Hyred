@@ -121,7 +121,7 @@ function buildLinkedInQueries(profile?: SearchProfile | null): string[] {
   // A few niche tool keywords for specialised coverage.
   (profile.searchKeywords ?? []).slice(0, 4).forEach(add);
   // Cap to keep request count + scan time bounded (LinkedIn is free but slow).
-  return Array.from(out).slice(0, 10);
+  return Array.from(out).slice(0, 6);
 }
 
 /**
@@ -186,10 +186,10 @@ function buildFns(
     fetchLinkedIn({
       queries: buildLinkedInQueries(searchProfile),
       locations: buildLinkedInLocations(preferences),
-      maxPagesPerQuery: 3,
-      maxSearchRequests: 90,
+      maxPagesPerQuery: 2,
+      maxSearchRequests: 36,
       fetchDescriptions: true,
-      maxDescriptions: 70,
+      maxDescriptions: 24,
     });
 
   return fns;

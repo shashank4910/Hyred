@@ -35,7 +35,13 @@ export type IngestResult = {
   };
 };
 
-const SIMILARITY_TOP_N = 80;
+const SIMILARITY_TOP_N = 45;
+const TOP_COMPANY_CAP = 12;
+const EMBED_PER_RUN = 50;
+const EMBED_CONCURRENCY = 6;
+const SCORE_CONCURRENCY = 6;
+/** Vercel `/api/ingest` maxDuration is 300s — stop heavy work before hard kill. */
+const INGEST_WALL_BUDGET_MS = 260_000;
 const MIN_SCORE_TO_KEEP = 40;
 
 /**
@@ -259,33 +265,31 @@ export async function runIngest(opts?: {
       });
     }
 
-    // ---------- 5. Embed jobs missing embeddings ----------
+    // ---------- 5. Embed jobs missing embeddings (bounded per run) ----------
     const { data: needEmbed } = await sb
       .from('jobs')
       .select('id, title, company, location, description, tags')
       .is('embedding', null)
       .order('fetched_at', { ascending: false })
-      .limit(300);
+      .limit(EMBED_PER_RUN);
 
     // Defensive early-bail. If the very first embed call fails with what
     // looks like a config error (missing API key, invalid key, model not
     // available), we abort the entire embed phase with ONE descriptive
-    // error rather than letting all ~300 jobs each push their own
-    // identical error into runErrors. That keeps ingest_runs.errors
-    // small and the dashboard's "partial (N)" count meaningful.
+    // error rather than letting every pending job push the same message.
     let embedAborted: string | null = null;
 
-    for (const j of needEmbed ?? []) {
-      if (embedAborted) break;
+    type EmbedRow = NonNullable<typeof needEmbed>[number];
+
+    async function embedOne(j: EmbedRow): Promise<boolean> {
+      if (embedAborted) return false;
       try {
         const text = jobToEmbeddingText(j);
         const vec = await embed(text);
         await sb.from('jobs').update({ embedding: vec }).eq('id', j.id);
-        embedded++;
+        return true;
       } catch (e) {
         const msg = (e as Error).message || String(e);
-        // First failure: decide whether this is a fatal config error
-        // (abort the loop) or a transient one (keep going).
         const isConfigError =
           embedded === 0 &&
           /missing\s+\w+_API_KEY|invalid api key|api key not valid|unauthor|forbid/i.test(msg);
@@ -295,13 +299,23 @@ export async function runIngest(opts?: {
             source: 'embed',
             error: `Embed phase aborted on first job (${needEmbed?.length ?? 0} pending). Config error: ${msg}`,
           });
-          break;
+          return false;
         }
         runErrors.push({
           source: 'embed',
           error: `${j.id}: ${msg}`,
         });
+        return false;
       }
+    }
+
+    const embedJobs = needEmbed ?? [];
+    for (let i = 0; i < embedJobs.length; i += EMBED_CONCURRENCY) {
+      if (Date.now() - startedAt > INGEST_WALL_BUDGET_MS) break;
+      if (embedAborted) break;
+      const batch = embedJobs.slice(i, i + EMBED_CONCURRENCY);
+      const ok = await Promise.all(batch.map((j) => embedOne(j)));
+      embedded += ok.filter(Boolean).length;
     }
     if (runId) {
       await patchIngestRun(sb, runId, {
@@ -429,12 +443,14 @@ export async function runIngest(opts?: {
       (c) => !alreadyQueued.has(c.id) && isTopCompany(c.company),
     );
     if (topCompanyExtras.length > 0) {
-      const TOP_COMPANY_CAP = 40;
       toScore = [...toScore, ...topCompanyExtras.slice(0, TOP_COMPANY_CAP)];
       console.log(
         `[ingest] Force-included ${Math.min(topCompanyExtras.length, TOP_COMPANY_CAP)} top-MNC company jobs into scoring (${topCompanyExtras.length} found)`,
       );
     }
+
+    // Hard cap — pre-filter can still queue more than SIMILARITY_TOP_N + MNC extras.
+    toScore = toScore.slice(0, SIMILARITY_TOP_N + TOP_COMPANY_CAP);
 
     // ---------- 8. Compute similarity for the final scoring set ----------
     const resumeVec = p.resume_embedding!;
@@ -443,46 +459,70 @@ export async function runIngest(opts?: {
       similarity: cosineSimilarity(resumeVec, c.embedding as number[]),
     }));
 
-    // ---------- 9. LLM score ----------
+    // ---------- 9. LLM score (parallel batches + wall-clock budget) ----------
     const prefsStr = formatPreferences(p.preferences);
-    for (const c of ranked) {
-      try {
-        const { score, reason, matchedSkills, missingSkills } = await scoreJob({
-          resume: p.resume_text!,
-          preferences: prefsStr,
-          jobTitle: c.title,
-          jobCompany: c.company,
-          jobLocation: c.location,
-          jobDescription: c.description,
-        });
-        scored++;
-        const { error } = await sb.from('matches').upsert(
-          {
-            profile_id: p.id,
-            job_id: c.id,
-            similarity: c.similarity,
-            llm_score: score,
-            reason,
-            matched_skills: matchedSkills,
-            missing_skills: missingSkills,
-            status: 'new',
-          },
-          { onConflict: 'profile_id,job_id' },
-        );
-        if (!error && score >= minScore) kept++;
-        if (runId && scored % 5 === 0) {
-          await patchIngestRun(sb, runId, {
-            scored,
-            matches_created: kept,
-            errors: runErrors,
-          });
+    let budgetStopped = false;
+
+    for (let i = 0; i < ranked.length; i += SCORE_CONCURRENCY) {
+      if (Date.now() - startedAt > INGEST_WALL_BUDGET_MS) {
+        budgetStopped = true;
+        break;
+      }
+      const batch = ranked.slice(i, i + SCORE_CONCURRENCY);
+      await Promise.all(
+        batch.map(async (c) => {
+          try {
+            const { score, reason, matchedSkills, missingSkills } = await scoreJob({
+              resume: p.resume_text!,
+              preferences: prefsStr,
+              jobTitle: c.title,
+              jobCompany: c.company,
+              jobLocation: c.location,
+              jobDescription: c.description,
+            });
+            const { error } = await sb.from('matches').upsert(
+              {
+                profile_id: p.id,
+                job_id: c.id,
+                similarity: c.similarity,
+                llm_score: score,
+                reason,
+                matched_skills: matchedSkills,
+                missing_skills: missingSkills,
+                status: 'new',
+              },
+              { onConflict: 'profile_id,job_id' },
+            );
+            return { scored: 1, kept: !error && score >= minScore ? 1 : 0 };
+          } catch (e) {
+            runErrors.push({
+              source: 'score',
+              error: `${c.id}: ${(e as Error).message}`,
+            });
+            return { scored: 0, kept: 0 };
+          }
+        }),
+      ).then((results) => {
+        for (const r of results) {
+          scored += r.scored;
+          kept += r.kept;
         }
-      } catch (e) {
-        runErrors.push({
-          source: 'score',
-          error: `${c.id}: ${(e as Error).message}`,
+      });
+      if (runId) {
+        await patchIngestRun(sb, runId, {
+          scored,
+          matches_created: kept,
+          errors: runErrors,
         });
       }
+    }
+
+    if (budgetStopped) {
+      runErrors.push({
+        source: 'budget',
+        error: `Scoring stopped after ${scored}/${ranked.length} jobs (time budget under Vercel limit)`,
+      });
+      console.warn(`[ingest] Scoring stopped early: ${scored}/${ranked.length} scored`);
     }
   } catch (e) {
     fatalError = e as Error;
