@@ -3,6 +3,10 @@ import { supabaseAdmin } from '@/lib/supabase/server';
 import { getCurrentProfile } from '@/lib/current-user';
 import { embed, extractResumeInsights } from '@/lib/gemini';
 import { parseResume } from '@/lib/resume';
+import {
+  preferencesFromResumeInsights,
+  stripSearchProfile,
+} from '@/lib/profile-insights';
 import type { Preferences, ResumeInsights } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -136,6 +140,11 @@ export async function POST(req: NextRequest) {
         { status: 500 },
       );
     }
+
+    // Resume changed → drop cached ingest profile + refresh target roles from
+    // the NEW resume (not stale preferences adopted from a prior session).
+    insights = stripSearchProfile(insights);
+    preferences = preferencesFromResumeInsights(preferences, insights);
   }
 
   // email stays bound to the auth identity; the form value is only a fallback

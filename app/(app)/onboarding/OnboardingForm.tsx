@@ -114,7 +114,10 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
       if (data.insights) {
         const ins = data.insights as ResumeInsights;
         setInsights(ins);
-        const count = applyInsights(ins);
+        // Force refresh roles/locations from the uploaded file — stale adopted
+        // preferences (e.g. HR roles from a deleted/re-linked account) must not
+        // block updating target roles for this resume.
+        const count = applyInsights(ins, true);
         toast.success(count > 0 ? `Auto-filled ${count} field${count === 1 ? '' : 's'} from resume` : 'Resume analyzed', { id });
       } else {
         const detail = data.analysis_error ? truncate(data.analysis_error, 220) : 'AI auto-fill is unavailable right now.';

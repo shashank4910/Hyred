@@ -27,8 +27,9 @@ export async function getCurrentUser(): Promise<User | null> {
  * Resolution order (uses the service-role client for the link/create so RLS
  * never blocks bootstrapping):
  *   1. profiles where user_id = auth user id        → return it
- *   2. legacy profile with matching email + null user_id → link it (backfill)
- *   3. otherwise create a fresh profile { user_id, email }
+ *   2. legacy profile (user_id IS NULL) for ADMIN_EMAIL only → link once
+ *   3. delete any other detached profile (user_id IS NULL) for this email
+ *   4. create a fresh profile { user_id, email }
  *
  * Returns null only when there is no authenticated user.
  */
@@ -93,29 +94,20 @@ async function resolveProfileForUser(user: User): Promise<Profile> {
     .maybeSingle();
   if (linked) return linked as Profile;
 
-  // 2. A profile already exists for this (verified) email → adopt it by
-  //    re-pointing user_id to this user. This covers BOTH the legacy
-  //    null-user_id row AND a row owned by a different auth identity that
-  //    happens to share the same email (e.g. email + Google sign-in to the
-  //    same address), which would otherwise hit profiles_email_key on insert.
-  if (email) {
-    const adopted = await adoptProfileByEmail(sb, email, user.id);
+  // 2. One-time legacy backfill: pre-multi-user row for the admin email only.
+  if (email && isAdminEmail(email)) {
+    const adopted = await adoptLegacyOrphanProfile(sb, email, user.id);
     if (adopted) return adopted;
   }
 
-  // 3. Create-or-adopt ATOMICALLY via INSERT ... ON CONFLICT (email) DO UPDATE.
-  //
-  //    A read-then-INSERT (steps 1-2) cannot close the time-of-check/
-  //    time-of-use window: on first sign-in the dashboard Server Component
-  //    can render concurrently (prefetch + navigation), so two
-  //    resolveProfileForUser calls both see "no profile" and both INSERT —
-  //    the loser then crashes on the unique email index (profiles_email_key,
-  //    Vercel digests 943845339 / 4079527518). Letting Postgres resolve the
-  //    conflict in one statement removes the race: if a row for this email
-  //    already exists (a concurrent insert, a legacy null-user_id row, or a
-  //    row owned by another auth identity for the same address) its user_id
-  //    is re-pointed to us; otherwise a fresh row is inserted. Either way we
-  //    get exactly one row back and never throw on a duplicate email.
+  // 3. Detached profile (user_id IS NULL) left by migration 0006 when an auth
+  //    user was deleted. Wipe it so re-signup does NOT inherit old matches.
+  //    (Migration 0008 switches auth delete to ON DELETE CASCADE instead.)
+  if (email) {
+    await sb.from('profiles').delete().ilike('email', email).is('user_id', null);
+  }
+
+  // 4. Create-or-adopt ATOMICALLY via INSERT ... ON CONFLICT (email) DO UPDATE.
   const insertEmail = user.email ?? `${user.id}@users.noreply`;
   const { data: upserted, error } = await sb
     .from('profiles')
@@ -124,25 +116,21 @@ async function resolveProfileForUser(user: User): Promise<Profile> {
     .single();
   if (!error && upserted) return upserted as Profile;
 
-  // Last-ditch read in case the conflict target couldn't be matched (e.g. an
-  // email-casing edge) — adopt whatever row owns this email before failing.
-  const fallback = await adoptProfileByEmail(sb, insertEmail, user.id);
-  if (fallback) return fallback;
+  // Last-ditch read after race
+  const { data: reread } = await sb
+    .from('profiles')
+    .select(PROFILE_COLUMNS)
+    .eq('user_id', user.id)
+    .maybeSingle();
+  if (reread) return reread as Profile;
 
   throw new Error(
     `Failed to create profile for ${insertEmail}: ${error?.message ?? 'unknown error'}`,
   );
 }
 
-/**
- * Adopt the profile matching `email` (case-insensitive) for `userId`.
- *
- * Returns the existing row unchanged if it is already owned by this user,
- * otherwise re-points its `user_id` to this user and returns the updated row.
- * Returns null when no profile with that email exists. Uses the oldest row
- * (order by created_at) so adoption is deterministic if duplicates exist.
- */
-async function adoptProfileByEmail(
+/** Link a pre-multi-user orphan (user_id IS NULL) to this auth user. */
+async function adoptLegacyOrphanProfile(
   sb: ReturnType<typeof supabaseAdmin>,
   email: string,
   userId: string,
@@ -151,19 +139,18 @@ async function adoptProfileByEmail(
     .from('profiles')
     .select(PROFILE_COLUMNS)
     .ilike('email', email)
+    .is('user_id', null)
     .order('created_at', { ascending: true })
     .limit(1)
     .maybeSingle();
   if (!existing) return null;
 
-  const profile = existing as Profile;
-  if (profile.user_id === userId) return profile;
-
   const { data: updated } = await sb
     .from('profiles')
     .update({ user_id: userId })
-    .eq('id', profile.id)
+    .eq('id', existing.id)
+    .is('user_id', null)
     .select(PROFILE_COLUMNS)
     .single();
-  return (updated ?? profile) as Profile;
+  return (updated ?? existing) as Profile;
 }
