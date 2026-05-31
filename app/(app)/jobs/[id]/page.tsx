@@ -6,6 +6,7 @@ import { getCurrentProfile, isCurrentUserAdmin } from '@/lib/current-user';
 import { ensureFullDescription } from '@/lib/jd-fetcher';
 import { JobActions } from './JobActions';
 import { AutoApplyButton } from './AutoApplyButton';
+import { BackToMatches } from './BackToMatches';
 import { relativeTime, scoreColorClass, scoreLabel, SOURCE_LABELS } from '@/lib/ui';
 
 export const dynamic = 'force-dynamic';
@@ -72,12 +73,7 @@ export default async function JobMatchPage({
 
   return (
     <div className="space-y-5">
-      <Link
-        href={`/?from=${id}`}
-        className="inline-flex items-center gap-1.5 text-sm text-on-surface-variant hover:text-primary transition-colors"
-      >
-        <ArrowLeft className="h-4 w-4" /> All matches
-      </Link>
+      <BackToMatches matchId={id} />
 
       {/* Job header card */}
       <div className="glass-card p-6 md:p-8">

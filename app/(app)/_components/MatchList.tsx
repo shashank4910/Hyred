@@ -57,6 +57,7 @@ export function MatchList({ initialMatches, total, initialHasMore, showSource = 
     params.set('page', String(pageNum));
     params.set('status', sp.get('status') ?? 'inbox');
     if (sp.get('sort')) params.set('sort', sp.get('sort')!);
+    else params.set('sort', 'score');
     if (sp.get('min')) params.set('min', sp.get('min')!);
     if (sp.get('q')) params.set('q', sp.get('q')!);
     if (sp.get('remote')) params.set('remote', sp.get('remote')!);

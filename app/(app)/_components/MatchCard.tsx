@@ -59,6 +59,7 @@ export function MatchCard({
     ? `Added to Hyred on ${fullDate} (source did not provide a posted date)`
     : `Posted on the source on ${fullDate}`;
   const isViewed = status === 'viewed' || status !== 'new';
+  const isNew = status === 'new';
   const [bookmarked, setBookmarked] = useState(initialBookmarked);
   const [saving, setSaving] = useState(false);
 
@@ -91,8 +92,10 @@ export function MatchCard({
     <Link
       href={`/jobs/${matchId}`}
       className={[
-        'group block min-w-0 animate-fade-in rounded-2xl bg-surface-container-lowest p-6 shadow-card transition-all hover:-translate-y-1 hover:border-primary/10 hover:shadow-elevated',
-        isViewed ? 'opacity-90 hover:opacity-100' : '',
+        'group block min-w-0 animate-fade-in rounded-2xl p-6 shadow-card transition-all hover:-translate-y-1 hover:border-primary/10 hover:shadow-elevated',
+        isNew
+          ? 'bg-surface-container-lowest border-l-4 border-l-primary'
+          : 'bg-surface-container-lowest/70 opacity-75 hover:opacity-100',
       ].join(' ')}
     >
       <div className="mb-6 flex items-start justify-between gap-4">

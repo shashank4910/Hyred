@@ -37,7 +37,7 @@ export default async function Dashboard({
   const onlyBookmarked = sp.bookmarked === '1';
   const sort: SortMode = (VALID_SORTS as readonly string[]).includes(sp.sort ?? '')
     ? (sp.sort as SortMode)
-    : 'newest';
+    : 'score'; // Default: highest score first
 
   const sb = supabaseAdmin();
 

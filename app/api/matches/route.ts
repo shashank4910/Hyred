@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const page = Math.max(1, parseInt(url.searchParams.get('page') ?? '1', 10));
   const status = url.searchParams.get('status') ?? 'inbox';
-  const sort = url.searchParams.get('sort') ?? 'newest';
+  const sort = url.searchParams.get('sort') ?? 'score';
   const minScore = parseInt(url.searchParams.get('min') ?? '50', 10);
   const q = url.searchParams.get('q') ?? '';
   const remote = url.searchParams.get('remote') === '1';

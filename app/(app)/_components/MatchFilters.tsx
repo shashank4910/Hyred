@@ -12,7 +12,7 @@ export function MatchFilters({ isAdmin = false }: { isAdmin?: boolean }) {
   const source = sp.get('source') ?? '';
   const minScore = sp.get('min') ?? '';
   const remote = sp.get('remote') ?? '';
-  const sort = sp.get('sort') ?? 'newest';
+  const sort = sp.get('sort') ?? 'score';
 
   function setParam(name: string, value: string) {
     const params = new URLSearchParams(sp.toString());
@@ -21,7 +21,7 @@ export function MatchFilters({ isAdmin = false }: { isAdmin?: boolean }) {
     router.replace(`/?${params.toString()}`, { scroll: false });
   }
 
-  const hasFilters = (isAdmin && source) || minScore || remote || (sort && sort !== 'newest');
+  const hasFilters = (isAdmin && source) || minScore || remote || (sort && sort !== 'score');
 
   return (
     <div className="relative z-0 flex flex-wrap items-center gap-2">
@@ -63,13 +63,13 @@ export function MatchFilters({ isAdmin = false }: { isAdmin?: boolean }) {
 
       <select
         value={sort}
-        onChange={(e) => setParam('sort', e.target.value === 'newest' ? '' : e.target.value)}
+        onChange={(e) => setParam('sort', e.target.value === 'score' ? '' : e.target.value)}
         className="input w-auto"
         title="Sort matches"
       >
+        <option value="score">Best score</option>
         <option value="newest">Newest first</option>
         <option value="posted">Original posted date</option>
-        <option value="score">Best score</option>
         <option value="activity">Recent activity</option>
         <option value="oldest">Oldest first</option>
       </select>
