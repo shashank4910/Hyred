@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { supabaseAdmin } from '@/lib/supabase/server';
-import { getCurrentProfile } from '@/lib/current-user';
+import { getCurrentProfile, isCurrentUserAdmin } from '@/lib/current-user';
 import { closeStaleIngestRuns } from '@/lib/ingest-runs';
 import { StatusFilter } from './_components/StatusFilter';
 import { RunIngestButton } from './_components/RunIngestButton';
@@ -39,6 +39,7 @@ export default async function Dashboard({
   const sb = supabaseAdmin();
 
   const profile = await getCurrentProfile();
+  const isAdmin = await isCurrentUserAdmin();
 
   if (!profile || !profile.resume_text) {
     return <EmptyOnboarding />;
@@ -143,7 +144,7 @@ export default async function Dashboard({
     query = query.eq('status', status);
   }
 
-  if (sp.source) {
+  if (isAdmin && sp.source) {
     query = query.eq('jobs.source', sp.source);
   }
   if (sp.remote === '1') {
@@ -189,7 +190,7 @@ export default async function Dashboard({
             Your AI-curated job matches, scored and ready for action.
           </p>
         </div>
-        <RunIngestButton />
+        <RunIngestButton isAdmin={isAdmin} />
       </div>
 
       {/* Stats grid */}
@@ -234,7 +235,7 @@ export default async function Dashboard({
       {/* Filters */}
       <div className="space-y-4">
         <StatusFilter counts={counts} active={status} inboxCount={inboxCount ?? 0} bookmarkedCount={bookmarkedCount ?? 0} onlyBookmarked={onlyBookmarked} />
-        <MatchFilters />
+        <MatchFilters isAdmin={isAdmin} />
       </div>
 
       {/* Results */}
@@ -271,6 +272,7 @@ export default async function Dashboard({
                   matchedSkills={(m as unknown as { matched_skills: string[] | null }).matched_skills ?? []}
                   missingSkills={(m as unknown as { missing_skills: string[] | null }).missing_skills ?? []}
                   job={job}
+                  showSource={isAdmin}
                 />
               </li>
             );

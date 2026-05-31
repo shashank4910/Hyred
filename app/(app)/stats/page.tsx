@@ -1,6 +1,6 @@
 import { unstable_noStore as noStore } from 'next/cache';
 import { supabaseAdmin } from '@/lib/supabase/server';
-import { getCurrentProfile } from '@/lib/current-user';
+import { getCurrentProfile, isCurrentUserAdmin } from '@/lib/current-user';
 import { closeStaleIngestRuns } from '@/lib/ingest-runs';
 import { relativeTime, SOURCE_LABELS } from '@/lib/ui';
 import {
@@ -23,6 +23,7 @@ export default async function StatsPage() {
 
   const sb = supabaseAdmin();
   const profile = await getCurrentProfile();
+  const isAdmin = await isCurrentUserAdmin();
   const profileId = profile?.id ?? '__none__';
 
   if (profile?.id) {
@@ -35,7 +36,7 @@ export default async function StatsPage() {
     { count: inboxCount },
     { count: appliedCount },
     { data: runs },
-    { data: userMatchJobs },
+    userMatchJobsResult,
     { data: lastRun },
     { data: activeRun },
   ] = await Promise.all([
@@ -66,10 +67,12 @@ export default async function StatsPage() {
       .eq('profile_id', profileId)
       .order('started_at', { ascending: false })
       .limit(20),
-    sb
-      .from('matches')
-      .select('job:jobs!inner(source)')
-      .eq('profile_id', profileId),
+    isAdmin
+      ? sb
+          .from('matches')
+          .select('job:jobs!inner(source)')
+          .eq('profile_id', profileId)
+      : Promise.resolve({ data: null }),
     sb
       .from('ingest_runs')
       .select('finished_at, matches_created')
@@ -88,6 +91,7 @@ export default async function StatsPage() {
       .maybeSingle(),
   ]);
 
+  const userMatchJobs = userMatchJobsResult.data;
   const bySource: Record<string, number> = {};
   for (const row of userMatchJobs ?? []) {
     const job = row.job as unknown as { source: string };
@@ -121,6 +125,7 @@ export default async function StatsPage() {
             : 'No scan yet — run one from Matches.'}
       </div>
 
+      {isAdmin && (
       <section className="card">
         <h2 className="font-semibold text-ink mb-3">Your matches by source</h2>
         {Object.keys(bySource).length === 0 ? (
@@ -151,6 +156,7 @@ export default async function StatsPage() {
           </ul>
         )}
       </section>
+      )}
 
       <section className="card">
         <h2 className="font-semibold text-ink mb-1 flex items-center gap-2">

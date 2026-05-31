@@ -14,6 +14,7 @@ import {
   Wand2,
 } from 'lucide-react';
 import type { Preferences, ResumeInsights } from '@/lib/types';
+import { isResumeFilename, RESUME_FILE_ACCEPT } from '@/lib/resume';
 import { triggerJobScan } from '../_components/triggerJobScan';
 
 type Initial = {
@@ -93,9 +94,8 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
 
   async function handleFile(file: File | null) {
     if (!file) return;
-    const ext = file.name.toLowerCase();
-    if (!ext.endsWith('.pdf') && !ext.endsWith('.docx') && !ext.endsWith('.txt')) {
-      toast.error('Please upload a .pdf, .docx, or .txt file'); return;
+    if (!isResumeFilename(file.name)) {
+      toast.error('Please upload a .pdf, .doc, .docx, or .txt file'); return;
     }
     if (file.size > 5 * 1024 * 1024) { toast.error('File must be smaller than 5MB'); return; }
     setResumeFile(file);
@@ -249,7 +249,7 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+            accept={RESUME_FILE_ACCEPT}
             onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
             className="hidden"
           />
@@ -275,7 +275,7 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
                 Drop your resume here or <span className="text-amber font-medium">click to browse</span>
               </p>
               <p className="text-xs text-stone mt-1">
-                .pdf, .docx, or .txt · max 5MB · AI auto-fills your details
+                .pdf, .doc, .docx, or .txt · max 5MB · AI auto-fills your details
               </p>
             </div>
           )}

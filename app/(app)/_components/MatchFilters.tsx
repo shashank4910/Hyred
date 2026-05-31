@@ -7,7 +7,7 @@ import { SOURCE_LABELS } from '@/lib/ui';
 
 const SOURCES = ['remotive', 'remoteok', 'hn', 'arbeitnow', 'adzuna_in', 'himalayas', 'jsearch', 'linkedin'];
 
-export function MatchFilters() {
+export function MatchFilters({ isAdmin = false }: { isAdmin?: boolean }) {
   const router = useRouter();
   const sp = useSearchParams();
   const [q, setQ] = useState(sp.get('q') ?? '');
@@ -34,7 +34,7 @@ export function MatchFilters() {
     router.replace(`/?${params.toString()}`, { scroll: false });
   }
 
-  const hasFilters = q || source || minScore || remote || (sort && sort !== 'newest');
+  const hasFilters = q || (isAdmin && source) || minScore || remote || (sort && sort !== 'newest');
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -48,6 +48,7 @@ export function MatchFilters() {
         />
       </div>
 
+      {isAdmin && (
       <select
         value={source}
         onChange={(e) => setParam('source', e.target.value)}
@@ -60,6 +61,7 @@ export function MatchFilters() {
           </option>
         ))}
       </select>
+      )}
 
       <select
         value={minScore}

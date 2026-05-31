@@ -1,8 +1,25 @@
 import mammoth from 'mammoth';
 import pdfParse from 'pdf-parse-fork';
+import WordExtractor from 'word-extractor';
+
+/** File input `accept` list for resume upload controls. */
+export const RESUME_FILE_ACCEPT =
+  '.pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain';
+
+export function isResumeFilename(filename: string): boolean {
+  const lower = filename.toLowerCase();
+  return (
+    lower.endsWith('.pdf') ||
+    lower.endsWith('.docx') ||
+    lower.endsWith('.txt') ||
+    (lower.endsWith('.doc') && !lower.endsWith('.docx'))
+  );
+}
+
+const wordExtractor = new WordExtractor();
 
 /**
- * Parse a resume buffer based on its mime type or filename.
+ * Parse a resume buffer based on its mime type, filename, or file signature.
  * Returns plain text suitable for embedding.
  */
 export async function parseResume(args: {
@@ -13,7 +30,11 @@ export async function parseResume(args: {
   const lower = args.filename.toLowerCase();
   const mime = args.mimeType ?? '';
 
-  if (lower.endsWith('.pdf') || mime === 'application/pdf') {
+  if (
+    lower.endsWith('.pdf') ||
+    mime === 'application/pdf' ||
+    isPdfBuffer(args.buffer)
+  ) {
     const result = await pdfParse(args.buffer);
     return cleanWhitespace(result.text ?? '');
   }
@@ -21,10 +42,20 @@ export async function parseResume(args: {
   if (
     lower.endsWith('.docx') ||
     mime ===
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+    isDocxBuffer(args.buffer)
   ) {
     const result = await mammoth.extractRawText({ buffer: args.buffer });
     return cleanWhitespace(result.value ?? '');
+  }
+
+  if (
+    (lower.endsWith('.doc') && !lower.endsWith('.docx')) ||
+    mime === 'application/msword' ||
+    isLegacyDocBuffer(args.buffer)
+  ) {
+    const doc = await wordExtractor.extract(args.buffer);
+    return cleanWhitespace(doc.getBody() ?? '');
   }
 
   if (lower.endsWith('.txt') || mime.startsWith('text/')) {
@@ -32,7 +63,27 @@ export async function parseResume(args: {
   }
 
   throw new Error(
-    `Unsupported file type. Upload .pdf, .docx, or .txt (got ${args.filename}).`,
+    `Unsupported file type. Upload .pdf, .doc, .docx, or .txt (got ${args.filename}).`,
+  );
+}
+
+function isPdfBuffer(buffer: Buffer): boolean {
+  return buffer.length >= 4 && buffer.subarray(0, 4).toString() === '%PDF';
+}
+
+/** ZIP / OOXML (modern Word .docx). */
+function isDocxBuffer(buffer: Buffer): boolean {
+  return buffer.length >= 2 && buffer[0] === 0x50 && buffer[1] === 0x4b;
+}
+
+/** OLE compound document (legacy Word .doc). */
+function isLegacyDocBuffer(buffer: Buffer): boolean {
+  return (
+    buffer.length >= 4 &&
+    buffer[0] === 0xd0 &&
+    buffer[1] === 0xcf &&
+    buffer[2] === 0x11 &&
+    buffer[3] === 0xe0
   );
 }
 

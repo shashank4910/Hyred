@@ -11,7 +11,7 @@ export const maxDuration = 60;
  * Used by the onboarding form to auto-fill name, email, location,
  * target roles, etc. when a user drops a file.
  *
- * Body: multipart with `resume` file (.pdf, .docx, .txt)
+ * Body: multipart with `resume` file (.pdf, .doc, .docx, .txt)
  *   OR  JSON with { resume_text: string }
  *
  * Response: { resume_text: string, insights: ResumeInsights }
