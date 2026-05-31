@@ -12,12 +12,138 @@
 JobRadar / Hyred is a personalized AI-powered job-search dashboard that:
 1. Fetches jobs from Adzuna, Remotive, RemoteOK, HackerNews, Arbeitnow (cron every 6h)
 2. AI-scores each job against the user's resume (0-100)
-3. Surfaces relevant matches in a polished light-themed dashboard (Runway-inspired warm palette)
+3. Surfaces relevant matches in a polished light-themed dashboard (**Luminous** teal UI — Google Stitch, May 2026)
 4. Generates tailored ATS resumes + cover letters per job
 5. Provides skill-match analysis (JD requirements vs resume)
 
 **Owner:** Shashank Singh — Senior Performance Engineer (India, 7.7 years)
 **Stack:** Next.js 15, React 19, TypeScript, Supabase, Groq Llama 3.3 70B (free chat primary) + OpenAI gpt-4o-mini (paid chat fallback) & text-embedding-3-small (embeddings), Vercel, GitHub Actions, Python FastAPI + browser-use (auto-apply agent on Render)
+
+---
+
+## UI & Design System
+
+> **UI index** — current look, where it lives in code, Stitch source, and UI-only PR history. Tokens + presentational components only; ingest/auth/scoring logic is unchanged.
+
+### UI index (quick lookup)
+
+| If you need… | Open below |
+|---|---|
+| **What the app looks like right now** | [Current UI](#current-ui-live-on-hyredin) |
+| Colors, fonts, radii, shadows | [Design tokens](#design-tokens) |
+| Sidebar, header, mobile nav | [App shell & layout](#app-shell--layout) |
+| Which file owns which widget | [UI component map](#ui-component-map) |
+| Google Stitch project / screens | [Stitch design source](#stitch-design-source) |
+| What changed and when (PRs) | [UI change log](#ui-change-log) |
+| UI bugs already fixed | [UI pitfalls](#ui-pitfalls) |
+
+### Current UI (live on hyred.in)
+
+**As of May 31, 2026** — merged **PR #100** (Luminous redesign) + **PR #101** (scan picker overlap fix).
+
+| Aspect | Current (Luminous) | Previous (pre-#100) |
+|---|---|---|
+| **Codename** | Luminous (Stitch) | Indigo Insight / MD3 |
+| **Primary** | Teal `#006a65` → gradient `#006a65` → `#2cc9c0` | Indigo `#4648d4` + purple secondary |
+| **Background** | Cool off-white `#f9f9ff` | Blue-tint `#f8f9ff` |
+| **Headline font** | Plus Jakarta Sans | Hanken Grotesk |
+| **Body font** | Plus Jakarta Sans | Inter |
+| **Desktop layout** | Fixed **260px left sidebar** + top header | Sticky **top nav bar** only |
+| **Dashboard** | Bento grid: match list (8 col) + insights sidebar (4 col) | Single column + stat cards row |
+| **Match cards** | Circular score ring, italic AI quote, skill pills | Numeric score + inline badges |
+| **Run scan** | Teal gradient button in **header** (⚡ Run Scan) | Top-right on dashboard only |
+| **Toasts** | Bottom-right (`AppToaster`) | Top-right (covered header) |
+| **Legal links** | Sign-up checkbox only; **none** in logged-in shell | Footer on AppShell (removed #99) |
+
+**Pages not fully restyled yet:** Job detail (`/jobs/[id]`), onboarding form layout, Stats/Admin/Import inner tables — they inherit **tokens + buttons/inputs** from `globals.css` but not the full bento/sidebar patterns from the Stitch dashboard screen.
+
+### Design tokens
+
+| Layer | File | Notes |
+|---|---|---|
+| Tailwind theme | `tailwind.config.ts` | Luminous palette, `sidebar: 260px`, `shadow-card` / `shadow-elevated` |
+| Global components | `app/globals.css` | `.teal-gradient`, `.btn-primary`, `.card`, `.input`, `.glass-card` |
+| Toaster | `app/_components/AppToaster.tsx` | Bottom-right; mobile offset above bottom nav |
+| Fonts | Google Fonts import in `globals.css` | Plus Jakarta Sans 400–800 |
+
+**Semantic colors (common):** `primary`, `primary-container`, `match-success` (`#2cc9c0`), `text-muted`, `surface-container-lowest` (card white), `outline-variant` (borders).
+
+### App shell & layout
+
+| Piece | File | Behavior |
+|---|---|---|
+| Shell | `app/(app)/_components/AppShell.tsx` | Sidebar nav, header, mobile bottom nav, logout |
+| Header search | `app/(app)/_components/HeaderSearch.tsx` | **Dashboard (`/`) only**; flex spacer on other routes so Run Scan stays right |
+| Run scan | `app/(app)/_components/RunIngestButton.tsx` | Header on desktop; duplicate on mobile dashboard body |
+| Dashboard page | `app/(app)/page.tsx` | Greeting, quick stats, bento grid, success banner |
+| Login | `app/login/page.tsx` | Teal gradient “H” badge, no legal footer |
+
+**Sidebar nav (desktop):** Dashboard · My Resume · Stats · Top MNCs · Settings · (Admin if `is_admin`) · Log out. Import is desktop-only in nav config.
+
+### UI component map
+
+```
+app/(app)/_components/
+  AppShell.tsx           ← sidebar + header + mobile nav
+  HeaderSearch.tsx       ← dashboard search → ?q= filter
+  RunIngestButton.tsx    ← scan + admin source picker dropdown
+  MatchCard.tsx          ← Luminous job card (score ring, insight quote, skills)
+  MatchScoreRing.tsx     ← SVG circular match %
+  StatusFilter.tsx       ← pill tabs (Inbox / Applied / Saved / …)
+  MatchFilters.tsx       ← score, remote, sort (+ admin source)
+  DashboardInsights.tsx  ← right column widgets on dashboard
+  AppToaster.tsx         ← (via app/layout.tsx) toast placement
+
+app/_components/
+  AppToaster.tsx
+  LegalConsentFields.tsx ← sign-up checkbox only
+  LegalDocumentLayout.tsx / LegalFooterLinks.tsx ← public /privacy, /terms only
+
+.stitch/                 ← downloaded Stitch HTML + PNG reference (not served to users)
+  matches-dashboard-luminous.html
+  matches-dashboard-luminous.png
+  README.md
+```
+
+### Stitch design source
+
+| Field | Value |
+|---|---|
+| Tool | [Google Stitch](https://stitch.withgoogle.com) MCP `https://stitch.googleapis.com/mcp` |
+| Project | **Hyred AI Career Platform** |
+| Project ID | `3444316686130112255` |
+| Reference screen | **Matches Dashboard (Luminous)** |
+| Screen ID | `5bfaf7f2edd94ffca0cb356e70ce7c2b` |
+| Also in Stitch (not all ported) | Onboarding (Luminous), Job Analysis (Luminous), Personal Stats (Luminous) |
+| Local assets | `.stitch/matches-dashboard-luminous.{html,png}` |
+
+**Implementation rule:** Port **tokens + layout patterns** into Next.js components; do not paste Stitch HTML wholesale (no React wiring, no auth). Backend routes/APIs unchanged.
+
+### UI change log
+
+| Date | PR | Summary |
+|---|---|---|
+| May 31, 2026 | **#100** | **Luminous redesign** — Stitch tokens, sidebar shell, bento dashboard, `MatchScoreRing`, `DashboardInsights`, login refresh |
+| May 31, 2026 | **#101** | Run Scan **source picker** no longer clips under sidebar (`ml-auto`, header `z-[60]`, spacer when search hidden) |
+| May 31, 2026 | **#99** | Legal: remove onboarding consent checkbox; sign-up-only Terms/Privacy; no footer links when logged in |
+| May 31, 2026 | **#96** | Toasts → bottom-right; no persistent scan loading toast; dismiss on logout |
+| May 31, 2026 | **#95** | `/privacy`, `/terms` pages + sign-up consent (later trimmed by #99) |
+| May 31, 2026 | **#93** | Stats card footnotes removed |
+| May 31, 2026 | **#92** | Stats counts aligned with Matches filters |
+| Earlier | **#90** | Ingest cost optimization (not UI) |
+| Pre-May 2026 | Kiro replication | Stitch project **Kiro Dev Design Replication** (`2007768131265843142`) — indigo palette; superseded by #100 |
+
+When you ship UI work: add a row here, link the PR, and update **Current UI** if the live look changed.
+
+### UI pitfalls
+
+| Issue | Fix | PR |
+|---|---|---|
+| “Scanning job boards…” toast covered Run scan / Sign out | Bottom-right toasts; no blocking loader on manual scan | #96 |
+| Logout toast stuck after scan | `dismissAllAppToasts()` + login cleanup | #96 |
+| Resume AI consent checkbox friction | Removed from onboarding; covered at sign-up in Terms/Privacy | #99 |
+| Admin **source picker** clipped by sidebar on Stats/other pages | Header `z-[60]`, `ml-auto` on actions, flex spacer when search hidden | #101 |
+| Stitch HTML pasted into repo pages | Don't — translate to React + existing data hooks | — |
 
 ---
 
@@ -347,7 +473,11 @@ lib/matcher.ts             ← Cosine similarity + embedding text builder
 
 app/(app)/jobs/[id]/        ← Job detail page + actions + AutoApplyButton
 app/(app)/apply-profile/    ← Application profile form (memory store for auto-apply)
-app/(app)/_components/      ← MatchCard (bookmark+seen/unseen), StatusFilter (Inbox tab), AppShell
+app/(app)/_components/      ← AppShell (sidebar), MatchCard, MatchScoreRing, StatusFilter, DashboardInsights, HeaderSearch, RunIngestButton
+app/_components/            ← AppToaster, LegalConsentFields, LegalDocumentLayout
+tailwind.config.ts          ← Luminous design tokens (Stitch)
+app/globals.css             ← .teal-gradient, .btn-*, .card, .input
+.stitch/                    ← Stitch reference HTML/PNG (Matches Dashboard Luminous)
 app/api/match/[id]/skills/  ← Skill match endpoint
 app/api/match/[id]/resume/  ← ATS resume (GET=keywords, POST=generate)
 app/api/match/[id]/resume/pdf/ ← Generate PDF + upload to Supabase Storage
@@ -480,7 +610,7 @@ When a feature seems broken:
 - Changes to the file map
 - **Keep the `AGENTS.md` Index in sync** when you add/rename a `##` section here, and append new dated session logs to `docs/context/session-log.md` (not here).
 
-**Last updated:** May 31, 2026 (session 13: **legacy `.doc` resume upload** + **Stats scan table** plain-language labels; **Vercel build fix** — split `resume-upload.ts`, `serverExternalPackages`, `force-dynamic` authed layout; `main` @ `26cd62d` deployed green. Full narrative in `docs/context/session-log.md` → Session 13.)
+**Last updated:** May 31, 2026 (session 15: **UI & Design System** index added — Luminous Stitch current UI, component map, change log PRs #96–#101; `main` includes #100 redesign + #101 scan picker fix. Full narrative in `docs/context/session-log.md`.)
 
 _Session 6 (May 29, 2026): started the **Enterprise Multi-Tenant Transformation** initiative — added the Master Plan + Progress Tracker (Phases 0-5). Phase 0 + the Groq migration (PR #48 replaced the dead `gemini-2.0-flash` 429 fallback with Groq; PR #50 flipped Groq to FREE PRIMARY with OpenAI fallback + `LLM_PRIMARY` toggle, needs `GROQ_API_KEY`) + the Phase 3 Groq free-tier capacity analysis._
 
