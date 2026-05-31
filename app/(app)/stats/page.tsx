@@ -2,6 +2,13 @@ import { unstable_noStore as noStore } from 'next/cache';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { getCurrentProfile, isCurrentUserAdmin } from '@/lib/current-user';
 import { closeStaleIngestRuns } from '@/lib/ingest-runs';
+import {
+  countAllTracked,
+  countByStatus,
+  countVisibleInbox,
+  countVisibleOnDashboard,
+  dashboardMinScore,
+} from '@/lib/match-stats';
 import { relativeTime, SOURCE_LABELS } from '@/lib/ui';
 import {
   CheckCircle2,
@@ -30,9 +37,11 @@ export default async function StatsPage() {
     await closeStaleIngestRuns(sb, profile.id);
   }
 
+  const minScore = dashboardMinScore(profile?.preferences);
+
   const [
-    { count: totalMatches },
-    { count: newCount },
+    { count: totalTracked },
+    { count: visibleCount },
     { count: inboxCount },
     { count: appliedCount },
     { data: runs },
@@ -40,25 +49,12 @@ export default async function StatsPage() {
     { data: lastRun },
     { data: activeRun },
   ] = await Promise.all([
-    sb
-      .from('matches')
-      .select('id', { count: 'exact', head: true })
-      .eq('profile_id', profileId),
-    sb
-      .from('matches')
-      .select('id', { count: 'exact', head: true })
-      .eq('profile_id', profileId)
-      .eq('status', 'new'),
-    sb
-      .from('matches')
-      .select('id', { count: 'exact', head: true })
-      .eq('profile_id', profileId)
-      .in('status', ['new', 'viewed']),
-    sb
-      .from('matches')
-      .select('id', { count: 'exact', head: true })
-      .eq('profile_id', profileId)
-      .eq('status', 'applied'),
+    countAllTracked(sb, profileId).then((count) => ({ count })),
+    countVisibleOnDashboard(sb, profileId, minScore).then((count) => ({
+      count,
+    })),
+    countVisibleInbox(sb, profileId, minScore).then((count) => ({ count })),
+    countByStatus(sb, profileId, 'applied').then((count) => ({ count })),
     sb
       .from('ingest_runs')
       .select(
@@ -108,11 +104,42 @@ export default async function StatsPage() {
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <BigStat label="Your matches" value={totalMatches ?? 0} icon={<Briefcase className="h-4 w-4" />} />
-        <BigStat label="New" value={newCount ?? 0} icon={<Sparkles className="h-4 w-4" />} accent />
-        <BigStat label="In inbox" value={inboxCount ?? 0} icon={<Inbox className="h-4 w-4" />} />
+        <BigStat
+          label="Total tracked"
+          value={totalTracked ?? 0}
+          sub="All scored jobs saved for you"
+          icon={<Briefcase className="h-4 w-4" />}
+        />
+        <BigStat
+          label="On Matches page"
+          value={visibleCount ?? 0}
+          sub={`Score ≥ ${minScore} · fresh listings`}
+          icon={<Sparkles className="h-4 w-4" />}
+          accent
+        />
+        <BigStat
+          label="In inbox"
+          value={inboxCount ?? 0}
+          sub="New + viewed (same filters)"
+          icon={<Inbox className="h-4 w-4" />}
+        />
         <BigStat label="Applied" value={appliedCount ?? 0} icon={<CheckCircle2 className="h-4 w-4" />} />
       </div>
+
+      {(totalTracked ?? 0) > (visibleCount ?? 0) && (
+        <p className="text-xs text-stone -mt-3">
+          {((totalTracked ?? 0) - (visibleCount ?? 0)).toLocaleString()} stored matches are hidden on Matches
+          (below score {minScore} or older than 45 days).
+        </p>
+      )}
+
+      {(visibleCount ?? 0) > 0 &&
+        (inboxCount ?? 0) === (visibleCount ?? 0) &&
+        (appliedCount ?? 0) === 0 && (
+          <p className="text-xs text-stone -mt-3">
+            In inbox equals On Matches page because every visible match is still new or viewed — none applied yet.
+          </p>
+        )}
 
       <div className="card text-sm text-stone">
         <span className="font-medium text-ink">Last scan: </span>
@@ -137,7 +164,7 @@ export default async function StatsPage() {
             {Object.entries(bySource)
               .sort((a, b) => b[1] - a[1])
               .map(([source, count]) => {
-                const total = totalMatches ?? 1;
+                const total = visibleCount ?? 1;
                 const pct = (count / total) * 100;
                 return (
                   <li key={source}>
@@ -210,11 +237,13 @@ export default async function StatsPage() {
 function BigStat({
   label,
   value,
+  sub,
   icon,
   accent,
 }: {
   label: string;
   value: number;
+  sub?: string;
   icon: React.ReactNode;
   accent?: boolean;
 }) {
@@ -227,6 +256,7 @@ function BigStat({
       <div className={`mt-1.5 text-heading-sm font-semibold ${accent ? 'text-amber' : 'text-ink'}`}>
         {value.toLocaleString()}
       </div>
+      {sub ? <p className="mt-1 text-[10px] text-stone leading-snug">{sub}</p> : null}
     </div>
   );
 }
