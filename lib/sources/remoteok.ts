@@ -1,4 +1,5 @@
 import type { RawJob } from '../types';
+import { stripHtml } from '../jd-fetcher';
 
 // RemoteOK public JSON feed - https://remoteok.com/api
 const ENDPOINT = 'https://remoteok.com/api';
@@ -17,13 +18,6 @@ type RemoteOkJob = {
   tags?: string[];
   date?: string;
 };
-
-function stripHtml(s: string): string {
-  return s
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
 
 export async function fetchRemoteOk(): Promise<RawJob[]> {
   const res = await fetch(ENDPOINT, {

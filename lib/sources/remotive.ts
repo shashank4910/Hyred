@@ -1,4 +1,5 @@
 import type { RawJob } from '../types';
+import { stripHtml } from '../jd-fetcher';
 
 // Remotive public API - https://remotive.com/api-documentation
 const ENDPOINT = 'https://remotive.com/api/remote-jobs';
@@ -19,21 +20,8 @@ type RemotiveJob = {
 
 /**
  * Strip HTML tags from a string. Remotive returns description as HTML.
+ * Uses the shared stripHtml from jd-fetcher (imported above).
  */
-function stripHtml(s: string): string {
-  return s
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\s+/g, ' ')
-    .trim();
-}
 
 export async function fetchRemotive(opts?: { limit?: number }): Promise<RawJob[]> {
   const limit = opts?.limit ?? 50;
