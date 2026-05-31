@@ -108,15 +108,15 @@ export function LoginForm({ next }: { next?: string }) {
         Continue with Google
       </button>
 
-      <div className="flex items-center gap-3 text-xs text-stone">
-        <span className="h-px flex-1 bg-border" />
+      <div className="flex items-center gap-3 text-xs text-on-surface-variant">
+        <span className="h-px flex-1 bg-outline-variant" />
         or
-        <span className="h-px flex-1 bg-border" />
+        <span className="h-px flex-1 bg-outline-variant" />
       </div>
 
       <form onSubmit={submit} className="space-y-3">
         <div className="relative">
-          <Mail className="absolute left-3 top-2.5 h-4 w-4 text-shadow-tint" />
+          <Mail className="absolute left-3 top-2.5 h-4 w-4 text-text-muted" />
           <input
             type="email"
             required
@@ -128,7 +128,7 @@ export function LoginForm({ next }: { next?: string }) {
           />
         </div>
         <div className="relative">
-          <Lock className="absolute left-3 top-2.5 h-4 w-4 text-shadow-tint" />
+          <Lock className="absolute left-3 top-2.5 h-4 w-4 text-text-muted" />
           <input
             type="password"
             required
@@ -140,7 +140,7 @@ export function LoginForm({ next }: { next?: string }) {
             onChange={(e) => setPassword(e.target.value)}
           />
         </div>
-        {error && <p className="text-xs text-warning-red">{error}</p>}
+        {error && <p className="text-xs text-error">{error}</p>}
         {info && <p className="text-xs text-emerald-600">{info}</p>}
         {mode === 'signup' && (
           <SignUpLegalConsent checked={acceptedLegal} onChange={setAcceptedLegal} />
@@ -160,7 +160,7 @@ export function LoginForm({ next }: { next?: string }) {
         </button>
       </form>
 
-      <p className="text-center text-xs text-stone">
+      <p className="text-center text-xs text-on-surface-variant">
         {mode === 'signin' ? "Don't have an account?" : 'Already have an account?'}{' '}
         <button
           type="button"
@@ -170,7 +170,7 @@ export function LoginForm({ next }: { next?: string }) {
             setInfo(null);
             setAcceptedLegal(false);
           }}
-          className="text-amber font-medium hover:underline"
+          className="text-primary font-medium hover:underline"
         >
           {mode === 'signin' ? 'Sign up' : 'Sign in'}
         </button>

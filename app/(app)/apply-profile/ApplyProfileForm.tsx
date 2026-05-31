@@ -210,7 +210,7 @@ export function ApplyProfileForm() {
 
       {/* ── Demographic (EEO) ─────────────────────────────────── */}
       <Section icon={<User className="h-4 w-4" />} title="Demographic Info (EEO — required on some forms)">
-        <p className="text-xs text-stone mb-3">Many job platforms (Greenhouse, Lever, Workday) require these for compliance. Your answers are stored only for auto-fill purposes.</p>
+        <p className="text-xs text-on-surface-variant mb-3">Many job platforms (Greenhouse, Lever, Workday) require these for compliance. Your answers are stored only for auto-fill purposes.</p>
         <Grid>
           <Field label="Gender">
             <select className="input" value={f('gender') || ''} onChange={e => set('gender', e.target.value)}>
@@ -233,7 +233,7 @@ export function ApplyProfileForm() {
 
       {/* ── Standard Essay Answers ───────────────────────────── */}
       <Section icon={<BookOpen className="h-4 w-4" />} title="Standard Essay Answers">
-        <p className="text-xs text-stone mb-3">The agent uses these as a base when filling text fields on application forms. The AI adapts them per company automatically.</p>
+        <p className="text-xs text-on-surface-variant mb-3">The agent uses these as a base when filling text fields on application forms. The AI adapts them per company automatically.</p>
         <div className="space-y-4">
           <Field label="Tell me about yourself (2-3 sentences)">
             <textarea className="input min-h-[80px]" value={f('answer_about_yourself')} onChange={e => set('answer_about_yourself', e.target.value)} placeholder="Brief summary of your background, domain, and what you bring to a role..." />
@@ -274,8 +274,8 @@ export function ApplyProfileForm() {
 function Section({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
   return (
     <div className="card space-y-4">
-      <h2 className="font-semibold text-ink flex items-center gap-2">
-        <span className="text-amber">{icon}</span> {title}
+      <h2 className="font-semibold text-on-surface flex items-center gap-2">
+        <span className="text-primary">{icon}</span> {title}
       </h2>
       {children}
     </div>
@@ -289,7 +289,7 @@ function Grid({ children }: { children: React.ReactNode }) {
 function Field({ label, children, span }: { label: string; children: React.ReactNode; span?: number }) {
   return (
     <div className={span === 2 ? 'sm:col-span-2' : ''}>
-      <label className="block text-xs font-medium text-stone mb-1">{label}</label>
+      <label className="block text-xs font-medium text-on-surface-variant mb-1">{label}</label>
       {children}
     </div>
   );

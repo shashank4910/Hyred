@@ -122,14 +122,14 @@ export function AutoApplyButton({ matchId, agentUrl }: { matchId: string; agentU
         onClick={startApply}
         disabled={isActive || isDone}
         className={[
-          'w-full inline-flex items-center justify-center gap-2 rounded-btn px-4 py-3 text-sm font-semibold transition-all',
+          'w-full inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition-all',
           isDone
             ? 'bg-emerald-500 text-white cursor-default'
             : isFailed
             ? 'bg-red-500 text-white hover:bg-red-600'
             : isActive
-            ? 'bg-amber/80 text-ink cursor-wait'
-            : 'bg-amber text-ink hover:bg-amber-hover shadow-sm',
+            ? 'teal-gradient opacity-80 text-on-primary cursor-wait'
+            : 'teal-gradient text-on-primary hover:opacity-90 shadow-primary-glow',
         ].join(' ')}
       >
         {isActive ? (
@@ -145,17 +145,17 @@ export function AutoApplyButton({ matchId, agentUrl }: { matchId: string; agentU
 
       {/* Live log panel */}
       {hasActivity && (
-        <div className="rounded-card border border-border overflow-hidden">
+        <div className="rounded-2xl border border-outline-variant overflow-hidden">
           {/* Panel header */}
           <button
             onClick={() => setExpanded(v => !v)}
-            className="w-full flex items-center justify-between px-3 py-2 bg-off-white text-xs font-medium text-stone hover:text-ink transition-colors"
+            className="w-full flex items-center justify-between px-3 py-2 bg-surface-container-low text-xs font-medium text-on-surface-variant hover:text-on-surface transition-colors"
           >
             <span className="flex items-center gap-1.5">
-              <Rocket className="h-3 w-3 text-amber" />
+              <Rocket className="h-3 w-3 text-primary" />
               Agent Live Feed
               {isActive && (
-                <span className="inline-flex h-1.5 w-1.5 rounded-full bg-amber animate-pulse" />
+                <span className="inline-flex h-1.5 w-1.5 rounded-full bg-primary-container animate-pulse" />
               )}
             </span>
             {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
@@ -184,9 +184,9 @@ export function AutoApplyButton({ matchId, agentUrl }: { matchId: string; agentU
 
       {/* Agent not configured warning */}
       {!agentUrl && status === 'idle' && (
-        <p className="text-[11px] text-stone text-center">
+        <p className="text-[11px] text-on-surface-variant text-center">
           Deploy the browser agent and set{' '}
-          <code className="bg-off-white px-1 rounded text-ink">APPLY_AGENT_URL</code>
+          <code className="bg-surface-container-low px-1 rounded text-on-surface">APPLY_AGENT_URL</code>
           {' '}to enable auto-apply.
         </p>
       )}

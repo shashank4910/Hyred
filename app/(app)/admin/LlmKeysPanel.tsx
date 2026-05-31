@@ -408,8 +408,10 @@ export function LlmKeysPanel() {
 
       {/* === Add Key Modal === */}
       {showAddForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="glass-card w-full max-w-md p-6 space-y-4 animate-fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-on-background/40 backdrop-blur-sm"
+          onClick={() => setShowAddForm(false)}
+        >
+          <div className="glass-card w-full max-w-md p-6 space-y-4 animate-fade-in" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-headline font-semibold text-on-background text-lg">
               Add LLM Provider Key
             </h3>

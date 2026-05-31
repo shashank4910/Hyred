@@ -131,12 +131,12 @@ export function KeywordManager({
   const total = result?.total_jd_keywords ?? jdKeywords.length;
   const scoreTone =
     score == null
-      ? 'bg-off-white border-border text-stone'
+      ? 'bg-surface-container-low border-outline-variant text-on-surface-variant'
       : score >= 80
         ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
         : score >= 60
-          ? 'bg-amber/10 border-amber/30 text-amber-hover'
-          : 'bg-red-50 border-warning-red/30 text-warning-red';
+          ? 'bg-primary/10 border-primary/30 text-primary'
+          : 'bg-error-container/30 border-error/30 text-error';
 
   const optimizeLabel = generating
     ? hasResume
@@ -189,8 +189,8 @@ export function KeywordManager({
 
       {/* Pending-changes banner */}
       {dirty && hasResume && (
-        <div className="flex items-center gap-1.5 rounded-btn border border-amber/40 bg-amber/10 px-3 py-2 text-[11px] text-ink">
-          <Sparkles className="h-3.5 w-3.5 text-amber shrink-0" />
+        <div className="flex items-center gap-1.5 rounded-xl border border-primary/40 bg-primary/10 px-3 py-2 text-[11px] text-on-surface">
+          <Sparkles className="h-3.5 w-3.5 text-primary shrink-0" />
           You changed your keywords — click <span className="font-semibold">Optimize My Resume</span> to apply.
         </div>
       )}
@@ -240,10 +240,10 @@ export function KeywordManager({
         </div>
       )}
 
-      {/* WILL BE ADDED NEXT (amber, pending, click to undo) */}
+      {/* WILL BE ADDED NEXT (primary tint, pending, click to undo) */}
       {willAdd.length > 0 && (
         <div>
-          <div className="text-[10px] uppercase tracking-wide text-amber-hover mb-1.5 font-medium">
+          <div className="text-[10px] uppercase tracking-wide text-primary mb-1.5 font-medium">
             Will be added next ({willAdd.length}) — click to undo
           </div>
           <div className="flex flex-wrap gap-1.5">
@@ -254,9 +254,9 @@ export function KeywordManager({
                 onClick={() => onUnstage(kw)}
                 disabled={generating}
                 title="Pending. Click to undo before optimizing."
-                className="inline-flex items-center gap-1 rounded-badge border border-amber/50 bg-amber/15 px-2 py-0.5 text-xs font-semibold text-ink shadow-sm transition-all duration-150 cursor-pointer hover:bg-amber/25 disabled:cursor-wait disabled:opacity-60"
+                className="inline-flex items-center gap-1 rounded-badge border border-primary/50 bg-primary/10 px-2 py-0.5 text-xs font-semibold text-on-surface shadow-sm transition-all duration-150 cursor-pointer hover:bg-primary/20 disabled:cursor-wait disabled:opacity-60"
               >
-                <Sparkles className="h-2.5 w-2.5 text-amber" />
+                <Sparkles className="h-2.5 w-2.5 text-primary" />
                 {kw}
                 <X className="h-2.5 w-2.5 opacity-60" />
               </button>
@@ -269,14 +269,14 @@ export function KeywordManager({
       {missing.length > 0 && (
         <div>
           <div className="flex items-center justify-between flex-wrap gap-2 mb-1.5">
-            <div className="text-[10px] uppercase tracking-wide text-warning-red font-medium">
+            <div className="text-[10px] uppercase tracking-wide text-error font-medium">
               Missing — tap to add ({missing.length})
             </div>
             <button
               type="button"
               onClick={() => onStageMany(missing)}
               disabled={generating}
-              className="text-[11px] font-semibold text-amber-hover hover:text-ink underline-offset-2 hover:underline disabled:opacity-50"
+              className="text-[11px] font-semibold text-primary hover:text-on-surface underline-offset-2 hover:underline disabled:opacity-50"
             >
               + Add all
             </button>
@@ -289,7 +289,7 @@ export function KeywordManager({
                 onClick={() => onStage(kw)}
                 disabled={generating}
                 title="Click to add this keyword on next optimize."
-                className="inline-flex items-center gap-1 rounded-badge border border-warning-red/30 bg-red-50 px-2 py-0.5 text-xs text-warning-red transition-all duration-150 cursor-pointer hover:border-amber/40 hover:bg-amber/10 hover:text-ink disabled:cursor-wait disabled:opacity-60"
+                className="inline-flex items-center gap-1 rounded-badge border border-error/30 bg-error-container/20 px-2 py-0.5 text-xs text-error transition-all duration-150 cursor-pointer hover:border-primary/40 hover:bg-primary/10 hover:text-on-surface disabled:cursor-wait disabled:opacity-60"
               >
                 <Plus className="h-3 w-3" />
                 {kw}
