@@ -14,7 +14,7 @@ import {
   Wand2,
 } from 'lucide-react';
 import type { Preferences, ResumeInsights } from '@/lib/types';
-import { isResumeFilename, RESUME_FILE_ACCEPT } from '@/lib/resume';
+import { isResumeFilename, RESUME_FILE_ACCEPT } from '@/lib/resume-upload';
 import { triggerJobScan } from '../_components/triggerJobScan';
 
 type Initial = {
