@@ -79,6 +79,7 @@ export async function runIngest(opts?: {
     .insert({
       triggered_by: opts?.triggeredBy ?? 'manual',
       status: 'running',
+      profile_id: opts?.profileId ?? null,
     })
     .select('id')
     .single();

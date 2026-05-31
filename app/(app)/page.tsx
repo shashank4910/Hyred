@@ -218,12 +218,14 @@ export default async function Dashboard({
               ? 'In progress…'
               : lastRun?.finished_at
                 ? relativeTime(lastRun.finished_at)
-                : 'Never'
+                : 'No scan yet'
           }
           subValue={
             activeRun
-              ? `${activeRun.matches_created ?? 0} kept so far`
-              : lastRun?.matches_created != null
+              ? (activeRun.matches_created ?? 0) > 0
+                ? `${activeRun.matches_created} kept so far`
+                : undefined
+              : lastRun?.matches_created != null && lastRun.matches_created > 0
                 ? `+${lastRun.matches_created} kept`
                 : undefined
           }
