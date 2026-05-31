@@ -107,26 +107,39 @@ async function resolveProfileForUser(user: User): Promise<Profile> {
     await sb.from('profiles').delete().ilike('email', email).is('user_id', null);
   }
 
-  // 4. Create-or-adopt ATOMICALLY via INSERT ... ON CONFLICT (email) DO UPDATE.
+  // 4. Create-or-adopt ATOMICALLY. Prefer user_id conflict target so concurrent
+  //    first-login renders (prefetch + navigation) cannot hit idx_profiles_user_id.
   const insertEmail = user.email ?? `${user.id}@users.noreply`;
-  const { data: upserted, error } = await sb
+  const row = { user_id: user.id, email: insertEmail };
+
+  const { data: byUserId, error: userIdError } = await sb
     .from('profiles')
-    .upsert({ user_id: user.id, email: insertEmail }, { onConflict: 'email' })
+    .upsert(row, { onConflict: 'user_id' })
     .select(PROFILE_COLUMNS)
     .single();
-  if (!error && upserted) return upserted as Profile;
+  if (!userIdError && byUserId) return byUserId as Profile;
 
-  // Last-ditch read after race
-  const { data: reread } = await sb
+  // Same email, different/null user_id (re-signup, legacy row) — re-point by email.
+  const { data: byEmail, error: emailError } = await sb
     .from('profiles')
+    .upsert(row, { onConflict: 'email' })
     .select(PROFILE_COLUMNS)
-    .eq('user_id', user.id)
-    .maybeSingle();
-  if (reread) return reread as Profile;
+    .single();
+  if (!emailError && byEmail) return byEmail as Profile;
 
-  throw new Error(
-    `Failed to create profile for ${insertEmail}: ${error?.message ?? 'unknown error'}`,
-  );
+  // Winner of a concurrent insert may commit after our upsert errors.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const { data: reread } = await sb
+      .from('profiles')
+      .select(PROFILE_COLUMNS)
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (reread) return reread as Profile;
+    await new Promise((r) => setTimeout(r, 40 * (attempt + 1)));
+  }
+
+  const detail = userIdError?.message ?? emailError?.message ?? 'unknown error';
+  throw new Error(`Failed to create profile for ${insertEmail}: ${detail}`);
 }
 
 /** Link a pre-multi-user orphan (user_id IS NULL) to this auth user. */
