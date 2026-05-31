@@ -39,7 +39,7 @@ JobRadar / Hyred is a personalized AI-powered job-search dashboard that:
 
 ### Current UI (live on hyred.in)
 
-**As of May 31, 2026** — merged **PR #100** (Luminous redesign) + **PR #101** (scan picker overlap fix) + **PR #102** (UI index docs).
+**As of May 31, 2026** — merged **PR #100–#106**: Luminous redesign, layout/overlap fixes, full-page polish (#104), scan-started toast (#105), status filter grid (#106).
 
 | Aspect | Current (Luminous) | Previous (pre-#100) |
 |---|---|---|
@@ -49,13 +49,14 @@ JobRadar / Hyred is a personalized AI-powered job-search dashboard that:
 | **Headline font** | Plus Jakarta Sans | Hanken Grotesk |
 | **Body font** | Plus Jakarta Sans | Inter |
 | **Desktop layout** | Fixed **260px left sidebar** + top header | Sticky **top nav bar** only |
-| **Dashboard** | Bento grid: match list (8 col) + insights sidebar (4 col) | Single column + stat cards row |
+| **Dashboard** | Flex row at `xl+`: match list + insights sidebar (`xl:w-72`); stacked below `xl` | Single column + stat cards row |
+| **Status tabs** | 7-column grid — Inbox through Saved on **one line**, no horizontal scroll | Pill row with overflow scroll |
 | **Match cards** | Circular score ring, italic AI quote, skill pills | Numeric score + inline badges |
-| **Run scan** | Teal gradient button in **header** (⚡ Run Scan) | Top-right on dashboard only |
-| **Toasts** | Bottom-right (`AppToaster`) | Top-right (covered header) |
+| **Run scan** | Teal gradient button in **header** (⚡ Run Scan); **scan-started toast** with quick links while ingest runs | Top-right on dashboard only |
+| **Toasts** | Bottom-right (`AppToaster`); scan notice stays until complete | Top-right (covered header) |
 | **Legal links** | Sign-up checkbox only; **none** in logged-in shell | Footer on AppShell (removed #99) |
 
-**Pages not fully restyled yet:** Job detail (`/jobs/[id]`), onboarding form layout, Stats/Admin/Import inner tables — they inherit **tokens + buttons/inputs** from `globals.css` but not the full bento/sidebar patterns from the Stitch dashboard screen.
+**Pages using Luminous tokens everywhere (PR #104):** Job detail, onboarding, Stats, Admin, Import, apply-profile, error/not-found — all inherit refreshed typography, cards, and form controls from `globals.css`. Dashboard-specific patterns (bento insights, 7-col status grid) live only on `/`.
 
 ### Design tokens
 
@@ -72,10 +73,11 @@ JobRadar / Hyred is a personalized AI-powered job-search dashboard that:
 
 | Piece | File | Behavior |
 |---|---|---|
-| Shell | `app/(app)/_components/AppShell.tsx` | Sidebar nav, header, mobile bottom nav, logout |
+| Shell | `app/(app)/_components/AppShell.tsx` | Sidebar nav (`z-40`), header (`z-[60]`), `lg:pl-[284px]`, mobile bottom nav, logout |
 | Header search | `app/(app)/_components/HeaderSearch.tsx` | **Dashboard (`/`) only**; flex spacer on other routes so Run Scan stays right |
-| Run scan | `app/(app)/_components/RunIngestButton.tsx` | Header on desktop; duplicate on mobile dashboard body |
-| Dashboard page | `app/(app)/page.tsx` | Greeting, quick stats, bento grid, success banner |
+| Run scan | `app/(app)/_components/RunIngestButton.tsx` | Header on desktop; admin source picker dropdown |
+| Scan UX | `app/(app)/_components/triggerJobScan.ts` + `scanStartedToast.tsx` | Immediate “scan started” toast; dismiss on complete / logout |
+| Dashboard page | `app/(app)/page.tsx` | Greeting, quick stats, flex main + insights, success banner |
 | Login | `app/login/page.tsx` | Teal gradient “H” badge, no legal footer |
 
 **Sidebar nav (desktop):** Dashboard · My Resume · Stats · Top MNCs · Settings · (Admin if `is_admin`) · Log out. Import is desktop-only in nav config.
@@ -87,17 +89,22 @@ app/(app)/_components/
   AppShell.tsx           ← sidebar + header + mobile nav
   HeaderSearch.tsx       ← dashboard search → ?q= filter
   RunIngestButton.tsx    ← scan + admin source picker dropdown
+  triggerJobScan.ts      ← POST /api/ingest + toast lifecycle
+  scanStartedToast.tsx   ← rich “scan started” notice + quick links
   MatchCard.tsx          ← Luminous job card (score ring, insight quote, skills)
   MatchScoreRing.tsx     ← SVG circular match %
-  StatusFilter.tsx       ← pill tabs (Inbox / Applied / Saved / …)
+  StatusFilter.tsx       ← 7-col grid tabs (Inbox / Applied / … / Saved), one row
   MatchFilters.tsx       ← score, remote, sort (+ admin source)
-  DashboardInsights.tsx  ← right column widgets on dashboard
-  AppToaster.tsx         ← (via app/layout.tsx) toast placement
+  DashboardInsights.tsx  ← right column widgets on dashboard (xl+)
 
 app/_components/
-  AppToaster.tsx
+  AppToaster.tsx         ← (via app/layout.tsx) toast placement
   LegalConsentFields.tsx ← sign-up checkbox only
   LegalDocumentLayout.tsx / LegalFooterLinks.tsx ← public /privacy, /terms only
+
+lib/
+  scan-toast-id.ts       ← stable Sonner id for scan-started toast
+  toast-app.ts           ← dismissAllAppToasts() on logout
 
 .stitch/                 ← downloaded Stitch HTML + PNG reference (not served to users)
   matches-dashboard-luminous.html
@@ -123,7 +130,12 @@ app/_components/
 
 | Date | PR | Summary |
 |---|---|---|
-| May 31, 2026 | **#100** | **Luminous redesign** — Stitch tokens, sidebar shell, bento dashboard, `MatchScoreRing`, `DashboardInsights`, login refresh |
+| May 31, 2026 | **#106** | **Status filter** — 7-column grid; all tabs on one line (no horizontal scroll) |
+| May 31, 2026 | **#105** | **Scan-started toast** — immediate notice + quick links while ingest runs (~1–2 min) |
+| May 31, 2026 | **#104** | **Luminous polish** — tokens/forms/cards on job detail, onboarding, Stats, Admin, Import, errors |
+| May 31, 2026 | **#103** | Dashboard **layout overlap** fix — flex stack until `xl`, `min-w-0`, `lg:pl-[284px]` |
+| May 31, 2026 | **#102** | This **UI index** section added to `CONTEXT.md` + `AGENTS.md` row |
+| May 31, 2026 | **#100** | **Luminous redesign** — Stitch tokens, sidebar shell, dashboard widgets, `MatchScoreRing`, login refresh |
 | May 31, 2026 | **#101** | Run Scan **source picker** no longer clips under sidebar (`ml-auto`, header `z-[60]`, spacer when search hidden) |
 | May 31, 2026 | **#99** | Legal: remove onboarding consent checkbox; sign-up-only Terms/Privacy; no footer links when logged in |
 | May 31, 2026 | **#96** | Toasts → bottom-right; no persistent scan loading toast; dismiss on logout |
@@ -144,6 +156,8 @@ When you ship UI work: add a row here, link the PR, and update **Current UI** if
 | Resume AI consent checkbox friction | Removed from onboarding; covered at sign-up in Terms/Privacy | #99 |
 | Admin **source picker** clipped by sidebar on Stats/other pages | Header `z-[60]`, `ml-auto` on actions, flex spacer when search hidden | #101 |
 | **Match activity** sidebar overlapping status tabs / match cards on dashboard | Stack main + insights until `xl`; flex layout with `min-w-0`; explicit `lg:pl-[284px]`; lower sidebar z-index | #103 |
+| Status filter **horizontal scrollbar** (tabs clipped off-screen) | Full-width `grid-cols-7`, compact equal tabs — one row, no `overflow-x` | #106 |
+| Manual scan gave **no feedback** while ingest runs (1–2 min) | Rich **scan-started toast** via `scanStartedToast.tsx`; dismiss on complete / logout | #105 |
 | Stitch HTML pasted into repo pages | Don't — translate to React + existing data hooks | — |
 
 ---
@@ -611,7 +625,7 @@ When a feature seems broken:
 - Changes to the file map
 - **Keep the `AGENTS.md` Index in sync** when you add/rename a `##` section here, and append new dated session logs to `docs/context/session-log.md` (not here).
 
-**Last updated:** May 31, 2026 (session 15: **UI & Design System** index added — Luminous Stitch current UI, component map, change log PRs #96–#101; `main` includes #100 redesign + #101 scan picker fix. Full narrative in `docs/context/session-log.md`.)
+**Last updated:** May 31, 2026 (session 16: **UI index** refreshed for PRs **#102–#106** — layout overlap (#103), Luminous page polish (#104), scan-started toast (#105), status filter grid (#106). Full narrative in `docs/context/session-log.md`.)
 
 _Session 6 (May 29, 2026): started the **Enterprise Multi-Tenant Transformation** initiative — added the Master Plan + Progress Tracker (Phases 0-5). Phase 0 + the Groq migration (PR #48 replaced the dead `gemini-2.0-flash` 429 fallback with Groq; PR #50 flipped Groq to FREE PRIMARY with OpenAI fallback + `LLM_PRIMARY` toggle, needs `GROQ_API_KEY`) + the Phase 3 Groq free-tier capacity analysis._
 
