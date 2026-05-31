@@ -67,7 +67,7 @@ export function AppShell({
     : profile?.email?.slice(0, 2).toUpperCase() ?? 'HY';
 
   return (
-    <div className="min-h-screen bg-background text-on-surface">
+    <div className="min-h-screen text-on-surface">
       {/* Desktop sidebar */}
       <aside className="fixed left-0 top-0 z-50 hidden h-screen w-sidebar flex-col gap-y-6 bg-surface-container-lowest px-4 py-8 shadow-glass lg:flex">
         <Brand />

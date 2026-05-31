@@ -10,7 +10,7 @@ export default async function LoginPage({
 }) {
   const sp = await searchParams;
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 bg-background">
+    <div className="min-h-screen flex items-center justify-center px-4">
       <ToastCleanupOnLogin />
       <div className="w-full max-w-sm space-y-6">
         <div className="text-center space-y-3">

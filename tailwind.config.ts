@@ -54,7 +54,7 @@ const config: Config = {
         'on-surface-variant': '#3c4948',
 
         'inverse-surface': '#263143',
-        'inverse-on-surface': '#ecf1ff',
+        'inverse-on-surface': '#e8f5f3',
         'inverse-primary': '#48dbd2',
 
         error: '#ba1a1a',
@@ -68,7 +68,7 @@ const config: Config = {
 
         'match-success': '#2cc9c0',
         'match-warning': '#45dfa4',
-        'match-missing': '#e7eeff',
+        'match-missing': '#e4f0ee',
         'text-muted': '#6c7a78',
         'success-green': '#2cc9c0',
 
