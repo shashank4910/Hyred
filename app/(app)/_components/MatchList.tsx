@@ -50,7 +50,8 @@ export function MatchList({ initialMatches, total, initialHasMore, showSource = 
   const sentinelRef = useRef<HTMLDivElement>(null);
   const highlightRef = useRef<HTMLLIElement>(null);
 
-  const scrollKey = `hyred_scroll_${sp.toString()}`;
+  // Stable scroll key — only use status + sort (not volatile params like 'from')
+  const scrollKey = `hyred_scroll_${sp.get('status') ?? 'inbox'}_${sp.get('sort') ?? 'score'}`;
 
   const buildQuery = useCallback((pageNum: number) => {
     const params = new URLSearchParams();
@@ -106,14 +107,21 @@ export function MatchList({ initialMatches, total, initialHasMore, showSource = 
     return () => document.removeEventListener('click', handler, { capture: true });
   }, [scrollKey]);
 
-  // Restore scroll on mount
+  // Restore scroll on mount (one-time only, never re-fires)
+  const scrollRestored = useRef(false);
   useEffect(() => {
+    if (scrollRestored.current) return;
     const saved = sessionStorage.getItem(scrollKey);
     if (saved) {
-      requestAnimationFrame(() => window.scrollTo(0, parseInt(saved, 10)));
-      sessionStorage.removeItem(scrollKey);
+      scrollRestored.current = true;
+      // Delay slightly to ensure DOM is painted
+      setTimeout(() => {
+        window.scrollTo({ top: parseInt(saved, 10), behavior: 'instant' });
+        sessionStorage.removeItem(scrollKey);
+      }, 50);
     }
-  }, [scrollKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Highlight card on back-navigation
   useEffect(() => {

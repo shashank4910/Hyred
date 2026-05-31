@@ -92,10 +92,10 @@ export function MatchCard({
     <Link
       href={`/jobs/${matchId}`}
       className={[
-        'group block min-w-0 animate-fade-in rounded-2xl p-6 shadow-card transition-all hover:-translate-y-1 hover:border-primary/10 hover:shadow-elevated',
+        'group block min-w-0 animate-fade-in rounded-2xl p-6 shadow-card transition-all hover:-translate-y-1 hover:shadow-elevated',
         isNew
-          ? 'bg-surface-container-lowest border-l-4 border-l-primary'
-          : 'bg-surface-container-lowest/70 opacity-75 hover:opacity-100',
+          ? 'bg-surface-container-lowest border-l-4 border-l-primary hover:border-l-primary'
+          : 'bg-surface-container-lowest/70 opacity-[0.65] hover:opacity-90',
       ].join(' ')}
     >
       <div className="mb-6 flex items-start justify-between gap-4">
