@@ -82,7 +82,7 @@ function ScanCard() {
             </span>
           </div>
           <p className="mt-0.5 text-[10px] text-on-surface-variant">
-            Usually 1\u20135 min \u00B7 You can keep browsing
+            Usually 1&ndash;5 min &middot; You can keep browsing
           </p>
         </div>
 
