@@ -109,3 +109,19 @@ body {
   animation: shimmer 1.4s infinite linear;
   border-radius: 6px;
 }
+
+.legal-prose {
+  @apply text-sm text-ink leading-relaxed space-y-4;
+}
+.legal-prose h2 {
+  @apply text-base font-semibold text-ink mt-8 mb-2;
+}
+.legal-prose ul {
+  @apply list-disc pl-5 space-y-1.5;
+}
+.legal-prose a {
+  @apply text-amber hover:underline;
+}
+.legal-prose strong {
+  @apply font-medium text-ink;
+}

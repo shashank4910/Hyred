@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Mail, Lock, Loader2 } from 'lucide-react';
 import { supabaseBrowser } from '@/lib/supabase/client';
+import { SignUpLegalConsent } from '@/app/_components/LegalConsentFields';
+import { LegalFooterLinks } from '@/app/_components/LegalFooterLinks';
 
 type Mode = 'signin' | 'signup';
 
@@ -16,8 +18,16 @@ export function LoginForm({ next }: { next?: string }) {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [acceptedLegal, setAcceptedLegal] = useState(false);
 
   const safeNext = next && next.startsWith('/') ? next : '/';
+
+  function requireLegalConsent(forGoogle = false): boolean {
+    if (acceptedLegal) return true;
+    if (mode === 'signin' && !forGoogle) return true;
+    setError('Please confirm you are 18+ and accept the Terms and Privacy Policy.');
+    return false;
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -34,6 +44,10 @@ export function LoginForm({ next }: { next?: string }) {
         router.push(safeNext);
         router.refresh();
       } else {
+        if (!requireLegalConsent()) {
+          setLoading(false);
+          return;
+        }
         const { data, error } = await supabaseBrowser.auth.signUp({
           email,
           password,
@@ -61,6 +75,7 @@ export function LoginForm({ next }: { next?: string }) {
   }
 
   async function googleSignIn() {
+    if (!requireLegalConsent(true)) return;
     setGoogleLoading(true);
     setError(null);
     try {
@@ -83,7 +98,7 @@ export function LoginForm({ next }: { next?: string }) {
       <button
         type="button"
         onClick={googleSignIn}
-        disabled={googleLoading || loading}
+        disabled={googleLoading || loading || !acceptedLegal}
         className="btn w-full justify-center gap-2"
       >
         {googleLoading ? (
@@ -128,7 +143,12 @@ export function LoginForm({ next }: { next?: string }) {
         </div>
         {error && <p className="text-xs text-warning-red">{error}</p>}
         {info && <p className="text-xs text-emerald-600">{info}</p>}
-        <button type="submit" disabled={loading} className="btn-primary w-full">
+        <SignUpLegalConsent checked={acceptedLegal} onChange={setAcceptedLegal} />
+        <button
+          type="submit"
+          disabled={loading || (mode === 'signup' && !acceptedLegal)}
+          className="btn-primary w-full"
+        >
           {loading ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : mode === 'signin' ? (
@@ -147,12 +167,15 @@ export function LoginForm({ next }: { next?: string }) {
             setMode(mode === 'signin' ? 'signup' : 'signin');
             setError(null);
             setInfo(null);
+            setAcceptedLegal(false);
           }}
           className="text-amber font-medium hover:underline"
         >
           {mode === 'signin' ? 'Sign up' : 'Sign in'}
         </button>
       </p>
+
+      <LegalFooterLinks className="text-center" />
     </div>
   );
 }
