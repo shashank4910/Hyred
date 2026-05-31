@@ -2,6 +2,109 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 16 — DB-managed multi-key LLMs, Cerebras model deprecation, RPM rotation, dashboard pagination, JD HTML + scoreJob seniority cap (May 31, 2026)
+
+A long working session that took the AI runtime, the dashboard performance, and scoring quality from "single shared key + 100-card SSR fetch + no seniority guard" → "admin-managed multi-provider key pool + paginated infinite-scroll dashboard with bulletproof back-nav + experience-aware scoreJob with server-side cap." Five PRs: **#94** (LLM key system), **#110** (pagination), **#116** (JD HTML + seniority).
+
+### (a) Admin-managed LLM key pool with usage tracking — PR #94
+
+**Why:** the single env-var `GROQ_API_KEY` couldn't scale beyond ~1 user (Phase-3 capacity analysis already in CONTEXT.md), and rotating keys via Vercel env vars required redeploys. Goal: paste a key in `/admin`, have it live for the next call.
+
+- Migration **`0009_llm_keys.sql`**: tables `llm_keys` (provider, api_key, label, daily_token_limit, tokens_used_today, requests_today, last_reset_at, is_active, priority) and `llm_usage_log` (per-call token rows for the dashboard) + RPC `increment_llm_key_usage()` for atomic counter updates.
+- New module **`lib/llm-keys.ts`**: `getNextAvailableKey`, `getAllLlmKeys`, `recordUsage`, `markKeyExhausted`, `addLlmKey`, `updateLlmKey`, `deleteLlmKey`, `getLlmUsageSummary`, `PROVIDER_DEFAULTS` (cerebras / groq / openai / gemini / mistral / sambanova). UTC daily reset is checked on every key fetch (no cron needed).
+- Routes: `GET/POST /api/admin/llm-keys`, `PATCH/DELETE /api/admin/llm-keys/[id]`. Keys returned masked (`csk-...xyz`); the full key is never sent to the client.
+- UI **`LlmKeysPanel.tsx`** in `/admin`: summary cards (active keys, daily capacity, used today, remaining), per-provider stats, per-key live usage bars (green / amber / red), enable-disable toggle, delete, and an "Add key" modal with provider dropdown + default daily limit.
+- `lib/gemini.ts` `chat()` was rewritten to read DB keys first then fall back to env vars. Cerebras was added as the new default primary (`LLM_PRIMARY=cerebras`), Groq second, OpenAI last (paid).
+
+### (b) Cerebras model `llama-3.3-70b` removed — switch to `gpt-oss-120b` (PR #94 follow-up)
+
+After the key system shipped, every Cerebras call returned `404 status code (no body)` in 35–42 ms — far too fast for a real model call. Evidence-based RCA: the Cerebras inference docs list only `gpt-oss-120b` and `zai-glm-4.7` as available models; `llama-3.3-70b` was deprecated around May 27, 2026. The 35-ms 404 was the routing layer rejecting an unknown model name. **Lesson:** when a provider returns a sub-50ms 404 across the board, suspect a model-name issue before suspecting auth.
+
+- `CEREBRAS_CHAT_MODEL` default + `PROVIDER_DEFAULTS.cerebras.model` updated to `gpt-oss-120b`.
+- Existing DB rows still carry the dead model name; admins must run `UPDATE llm_keys SET model = 'gpt-oss-120b' WHERE provider = 'cerebras';` once.
+
+### (c) Free-tier RPM 429 rotation (the "5 keys exhausted in 2 seconds" bug)
+
+**Symptom (Vercel logs):** `Cerebras[DB:snk80771] failed: 429 status code (no body)` repeated for every key, then Groq spilled into a real daily-tokens-exhausted 429, then OpenAI took over. Cerebras Cloud analytics showed only **1.2 K tokens used** for the key the admin saw as "exhausted" — meaning the daily token cap was nowhere near reached.
+
+**Root cause:** Cerebras documents 50 RPM / 200 K TPM but the docs banner says "Due to high demand on `zai-glm-4.7` and `gpt-oss-120b`, we've temporarily reduced free-tier rate limits." Effective RPM during the test was ~5/min/key. The original `chat()` marked any 429 as **daily exhaustion** (`tokens_used_today = daily_token_limit`) so within seconds all five Cerebras keys looked spent and rotation collapsed to OpenAI.
+
+**Fix:**
+- 429 → in-memory **cooldown** (`KEY_COOLDOWNS`, 65 s default) instead of exhaustion. The DB token counter is left alone; the key is silently skipped for the next minute.
+- `buildProviderChain()` now returns **all** active keys for a provider (round-robin position rotates per call) rather than picking one and falling through on failure. 5 Cerebras keys × ~5 RPM each ≈ 25 effective RPM.
+- Token usage is recorded **only from `res.usage` on success** (no string-length guesses); error/rate-limit rows log 0 tokens, matching what Cerebras Cloud reports.
+- Ingest scoring loop in `lib/ingest.ts`: `SCORE_CONCURRENCY` 6 → **5** (one call per key per cycle) and a **3-second `SCORE_BATCH_DELAY_MS`** between batches keeps each key under its RPM ceiling.
+- Imports `getNextAvailableKey` / `markKeyExhausted` were dropped from `gemini.ts` (no longer used).
+
+### (d) Dashboard pagination + infinite scroll + scroll restore + highlight — PR #110
+
+**Why:** every dashboard load fetched up to 100 matches with a heavy `jobs!inner(...)` join. Back-nav re-rendered the whole thing, plus `app/(app)/loading.tsx` flashed a 2–3 s skeleton.
+
+**Components:**
+- `GET /api/matches` (page=1..N, page size 20, all existing filters supported, `Cache-Control: private, s-maxage=30, stale-while-revalidate=60`).
+- New client component **`MatchList.tsx`** — infinite scroll via IntersectionObserver (`rootMargin: 400px`), de-duplication across pages, manual "Load more" fallback, "Showing X of Y" counter, "All loaded" footer.
+- New cached helpers **`lib/dashboard-data.ts`** (`getDashboardCounts`, `getLastScanInfo`) using React `cache()` so RSC re-renders dedupe Supabase queries.
+- Server now fetches **only the first page (20)** plus a `count: 'exact'` total, instead of `.limit(100)`.
+
+**Default sort changed `newest` → `score`** (highest match score first) in `page.tsx`, the API route, the `MatchFilters` dropdown, and `MatchList.buildQuery`.
+
+### (e) Back-navigation: instant + always lands on the clicked card
+
+**Bug 1 (skeleton flashes for 2-3 s):** `app/(app)/page.tsx` is `force-dynamic` and `app/(app)/loading.tsx` exists, so every `router.back()` re-runs ~12 Supabase queries.
+
+**Bug 2 (lands at top, not on the clicked card):** infinite-scroll items live only in client state. Back-nav re-rendered the **first 20 cards** while the user had been on card #45 — `scrollTo(savedY)` landed wrong and `querySelector('[data-match-id="#45"]')` returned `null`. **My earlier `?from=matchId` Link approach inherited the same flaw.**
+
+**Fix (two mechanisms):**
+1. `next.config.mjs` `experimental.staleTimes = { dynamic: 30, static: 180 }` → client Router Cache reuses the dashboard for 30 s. Job → back is a **client-side restore with no server call and no `loading.tsx`**.
+2. **`MatchList`** writes a sessionStorage snapshot on card click (`signature` from filter params + `matches[]` capped at 200 + `page` + `hasMore` + `total` + `scrollY` + `clickedId` + TTL 10 min). On mount a `useLayoutEffect` (SSR-safe via `useIsoLayoutEffect`) rehydrates the FULL list before paint, then a `useEffect` (post-paint, two `requestAnimationFrame` ticks) restores scroll and flashes the clicked card with `ring-2 ring-primary` for 2 s. Snapshot is consumed once.
+3. New client component **`BackToMatches.tsx`** uses `router.back()` (with `router.push("/?from=...")` fallback when there's no history). The page server component still accepts `?from=matchId` so a direct/no-history nav still highlights.
+
+**Self-caught bug during reflection:** my first attempt read the snapshot inside `useState` lazy initializers — that causes a React hydration mismatch on cold loads (server HTML had 20 cards, client init would have 80). Switched to initializing with the server props and **swapping to the snapshot inside `useLayoutEffect`** before paint. Bookmark-button clicks now skip the snapshot writer (they `preventDefault` and don't navigate).
+
+### (f) JD HTML poisoning the LLM (and the UI) — PR #116
+
+**Evidence:** stored `job.description` for the QualiZeal Director role contained raw `<p>🚀 We're Hiring …</p>` markup. `ensureFullDescription` only refetches when `length < 1000` (`TRUNCATED_LENGTH_THRESHOLD`), so HTML-heavy long descriptions pass through untouched. Every prompt site (`scoreJob`, `matchSkills`, `generateCoverLetter`, `generateAtsResume`, `extractJdKeywordsTyped`) was reading markup as prose, and the detail page renders inside `<pre>` so users saw literal tags.
+
+- New helper **`sanitizeJobDescriptionForAI(s)`** in `lib/jd-fetcher.ts`, a thin wrapper over the already-exported `stripHtml` + `containsHtml`. Idempotent on clean text.
+- Applied at all five AI call sites in `lib/gemini.ts`.
+- The `ensureFullDescription` self-heal already on `main` writes the cleaned text back to the DB on next read so the `<pre>` rendering also stops showing tags.
+
+### (g) `scoreJob` over-scoring senior roles for IC candidates — PR #116
+
+**Symptom:** 7.7-year senior Performance Engineer scored **90 / 100** on "Director of Performance Engineering CoE | QualiZeal — 18+ years" — a full director title with an 11-year gap.
+
+**RCA:** the prompt had the testing-umbrella floor (65–80) and the location rule, but **zero seniority or experience-gap rule.** The LLM saw "Performance Engineering" + tool overlap and floored at the umbrella value.
+
+**Fix (defense-in-depth, mirrors the matchSkills 4-phase pattern):**
+- Prompt: explicit **YEARS GAP table** (`gap ≥ 11 → cap 40`, `gap ≥ 7 → cap 55`, `gap ≥ 4 → cap 65`, `gap ≥ 2 → cap 78`) + **SENIORITY-LEVEL** rules (IC → director cap 50; IC → vp/exec cap 40) + two **worked examples** so the model has concrete priors. The umbrella floor now explicitly says "BEFORE applying the seniority cap below."
+- Response shape extended with `requiredYears` and `jdSeniority` (one of `ic | lead | manager | director | vp | executive`).
+- **Server-side hard cap** in `scoreJob`: parses those values against `insights.years_experience` + `insights.seniority`. Years cap and seniority cap each compute a ceiling; the lower of the two wins. The seniority cap **only fires when there's also a real years shortfall** (`gap ≥ 4` or `requiredYears` un-parsed) so a 12-year Staff IC moving to a 12-year Director isn't unfairly capped.
+- The `reason` string is augmented with "Score capped due to …" whenever a cap fires, so users can see why.
+
+**Mental dry-run on the QualiZeal case:** required=18, candidate=7.7, gap=10.3 → years cap 55, IC vs director (gap ≥ 4) → seniority cap 55, final `min(55, 55) = 55` with `reason: "...Score capped due to experience gap of 10 years."` Even if the model still tries to output 90, the server enforces 55.
+
+### (h) Dashboard new/seen indicator + small UX bugs
+
+- "0 NEW MATCHES" + "+25 kept" showed for brand-new users because `ingest_runs` rows had a NULL `profile_id` from older inserts. Fix: insert `profile_id` at row creation in `runIngest`. Dashboard last-scan card now hides the "+N kept" sub-value when count is 0 and shows "No scan yet" instead of "Never".
+- New (unopened) cards: full opacity + left primary accent border + "New" badge. Viewed cards: 0.65 opacity, no border, no badge. Hover preserves the left border (the previous `hover:border-primary/10` was overriding `border-l-primary`).
+
+### Net effect
+
+| Metric | Before | After |
+|---|---|---|
+| Default chat provider | Groq (1 key, ~100K TPD) | Cerebras pool (admin-managed, currently 5 keys × 1 M TPD) with Groq + OpenAI fallback |
+| Dashboard initial fetch | 100 matches with full job join | 20 matches, paginated; rest streamed in via infinite scroll |
+| Back-nav from job detail | 2–3 s skeleton + landed at top | Instant (Router Cache); restores exact scroll + flashes the clicked card |
+| Scoring guardrail | testing-umbrella floor only | + years/seniority cap with server-side enforcement |
+| AI input hygiene | raw HTML reached prompts | `sanitizeJobDescriptionForAI` at all 5 call sites |
+
+### Manual setup required after this session
+1. Run **`supabase/migrations/0009_llm_keys.sql`** in the Supabase SQL editor.
+2. In Supabase: `UPDATE llm_keys SET model = 'gpt-oss-120b' WHERE provider = 'cerebras';` (one-time, fixes pre-deprecation rows).
+3. In `/admin` → LLM Keys panel, add Cerebras keys (one per separate Cerebras account; same-account keys do **not** stack — RPM/TPD are per-account).
+
+---
+
 ## Session 15 — Luminous UI redesign + CONTEXT UI index (May 31, 2026)
 
 **UI shipped (PRs #96–#101 on `main`):**
