@@ -70,21 +70,19 @@ export default async function Dashboard({
     .eq('profile_id', profile.id)
     .eq('bookmarked', true);
 
-  const [{ count: totalJobs }, { count: totalMatches }, { data: lastRun }] =
-    await Promise.all([
-      sb.from('jobs').select('id', { count: 'exact', head: true }),
-      sb
-        .from('matches')
-        .select('id', { count: 'exact', head: true })
-        .eq('profile_id', profile.id),
-      sb
-        .from('ingest_runs')
-        .select('finished_at, matches_created, status')
-        .eq('profile_id', profile.id)
-        .order('started_at', { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-    ]);
+  const [{ count: totalMatches }, { data: lastRun }] = await Promise.all([
+    sb
+      .from('matches')
+      .select('id', { count: 'exact', head: true })
+      .eq('profile_id', profile.id),
+    sb
+      .from('ingest_runs')
+      .select('finished_at, matches_created, status')
+      .eq('profile_id', profile.id)
+      .order('started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
 
   // Match query with filters
   let query = sb
@@ -226,7 +224,7 @@ export default async function Dashboard({
       {(matches ?? []).length === 0 ? (
         <EmptyMatches
           status={status}
-          totalJobs={totalJobs ?? 0}
+          totalMatches={totalMatches ?? 0}
           hiddenBelowThreshold={hiddenBelowThreshold}
           effectiveMinScore={effectiveMinScore}
         />
@@ -319,12 +317,12 @@ function EmptyOnboarding() {
 
 function EmptyMatches({
   status,
-  totalJobs,
+  totalMatches,
   hiddenBelowThreshold,
   effectiveMinScore,
 }: {
   status: string;
-  totalJobs: number;
+  totalMatches: number;
   hiddenBelowThreshold: number;
   effectiveMinScore: number;
 }) {
@@ -368,9 +366,9 @@ function EmptyMatches({
         No matches in <span className="text-primary font-medium">{status}</span> yet.
       </p>
       <p className="mt-1 text-xs text-on-surface-variant">
-        {totalJobs > 0
+        {totalMatches > 0
           ? 'Try a different status or run a scan to find more.'
-          : 'Click "Run scan" to fetch jobs from job boards.'}
+          : 'Click "Run scan" to find jobs matched to your resume.'}
       </p>
     </div>
   );
