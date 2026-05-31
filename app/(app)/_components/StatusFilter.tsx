@@ -46,7 +46,8 @@ export function StatusFilter({
   ];
 
   return (
-    <div className="inline-flex items-center gap-1 rounded-2xl bg-surface-container-lowest p-1.5 shadow-card">
+    <div className="w-full max-w-full overflow-x-auto">
+      <div className="inline-flex min-w-max items-center gap-1 rounded-2xl bg-surface-container-lowest p-1.5 shadow-card">
       {tabs.map(({ id, label, count, icon }) => {
         const isBookmarkTab = id === 'bookmarked';
         const isActive = isBookmarkTab ? onlyBookmarked : !onlyBookmarked && id === active;
@@ -79,6 +80,7 @@ export function StatusFilter({
           </Link>
         );
       })}
+      </div>
     </div>
   );
 }

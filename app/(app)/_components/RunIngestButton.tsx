@@ -50,7 +50,7 @@ export function RunIngestButton({
   }
 
   return (
-    <div className="relative">
+    <div className="relative isolate">
       <div className="flex items-center gap-0">
         <button
           onClick={run}

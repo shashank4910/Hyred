@@ -24,7 +24,7 @@ export function MatchFilters({ isAdmin = false }: { isAdmin?: boolean }) {
   const hasFilters = (isAdmin && source) || minScore || remote || (sort && sort !== 'newest');
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="relative z-0 flex flex-wrap items-center gap-2">
       {isAdmin && (
         <select
           value={source}

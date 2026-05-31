@@ -348,11 +348,11 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
         </div>
       </section>
 
-      <div className="flex justify-end sticky bottom-4">
+      <div className="flex justify-end sticky bottom-20 z-20 md:bottom-4">
         <button
           onClick={save}
           disabled={saving}
-          className="btn-primary shadow-card"
+          className="btn-primary shadow-card shadow-elevated ring-4 ring-background/80"
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           {saving ? 'Saving...' : 'Save profile'}
