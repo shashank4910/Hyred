@@ -6,6 +6,7 @@ import { parseResume } from '@/lib/resume';
 import {
   preferencesFromResumeInsights,
   stripSearchProfile,
+  clearMatchesForResumeChange,
 } from '@/lib/profile-insights';
 import type { Preferences, ResumeInsights } from '@/lib/types';
 
@@ -145,6 +146,13 @@ export async function POST(req: NextRequest) {
     // the NEW resume (not stale preferences adopted from a prior session).
     insights = stripSearchProfile(insights);
     preferences = preferencesFromResumeInsights(preferences, insights);
+
+    const cleared = await clearMatchesForResumeChange(sb, profile.id);
+    if (cleared > 0) {
+      console.log(
+        `[profile] Resume changed — cleared ${cleared} match(es) so the next scan can re-score.`,
+      );
+    }
   }
 
   // email stays bound to the auth identity; the form value is only a fallback

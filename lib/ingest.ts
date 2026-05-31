@@ -59,7 +59,7 @@ const MAX_JOB_AGE_DAYS = 45;
  *  3. Fetch jobs from sources (Adzuna queries come from SearchProfile)
  *  4. Upsert jobs to DB
  *  5. Embed jobs missing embeddings
- *  6. Build candidate pool (recently fetched, unseen)
+ *  6. Build candidate pool (jobs not yet scored for this profile)
  *  7. Pre-filter by title patterns from SearchProfile (cheap regex)
  *  8. AI relevance filter on "maybe" candidates (batched, cheap)
  *  9. LLM-score the relevant candidates (existing detailed scoring)
@@ -324,17 +324,16 @@ export async function runIngest(opts?: {
       });
     }
 
-    // ---------- 6. Build candidate pool (recently fetched, unseen) ----------
-    const oneDayAgo = new Date(
-      Date.now() - 24 * 60 * 60 * 1000,
-    ).toISOString();
-    const { data: recentMatches } = await sb
+    // ---------- 6. Build candidate pool (skip jobs already scored for this resume) ----------
+    // Any job that already has a match row for this profile is skipped — no
+    // repeat LLM scoring on re-scans (saves cost). After a resume upload, the
+    // profile API clears non-protected matches so the next scan can re-score.
+    const { data: existingMatches } = await sb
       .from('matches')
       .select('job_id')
-      .eq('profile_id', p.id)
-      .gte('created_at', oneDayAgo);
-    const recentlySeen = new Set(
-      (recentMatches ?? []).map((m) => m.job_id),
+      .eq('profile_id', p.id);
+    const alreadyScored = new Set(
+      (existingMatches ?? []).map((m) => m.job_id as string),
     );
 
     const { data: candidates } = await sb
@@ -354,7 +353,7 @@ export async function runIngest(opts?: {
     };
 
     const eligible = (candidates ?? [])
-      .filter((c) => !recentlySeen.has(c.id))
+      .filter((c) => !alreadyScored.has(c.id))
       .filter(
         (c) => !c.company || !blacklist.has(c.company.toLowerCase().trim()),
       )
@@ -474,6 +473,7 @@ export async function runIngest(opts?: {
           try {
             const { score, reason, matchedSkills, missingSkills } = await scoreJob({
               resume: p.resume_text!,
+              insights: p.insights,
               preferences: prefsStr,
               jobTitle: c.title,
               jobCompany: c.company,
