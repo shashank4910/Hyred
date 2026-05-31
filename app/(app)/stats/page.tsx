@@ -107,39 +107,21 @@ export default async function StatsPage() {
         <BigStat
           label="Total tracked"
           value={totalTracked ?? 0}
-          sub="All scored jobs saved for you"
           icon={<Briefcase className="h-4 w-4" />}
         />
         <BigStat
           label="On Matches page"
           value={visibleCount ?? 0}
-          sub={`Score ≥ ${minScore} · fresh listings`}
           icon={<Sparkles className="h-4 w-4" />}
           accent
         />
         <BigStat
           label="In inbox"
           value={inboxCount ?? 0}
-          sub="New + viewed (same filters)"
           icon={<Inbox className="h-4 w-4" />}
         />
         <BigStat label="Applied" value={appliedCount ?? 0} icon={<CheckCircle2 className="h-4 w-4" />} />
       </div>
-
-      {(totalTracked ?? 0) > (visibleCount ?? 0) && (
-        <p className="text-xs text-stone -mt-3">
-          {((totalTracked ?? 0) - (visibleCount ?? 0)).toLocaleString()} stored matches are hidden on Matches
-          (below score {minScore} or older than 45 days).
-        </p>
-      )}
-
-      {(visibleCount ?? 0) > 0 &&
-        (inboxCount ?? 0) === (visibleCount ?? 0) &&
-        (appliedCount ?? 0) === 0 && (
-          <p className="text-xs text-stone -mt-3">
-            In inbox equals On Matches page because every visible match is still new or viewed — none applied yet.
-          </p>
-        )}
 
       <div className="card text-sm text-stone">
         <span className="font-medium text-ink">Last scan: </span>
@@ -237,13 +219,11 @@ export default async function StatsPage() {
 function BigStat({
   label,
   value,
-  sub,
   icon,
   accent,
 }: {
   label: string;
   value: number;
-  sub?: string;
   icon: React.ReactNode;
   accent?: boolean;
 }) {
@@ -256,7 +236,6 @@ function BigStat({
       <div className={`mt-1.5 text-heading-sm font-semibold ${accent ? 'text-amber' : 'text-ink'}`}>
         {value.toLocaleString()}
       </div>
-      {sub ? <p className="mt-1 text-[10px] text-stone leading-snug">{sub}</p> : null}
     </div>
   );
 }
