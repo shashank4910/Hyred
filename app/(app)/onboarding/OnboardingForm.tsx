@@ -14,6 +14,7 @@ import {
   Wand2,
 } from 'lucide-react';
 import type { Preferences, ResumeInsights } from '@/lib/types';
+import { triggerJobScan } from '../_components/triggerJobScan';
 
 type Initial = {
   email: string;
@@ -183,14 +184,31 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Save failed');
       if (data.profile?.insights) setInsights(data.profile.insights);
+      const isFirstResume = initial.resumeChars === 0 && data.reembedded;
       toast.success(
-        data.reembedded ? `Saved · resume embedded (${data.resume_chars.toLocaleString()} chars)` : 'Preferences saved',
+        data.reembedded
+          ? isFirstResume
+            ? `Profile saved · resume ready (${data.resume_chars.toLocaleString()} chars)`
+            : `Saved · resume embedded (${data.resume_chars.toLocaleString()} chars)`
+          : 'Preferences saved',
         { id },
       );
       setResumeFile(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
       setAiFields(new Set());
       startTransition(() => router.refresh());
+
+      // First resume upload: auto-scan so new users see matches without clicking Run scan.
+      if (isFirstResume) {
+        void triggerJobScan({
+          autoFlow: true,
+          onComplete: (result) => {
+            if (result.matchesCreated > 0) {
+              startTransition(() => router.push('/'));
+            }
+          },
+        });
+      }
     } catch (e) { toast.error((e as Error).message, { id }); }
     finally { setSaving(false); }
   }

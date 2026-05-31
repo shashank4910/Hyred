@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, RefreshCw, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
+import { triggerJobScan } from './triggerJobScan';
 
 const ALL_SOURCES = [
   { id: 'linkedin', label: 'LinkedIn (guest API)', tokens: 'free' },
@@ -30,27 +31,13 @@ export function RunIngestButton() {
 
   async function run() {
     setRunning(true);
-    const id = toast.loading(
-      selectedSources.length > 0
-        ? `Scanning ${selectedSources.length} source${selectedSources.length > 1 ? 's' : ''}...`
-        : 'Scanning all job boards...',
-    );
     try {
-      const body = selectedSources.length > 0 ? { sources: selectedSources } : undefined;
-      const res = await fetch('/api/ingest', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: body ? JSON.stringify(body) : undefined,
+      await triggerJobScan({
+        sources: selectedSources.length > 0 ? selectedSources : undefined,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Ingest failed');
-      toast.success(
-        `${data.matchesCreated} new match${data.matchesCreated === 1 ? '' : 'es'} · ${data.fetched} jobs scanned`,
-        { id },
-      );
       startTransition(() => router.refresh());
     } catch (e) {
-      toast.error((e as Error).message, { id });
+      toast.error((e as Error).message);
     } finally {
       setRunning(false);
     }

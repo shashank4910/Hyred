@@ -58,7 +58,7 @@ const MAX_JOB_AGE_DAYS = 45;
 export async function runIngest(opts?: {
   profileId?: string;
   profileEmail?: string;
-  triggeredBy?: 'manual' | 'cron' | 'api';
+  triggeredBy?: 'manual' | 'cron' | 'api' | 'onboarding';
   sources?: import('./sources').SourceName[];
 }): Promise<IngestResult> {
   const sb = supabaseAdmin();
@@ -531,7 +531,7 @@ export { upsertJobs };
  * multi-user/testing phase, the simple per-profile loop is correct and clear.
  */
 export async function runIngestForAllProfiles(opts?: {
-  triggeredBy?: 'manual' | 'cron' | 'api';
+  triggeredBy?: 'manual' | 'cron' | 'api' | 'onboarding';
   sources?: import('./sources').SourceName[];
 }): Promise<{
   profiles: number;

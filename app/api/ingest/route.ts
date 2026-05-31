@@ -15,18 +15,23 @@ export const maxDuration = 300;
  *   2. Header `x-ingest-secret` / `?secret=` matching INGEST_SECRET (cron /
  *      external) → scans ALL onboarded profiles.
  *
- * Optional body (JSON): { sources?: string[] } to restrict sources.
+ * Optional body (JSON): { sources?: string[], triggeredBy?: 'manual' | 'onboarding' }
+ * to restrict sources or tag auto-scan runs.
  */
 export async function POST(req: NextRequest) {
   // 1. Signed-in user → their own profile only.
   const profile = await getCurrentProfile();
 
-  // Parse optional sources filter.
+  // Parse optional body.
   let sources: SourceName[] | undefined;
+  let triggeredBy: 'manual' | 'onboarding' = 'manual';
   try {
     const body = await req.json().catch(() => null);
     if (body?.sources && Array.isArray(body.sources) && body.sources.length > 0) {
       sources = body.sources as SourceName[];
+    }
+    if (body?.triggeredBy === 'onboarding') {
+      triggeredBy = 'onboarding';
     }
   } catch {
     /* no body = scan all sources */
@@ -42,7 +47,7 @@ export async function POST(req: NextRequest) {
     try {
       const result = await runIngest({
         profileId: profile.id,
-        triggeredBy: 'manual',
+        triggeredBy,
         sources,
       });
       return NextResponse.json(result);

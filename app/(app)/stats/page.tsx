@@ -1,3 +1,4 @@
+import { unstable_noStore as noStore } from 'next/cache';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { getCurrentProfile } from '@/lib/current-user';
 import { relativeTime, SOURCE_LABELS } from '@/lib/ui';
@@ -7,31 +8,45 @@ import {
   XCircle,
   Loader2,
   Clock,
-  Activity,
-  Database,
+  Sparkles,
   Briefcase,
+  Inbox,
 } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Stats' };
 
 export default async function StatsPage() {
+  // Never serve a cached RSC payload — counts change live during ingest scans.
+  noStore();
+
   const sb = supabaseAdmin();
   const profile = await getCurrentProfile();
   const profileId = profile?.id ?? '__none__';
 
   const [
-    { count: totalJobs },
     { count: totalMatches },
+    { count: newCount },
+    { count: inboxCount },
     { count: appliedCount },
     { data: runs },
-    { data: bySourceRaw },
+    { data: userMatchJobs },
+    { data: lastRun },
   ] = await Promise.all([
-    sb.from('jobs').select('id', { count: 'exact', head: true }),
     sb
       .from('matches')
       .select('id', { count: 'exact', head: true })
       .eq('profile_id', profileId),
+    sb
+      .from('matches')
+      .select('id', { count: 'exact', head: true })
+      .eq('profile_id', profileId)
+      .eq('status', 'new'),
+    sb
+      .from('matches')
+      .select('id', { count: 'exact', head: true })
+      .eq('profile_id', profileId)
+      .in('status', ['new', 'viewed']),
     sb
       .from('matches')
       .select('id', { count: 'exact', head: true })
@@ -45,41 +60,62 @@ export default async function StatsPage() {
       .eq('profile_id', profileId)
       .order('started_at', { ascending: false })
       .limit(20),
-    sb.from('jobs').select('source'),
+    sb
+      .from('matches')
+      .select('job:jobs!inner(source)')
+      .eq('profile_id', profileId),
+    sb
+      .from('ingest_runs')
+      .select('finished_at, matches_created')
+      .eq('profile_id', profileId)
+      .order('started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
 
   const bySource: Record<string, number> = {};
-  for (const r of bySourceRaw ?? []) {
-    bySource[r.source as string] = (bySource[r.source as string] ?? 0) + 1;
+  for (const row of userMatchJobs ?? []) {
+    const job = row.job as unknown as { source: string };
+    bySource[job.source] = (bySource[job.source] ?? 0) + 1;
   }
-
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-heading-sm font-semibold text-ink">Stats</h1>
         <p className="text-body-sm text-stone mt-1">
-          Pipeline activity and source coverage.
+          Your personal matches and scan history — not the shared job pool.
         </p>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <BigStat label="Jobs in DB" value={totalJobs ?? 0} icon={<Database className="h-4 w-4" />} />
-        <BigStat label="Total matches" value={totalMatches ?? 0} icon={<Briefcase className="h-4 w-4" />} />
-        <BigStat label="Applied" value={appliedCount ?? 0} icon={<CheckCircle2 className="h-4 w-4" />} accent />
-        <BigStat label="Sources active" value={Object.keys(bySource).length} icon={<Activity className="h-4 w-4" />} />
+        <BigStat label="Your matches" value={totalMatches ?? 0} icon={<Briefcase className="h-4 w-4" />} />
+        <BigStat label="New" value={newCount ?? 0} icon={<Sparkles className="h-4 w-4" />} accent />
+        <BigStat label="In inbox" value={inboxCount ?? 0} icon={<Inbox className="h-4 w-4" />} />
+        <BigStat label="Applied" value={appliedCount ?? 0} icon={<CheckCircle2 className="h-4 w-4" />} />
+      </div>
+
+      <div className="card text-sm text-stone">
+        <span className="font-medium text-ink">Last scan: </span>
+        {lastRun?.finished_at
+          ? `${relativeTime(lastRun.finished_at)}${
+              lastRun.matches_created != null ? ` · ${lastRun.matches_created} matches kept` : ''
+            }`
+          : 'No scan yet — run one from Matches.'}
       </div>
 
       <section className="card">
-        <h2 className="font-semibold text-ink mb-3">Jobs by source</h2>
+        <h2 className="font-semibold text-ink mb-3">Your matches by source</h2>
         {Object.keys(bySource).length === 0 ? (
-          <p className="text-sm text-stone">No jobs yet. Run a scan.</p>
+          <p className="text-sm text-stone">
+            No matches for your profile yet. Go to Matches and run a scan to find roles suited to your resume.
+          </p>
         ) : (
           <ul className="space-y-2.5">
             {Object.entries(bySource)
               .sort((a, b) => b[1] - a[1])
               .map(([source, count]) => {
-                const total = totalJobs ?? 1;
+                const total = totalMatches ?? 1;
                 const pct = (count / total) * 100;
                 return (
                   <li key={source}>
@@ -98,7 +134,6 @@ export default async function StatsPage() {
           </ul>
         )}
       </section>
-
 
       <section className="card">
         <h2 className="font-semibold text-ink mb-1 flex items-center gap-2">
@@ -148,7 +183,6 @@ export default async function StatsPage() {
     </div>
   );
 }
-
 
 function BigStat({
   label,
