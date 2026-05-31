@@ -12,9 +12,8 @@ export type JobScanResult = {
 const DONE_TOAST = { duration: 8000 } as const;
 
 /**
- * Run a per-user ingest scan (POST /api/ingest). For auto-onboarding flows, shows
- * a "started" loading state then a "complete" success message when the request
- * finishes (typically 1–2 minutes).
+ * Run a per-user ingest scan (POST /api/ingest). Manual scans rely on the Run scan
+ * button state; auto-onboarding shows a brief info toast then success when done.
  */
 export async function triggerJobScan(options?: {
   /** First-time onboarding auto-scan copy */
@@ -22,21 +21,11 @@ export async function triggerJobScan(options?: {
   sources?: string[];
   onComplete?: (result: JobScanResult) => void;
 }): Promise<JobScanResult | null> {
-  const sourceCount = options?.sources?.length ?? 0;
-
   if (options?.autoFlow) {
     toast.info('Your job scan has started. Check Matches in about 1–2 minutes.', {
       duration: 8000,
     });
   }
-
-  const toastId = toast.loading(
-    options?.autoFlow
-      ? 'Your job scan has started. This usually takes 1–2 minutes…'
-      : sourceCount > 0
-        ? `Scanning ${sourceCount} source${sourceCount > 1 ? 's' : ''}…`
-        : 'Scanning job boards…',
-  );
 
   try {
     const body: { triggeredBy?: string; sources?: string[] } = {};
@@ -68,8 +57,6 @@ export async function triggerJobScan(options?: {
       scored: Number(data.scored ?? 0),
     };
 
-    toast.dismiss(toastId);
-
     const warnings = formatIngestWarnings(data.errors);
     if (warnings) {
       toast.warning(warnings, { duration: 12_000 });
@@ -93,7 +80,6 @@ export async function triggerJobScan(options?: {
     options?.onComplete?.(result);
     return result;
   } catch (e) {
-    toast.dismiss(toastId);
     toast.error(readableError(e, 'Scan failed'), DONE_TOAST);
     return null;
   }

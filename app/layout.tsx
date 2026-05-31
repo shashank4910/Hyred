@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
-import { Toaster } from 'sonner';
 import { SpeedInsights } from '@vercel/speed-insights/next';
+import { AppToaster } from './_components/AppToaster';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -14,21 +14,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className="light">
       <body className="min-h-screen bg-background text-on-surface font-sans antialiased">
         {children}
-        <Toaster
-          theme="light"
-          position="top-right"
-          closeButton
-          toastOptions={{
-            duration: 8000,
-            style: {
-              background: '#ffffff',
-              color: '#121c2a',
-              border: '1px solid #E5E7EB',
-              boxShadow: '0 4px 6px -1px rgba(18, 28, 42, 0.06)',
-              borderRadius: '0.75rem',
-            },
-          }}
-        />
+        <AppToaster />
         <SpeedInsights />
       </body>
     </html>
