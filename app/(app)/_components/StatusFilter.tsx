@@ -46,8 +46,8 @@ export function StatusFilter({
   ];
 
   return (
-    <div className="w-full max-w-full overflow-x-auto">
-      <div className="inline-flex min-w-max items-center gap-1 rounded-2xl bg-surface-container-lowest p-1.5 shadow-card">
+    <div className="w-full rounded-2xl bg-surface-container-lowest p-1 shadow-card">
+      <div className="grid w-full grid-cols-7 gap-0.5">
       {tabs.map(({ id, label, count, icon }) => {
         const isBookmarkTab = id === 'bookmarked';
         const isActive = isBookmarkTab ? onlyBookmarked : !onlyBookmarked && id === active;
@@ -59,18 +59,24 @@ export function StatusFilter({
             href={href}
             scroll={false}
             className={[
-              'inline-flex items-center gap-1.5 rounded-xl px-5 py-2 text-label-md font-semibold whitespace-nowrap transition-all capitalize',
+              'flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-2 text-center transition-all sm:flex-row sm:gap-1 sm:px-1.5 sm:py-2.5 md:px-2',
               isActive
                 ? 'bg-primary-container text-on-primary-container shadow-sm'
                 : 'text-on-surface-variant hover:bg-surface-container',
             ].join(' ')}
           >
-            {icon}
-            {label}
+            <span className="inline-flex min-w-0 items-center gap-0.5 sm:gap-1">
+              {icon ? (
+                <span className="hidden shrink-0 sm:inline">{icon}</span>
+              ) : null}
+              <span className="truncate text-[10px] font-semibold leading-tight sm:text-xs md:text-sm capitalize">
+                {label}
+              </span>
+            </span>
             {count > 0 && (
               <span
                 className={[
-                  'rounded-full px-1.5 py-0.5 text-[10px] font-bold',
+                  'shrink-0 rounded-full px-1 py-px text-[9px] font-bold leading-none sm:px-1.5 sm:py-0.5 sm:text-[10px]',
                   isActive ? 'bg-on-primary-container/15' : 'bg-surface-container text-text-muted',
                 ].join(' ')}
               >
