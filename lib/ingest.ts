@@ -1,6 +1,7 @@
 import { supabaseAdmin } from './supabase/server';
 import {
   assertNoActiveIngest,
+  isRunCancelled,
   patchIngestRun,
 } from './ingest-runs';
 import { fetchAllSources } from './sources';
@@ -269,6 +270,11 @@ export async function runIngest(opts?: {
     }
 
     // ---------- 5. Embed jobs missing embeddings (bounded per run) ----------
+    // Check for cancellation before expensive embedding stage
+    if (runId && await isRunCancelled(sb, runId)) {
+      console.log('[ingest] Scan cancelled by user before embedding stage.');
+      return { fetched, newJobs: newJobsCount, embedded, scored, matchesCreated: kept, errors: runErrors, runId, prefilter };
+    }
     const { data: needEmbed } = await sb
       .from('jobs')
       .select('id, title, company, location, description, tags')
@@ -462,6 +468,12 @@ export async function runIngest(opts?: {
     }));
 
     // ---------- 9. LLM score (parallel batches + wall-clock budget) ----------
+    // Check for cancellation before expensive LLM scoring stage
+    if (runId && await isRunCancelled(sb, runId)) {
+      console.log('[ingest] Scan cancelled by user before scoring stage.');
+      if (runId) await patchIngestRun(sb, runId, { fetched, new_jobs: newJobsCount, embedded, scored, matches_created: kept, errors: runErrors });
+      return { fetched, newJobs: newJobsCount, embedded, scored, matchesCreated: kept, errors: runErrors, runId, prefilter };
+    }
     const prefsStr = formatPreferences(p.preferences);
     let budgetStopped = false;
 
@@ -469,6 +481,13 @@ export async function runIngest(opts?: {
       if (Date.now() - startedAt > INGEST_WALL_BUDGET_MS) {
         budgetStopped = true;
         break;
+      }
+      // Check cancellation every 3 batches during scoring
+      if (runId && i > 0 && i % (SCORE_CONCURRENCY * 3) === 0) {
+        if (await isRunCancelled(sb, runId)) {
+          console.log(`[ingest] Scan cancelled by user mid-scoring (${scored} scored so far).`);
+          break;
+        }
       }
       // Delay between batches to spread RPM across free-tier keys
       if (i > 0) {
