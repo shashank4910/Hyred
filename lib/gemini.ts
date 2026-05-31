@@ -40,6 +40,7 @@
 
 import OpenAI from 'openai';
 import type { ResumeInsights } from './types';
+import { sanitizeJobDescriptionForAI } from './jd-fetcher';
 import {
   recordUsage,
   PROVIDER_DEFAULTS,
@@ -405,6 +406,12 @@ export async function scoreJob(args: {
   jobDescription: string | null;
 }): Promise<{ score: number; reason: string; matchedSkills: string[]; missingSkills: string[] }> {
   const resumeBlock = buildResumeContextForScoring(args.resume, args.insights);
+  // Defensive — strip HTML before any prompt sees it. Some old DB rows still
+  // contain raw <p>/<strong> markup that would otherwise confuse the LLM and
+  // burn context tokens.
+  const cleanJd = sanitizeJobDescriptionForAI(args.jobDescription).slice(0, 4000);
+  const candidateYears = args.insights?.years_experience ?? null;
+  const candidateSeniority = args.insights?.seniority ?? null;
   const userPrompt = `Score how well this job matches the candidate.
 
 CANDIDATE RESUME:
@@ -417,21 +424,21 @@ Title: ${args.jobTitle}
 Company: ${args.jobCompany ?? 'Unknown'}
 Location: ${args.jobLocation ?? 'Unknown'}
 Description:
-${(args.jobDescription ?? '').slice(0, 4000)}
+${cleanJd}
 
 Score this match on a scale of 0-100 where:
-  85-100 = excellent fit, most skills match, domain aligns perfectly
+  85-100 = excellent fit, most skills match, domain aligns perfectly, seniority matches
   70-84  = strong fit, many skills overlap, worth applying
   55-69  = decent fit, some relevant skills, candidate could adapt
   40-54  = weak fit, few matching skills but adjacent domain
-  <40    = poor fit, completely different domain
+  <40    = poor fit, completely different domain OR seniority is wildly off
 
 SCORING GUIDELINES — READ CAREFULLY:
 
 THE TESTING UMBRELLA (CRITICAL RULE):
 Performance Engineering, QA, SDET, Test Automation, Quality Engineering, Software Engineer in Test, Reliability Engineering — these are NOT different domains. They are sub-specialties of the same TESTING discipline. A senior in one is qualified for the others.
 
-If the candidate's primary experience is in any of these areas, ALL of the following job titles → score 65-80:
+If the candidate's primary experience is in any of these areas, ALL of the following job titles → score 65-80 (BEFORE applying the seniority cap below):
   - Quality Engineer / QA Engineer / QA Lead / QA Automation Engineer / QA Automation Lead
   - SDET / Software Development Engineer in Test / Software Engineer in Test
   - Test Automation Engineer / Senior Test Automation Engineer
@@ -442,19 +449,57 @@ If the candidate's primary experience is in any of these areas, ALL of the follo
 
 DO NOT say "the candidate's expertise is primarily in performance engineering, while the job focuses on test automation" — THIS IS WRONG REASONING. They are the same domain. Score 65+.
 
+⚠️ SENIORITY / EXPERIENCE GAP (HARD CAP — APPLY AFTER skill match):
+First, identify the JD's experience requirement and seniority level:
+  - Required years: parse the JD ("18+ years", "10+ years", "5-7 years", "minimum 8 years"). If multiple appear, use the HIGHEST. If only "Senior" / "Lead" / "Principal" appears with no years, infer: Senior ≈ 5+, Lead ≈ 8+, Principal/Staff ≈ 10+, Manager ≈ 8+, Director ≈ 12+, VP/Head/Chief ≈ 15+.
+  - JD seniority level: one of "ic" (individual contributor), "lead", "manager", "director", "vp", "executive" — based on title keywords (Director, VP, Head of X, Chief, Manager, Lead, Principal, Staff, Senior, etc.).
+
+Then compare to the candidate (CANDIDATE_YEARS=${candidateYears ?? 'unknown'}, CANDIDATE_SENIORITY=${candidateSeniority ?? 'unknown'}):
+
+  YEARS GAP (gap = required - candidate):
+    gap ≤ 1     → no penalty
+    gap = 2-3   → cap at 78 (decent fit, slightly under)
+    gap = 4-6   → cap at 65 (meaningful gap; candidate is genuinely under-experienced)
+    gap = 7-10  → cap at 50 (large gap; this is a stretch role at best)
+    gap > 10    → cap at 40 (wildly out of range — do NOT score above 40)
+
+  SENIORITY-LEVEL GAP (independent of years; applies on top of years cap):
+    Candidate is IC/Senior IC, JD is "director"           → cap at 50
+    Candidate is IC/Senior IC, JD is "vp" or "executive"  → cap at 40
+    Candidate is "manager", JD is "vp" or "executive"     → cap at 50
+    Same level or one step up                              → no penalty
+
+  TAKE THE LOWER of the years cap and the seniority cap. Then take the LOWER of that and the testing-umbrella floor's UPPER bound. Never override the cap upward — the cap is a HARD ceiling.
+
+WORKED EXAMPLES (apply the rules above):
+  • Candidate 7 years, JD "Director of Performance Engineering, 18+ years"
+    → Skills/domain align (testing umbrella → would otherwise be 80-90)
+    → Years gap = 11 → cap 40. Seniority IC→director → cap 50. Take lower → 40.
+    → FINAL: 40-45 with reason mentioning the experience gap.
+
+  • Candidate 7 years (senior), JD "Senior Performance Engineer, 5+ years"
+    → Years gap = -2 (over). Seniority same. → No cap.
+    → FINAL: 80-90 (skills + domain).
+
+  • Candidate 12 years, JD "Lead Performance Engineer, 10+ years"
+    → Years gap = -2. Seniority IC→lead is one step → no penalty.
+    → FINAL: 80-90.
+
 OTHER RULES:
 - The word "performance" is ambiguous. "Performance Marketer", "Investment Performance Analyst", "Asset Performance Manager" are FINANCE/MARKETING roles, NOT engineering. Score these <40.
-- "Performance Test Engineer", "Performance Engineer", "Performance Tester" are the ENGINEERING meaning. Score 75-90.
+- "Performance Test Engineer", "Performance Engineer", "Performance Tester" are the ENGINEERING meaning. Score 75-90 (subject to the seniority cap above).
 - Tools are interchangeable: JMeter ≈ Gatling ≈ LoadRunner ≈ Neoload. Don't penalize tool mismatches if the discipline matches.
 - A Performance/Testing engineer applying to general "Java Developer" or "Backend Engineer" → score 50-60.
 - For genuinely different domains (Frontend Dev, Mobile Dev, Sales, Marketing, Product Mgmt, Data Science) → score <40.
-- Location mismatch alone should NEVER drop score below 60 if skills match.
+- Location mismatch alone should NEVER drop score below 60 if skills + seniority match.
 - Remote jobs get a small boost.
 
 Respond with strict JSON:
 {
   "score": <int 0-100>,
-  "reason": "<one or two sentences>",
+  "reason": "<one or two sentences. If a seniority/years cap was applied, explicitly say so (e.g. 'Capped due to 11-year experience gap').>",
+  "requiredYears": <int — the JD's required years, your best parse, or 0 if none>,
+  "jdSeniority": "<one of: ic, lead, manager, director, vp, executive>",
   "matchedSkills": [<up to 5 SHORT skill/tool/domain keywords that appear in BOTH the JD and the resume — e.g. "JMeter", "Load Testing", "Java". These are WHY it matched.>],
   "missingSkills": [<up to 5 SHORT skill/tool keywords the JD asks for that are NOT clearly in the resume — e.g. "Kubernetes", "Gatling". These are the GAPS. Empty array if none.>]
 }
@@ -474,8 +519,54 @@ matchedSkills/missingSkills RULES:
   );
   try {
     const parsed = JSON.parse(text);
-    const score = Math.max(0, Math.min(100, Math.round(Number(parsed.score) || 0)));
-    const reason = String(parsed.reason ?? '').slice(0, 500);
+    let score = Math.max(0, Math.min(100, Math.round(Number(parsed.score) || 0)));
+    let reason = String(parsed.reason ?? '').slice(0, 500);
+    const requiredYears = Math.max(0, Math.min(50, Math.round(Number(parsed.requiredYears) || 0)));
+    const jdSeniorityRaw = String(parsed.jdSeniority ?? '').toLowerCase().trim();
+    const jdSeniority: 'ic' | 'lead' | 'manager' | 'director' | 'vp' | 'executive' | 'unknown' =
+      ['ic', 'lead', 'manager', 'director', 'vp', 'executive'].includes(jdSeniorityRaw)
+        ? (jdSeniorityRaw as 'ic' | 'lead' | 'manager' | 'director' | 'vp' | 'executive')
+        : 'unknown';
+
+    // ── Defense-in-depth (server-side cap) ───────────────────────────────
+    // The prompt asks the LLM to apply caps, but LLMs can drift. We enforce a
+    // hard ceiling here so a 7-year candidate can NEVER land >55 on a Director
+    // / 18+y role even if the model ignores its own instructions. Same 4-phase
+    // pattern used by matchSkills (CONTEXT.md: "DO NOT simplify this").
+    const candYears = candidateYears;
+    let cap = 100;
+    let capReason = '';
+    if (candYears != null && requiredYears > 0) {
+      const gap = requiredYears - candYears;
+      if (gap >= 11) { cap = Math.min(cap, 45); capReason = `experience gap of ${Math.round(gap)} years`; }
+      else if (gap >= 7) { cap = Math.min(cap, 55); capReason = `experience gap of ${Math.round(gap)} years`; }
+      else if (gap >= 4) { cap = Math.min(cap, 70); capReason = `experience gap of ${Math.round(gap)} years`; }
+      else if (gap >= 2) { cap = Math.min(cap, 80); capReason = `slightly under JD's experience requirement`; }
+    }
+    const candIsIc = !candidateSeniority || ['junior', 'mid', 'senior', 'staff', 'principal', 'unknown'].includes(candidateSeniority);
+    // Only apply the seniority-level cap when there is ALSO a real shortfall
+    // (years gap >= 4, OR the LLM couldn't parse JD years). Otherwise a 12y
+    // Staff IC moving to a 12y Director would be unfairly capped.
+    const yearsShortfall = (candYears != null && requiredYears > 0)
+      ? Math.max(0, requiredYears - candYears)
+      : Infinity; // unknown years → treat as shortfall (defensive)
+    if (candIsIc && (yearsShortfall >= 4 || requiredYears === 0)) {
+      if (jdSeniority === 'director') { cap = Math.min(cap, 55); if (!capReason) capReason = 'IC-level candidate vs director-level role'; }
+      else if (jdSeniority === 'vp' || jdSeniority === 'executive') {
+        cap = Math.min(cap, 40);
+        if (!capReason) capReason = `IC-level candidate vs ${jdSeniority}-level role`;
+      }
+    }
+    if (cap < score) {
+      score = cap;
+      // Append the cap reason if the model didn't already mention it.
+      const lower = reason.toLowerCase();
+      if (!lower.includes('cap') && !lower.includes('experience gap') && !lower.includes('seniority')) {
+        reason = (reason ? reason.replace(/\s*$/, '. ') : '') + `Score capped due to ${capReason}.`;
+        reason = reason.slice(0, 500);
+      }
+    }
+
     const cleanSkills = (arr: unknown): string[] =>
       Array.isArray(arr)
         ? arr
@@ -518,7 +609,7 @@ JOB:
 Title: ${args.jobTitle}
 Company: ${args.jobCompany ?? 'the company'}
 Description:
-${(args.jobDescription ?? '').slice(0, 4000)}
+${sanitizeJobDescriptionForAI(args.jobDescription).slice(0, 4000)}
 
 Output the cover letter only, no preamble.`;
 
@@ -628,7 +719,7 @@ export async function matchSkills(args: {
   const topSkillsBlock = topSkills.length
     ? `\nCANDIDATE TOP SKILLS: ${topSkills.join(', ')}\n`
     : '';
-  const jdText = args.jobDescription.slice(0, 5000);
+  const jdText = sanitizeJobDescriptionForAI(args.jobDescription).slice(0, 5000);
 
   const userPrompt = `Compare this job description against the candidate's resume and classify requirements.
 
@@ -710,6 +801,8 @@ export async function extractJdKeywordsTyped(args: {
   jobDescription: string;
 }): Promise<TypedKeyword[]> {
   if (!args.jobDescription || args.jobDescription.length < 50) return [];
+  const cleanJd = sanitizeJobDescriptionForAI(args.jobDescription);
+  if (cleanJd.length < 50) return [];
 
   const userPrompt = `Extract the ATS-relevant keywords from this job description AND classify each one.
 
@@ -722,7 +815,7 @@ For EACH keyword set "type":
 JOB TITLE: ${args.jobTitle}
 
 JOB DESCRIPTION:
-${args.jobDescription.slice(0, 7000)}
+${cleanJd.slice(0, 7000)}
 
 RULES:
 - Use the EXACT phrasing from the JD whenever possible (e.g. "JMeter" not "Apache JMeter"; "load testing" not "performance testing").
@@ -1713,7 +1806,7 @@ TARGET JOB:
 Title: ${args.jobTitle}
 Company: ${args.jobCompany ?? 'Not specified'}
 Description:
-${args.jobDescription.slice(0, 5000)}
+${sanitizeJobDescriptionForAI(args.jobDescription).slice(0, 5000)}
 
 Output the complete tailored resume in plain ASCII text. No preamble, no explanation, no markdown fences. Start with the candidate's name on the first line.
 

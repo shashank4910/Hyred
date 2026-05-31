@@ -90,6 +90,19 @@ export function containsHtml(s: string): boolean {
 }
 
 /**
+ * PUBLIC — defensively clean a JD before sending it to an LLM. Detects HTML
+ * markup and converts to plain text; idempotent on already-clean text.
+ *
+ * Use this anywhere a stored `job.description` flows into an AI prompt
+ * (scoreJob, matchSkills, generateCoverLetter, generateAtsResume, etc.) so a
+ * raw-HTML row in the DB can never poison a prompt.
+ */
+export function sanitizeJobDescriptionForAI(s: string | null | undefined): string {
+  if (!s) return '';
+  return containsHtml(s) ? stripHtml(s) : s;
+}
+
+/**
  * Find JSON-LD JobPosting blocks. Most major job sites embed structured
  * job data here for Google's job search SEO. The full description is
  * always present.
