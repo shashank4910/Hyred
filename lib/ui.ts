@@ -73,3 +73,43 @@ export const STATUS_ORDER = [
   'rejected',
   'closed',
 ] as const;
+
+/** Turn API / thrown values into a human-readable toast message (never "[object Object]"). */
+export function readableError(value: unknown, fallback = 'Something went wrong'): string {
+  if (value instanceof Error) {
+    const msg = value.message?.trim();
+    if (msg && msg !== '[object Object]') return msg;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed) return trimmed;
+  }
+  if (value && typeof value === 'object') {
+    const o = value as Record<string, unknown>;
+    for (const key of ['message', 'error', 'detail', 'description']) {
+      const nested = readableError(o[key], '');
+      if (nested) return nested;
+    }
+    if (Array.isArray(o.errors) && o.errors.length > 0) {
+      return o.errors
+        .slice(0, 3)
+        .map((entry) => {
+          if (entry && typeof entry === 'object') {
+            const row = entry as { source?: string; error?: unknown };
+            if (row.source && row.error != null) {
+              return `${row.source}: ${readableError(row.error, 'failed')}`;
+            }
+            return readableError(entry, 'Issue');
+          }
+          return readableError(entry, 'Issue');
+        })
+        .join(' · ');
+    }
+  }
+  return fallback;
+}
+
+export function formatIngestWarnings(errors: unknown): string | null {
+  if (!Array.isArray(errors) || errors.length === 0) return null;
+  return readableError({ errors }, 'Scan finished with warnings');
+}
