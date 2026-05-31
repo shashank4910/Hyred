@@ -2,30 +2,37 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { Suspense } from 'react';
 import {
   LayoutDashboard,
-  User,
   BarChart3,
   LogOut,
-  Menu,
-  X,
-  Radar,
+  Zap,
   Link2,
-  Rocket,
-  Crown,
   Shield,
+  FileText,
+  Settings,
+  Building2,
 } from 'lucide-react';
 import { dismissAllAppToasts } from '@/lib/toast-app';
 import { supabaseBrowser } from '@/lib/supabase/client';
+import { HeaderSearch } from './HeaderSearch';
+import { RunIngestButton } from './RunIngestButton';
 
-const NAV: { href: string; label: string; icon: typeof LayoutDashboard; premium?: boolean; admin?: boolean }[] = [
-  { href: '/', label: 'Matches', icon: LayoutDashboard },
-  { href: '/top-mnc', label: 'Top MNC Hiring', icon: Crown, premium: true },
-  { href: '/import', label: 'Import', icon: Link2 },
-  { href: '/onboarding', label: 'Resume', icon: User },
-  { href: '/apply-profile', label: 'Apply Profile', icon: Rocket },
+const NAV: {
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  premium?: boolean;
+  admin?: boolean;
+  desktopOnly?: boolean;
+}[] = [
+  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/onboarding', label: 'My Resume', icon: FileText },
   { href: '/stats', label: 'Stats', icon: BarChart3 },
+  { href: '/top-mnc', label: 'Top MNCs', icon: Building2, premium: true },
+  { href: '/apply-profile', label: 'Settings', icon: Settings },
+  { href: '/import', label: 'Import', icon: Link2, desktopOnly: true },
   { href: '/admin', label: 'Admin', icon: Shield, admin: true },
 ];
 
@@ -40,7 +47,6 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [mobileOpen, setMobileOpen] = useState(false);
 
   const nav = NAV.filter((item) => !item.admin || isAdmin);
 
@@ -58,97 +64,117 @@ export function AppShell({
         .join('')
         .slice(0, 2)
         .toUpperCase()
-    : profile?.email?.slice(0, 2).toUpperCase() ?? 'JR';
+    : profile?.email?.slice(0, 2).toUpperCase() ?? 'HY';
 
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* Sticky top header — glass effect */}
-      <header className="sticky top-0 z-50 flex justify-between items-center px-4 md:px-6 w-full h-16 bg-surface/80 backdrop-blur-md border-b border-border-muted">
+    <div className="min-h-screen bg-background text-on-surface">
+      {/* Desktop sidebar */}
+      <aside className="fixed left-0 top-0 z-50 hidden h-screen w-sidebar flex-col gap-y-6 bg-surface-container-lowest px-4 py-8 shadow-glass lg:flex">
         <Brand />
 
-        {/* Desktop nav */}
-        <nav className="hidden md:flex items-center gap-1">
-          {nav.map(({ href, label, icon: Icon, premium }) => {
-            const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
-            return (
-              <Link
-                key={href}
-                href={href}
-                prefetch={href === '/stats' ? false : undefined}
-                className={[
-                  'inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all',
-                  active
-                    ? premium
-                      ? 'text-secondary bg-secondary-fixed/50'
-                      : 'text-primary bg-primary-fixed/50'
-                    : premium
-                      ? 'text-secondary hover:text-secondary hover:bg-secondary-fixed/30'
-                      : 'text-on-surface-variant hover:text-primary hover:bg-primary-fixed/30',
-                ].join(' ')}
-              >
-                <Icon className={`h-4 w-4 ${active ? (premium ? 'text-secondary' : 'text-primary') : premium ? 'text-secondary' : ''}`} />
-                {label}
-              </Link>
-            );
-          })}
+        <nav className="flex-1 space-y-1">
+          {nav
+            .filter((item) => !item.desktopOnly)
+            .map(({ href, label, icon: Icon, premium }) => {
+              const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  prefetch={href === '/stats' ? false : undefined}
+                  className={[
+                    'flex items-center gap-3 rounded-2xl px-4 py-3 text-label-md font-semibold transition-all',
+                    active
+                      ? 'bg-primary-container text-on-primary-container shadow-card'
+                      : premium
+                        ? 'text-secondary hover:bg-surface-container-low'
+                        : 'text-on-surface-variant hover:bg-surface-container-low',
+                  ].join(' ')}
+                >
+                  <Icon className="h-5 w-5 shrink-0" />
+                  {label}
+                </Link>
+              );
+            })}
         </nav>
 
-        {/* Right side: sign out + avatar */}
-        <div className="flex items-center gap-3">
+        <div className="border-t border-outline-variant/30 pt-4">
           <button
+            type="button"
             onClick={logout}
-            className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-on-surface-variant hover:text-primary border border-border-muted rounded-lg hover:bg-primary-fixed/30 transition-all"
+            className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-label-md font-semibold text-on-surface-variant transition-colors hover:bg-surface-container-low"
           >
-            <LogOut className="h-3.5 w-3.5" />
-            Sign out
+            <LogOut className="h-5 w-5" />
+            Log out
           </button>
-          <div className="w-9 h-9 rounded-full bg-secondary-fixed flex items-center justify-center text-on-secondary-fixed-variant text-xs font-bold border-2 border-surface">
+        </div>
+      </aside>
+
+      {/* Top header */}
+      <header className="fixed top-0 z-40 flex h-20 w-full items-center justify-between gap-4 border-b border-outline-variant/20 bg-surface/80 px-4 backdrop-blur-md lg:pl-[calc(theme(spacing.sidebar)+24px)] lg:pr-6">
+        <div className="flex items-center gap-3 lg:hidden">
+          <Brand compact />
+        </div>
+
+        <Suspense fallback={<div className="hidden flex-1 lg:block" />}>
+          <HeaderSearch />
+        </Suspense>
+
+        <div className="flex items-center gap-3 shrink-0">
+          <div className="hidden sm:block">
+            <RunIngestButton isAdmin={isAdmin} luminous />
+          </div>
+          <div className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-surface bg-surface-container-high text-xs font-bold text-primary shadow-sm">
             {initials}
           </div>
         </div>
       </header>
 
       {/* Mobile bottom nav */}
-      <nav className="md:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-2 py-2 bg-surface/95 backdrop-blur-md border-t border-border-muted">
-        {nav.map(({ href, label, icon: Icon, premium }) => {
+      <nav className="fixed bottom-0 left-0 z-50 flex w-full items-center justify-around border-t border-outline-variant/30 bg-surface-container-lowest/95 px-2 py-2 backdrop-blur-md lg:hidden">
+        {nav.slice(0, 5).map(({ href, label, icon: Icon, premium }) => {
           const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
           return (
             <Link
               key={href}
               href={href}
               className={[
-                'flex flex-col items-center justify-center gap-0.5 p-2 rounded-xl transition-all',
+                'flex flex-col items-center justify-center gap-0.5 rounded-xl p-2 transition-all',
                 active
                   ? premium
-                    ? 'bg-secondary-fixed text-secondary'
-                    : 'bg-primary-fixed text-primary'
-                  : premium
-                    ? 'text-secondary'
-                    : 'text-on-surface-variant',
+                    ? 'bg-secondary-container/30 text-secondary'
+                    : 'bg-primary-container/20 text-primary'
+                  : 'text-on-surface-variant',
               ].join(' ')}
             >
               <Icon className="h-5 w-5" />
-              <span className="text-[10px] font-medium tracking-wide">{label}</span>
+              <span className="text-[10px] font-semibold tracking-wide">{label.split(' ')[0]}</span>
             </Link>
           );
         })}
       </nav>
 
-      {/* Main content */}
-      <main className="flex-1 px-4 sm:px-6 py-6 pb-24 md:pb-6 max-w-page w-full mx-auto">
+      <main className="mx-auto w-full max-w-page px-4 pb-24 pt-24 sm:px-6 lg:pl-[calc(theme(spacing.sidebar)+24px)] lg:pb-12 lg:pr-6">
         {children}
       </main>
     </div>
   );
 }
 
-function Brand() {
+function Brand({ compact = false }: { compact?: boolean }) {
   return (
-    <Link href="/" className="flex items-center gap-2.5 text-primary font-bold">
-      <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary-fixed">
-        <Radar className="h-4.5 w-4.5 text-primary" />
+    <Link href="/" className={`flex items-center gap-3 ${compact ? '' : 'mb-2 px-2'}`}>
+      <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl teal-gradient text-on-primary shadow-primary-glow">
+        <Zap className="h-5 w-5 fill-current" />
       </span>
-      <span className="text-lg font-extrabold font-headline tracking-tight">Hyred</span>
+      {!compact && (
+        <div>
+          <div className="text-headline-md font-bold leading-tight text-primary">Hyred</div>
+          <div className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/60">
+            AI Career Engine
+          </div>
+        </div>
+      )}
     </Link>
   );
 }

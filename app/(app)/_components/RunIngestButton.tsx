@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, RefreshCw, ChevronDown } from 'lucide-react';
+import { Loader2, RefreshCw, ChevronDown, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { triggerJobScan } from './triggerJobScan';
 
@@ -16,7 +16,13 @@ const ALL_SOURCES = [
   { id: 'arbeitnow', label: 'Arbeitnow', tokens: 'free' },
 ];
 
-export function RunIngestButton({ isAdmin = false }: { isAdmin?: boolean }) {
+export function RunIngestButton({
+  isAdmin = false,
+  luminous = false,
+}: {
+  isAdmin?: boolean;
+  luminous?: boolean;
+}) {
   const [running, setRunning] = useState(false);
   const [, startTransition] = useTransition();
   const router = useRouter();
@@ -49,18 +55,22 @@ export function RunIngestButton({ isAdmin = false }: { isAdmin?: boolean }) {
         <button
           onClick={run}
           disabled={running}
-          className={isAdmin ? 'btn-primary rounded-r-none' : 'btn-primary'}
+          className={
+            isAdmin
+              ? 'btn-primary rounded-r-none'
+              : luminous
+                ? 'btn-primary gap-2 px-5 py-3'
+                : 'btn-primary'
+          }
         >
           {running ? (
             <Loader2 className="h-4 w-4 animate-spin" />
+          ) : luminous ? (
+            <Zap className="h-4 w-4" />
           ) : (
             <RefreshCw className="h-4 w-4" />
           )}
-          {running
-            ? 'Scanning...'
-            : isAdmin && selectedSources.length > 0
-              ? `Scan (${selectedSources.length})`
-              : 'Run scan'}
+          {running ? 'Scanning...' : luminous ? 'Run Scan' : isAdmin && selectedSources.length > 0 ? `Scan (${selectedSources.length})` : 'Run scan'}
         </button>
         {isAdmin && (
         <button
