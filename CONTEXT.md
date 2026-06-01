@@ -17,7 +17,7 @@ JobRadar / Hyred is a personalized AI-powered job-search dashboard that:
 5. Provides skill-match analysis (JD requirements vs resume)
 
 **Owner:** Shashank Singh — Senior Performance Engineer (India, 7.7 years)
-**Stack:** Next.js 15, React 19, TypeScript, Supabase, Groq Llama 3.3 70B (free chat primary) + OpenAI gpt-4o-mini (paid chat fallback) & text-embedding-3-small (embeddings), Vercel, GitHub Actions, Python FastAPI + browser-use (auto-apply agent on Render)
+**Stack:** Next.js 15, React 19, TypeScript, Supabase, **Cerebras `gpt-oss-120b` (free chat primary, admin-managed multi-key pool via `llm_keys` table)** → Groq Llama 3.3 70B (free fallback) → OpenAI gpt-4o-mini (paid last-resort) & text-embedding-3-small (embeddings), Vercel, GitHub Actions, Python FastAPI + browser-use (auto-apply agent on Render)
 
 ---
 
@@ -472,13 +472,15 @@ The LLM scoring prompt (`scoreJob` in `lib/gemini.ts`) has explicit rules:
 ## File Map
 
 ```
-lib/gemini.ts              ← AI: OpenAI primary, Gemini fallback. matchSkills, scoreJob, generateCoverLetter, extractResumeInsights, generateAtsResume
-lib/jd-fetcher.ts          ← Fetches full JDs from source URLs
+lib/gemini.ts              ← AI: chat() with Cerebras→Groq→OpenAI provider chain, RPM-aware round-robin across DB keys, in-memory cooldowns, sanitizeJobDescriptionForAI applied at all 5 prompt sites, scoreJob seniority+years cap (server-enforced)
+lib/llm-keys.ts            ← (Session 16) Multi-key LLM rotation: getNextAvailableKey, recordUsage, daily reset, PROVIDER_DEFAULTS. Backs the `/admin` LLM keys panel.
+lib/jd-fetcher.ts          ← Fetches full JDs from source URLs; exports stripHtml + containsHtml + sanitizeJobDescriptionForAI; ensureFullDescription self-heals HTML in stored rows
 lib/search-profile.ts      ← AI SearchProfile generation + title classification + AI relevance filter
-lib/ingest.ts              ← Main ingest pipeline (10 steps)
+lib/ingest.ts              ← Main ingest pipeline (10 steps). SCORE_CONCURRENCY=5 + 3s SCORE_BATCH_DELAY_MS to respect free-tier RPM.
 lib/ingest-runs.ts         ← Ingest run progress/finalize/stale cleanup (Stats + scan lifecycle)
 lib/profile-insights.ts    ← Resume-change helpers: strip cached search_profile, refresh preferences.roles
 lib/current-user.ts        ← getCurrentProfile(), isCurrentUserAdmin(), orphan purge on re-signup
+lib/dashboard-data.ts      ← (Session 16) Cached (React `cache()`) per-request helpers: getDashboardCounts, getLastScanInfo
 lib/sources/adzuna.ts      ← Adzuna API (multi-query, pagination, dedup)
 lib/sources/index.ts       ← Source dispatcher
 lib/pdf-resume.ts          ← Beautiful PDF resume generator (matches Shashank's exact format)
@@ -486,9 +488,12 @@ lib/resume.ts              ← Server-only resume parsers (.pdf / .doc / .docx /
 lib/resume-upload.ts       ← Client-safe upload helpers (`RESUME_FILE_ACCEPT`, `isResumeFilename`) — use from `'use client'` forms
 lib/matcher.ts             ← Cosine similarity + embedding text builder
 
-app/(app)/jobs/[id]/        ← Job detail page + actions + AutoApplyButton
+app/(app)/jobs/[id]/        ← Job detail page + actions + AutoApplyButton + BackToMatches.tsx (router.back, no skeleton)
 app/(app)/apply-profile/    ← Application profile form (memory store for auto-apply)
-app/(app)/_components/      ← AppShell (sidebar), MatchCard, MatchScoreRing, StatusFilter, DashboardInsights, HeaderSearch, RunIngestButton
+app/(app)/jobs/[id]/        ← Job detail page + actions + AutoApplyButton + BackToMatches.tsx (router.back, no skeleton)
+app/(app)/apply-profile/    ← Application profile form (memory store for auto-apply)
+app/(app)/_components/      ← AppShell (sidebar), MatchCard, MatchScoreRing, StatusFilter, DashboardInsights, HeaderSearch, RunIngestButton, MatchList (paginated, infinite-scroll, sessionStorage snapshot for back-nav)
+app/(app)/admin/            ← Admin Center: AdminDashboard + LlmKeysPanel.tsx (LLM keys + live usage bars)
 app/_components/            ← AppToaster, LegalConsentFields, LegalDocumentLayout
 tailwind.config.ts          ← Luminous design tokens (Stitch)
 app/globals.css             ← .teal-gradient, .btn-*, .card, .input
@@ -502,6 +507,10 @@ app/api/match/[id]/apply-callback/ ← Agent callback on completion
 app/api/apply-profile/      ← GET/POST application profile
 app/api/coverletter/        ← Cover letter generation
 app/api/ingest/             ← Manual ingest trigger
+app/api/matches/            ← (Session 16) Paginated match list (page=1..N, page size 20, all filters, Cache-Control SWR)
+app/api/admin/llm-keys/     ← (Session 16) GET/POST list + add LLM keys; PATCH/DELETE [id] toggle/update/remove
+
+next.config.mjs            ← experimental.staleTimes.dynamic=30 (Session 16) — Router Cache reuses dashboard for 30s so back-nav skips the server + skeleton
 
 browser_agent/main.py       ← Python FastAPI auto-apply agent (browser-use + Gemini)
 browser_agent/Dockerfile    ← Docker config for Render
@@ -510,6 +519,7 @@ browser_agent/requirements.txt ← Pinned: browser-use==0.1.40
 scripts/ingest.ts                    ← Cron entry point
 scripts/backfill-jds.ts             ← Backfill: fetch full JDs + re-embed + re-score existing jobs
 scripts/clear-embeddings.sql        ← (Session 5, MERGED) Wipe stale 768-dim vectors so next ingest re-embeds with OpenAI 1536-dim. Run once in Supabase SQL Editor.
+supabase/migrations/0009_llm_keys.sql ← (Session 16) llm_keys + llm_usage_log tables + increment_llm_key_usage RPC. **Manual run required.**
 .github/workflows/ingest.yml        ← Cron schedule (every 6h). GEMINI_API_KEY now chat-fallback only.
 .github/workflows/backfill-jds.yml  ← Manual workflow_dispatch for bulk JD backfill
 
@@ -572,6 +582,12 @@ scripts/clear-embeddings.sql        ← (Session 5, MERGED) Wipe stale 768-dim v
 | **4 scans × N users ≠ N tokens** | Easy to confuse **ingest run count** with **token count**. One scan ≈ 30–80 `scoreJob` calls × ~3k tokens each. | When estimating cost or designing Phase 3, multiply **runs × jobs scored × tokens/job**, not scans alone. See `#### Phase 3 design note — shared ingest / pub-sub`. |
 | **Resume parsers bundled into client** (Vercel build `Can't resolve 'fs'`) | `OnboardingForm` (client) imported `@/lib/resume`, which statically pulls `word-extractor`, `pdf-parse-fork`, and `mammoth` → webpack tries to ship Node `fs` to the browser. Broke preview deploys on `7e5cd85` and **production** on `c521b17` (PR #87 merged before the bundle split landed on `main`). | **Never import `lib/resume.ts` from client components.** Use `lib/resume-upload.ts` for `accept` / filename validation only. Keep parsers in `lib/resume.ts` (API routes + server). `next.config.mjs` → `serverExternalPackages` for those three libs. `(app)/layout.tsx` → `export const dynamic = 'force-dynamic'` so authed pages are not statically prerendered without Supabase env (local `npm run build` pitfall on `/import`). Fixed on `main` @ `26cd62d`. |
 | **Legacy Word `.doc` vs `.docx`** | Users upload OLE binary `.doc` (magic `D0 CF 11 E0`); `mammoth` only reads `.docx`. Error looked like "Word doesn't work" but **only old `.doc` failed** — PDF and `.docx` were fine. | Parse `.doc` with `word-extractor` (buffer) in `lib/resume.ts`. Accept `.pdf`, `.doc`, `.docx`, `.txt` in onboarding + `/api/profile/parse`. |
+| **Cerebras `llama-3.3-70b` deprecated → 35-45 ms `404 (no body)` on every call (session 16)** | Cerebras silently retired `llama-3.3-70b` ~May 27, 2026; only `gpt-oss-120b` and `zai-glm-4.7` remain (`/v1/models`). The 404 was the routing layer rejecting the model name BEFORE auth — that's why the latency was sub-50 ms with no body. The admin dashboard kept showing requests because we logged 0-token error rows. | Default Cerebras model in `lib/gemini.ts` + `PROVIDER_DEFAULTS.cerebras.model` is now `gpt-oss-120b`. Pre-existing DB rows must be migrated once: `UPDATE llm_keys SET model = 'gpt-oss-120b' WHERE provider = 'cerebras';`. **Lesson:** sub-50 ms 404 across the board → suspect model name, not auth. |
+| **Free-tier RPM 429 ≠ daily exhaustion** (session 16) | All 5 Cerebras keys looked "100% used" in the admin while Cerebras Cloud reported only ~1.2 K tokens consumed. Root cause: original `chat()` ran `markKeyExhausted()` (set `tokens_used_today = daily_token_limit`) on any 429. Cerebras free tier is currently rate-limited to ~5 RPM (banner: "temporarily reduced for high-demand models"), so RPM 429s fired in seconds and false-exhausted every key, collapsing rotation to paid OpenAI. | **Cooldown ≠ exhaustion.** In-memory `KEY_COOLDOWNS` map (60-65 s) — DB token counter is left alone; the key is silently skipped for one minute. **Round-robin per-request, not per-failure** — `buildProviderChain()` returns ALL active keys for a provider; rotation index advances every call. Add `SCORE_BATCH_DELAY_MS = 3000` and `SCORE_CONCURRENCY = 5` in ingest so each key stays under its RPM ceiling. Always record token usage from `res.usage`, never from string-length guesses (avoids inflated counters). |
+| **HTML markup in stored `job.description` poisons every prompt** (session 16) | `ensureFullDescription` only refetches when length < `TRUNCATED_LENGTH_THRESHOLD` (1000), so HTML-heavy long JDs (`<p>🚀 We're Hiring...</p>`) slipped through. Every AI call (`scoreJob`, `matchSkills`, `generateCoverLetter`, `generateAtsResume`, `extractJdKeywordsTyped`) read markup as prose; the detail page `<pre>` showed literal tags to the user. | Centralized helper `sanitizeJobDescriptionForAI(s)` in `lib/jd-fetcher.ts` (wraps existing `stripHtml` + `containsHtml`, idempotent). **Apply at every site that puts `args.jobDescription` into a prompt.** The `ensureFullDescription` self-heal writes the cleaned text back to the DB so the `<pre>` UI also fixes itself on next read. |
+| **`scoreJob` had ZERO seniority/experience-gap rule → over-scoring** (session 16) | A 7.7-year senior IC scored **90/100** on "Director of Performance Engineering CoE, 18+ years". The testing-umbrella floor (65-80) and tool overlap drove it; nothing in the prompt compared candidate years vs JD requirement. | **Defense-in-depth (4-phase pattern):** (1) prompt has explicit YEARS GAP table (gap ≥ 11 → cap 40, ≥ 7 → 55, ≥ 4 → 65, ≥ 2 → 78) + SENIORITY-LEVEL rules (IC → director cap 50; IC → vp/exec cap 40) + 2 worked examples. (2) Response shape extended with `requiredYears` + `jdSeniority`. (3) Server-side hard cap parses those vs `insights.years_experience` + `insights.seniority`; lower of years/seniority cap wins. (4) Seniority cap only fires with real years shortfall (gap ≥ 4 or `requiredYears === 0`) so a 12y Staff IC → 12y Director isn't unfairly capped. Reason string always says "Score capped due to …" so users see why. |
+| **Back-nav from job detail → 2-3 s skeleton + landed at top, not on the clicked card** (session 16) | `app/(app)/page.tsx` is `force-dynamic` and `app/(app)/loading.tsx` exists, so `router.back()` ran ~12 Supabase queries every time. Worse: infinite-scroll pages 2-N live in client state — back-nav re-rendered only the first 20 cards, so a card at position #45 wasn't in the DOM, `scrollTo(savedY)` landed wrong, `querySelector('[data-match-id="#45"]')` returned `null`, no flash. My initial `?from=matchId` Link approach inherited the same flaw. | **Two mechanisms:** (a) `next.config.mjs` `experimental.staleTimes = { dynamic: 30, static: 180 }` — Router Cache reuses the dashboard for 30 s, no server hit, no `loading.tsx`. (b) `MatchList` writes a sessionStorage snapshot on card click (`signature` + `matches[]` capped at 200 + `page` + `hasMore` + `total` + `scrollY` + `clickedId`, TTL 10 min). On mount a `useLayoutEffect` (SSR-safe via `useIsoLayoutEffect`) rehydrates the FULL list **before paint**, then a `useEffect` (post-paint, two `requestAnimationFrame` ticks) restores scroll and flashes the clicked card. Initialize `useState` with **server props** to avoid hydration mismatch — never read sessionStorage in a `useState` lazy initializer. |
+| **`useState` lazy initializer reading sessionStorage = hydration mismatch** (session 16) | First snapshot-restore attempt initialized `useState(() => readSnapshot()?.matches ?? initialMatches)`. On cold loads / refreshes the server rendered 20 cards but the client init produced 80 (from a stale snapshot) → React hydration error + flash. | Initialize state with **the server data first**, then swap to the snapshot in `useLayoutEffect` (client-only, before paint). Use a `didInit` ref so the swap runs once. The `useEffect` that consumes the snapshot must also guard with a one-shot ref. |
 
 ---
 
@@ -602,17 +618,23 @@ When a feature seems broken:
 
 ## Cost Model
 
-| Operation | Cost | Frequency |
-|---|---|---|
-| Generate SearchProfile | ~$0.005 | Once per 7 days |
-| Embed a job (OpenAI text-embedding-3-small, 1536 dims, post-Session-4 migration) | ~$0.00002 | Per new job (~$1.30/mo at current volume) |
-| AI relevance filter (batch of 15) | ~$0.001 | Per cron run (2-4 batches) |
-| LLM score a job | ~$0.001 | Per scored job (30-80/run) |
-| Skill match (per job detail view) | ~$0.002 | On demand |
-| ATS resume generation | ~$0.003 | Per job apply |
-| Cover letter generation | ~$0.002 | Per job apply |
-| **Total per cron run** | **~$0.07-0.10** | 4x/day |
-| **Monthly estimate** | **~$10-15** | At current usage |
+> **Updated session 16.** Cerebras is now the chat **primary** (free, admin-managed multi-key pool, `gpt-oss-120b`). The numbers below assume the Cerebras pool absorbs all chat traffic; OpenAI gpt-4o-mini only runs as paid overflow when every Cerebras + Groq key is on cooldown or daily-exhausted. Embeddings remain OpenAI-only (`text-embedding-3-small`).
+
+| Operation | Cost (Cerebras primary) | OpenAI overflow cost | Frequency |
+|---|---|---|---|
+| Generate SearchProfile | $0 | ~$0.005 | Once per 7 days |
+| Embed a job (OpenAI text-embedding-3-small) | ~$0.00002 | n/a (OpenAI-only) | Per new job (~$1.30/mo flat) |
+| AI relevance filter (batch of 15) | $0 | ~$0.0005 | Per cron run (2–4 batches) |
+| LLM score a job | $0 | ~$0.0005 | Per scored job (30–80/run) |
+| Skill match (per job detail view) | $0 | ~$0.0009 | On demand |
+| ATS resume generation | $0 | ~$0.0024 | Per job apply |
+| Cover letter generation | $0 | ~$0.0009 | Per job apply |
+| **Per cron run, fully on Cerebras** | **~$0** | — | 4×/day |
+| **Per cron run, fully overflowed to OpenAI** | — | ~$0.07–0.10 | (worst case) |
+| **Monthly estimate, owner-only, Cerebras pool healthy** | **~$1–3** (embeddings) | — | |
+| **Monthly estimate, OpenAI primary (legacy)** | — | ~$10–15 | — |
+
+**Free-tier capacity (per Cerebras account):** 1 M tokens/day, ~5 RPM (currently reduced for high-demand models). **Same-account keys do NOT stack** — RPM/TPD limits are per-account. To scale, create separate Cerebras accounts and add each one's key in the `/admin` LLM keys panel.
 
 ---
 
@@ -625,7 +647,7 @@ When a feature seems broken:
 - Changes to the file map
 - **Keep the `AGENTS.md` Index in sync** when you add/rename a `##` section here, and append new dated session logs to `docs/context/session-log.md` (not here).
 
-**Last updated:** May 31, 2026 (session 16: **UI index** refreshed for PRs **#102–#106** — layout overlap (#103), Luminous page polish (#104), scan-started toast (#105), status filter grid (#106). Full narrative in `docs/context/session-log.md`.)
+**Last updated:** May 31, 2026 (session 16 — this entry: **admin-managed multi-key LLM pool** + Cerebras `llama-3.3-70b` → `gpt-oss-120b` switch + RPM-aware rotation (cooldown ≠ exhaustion, per-request round-robin, 3 s batch delay, `res.usage` tracking) + **dashboard pagination + bulletproof back-nav** (sessionStorage snapshot, `staleTimes.dynamic = 30`, `BackToMatches`) + **JD HTML stripped at all 5 AI prompt sites** via `sanitizeJobDescriptionForAI` + **`scoreJob` seniority + experience-gap cap** with prompt rules + server-side hard cap (defense-in-depth). PRs **#94**, **#110**, **#116**. Full narrative → `docs/context/session-log.md` → **Session 16**. Earlier the same day, the UI index was refreshed for PRs **#102–#106** — layout overlap (#103), Luminous page polish (#104), scan-started toast (#105), status filter grid (#106).)
 
 _Session 6 (May 29, 2026): started the **Enterprise Multi-Tenant Transformation** initiative — added the Master Plan + Progress Tracker (Phases 0-5). Phase 0 + the Groq migration (PR #48 replaced the dead `gemini-2.0-flash` 429 fallback with Groq; PR #50 flipped Groq to FREE PRIMARY with OpenAI fallback + `LLM_PRIMARY` toggle, needs `GROQ_API_KEY`) + the Phase 3 Groq free-tier capacity analysis._
 
