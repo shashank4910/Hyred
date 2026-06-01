@@ -1,9 +1,9 @@
 'use client';
 
-import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Bookmark, Inbox } from 'lucide-react';
 import { STATUS_ORDER } from '@/lib/ui';
+import { useDashboardNav } from './DashboardNavContext';
 
 export function StatusFilter({
   counts,
@@ -19,6 +19,7 @@ export function StatusFilter({
   onlyBookmarked: boolean;
 }) {
   const sp = useSearchParams();
+  const { navigate, isPending } = useDashboardNav();
 
   function hrefFor(status: string): string {
     const params = new URLSearchParams(sp.toString());
@@ -47,45 +48,47 @@ export function StatusFilter({
 
   return (
     <div className="w-full rounded-2xl bg-surface-container-lowest p-1 shadow-card">
-      <div className="grid w-full grid-cols-7 gap-0.5">
-      {tabs.map(({ id, label, count, icon }) => {
-        const isBookmarkTab = id === 'bookmarked';
-        const isActive = isBookmarkTab ? onlyBookmarked : !onlyBookmarked && id === active;
-        const href = isBookmarkTab ? bookmarkedHref() : hrefFor(id);
+      <div className="grid w-full grid-cols-7 gap-0.5" role="tablist" aria-label="Match status">
+        {tabs.map(({ id, label, count, icon }) => {
+          const isBookmarkTab = id === 'bookmarked';
+          const isActive = isBookmarkTab ? onlyBookmarked : !onlyBookmarked && id === active;
+          const href = isBookmarkTab ? bookmarkedHref() : hrefFor(id);
 
-        return (
-          <Link
-            key={id}
-            href={href}
-            scroll={false}
-            className={[
-              'flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-2 text-center transition-all sm:flex-row sm:gap-1 sm:px-1.5 sm:py-2.5 md:px-2',
-              isActive
-                ? 'bg-primary-container text-on-primary-container shadow-sm'
-                : 'text-on-surface-variant hover:bg-surface-container',
-            ].join(' ')}
-          >
-            <span className="inline-flex min-w-0 items-center gap-0.5 sm:gap-1">
-              {icon ? (
-                <span className="hidden shrink-0 sm:inline">{icon}</span>
-              ) : null}
-              <span className="truncate text-[10px] font-semibold leading-tight sm:text-xs md:text-sm capitalize">
-                {label}
+          return (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              disabled={isPending && !isActive}
+              onClick={() => navigate(href)}
+              className={[
+                'flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-2 text-center transition-all sm:flex-row sm:gap-1 sm:px-1.5 sm:py-2.5 md:px-2',
+                isActive
+                  ? 'bg-primary-container text-on-primary-container shadow-sm'
+                  : 'text-on-surface-variant hover:bg-surface-container',
+                isPending && !isActive ? 'opacity-60' : '',
+              ].join(' ')}
+            >
+              <span className="inline-flex min-w-0 items-center gap-0.5 sm:gap-1">
+                {icon ? <span className="hidden shrink-0 sm:inline">{icon}</span> : null}
+                <span className="truncate text-[10px] font-semibold leading-tight sm:text-xs md:text-sm capitalize">
+                  {label}
+                </span>
               </span>
-            </span>
-            {count > 0 && (
-              <span
-                className={[
-                  'shrink-0 rounded-full px-1 py-px text-[9px] font-bold leading-none sm:px-1.5 sm:py-0.5 sm:text-[10px]',
-                  isActive ? 'bg-on-primary-container/15' : 'bg-surface-container text-text-muted',
-                ].join(' ')}
-              >
-                {count}
-              </span>
-            )}
-          </Link>
-        );
-      })}
+              {count > 0 && (
+                <span
+                  className={[
+                    'shrink-0 rounded-full px-1 py-px text-[9px] font-bold leading-none sm:px-1.5 sm:py-0.5 sm:text-[10px]',
+                    isActive ? 'bg-on-primary-container/15' : 'bg-surface-container text-text-muted',
+                  ].join(' ')}
+                >
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

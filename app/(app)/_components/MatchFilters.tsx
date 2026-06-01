@@ -1,14 +1,15 @@
 'use client';
 
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { X } from 'lucide-react';
 import { DEFAULT_MATCH_SORT, SOURCE_LABELS, resolveMatchSort } from '@/lib/ui';
+import { useDashboardNav } from './DashboardNavContext';
 
 const SOURCES = ['remotive', 'remoteok', 'hn', 'arbeitnow', 'adzuna_in', 'himalayas', 'jsearch', 'linkedin'];
 
 export function MatchFilters({ isAdmin = false }: { isAdmin?: boolean }) {
-  const router = useRouter();
   const sp = useSearchParams();
+  const { navigate, isPending } = useDashboardNav();
   const source = sp.get('source') ?? '';
   const minScore = sp.get('min') ?? '';
   const remote = sp.get('remote') ?? '';
@@ -19,7 +20,7 @@ export function MatchFilters({ isAdmin = false }: { isAdmin?: boolean }) {
     const params = new URLSearchParams(sp.toString());
     if (value) params.set(name, value);
     else params.delete(name);
-    router.replace(`/?${params.toString()}`, { scroll: false });
+    navigate(`/?${params.toString()}`, { replace: true });
   }
 
   const hasFilters =
@@ -29,7 +30,7 @@ export function MatchFilters({ isAdmin = false }: { isAdmin?: boolean }) {
     (sortParam != null && sortParam !== '' && sort !== DEFAULT_MATCH_SORT);
 
   return (
-    <div className="relative z-0 flex flex-wrap items-center gap-2">
+    <div className={`relative z-0 flex flex-wrap items-center gap-2 ${isPending ? 'opacity-70' : ''}`}>
       {isAdmin && (
         <select
           value={source}
@@ -90,7 +91,7 @@ export function MatchFilters({ isAdmin = false }: { isAdmin?: boolean }) {
             const q = sp.get('q');
             if (status) params.set('status', status);
             if (q) params.set('q', q);
-            router.replace(`/?${params.toString()}`, { scroll: false });
+            navigate(`/?${params.toString()}`, { replace: true });
           }}
           className="btn-ghost text-error"
         >
