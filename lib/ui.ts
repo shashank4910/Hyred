@@ -74,6 +74,26 @@ export const STATUS_ORDER = [
   'closed',
 ] as const;
 
+/** Default dashboard match ordering — best AI match score first (PR #110). */
+export const DEFAULT_MATCH_SORT = 'score' as const;
+
+export const MATCH_SORT_MODES = [
+  'newest',
+  'posted',
+  'score',
+  'activity',
+  'oldest',
+] as const;
+
+export type MatchSortMode = (typeof MATCH_SORT_MODES)[number];
+
+export function resolveMatchSort(raw: string | null | undefined): MatchSortMode {
+  if (raw && (MATCH_SORT_MODES as readonly string[]).includes(raw)) {
+    return raw as MatchSortMode;
+  }
+  return DEFAULT_MATCH_SORT;
+}
+
 /** Turn API / thrown values into a human-readable toast message (never "[object Object]"). */
 export function readableError(value: unknown, fallback = 'Something went wrong'): string {
   if (value instanceof Error) {

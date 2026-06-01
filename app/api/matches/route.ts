@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { getCurrentProfile } from '@/lib/current-user';
+import { applyMatchSort } from '@/lib/apply-match-sort';
+import { resolveMatchSort } from '@/lib/ui';
 
 export const runtime = 'nodejs';
 
@@ -23,7 +25,7 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const page = Math.max(1, parseInt(url.searchParams.get('page') ?? '1', 10));
   const status = url.searchParams.get('status') ?? 'inbox';
-  const sort = url.searchParams.get('sort') ?? 'newest';
+  const sort = resolveMatchSort(url.searchParams.get('sort'));
   const minScore = parseInt(url.searchParams.get('min') ?? '50', 10);
   const q = url.searchParams.get('q') ?? '';
   const remote = url.searchParams.get('remote') === '1';
@@ -53,27 +55,7 @@ export async function GET(req: NextRequest) {
     query = query.eq('status', status);
   }
 
-  switch (sort) {
-    case 'posted':
-      query = query
-        .order('posted_at', { foreignTable: 'job', ascending: false, nullsFirst: false })
-        .order('fetched_at', { foreignTable: 'job', ascending: false });
-      break;
-    case 'score':
-      query = query
-        .order('llm_score', { ascending: false })
-        .order('fetched_at', { foreignTable: 'job', ascending: false });
-      break;
-    case 'activity':
-      query = query.order('updated_at', { ascending: false });
-      break;
-    case 'oldest':
-      query = query.order('fetched_at', { foreignTable: 'job', ascending: true });
-      break;
-    default:
-      query = query.order('fetched_at', { foreignTable: 'job', ascending: false });
-      break;
-  }
+  query = applyMatchSort(query, sort);
 
   if (q) {
     const term = q.replace(/[%]/g, '');

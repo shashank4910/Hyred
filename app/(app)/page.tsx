@@ -9,7 +9,8 @@ import { MatchList } from './_components/MatchList';
 import { DashboardInsights } from './_components/DashboardInsights';
 import { RunIngestButton } from './_components/RunIngestButton';
 import { Inbox, Sparkles, TrendingUp, Briefcase, ArrowRight } from 'lucide-react';
-import { relativeTime, STATUS_ORDER } from '@/lib/ui';
+import { relativeTime, STATUS_ORDER, resolveMatchSort } from '@/lib/ui';
+import { applyMatchSort } from '@/lib/apply-match-sort';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,9 +25,6 @@ type SearchParams = {
   from?: string; // match ID to highlight on back-navigation
 };
 
-type SortMode = NonNullable<SearchParams['sort']>;
-const VALID_SORTS: SortMode[] = ['newest', 'posted', 'score', 'activity', 'oldest'];
-
 export default async function Dashboard({
   searchParams,
 }: {
@@ -35,9 +33,7 @@ export default async function Dashboard({
   const sp = await searchParams;
   const status = sp.status ?? 'inbox';
   const onlyBookmarked = sp.bookmarked === '1';
-  const sort: SortMode = (VALID_SORTS as readonly string[]).includes(sp.sort ?? '')
-    ? (sp.sort as SortMode)
-    : 'newest';
+  const sort = resolveMatchSort(sp.sort);
 
   const sb = supabaseAdmin();
 
@@ -118,28 +114,7 @@ export default async function Dashboard({
   const staleCutoff = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString();
   query = query.or(`posted_at.gte.${staleCutoff},posted_at.is.null`, { foreignTable: 'job' });
 
-  switch (sort) {
-    case 'posted':
-      query = query
-        .order('posted_at', { foreignTable: 'job', ascending: false, nullsFirst: false })
-        .order('fetched_at', { foreignTable: 'job', ascending: false });
-      break;
-    case 'score':
-      query = query
-        .order('llm_score', { ascending: false })
-        .order('fetched_at', { foreignTable: 'job', ascending: false });
-      break;
-    case 'activity':
-      query = query.order('updated_at', { ascending: false });
-      break;
-    case 'oldest':
-      query = query.order('fetched_at', { foreignTable: 'job', ascending: true });
-      break;
-    case 'newest':
-    default:
-      query = query.order('fetched_at', { foreignTable: 'job', ascending: false });
-      break;
-  }
+  query = applyMatchSort(query, sort);
 
   if (onlyBookmarked) {
     query = query.eq('bookmarked', true);
