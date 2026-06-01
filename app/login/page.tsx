@@ -1,5 +1,6 @@
 import { LoginForm } from './LoginForm';
 import { ToastCleanupOnLogin } from './ToastCleanupOnLogin';
+import { LegalFooterLinks } from '@/app/_components/LegalFooterLinks';
 
 export const metadata = { title: 'Sign in' };
 
@@ -23,6 +24,9 @@ export default async function LoginPage({
           </p>
         </div>
         <LoginForm next={sp.next} />
+        <div className="text-center">
+          <LegalFooterLinks />
+        </div>
       </div>
     </div>
   );

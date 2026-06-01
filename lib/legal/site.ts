@@ -1,6 +1,10 @@
 /** Public legal / contact constants — override via env where noted. */
 export const PRODUCT_NAME = 'Hyred';
 export const LEGAL_LAST_UPDATED = '31 May 2026';
+/** General inquiries, support, partnerships */
+export const PUBLIC_CONTACT_EMAIL =
+  process.env.NEXT_PUBLIC_CONTACT_EMAIL ?? 'hello@hyred.in';
+/** Privacy grievances and legal notices */
 export const LEGAL_CONTACT_EMAIL =
   process.env.NEXT_PUBLIC_LEGAL_EMAIL ?? 'privacy@hyred.in';
 export const LEGAL_OPERATOR_NAME =

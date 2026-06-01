@@ -3,6 +3,10 @@ import Link from 'next/link';
 export function LegalFooterLinks({ className = '' }: { className?: string }) {
   return (
     <p className={`text-xs text-on-surface-variant ${className}`.trim()}>
+      <Link href="/contact" className="hover:text-on-surface underline underline-offset-2">
+        Contact us
+      </Link>
+      {' · '}
       <Link href="/privacy" className="hover:text-on-surface underline underline-offset-2">
         Privacy Policy
       </Link>
