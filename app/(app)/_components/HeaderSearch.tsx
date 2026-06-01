@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { Search } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 
 /** Global match search — shown in the app header on the dashboard. */
 export function HeaderSearch() {
@@ -10,6 +10,7 @@ export function HeaderSearch() {
   const pathname = usePathname();
   const sp = useSearchParams();
   const [q, setQ] = useState(sp.get('q') ?? '');
+  const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
     setQ(sp.get('q') ?? '');
@@ -21,7 +22,9 @@ export function HeaderSearch() {
       const params = new URLSearchParams(sp.toString());
       if (q) params.set('q', q);
       else params.delete('q');
-      router.replace(`/?${params.toString()}`, { scroll: false });
+      startTransition(() => {
+        router.replace(`/?${params.toString()}`, { scroll: false });
+      });
     }, 300);
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -38,7 +41,8 @@ export function HeaderSearch() {
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder="Search roles, companies, or keywords..."
-        className="w-full rounded-2xl border border-outline-variant bg-surface-container-lowest py-3 pl-11 pr-4 text-body-md text-on-surface placeholder:text-text-muted outline-none transition-all focus:border-primary focus:ring-4 focus:ring-primary/15"
+        aria-busy={isPending}
+        className={`w-full rounded-2xl border border-outline-variant bg-surface-container-lowest py-3 pl-11 pr-4 text-body-md text-on-surface placeholder:text-text-muted outline-none transition-all focus:border-primary focus:ring-4 focus:ring-primary/15 ${isPending ? 'opacity-70' : ''}`}
       />
     </div>
   );
