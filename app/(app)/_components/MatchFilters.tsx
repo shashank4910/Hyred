@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from 'next/navigation';
 import { X } from 'lucide-react';
-import { SOURCE_LABELS } from '@/lib/ui';
+import { DEFAULT_MATCH_SORT, SOURCE_LABELS, resolveMatchSort } from '@/lib/ui';
 
 const SOURCES = ['remotive', 'remoteok', 'hn', 'arbeitnow', 'adzuna_in', 'himalayas', 'jsearch', 'linkedin'];
 
@@ -12,7 +12,8 @@ export function MatchFilters({ isAdmin = false }: { isAdmin?: boolean }) {
   const source = sp.get('source') ?? '';
   const minScore = sp.get('min') ?? '';
   const remote = sp.get('remote') ?? '';
-  const sort = sp.get('sort') ?? 'newest';
+  const sortParam = sp.get('sort');
+  const sort = resolveMatchSort(sortParam);
 
   function setParam(name: string, value: string) {
     const params = new URLSearchParams(sp.toString());
@@ -21,7 +22,11 @@ export function MatchFilters({ isAdmin = false }: { isAdmin?: boolean }) {
     router.replace(`/?${params.toString()}`, { scroll: false });
   }
 
-  const hasFilters = (isAdmin && source) || minScore || remote || (sort && sort !== 'newest');
+  const hasFilters =
+    (isAdmin && source) ||
+    minScore ||
+    remote ||
+    (sortParam != null && sortParam !== '' && sort !== DEFAULT_MATCH_SORT);
 
   return (
     <div className="relative z-0 flex flex-wrap items-center gap-2">
@@ -63,7 +68,9 @@ export function MatchFilters({ isAdmin = false }: { isAdmin?: boolean }) {
 
       <select
         value={sort}
-        onChange={(e) => setParam('sort', e.target.value === 'newest' ? '' : e.target.value)}
+        onChange={(e) =>
+          setParam('sort', e.target.value === DEFAULT_MATCH_SORT ? '' : e.target.value)
+        }
         className="input w-auto"
         title="Sort matches"
       >

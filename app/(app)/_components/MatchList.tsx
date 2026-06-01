@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Loader2, ChevronDown } from 'lucide-react';
+import { resolveMatchSort } from '@/lib/ui';
 import { MatchCard } from './MatchCard';
 
 type MatchJob = {
@@ -56,7 +57,7 @@ export function MatchList({ initialMatches, total, initialHasMore, showSource = 
     const params = new URLSearchParams();
     params.set('page', String(pageNum));
     params.set('status', sp.get('status') ?? 'inbox');
-    if (sp.get('sort')) params.set('sort', sp.get('sort')!);
+    params.set('sort', resolveMatchSort(sp.get('sort')));
     if (sp.get('min')) params.set('min', sp.get('min')!);
     if (sp.get('q')) params.set('q', sp.get('q')!);
     if (sp.get('remote')) params.set('remote', sp.get('remote')!);
