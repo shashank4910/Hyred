@@ -8,12 +8,11 @@ import {
   Clock,
   Bookmark,
   Crown,
-  Check,
-  Plus,
   Zap,
 } from 'lucide-react';
 import { relativeTime, formatShortDate, formatFullDate, SOURCE_LABELS } from '@/lib/ui';
 import { MatchScoreRing } from './MatchScoreRing';
+import { MatchSkillPills } from './MatchSkillPills';
 
 type Props = {
   matchId: string;
@@ -36,6 +35,8 @@ type Props = {
   matchedSkills?: string[];
   missingSkills?: string[];
   showSource?: boolean;
+  /** When set, job detail "back" returns here (e.g. /top-mnc?category=...) */
+  returnHref?: string;
 };
 
 export function MatchCard({
@@ -49,6 +50,7 @@ export function MatchCard({
   matchedSkills = [],
   missingSkills = [],
   showSource = false,
+  returnHref,
 }: Props) {
   const dateSource = job.posted_at ?? job.fetched_at ?? null;
   const relative = relativeTime(dateSource);
@@ -87,9 +89,13 @@ export function MatchCard({
     }
   }
 
+  const jobHref = returnHref
+    ? `/jobs/${matchId}?return=${encodeURIComponent(returnHref)}`
+    : `/jobs/${matchId}`;
+
   return (
     <Link
-      href={`/jobs/${matchId}`}
+      href={jobHref}
       className={[
         'group block min-w-0 animate-fade-in rounded-2xl bg-surface-container-lowest p-6 shadow-card transition-all hover:-translate-y-1 hover:border-primary/10 hover:shadow-elevated',
         isViewed ? 'opacity-90 hover:opacity-100' : '',
@@ -169,26 +175,7 @@ export function MatchCard({
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex flex-wrap gap-2">
-          {matchedSkills.slice(0, 5).map((s) => (
-            <span
-              key={`m-${s}`}
-              className="inline-flex items-center gap-1 rounded-full bg-match-success/10 px-3 py-1 text-[11px] font-semibold text-match-success"
-            >
-              <Check className="h-3.5 w-3.5" />
-              {s}
-            </span>
-          ))}
-          {missingSkills.slice(0, 5).map((s) => (
-            <span
-              key={`x-${s}`}
-              className="inline-flex items-center gap-1 rounded-full bg-surface-container px-3 py-1 text-[11px] font-semibold text-text-muted"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              {s}
-            </span>
-          ))}
-        </div>
+        <MatchSkillPills matchedSkills={matchedSkills} missingSkills={missingSkills} />
         <div className="flex gap-2" onClick={(e) => e.preventDefault()}>
           <button
             type="button"

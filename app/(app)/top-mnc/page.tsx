@@ -4,11 +4,13 @@ import { getCurrentProfile, isCurrentUserAdmin } from '@/lib/current-user';
 import { MatchCard } from '../_components/MatchCard';
 import { Crown, Building2, Sparkles } from 'lucide-react';
 import { matchTopCompany, CATEGORY_LABELS, type CompanyEntry } from '@/lib/top-companies';
+// Keep in sync with MATCH_LIST_SELECT_WITH_META in lib/match-list-select.ts
 
 export const dynamic = 'force-dynamic';
 
 type SearchParams = {
   category?: string;
+  from?: string;
 };
 
 const VALID_CATEGORIES: CompanyEntry['category'][] = [
@@ -29,6 +31,7 @@ export default async function TopMncPage({
   const categoryFilter = VALID_CATEGORIES.includes(sp.category as CompanyEntry['category'])
     ? (sp.category as CompanyEntry['category'])
     : null;
+  const highlightId = sp.from ?? null;
 
   const sb = supabaseAdmin();
 
@@ -175,8 +178,19 @@ export default async function TopMncPage({
               posted_at: string | null;
               fetched_at: string | null;
             };
+            const mnc = (m as unknown as MatchWithMnc)._mnc;
+            const returnHref = categoryFilter
+              ? `/top-mnc?category=${categoryFilter}&from=${m.id}`
+              : `/top-mnc?from=${m.id}`;
             return (
-              <li key={m.id}>
+              <li
+                key={m.id}
+                className={
+                  m.id === highlightId
+                    ? 'rounded-2xl ring-2 ring-primary ring-offset-2 transition-all'
+                    : undefined
+                }
+              >
                 <MatchCard
                   matchId={m.id}
                   score={m.llm_score}
@@ -187,7 +201,8 @@ export default async function TopMncPage({
                   missingSkills={(m as unknown as { missing_skills: string[] | null }).missing_skills ?? []}
                   job={job}
                   showSource={isAdmin}
-                  mncCategory={CATEGORY_LABELS[(m as unknown as MatchWithMnc)._mnc.category]}
+                  mncCategory={CATEGORY_LABELS[mnc.category]}
+                  returnHref={returnHref}
                 />
               </li>
             );
