@@ -6,16 +6,21 @@ import { getCurrentProfile, isCurrentUserAdmin } from '@/lib/current-user';
 import { ensureFullDescription } from '@/lib/jd-fetcher';
 import { JobActions } from './JobActions';
 import { AutoApplyButton } from './AutoApplyButton';
+import { MatchSkillPills } from '../../_components/MatchSkillPills';
 import { relativeTime, scoreColorClass, scoreLabel, SOURCE_LABELS } from '@/lib/ui';
 
 export const dynamic = 'force-dynamic';
 
 export default async function JobMatchPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ return?: string }>;
 }) {
   const { id } = await params;
+  const sp = await searchParams;
+  const backHref = sp.return ? decodeURIComponent(sp.return) : `/?from=${id}`;
   const profile0 = await getCurrentProfile();
   if (!profile0) notFound();
   const isAdmin = await isCurrentUserAdmin();
@@ -31,9 +36,9 @@ export default async function JobMatchPage({
   const { data: match } = await sb
     .from('matches')
     .select(
-      `id, llm_score, similarity, reason, status, bookmarked, cover_letter, notes, applied_at,
+      `id, llm_score, similarity, reason, status, bookmarked, matched_skills, missing_skills, cover_letter, notes, applied_at,
        profile:profiles(insights),
-       job:jobs(id, title, company, location, remote, url, source, salary, description, posted_at, tags)`,
+       job:jobs(id, title, company, location, remote, url, source, salary, description, posted_at, fetched_at, tags)`,
     )
     .eq('id', id)
     .eq('profile_id', profile0.id)
@@ -73,10 +78,10 @@ export default async function JobMatchPage({
   return (
     <div className="space-y-5">
       <Link
-        href={`/?from=${id}`}
+        href={backHref}
         className="inline-flex items-center gap-1.5 text-sm text-on-surface-variant hover:text-primary transition-colors"
       >
-        <ArrowLeft className="h-4 w-4" /> All matches
+        <ArrowLeft className="h-4 w-4" /> Back to matches
       </Link>
 
       {/* Job header card */}
@@ -134,6 +139,13 @@ export default async function JobMatchPage({
             </p>
           </div>
         )}
+
+        <div className="mt-4">
+          <MatchSkillPills
+            matchedSkills={(match as unknown as { matched_skills: string[] | null }).matched_skills ?? []}
+            missingSkills={(match as unknown as { missing_skills: string[] | null }).missing_skills ?? []}
+          />
+        </div>
       </div>
 
       <JobActions

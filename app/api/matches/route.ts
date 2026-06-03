@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
-import { getCurrentProfile } from '@/lib/current-user';
+import { getCurrentProfile, isCurrentUserAdmin } from '@/lib/current-user';
 import { applyMatchSort } from '@/lib/apply-match-sort';
 import { resolveMatchSort } from '@/lib/ui';
+// Keep in sync with MATCH_LIST_SELECT in lib/match-list-select.ts
 
 export const runtime = 'nodejs';
 
@@ -21,6 +22,7 @@ export async function GET(req: NextRequest) {
   if (!profile) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
+  const isAdmin = await isCurrentUserAdmin();
 
   const url = new URL(req.url);
   const page = Math.max(1, parseInt(url.searchParams.get('page') ?? '1', 10));
@@ -63,6 +65,10 @@ export async function GET(req: NextRequest) {
   }
   if (remote) {
     query = query.eq('jobs.remote', true);
+  }
+  const source = url.searchParams.get('source') ?? '';
+  if (isAdmin && source) {
+    query = query.eq('jobs.source', source);
   }
 
   const { data: matches, count } = await query.range(offset, offset + PAGE_SIZE - 1);

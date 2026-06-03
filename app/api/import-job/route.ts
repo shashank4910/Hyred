@@ -484,7 +484,12 @@ export async function POST(req: NextRequest) {
   }
 
   // Embed + score in parallel.
-  let scoreOut = { score: 0, reason: '' };
+  let scoreOut = {
+    score: 0,
+    reason: '',
+    matchedSkills: [] as string[],
+    missingSkills: [] as string[],
+  };
   let vec: number[] | null = null;
   try {
     const [v, s] = await Promise.all([
@@ -531,6 +536,8 @@ export async function POST(req: NextRequest) {
         similarity: 1,
         llm_score: scoreOut.score,
         reason: scoreOut.reason,
+        matched_skills: scoreOut.matchedSkills,
+        missing_skills: scoreOut.missingSkills,
         status: 'new',
       },
       { onConflict: 'profile_id,job_id' },
