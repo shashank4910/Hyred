@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { getCurrentProfile } from '@/lib/current-user';
 import { embed, scoreJob } from '@/lib/gemini';
+import { mergeInsightsForScoring } from '@/lib/experience-match';
 import { jobToEmbeddingText } from '@/lib/matcher';
 
 export const runtime = 'nodejs';
@@ -442,6 +443,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const { data: applyProfileRow } = await sb
+    .from('apply_profiles')
+    .select('years_experience')
+    .eq('profile_id', profile.id)
+    .maybeSingle();
+  const scoringInsights = mergeInsightsForScoring(
+    profile.insights,
+    applyProfileRow?.years_experience,
+  );
+
   // Upsert the job (URL is the unique id for source='manual')
   // When no URL is provided (manual JD only), use a hash of the description as source_id
   const jobUrl = hasValidUrl ? url : `manual://${Date.now()}`;
@@ -488,6 +499,7 @@ export async function POST(req: NextRequest) {
       ),
       scoreJob({
         resume: profile.resume_text,
+        insights: scoringInsights,
         jobTitle: title,
         jobCompany: company,
         jobLocation: location,

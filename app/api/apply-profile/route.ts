@@ -23,6 +23,7 @@ export async function GET() {
       profile_id: profile.id,
       email: profile.email ?? '',
       full_name: profile.full_name ?? '',
+      years_experience: profile.insights?.years_experience ?? null,
     });
   }
 
@@ -55,5 +56,21 @@ export async function POST(req: NextRequest) {
     );
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  const years = Number(rest.years_experience);
+  if (Number.isFinite(years) && years > 0) {
+    const mergedInsights = {
+      ...(profile.insights ?? {}),
+      years_experience: Math.round(years * 10) / 10,
+    };
+    await sb
+      .from('profiles')
+      .update({
+        insights: mergedInsights,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', profile.id);
+  }
+
   return NextResponse.json({ ok: true });
 }
