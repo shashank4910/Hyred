@@ -42,6 +42,15 @@ import OpenAI from 'openai';
 import type { ResumeInsights } from './types';
 import { sanitizeJobDescriptionForAI } from './jd-fetcher';
 import {
+  computeExperienceScoreCap,
+  experienceIneligibilityReason,
+  inferJdSeniorityFromTitle,
+  isExperienceEligible,
+  resolveCandidateYears,
+  resolveRequiredYears,
+  type JdSeniority,
+} from './experience-match';
+import {
   recordUsage,
   PROVIDER_DEFAULTS,
 } from './llm-keys';
@@ -410,8 +419,28 @@ export async function scoreJob(args: {
   // contain raw <p>/<strong> markup that would otherwise confuse the LLM and
   // burn context tokens.
   const cleanJd = sanitizeJobDescriptionForAI(args.jobDescription).slice(0, 4000);
-  const candidateYears = args.insights?.years_experience ?? null;
+  const candidateYears = resolveCandidateYears({
+    insightsYears: args.insights?.years_experience,
+  });
   const candidateSeniority = args.insights?.seniority ?? null;
+  const titleSeniority = inferJdSeniorityFromTitle(args.jobTitle);
+  const preRequiredYears = resolveRequiredYears({
+    jdText: cleanJd,
+    jobTitle: args.jobTitle,
+    jdSeniority: titleSeniority,
+  });
+  if (
+    candidateYears != null &&
+    preRequiredYears > 0 &&
+    !isExperienceEligible(candidateYears, preRequiredYears)
+  ) {
+    return {
+      score: 0,
+      reason: experienceIneligibilityReason(candidateYears, preRequiredYears),
+      matchedSkills: [],
+      missingSkills: [],
+    };
+  }
   const userPrompt = `Score how well this job matches the candidate.
 
 CANDIDATE RESUME:
@@ -521,41 +550,42 @@ matchedSkills/missingSkills RULES:
     const parsed = JSON.parse(text);
     let score = Math.max(0, Math.min(100, Math.round(Number(parsed.score) || 0)));
     let reason = String(parsed.reason ?? '').slice(0, 500);
-    const requiredYears = Math.max(0, Math.min(50, Math.round(Number(parsed.requiredYears) || 0)));
     const jdSeniorityRaw = String(parsed.jdSeniority ?? '').toLowerCase().trim();
-    const jdSeniority: 'ic' | 'lead' | 'manager' | 'director' | 'vp' | 'executive' | 'unknown' =
-      ['ic', 'lead', 'manager', 'director', 'vp', 'executive'].includes(jdSeniorityRaw)
-        ? (jdSeniorityRaw as 'ic' | 'lead' | 'manager' | 'director' | 'vp' | 'executive')
-        : 'unknown';
+    const llmSeniority: JdSeniority = ['ic', 'lead', 'manager', 'director', 'vp', 'executive'].includes(
+      jdSeniorityRaw,
+    )
+      ? (jdSeniorityRaw as JdSeniority)
+      : 'unknown';
+    const jdSeniority: JdSeniority =
+      llmSeniority !== 'unknown' ? llmSeniority : titleSeniority;
+    const requiredYears = Math.min(
+      50,
+      resolveRequiredYears({
+        jdText: cleanJd,
+        jobTitle: args.jobTitle,
+        llmRequiredYears: Number(parsed.requiredYears) || 0,
+        jdSeniority,
+      }),
+    );
 
     // ── Defense-in-depth (server-side cap) ───────────────────────────────
-    // The prompt asks the LLM to apply caps, but LLMs can drift. We enforce a
-    // hard ceiling here so a 7-year candidate can NEVER land >55 on a Director
-    // / 18+y role even if the model ignores its own instructions. Same 4-phase
-    // pattern used by matchSkills (CONTEXT.md: "DO NOT simplify this").
-    const candYears = candidateYears;
-    let cap = 100;
-    let capReason = '';
-    if (candYears != null && requiredYears > 0) {
-      const gap = requiredYears - candYears;
-      if (gap >= 11) { cap = Math.min(cap, 45); capReason = `experience gap of ${Math.round(gap)} years`; }
-      else if (gap >= 7) { cap = Math.min(cap, 55); capReason = `experience gap of ${Math.round(gap)} years`; }
-      else if (gap >= 4) { cap = Math.min(cap, 70); capReason = `experience gap of ${Math.round(gap)} years`; }
-      else if (gap >= 2) { cap = Math.min(cap, 80); capReason = `slightly under JD's experience requirement`; }
-    }
-    const candIsIc = !candidateSeniority || ['junior', 'mid', 'senior', 'staff', 'principal', 'unknown'].includes(candidateSeniority);
-    // Only apply the seniority-level cap when there is ALSO a real shortfall
-    // (years gap >= 4, OR the LLM couldn't parse JD years). Otherwise a 12y
-    // Staff IC moving to a 12y Director would be unfairly capped.
-    const yearsShortfall = (candYears != null && requiredYears > 0)
-      ? Math.max(0, requiredYears - candYears)
-      : Infinity; // unknown years → treat as shortfall (defensive)
-    if (candIsIc && (yearsShortfall >= 4 || requiredYears === 0)) {
-      if (jdSeniority === 'director') { cap = Math.min(cap, 55); if (!capReason) capReason = 'IC-level candidate vs director-level role'; }
-      else if (jdSeniority === 'vp' || jdSeniority === 'executive') {
-        cap = Math.min(cap, 40);
-        if (!capReason) capReason = `IC-level candidate vs ${jdSeniority}-level role`;
-      }
+    const { cap, reason: capReason } = computeExperienceScoreCap({
+      candidateYears,
+      requiredYears,
+      candidateSeniority,
+      jdSeniority,
+    });
+    if (
+      candidateYears != null &&
+      requiredYears > 0 &&
+      !isExperienceEligible(candidateYears, requiredYears)
+    ) {
+      return {
+        score: 0,
+        reason: experienceIneligibilityReason(candidateYears, requiredYears),
+        matchedSkills: [],
+        missingSkills: [],
+      };
     }
     if (cap < score) {
       score = cap;

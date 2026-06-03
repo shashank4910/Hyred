@@ -6,6 +6,7 @@ import {
 } from './ingest-runs';
 import { fetchAllSources } from './sources';
 import { embed, scoreJob } from './gemini';
+import { mergeInsightsForScoring } from './experience-match';
 import { cosineSimilarity, jobToEmbeddingText } from './matcher';
 import { isTopCompany } from './top-companies';
 import {
@@ -174,7 +175,16 @@ export async function runIngest(opts?: {
     if (!profile.resume_text || !profile.resume_embedding) {
       throw new Error('Profile is missing resume_text or resume_embedding.');
     }
-    const p = profile;
+    const { data: applyProfileRow } = await sb
+      .from('apply_profiles')
+      .select('years_experience')
+      .eq('profile_id', profile.id)
+      .maybeSingle();
+    const scoringInsights = mergeInsightsForScoring(
+      profile.insights,
+      applyProfileRow?.years_experience,
+    );
+    const p = { ...profile, insights: scoringInsights };
     // Tag this run with the owning profile so the dashboard "last scan" and
     // Stats can be scoped per-user.
     if (runId) {
