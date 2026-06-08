@@ -137,8 +137,10 @@ function findSectionHeaders(lines: string[]): string[] {
       continue;
     }
     // Title Case header: "Professional Experience", "Technical Skills"
+    // Also handles headers with special chars like "AI/ML Skills", "C++ Developer"
     if (
-      /^[A-Z][a-z]+(\s+[A-Z][a-z]+)*$/.test(t) &&
+      /^[A-Z][A-Za-z0-9\/#&.'\-+_]*(?:\s+[A-Z][A-Za-z0-9\/#&.'\-+_]*)*$/.test(t) &&
+      /[a-z]/.test(t) &&
       t.length >= 5 &&
       t.split(/\s+/).length >= 2
     ) {
@@ -644,7 +646,7 @@ function scoreSkillsOptimization(text: string): CriterionResult {
   const bulletLines = findBulletLines(lines);
   const bulletText = bulletLines.join(' ').toLowerCase();
   // Pre-compile skill section pattern for reuse
-  const skillSectionPattern = /^(technical\s+)?skills|core\s+competencies|areas?\s+of\s+expertise|key\s+skills/i;
+  const skillSectionPattern = /^(?:(?:technical\s+)?skills|core\s+competencies|areas?\s+of\s+expertise|key\s+skills)/i;
 
   const skillContextualized = concreteSkills.filter((skill) => {
     const lower = skill.toLowerCase();
@@ -1047,7 +1049,7 @@ export function checkAtsCompatibility(
   filename?: string,
   jobDescription?: string,
 ): AtsCheckResult {
-  const text = resumeText.trim();
+  const text = resumeText.trim().replace(/\r\n/g, '\n');
   const textLines = text.split(String.fromCharCode(10));
 
   // Run all criteria
