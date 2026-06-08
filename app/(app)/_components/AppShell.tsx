@@ -13,6 +13,7 @@ import {
   FileText,
   Settings,
   Building2,
+  Search,
 } from 'lucide-react';
 import { dismissAllAppToasts } from '@/lib/toast-app';
 import { supabaseBrowser } from '@/lib/supabase/client';
@@ -30,6 +31,7 @@ const NAV: {
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/onboarding', label: 'My Resume', icon: FileText },
   { href: '/stats', label: 'Stats', icon: BarChart3 },
+  { href: '/ats-checker', label: 'ATS Checker', icon: Search },
   { href: '/top-mnc', label: 'Top MNCs', icon: Building2, premium: true },
   { href: '/apply-profile', label: 'Settings', icon: Settings },
   { href: '/import', label: 'Import', icon: Link2, desktopOnly: true },
@@ -132,7 +134,7 @@ export function AppShell({
 
       {/* Mobile bottom nav */}
       <nav className="fixed bottom-0 left-0 z-50 flex w-full items-center justify-around border-t border-outline-variant/30 bg-surface-container-lowest/95 px-2 py-2 backdrop-blur-md lg:hidden">
-        {nav.slice(0, 5).map(({ href, label, icon: Icon, premium }) => {
+        {nav.slice(0, 6).map(({ href, label, icon: Icon, premium }) => {
           const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
           return (
             <Link

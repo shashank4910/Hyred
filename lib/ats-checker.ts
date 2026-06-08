@@ -1,0 +1,961 @@
+/**
+ * ATS Resume Checker — pure deterministic scoring engine.
+ *
+ * Zero LLM calls, zero external API costs. Every check is regex / heuristic
+ * based on 2026 ATS best practices (Workday, Taleo, Greenhouse, Lever, iCIMS).
+ *
+ * All scores are 0–100, weighted to produce an overall 0–100 score.
+ */
+
+/* ------------------------------------------------------------------ */
+/*  Public types                                                       */
+/* ------------------------------------------------------------------ */
+
+export interface AtsCheckResult {
+  overallScore: number;
+  breakdown: {
+    sectionStructure: CriterionResult;
+    contactInfo: CriterionResult;
+    bulletQuality: CriterionResult;
+    quantifiableAchievements: CriterionResult;
+    skillsOptimization: CriterionResult;
+    lengthReadability: CriterionResult;
+    formatCleanliness: CriterionResult;
+    dateConsistency: CriterionResult;
+  };
+  topImprovements: string[];
+  detectedIssues: string[];
+  goodPractices: string[];
+  /** File-level hints only available when the raw file is provided */
+  fileHints?: FileHints;
+}
+
+export interface FileHints {
+  extension: string;
+  isPdf: boolean;
+  isDocx: boolean;
+  isTxt: boolean;
+  /** True if parsed text is suspiciously short (<100 chars) — might be scanned/image PDF */
+  mightBeScanned: boolean;
+}
+
+export interface CriterionResult {
+  score: number;    // 0–100
+  weight: number;   // contribution to overall (all weights sum to 100)
+  feedback: string;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Constants — standard ATS-friendly section headers                  */
+/* ------------------------------------------------------------------ */
+
+const STANDARD_HEADERS = [
+  // Summary / Objective
+  /^(professional\s+)?summary$/i,
+  /^(career\s+)?objective$/i,
+  /^profile$/i,
+  // Experience
+  /^(professional\s+)?(work\s+)?experience$/i,
+  /^employment$/i,
+  /^work\s+history$/i,
+  /^career\s+history$/i,
+  /^relevant\s+experience$/i,
+  // Education
+  /^education$/i,
+  /^academic\s+(background|qualifications)$/i,
+  // Skills
+  /^(technical\s+)?skills$/i,
+  /^core\s+competencies$/i,
+  /^areas?\s+of\s+expertise$/i,
+  /^key\s+skills$/i,
+  // Certifications
+  /^certifications$/i,
+  /^certificates$/i,
+  /^licenses?$/i,
+  // Projects
+  /^projects$/i,
+  /^key\s+projects$/i,
+  // Publications
+  /^publications$/i,
+  /^research$/i,
+  // Languages
+  /^languages$/i,
+  // Additional
+  /^(additional|other)\s+(information|details|activities)$/i,
+  /^(volunteer|community)\s+(experience|work)$/i,
+  /^awards?\s+(and\s+)?(honours|honors)?$/i,
+  /^interests$/i,
+  /^references$/i,
+  /^achievements?$/i,
+  /^accomplishments?$/i,
+];
+
+const REQUIRED_HEADERS = [
+  /^(professional\s+)?(work\s+)?experience$/i,
+  /^education$/i,
+];
+
+const STRONGLY_RECOMMENDED_HEADERS = [
+  /^(technical\s+)?skills$/i,
+  /^(professional\s+)?summary$/i,
+];/* ------------------------------------------------------------------ */
+/*  Helpers */
+/* ------------------------------------------------------------------ */
+
+/** Extract all lines that look like section headers (ALL-CAPS or Title Case on their own line). */
+function findSectionHeaders(lines: string[]): string[] {
+  const headers: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (!t) continue;
+    // ALL-CAPS header (2+ words or 5+ chars): "PROFESSIONAL EXPERIENCE", "EDUCATION"
+    if (/^[A-Z][A-Z\s&/.-]+$/.test(t) && t.length >= 5) {
+      headers.push(t);
+      continue;
+    }
+    // Title Case header: "Professional Experience", "Technical Skills"
+    if (
+      /^[A-Z][a-z]+(\s+[A-Z][a-z]+)*$/.test(t) &&
+      t.length >= 5 &&
+      t.split(/\s+/).length >= 2
+    ) {
+      headers.push(t);
+    }
+  }
+  return headers;
+}
+
+/** Check if a header matches any of the standard patterns. */
+function isStandardHeader(header: string, patterns: RegExp[]): boolean {
+  return patterns.some((re) => re.test(header.trim()));
+}
+
+/** Find the first line that looks like a candidate name (top of resume, non-empty, not a header). */
+function findNameLine(lines: string[]): string | null {
+  for (let i = 0; i < Math.min(lines.length, 10); i++) {
+    const t = lines[i].trim();
+    if (!t) continue;
+    // Skip header labels like "RESUME", "CV", "CURRICULUM VITAE"
+    if (/^(resume|cv|curriculum\s+vitae|profile)$/i.test(t)) continue;
+    // Skip contact-looking lines
+    if (/@/.test(t)) continue;
+    if (/^\+?\d[\d\s().-]{6,}/.test(t)) continue;
+    // Match names like "John Smith", "John A. Smith", "Mary-Jane Watson", "O'Brien"
+    if (t.length >= 3 && t.length <= 50 && /^[A-Z][a-zA-Z'.\-]+(\s+[A-Z][a-zA-Z'.\-]+)+$/.test(t)) {
+      return t;
+    }
+  }
+  return null;
+}
+
+/** Collect bullet-point lines from the text (lines starting with "-", "•", "*", "→", or digits). */
+function findBulletLines(lines: string[]): string[] {
+  return lines.filter((l) => /^\s*[-•*→\d]/.test(l.trim()));
+}
+
+/* ------------------------------------------------------------------ */
+/*  Scoring functions (each returns 0-100 and feedback)                 */
+/* ------------------------------------------------------------------ */
+
+function scoreSectionStructure(text: string): CriterionResult {
+  const lines = text.split('\n');
+  const headers = findSectionHeaders(lines);
+  // Find which ACTUAL header strings matched each required/recommended pattern
+  const matchedRequired = REQUIRED_HEADERS
+    .map((re) => headers.find((h) => re.test(h)))
+    .filter((h): h is string => h !== undefined);
+  const matchedRecommended = STRONGLY_RECOMMENDED_HEADERS
+    .map((re) => headers.find((h) => re.test(h)))
+    .filter((h): h is string => h !== undefined);
+
+  // Check for non-standard headers
+  const nonStandardCount = headers.filter((h) => {
+    const trimmed = h.trim().toLowerCase();
+    // If it doesn't match any standard pattern
+    return !STANDARD_HEADERS.some((re) => re.test(trimmed));
+  }).length;
+
+  // Check ordering: Experience should come before Education (common best practice)
+  const expIdx = headers.findIndex((h) => /experience/i.test(h));
+  const eduIdx = headers.findIndex((h) => /education/i.test(h));
+  const orderNote = expIdx >= 0 && eduIdx >= 0 && eduIdx < expIdx
+    ? 'Education appears before Experience (unusual ordering).'
+    : null;
+
+  let score = 0;
+  const issues: string[] = [];
+  const good: string[] = [];
+
+  // Required headers: -40 if missing both, -20 if missing one
+  if (matchedRequired.length === 2) {
+    score += 50;
+    good.push('Both Experience and Education sections present.');
+  } else if (matchedRequired.length === 1) {
+    const foundHeader = matchedRequired[0].toLowerCase();
+    const missing = foundHeader.includes('education') ? 'Experience' : 'Education';
+    score += 25;
+    issues.push(`Missing ${missing} section.`);
+  } else {
+    issues.push('Missing both Experience and Education sections.');
+  }
+
+  // Recommended headers: +15 each
+  if (matchedRecommended.length >= 2) {
+    score += 30;
+    good.push('Has Skills and Summary/Objective sections.');
+  } else if (matchedRecommended.length === 1) {
+    const foundHeader = matchedRecommended[0].toLowerCase();
+    const label = foundHeader.includes('skills') || foundHeader.includes('competencies') || foundHeader.includes('expertise') ? 'Skills' : 'Summary';
+    score += 15;
+    issues.push(`Missing ${label === 'Skills' ? 'Summary' : 'Skills'} section (only has ${label}).`);
+  } else {
+    issues.push('Missing both Skills and Summary sections.');
+  }
+
+  // Non-standard headers penalty
+  if (nonStandardCount > 2) {
+    score -= 15;
+    issues.push(`${nonStandardCount} non-standard section headers detected — ATS may not recognize them.`);
+  } else if (nonStandardCount > 0) {
+    score -= 5;
+  }
+
+  // Bonus for proper standard header count
+  const standardCount = headers.filter((h) => isStandardHeader(h, STANDARD_HEADERS)).length;
+  if (standardCount >= 5) {
+    score += 10;
+    good.push('Good variety of standard sections.');
+  } else if (standardCount >= 3) {
+    score += 5;
+  }
+
+  // Ordering note
+  if (orderNote) issues.push(orderNote);
+
+  score = Math.max(0, Math.min(100, score));
+
+  return {
+    score,
+    weight: 20,
+    feedback: score >= 80
+      ? 'Strong section structure with all required headers.'
+      : score >= 50
+        ? `Decent structure. ${issues.slice(0, 2).join(' ')}`
+        : `Needs improvement. ${issues.slice(0, 3).join(' ')}`,
+  };
+}
+
+function scoreContactInfo(text: string): CriterionResult {
+  const first20Lines = text.split('\n').slice(0, 20).join('\n');
+
+  const hasEmail = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/.test(first20Lines);
+  const hasPhone = /(\+?\d[\d\s().-]{7,})/.test(first20Lines);
+  const hasLinkedIn = /linkedin\.com\/in\//i.test(first20Lines);
+  const hasGithub = /github\.com\//i.test(first20Lines);
+  const hasLocation = /\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*,\s*[A-Z]{2}\b/.test(first20Lines)
+    || /\b(city|town|village)\s+of\b/i.test(first20Lines);
+
+  // Check name at top
+  const lines = text.split('\n');
+  const firstNameLine = findNameLine(lines);
+  const hasName = firstNameLine !== null;
+
+  let score = 0;
+  const issues: string[] = [];
+  const good: string[] = [];
+
+  // Name: -25 if missing
+  if (hasName) {
+    score += 25;
+    good.push('Name clearly present at top.');
+  } else {
+    issues.push('No clear name found at top of resume.');
+  }
+
+  // Email: -20 if missing
+  if (hasEmail) {
+    score += 20;
+    good.push('Email address present.');
+  } else {
+    issues.push('Email address missing.');
+  }
+
+  // Phone: -20 if missing
+  if (hasPhone) {
+    score += 20;
+    good.push('Phone number present.');
+  } else {
+    issues.push('Phone number missing.');
+  }
+
+  // LinkedIn: -15 if missing (for tech roles this is important)
+  if (hasLinkedIn) {
+    score += 15;
+    good.push('LinkedIn profile URL included.');
+  } else {
+    issues.push('LinkedIn URL missing.');
+  }
+
+  // Location: -10 if missing
+  if (hasLocation) {
+    score += 10;
+    good.push('Location (city, state) present.');
+  } else {
+    issues.push('Location not clearly found. Add City, State near the top.');
+  }
+
+  // Bonus for GitHub (tech roles)
+  if (hasGithub) score += 10;
+
+  score = Math.max(0, Math.min(100, score));
+
+  return {
+    score,
+    weight: 15,
+    feedback: score >= 80
+      ? 'All key contact details present.'
+      : score >= 50
+        ? `Contact info is partially complete. ${issues.slice(0, 2).join(' ')}`
+        : `Contact info needs work. ${issues.slice(0, 3).join(' ')}`,
+  };
+}
+
+function scoreBulletQuality(text: string): CriterionResult {
+  const lines = text.split('\n');
+  const bullets = findBulletLines(lines);
+
+  if (bullets.length === 0) {
+    return {
+      score: 10,
+      weight: 15,
+      feedback: 'No bullet points found. Use "- " formatted bullets for better ATS readability.',
+    };
+  }
+
+  // Check bullet character consistency
+  const otherBullets = bullets.filter((l) => /^\s*[•*→\d]/.test(l.trim()) && !/^\s*-/.test(l.trim()));
+
+  const consistent = otherBullets.length === 0;
+  const mixed = otherBullets.length > 0 && otherBullets.length < bullets.length * 0.3;
+
+  // Check bullets have meaningful content (not just 1-2 words)
+  const shortBullets = bullets.filter((l) => l.trim().replace(/^[-•*→\d.]+\s*/, '').split(/\s+/).length < 4);
+  const goodBullets = bullets.length - shortBullets.length;
+
+  // Bullets per section (rough)
+  const sections = findSectionHeaders(lines);
+  const expSectionIdx = sections.findIndex((h) => /experience/i.test(h));
+  const nextSectionIdx = expSectionIdx >= 0
+    ? sections.slice(expSectionIdx + 1).findIndex((h) => /education|skills|projects|certifications/i.test(h))
+    : -1;
+  const expEndIdx = nextSectionIdx >= 0
+    ? lines.findIndex((l) => l.trim() === sections[expSectionIdx + 1 + nextSectionIdx])
+    : lines.length;
+
+  const expLines = expSectionIdx >= 0
+    ? lines.slice(
+        lines.findIndex((l) => l.trim() === sections[expSectionIdx]),
+        expEndIdx > 0 ? expEndIdx : lines.length,
+      )
+    : [];
+  const expBullets = findBulletLines(expLines);
+
+  let score = 0;
+  const issues: string[] = [];
+  const good: string[] = [];
+
+  // Consistency: -25 if very mixed, -10 if slightly mixed
+  if (consistent) {
+    score += 30;
+    good.push('Bullet points use consistent format.');
+  } else if (mixed) {
+    score += 20;
+    issues.push('Some bullets use non-standard characters (•, *, →). Stick to "- " for all.');
+  } else {
+    score += 5;
+    issues.push(`Mixed bullet formats detected (${otherBullets.length} use non-standard symbols).`);
+  }
+
+  // Enough bullets overall: +30 for 15+, +20 for 10+, +10 for 5+
+  if (bullets.length >= 15) {
+    score += 30;
+    good.push('Good number of bullet points across resume.');
+  } else if (bullets.length >= 10) {
+    score += 20;
+  } else if (bullets.length >= 5) {
+    score += 10;
+  } else {
+    issues.push('Very few bullet points. Add more detail to your experience.');
+  }
+
+  // Good bullets (not too short): +25 if most are substantive
+  if (goodBullets >= bullets.length * 0.7) {
+    score += 25;
+    good.push('Bullet points are substantive and descriptive.');
+  } else if (goodBullets >= bullets.length * 0.4) {
+    score += 15;
+    issues.push(`${shortBullets.length} bullet points are too short (< 4 words).`);
+  } else {
+    issues.push('Many bullet points are too short. Add more detail.');
+  }
+
+  // Experience section bullets: +15 if 5+
+  if (expBullets.length >= 5) {
+    score += 15;
+    good.push('Strong bullet coverage in Experience section.');
+  } else if (expBullets.length >= 3) {
+    score += 10;
+  } else {
+    issues.push('Experience section has few bullet points.');
+  }
+
+  score = Math.max(0, Math.min(100, score));
+
+  return {
+    score,
+    weight: 15,
+    feedback: score >= 80
+      ? 'Well-formatted bullet points throughout.'
+      : score >= 50
+        ? `Decent bullet formatting. ${issues.slice(0, 2).join(' ')}`
+        : `Bullet formatting needs attention. ${issues.slice(0, 3).join(' ')}`,
+  };
+}
+
+function scoreQuantifiableAchievements(text: string): CriterionResult {
+  const lines = text.split('\n');
+  const bullets = findBulletLines(lines);
+
+  if (bullets.length === 0) {
+    return {
+      score: 15,
+      weight: 15,
+      feedback: 'No experience bullets found to check for quantifiable achievements.',
+    };
+  }
+
+  // Count bullets with numbers (excluding dates and years)
+  const datePattern = /\b(19|20)\d{2}\b/;
+  const numberInBullet = bullets.filter((b) => {
+    const afterPrefix = b.replace(/^\s*[-•*→\d.]+\s*/, '');
+    // Must have a number, and it must not be JUST a year
+    const hasNumber = /\d/.test(afterPrefix);
+    const isOnlyDate = datePattern.test(afterPrefix) && !/[%$%,.\d]{2,}/.test(afterPrefix.replace(datePattern, ''));
+    return hasNumber && !isOnlyDate;
+  });
+
+  const percentBullets = bullets.filter((b) => /%/.test(b));
+  const dollarBullets = bullets.filter((b) => /\$/.test(b));
+  const metricBullets = bullets.filter((b) =>
+    /\b(\d+[xX]|\d{2,}\s*%|\$\s*[\d,]+|improved|increased|decreased|reduced|generated|saved|managed|led|delivered|achieved|grew|boosted|drove|optimized|accelerated|automated|scaled)\b/i.test(b),
+  );
+
+  let score = 0;
+  const issues: string[] = [];
+  const good: string[] = [];
+
+  // Percentage in bullets: +30 if 2+, +15 if 1
+  if (percentBullets.length >= 2) {
+    score += 30;
+    good.push('Uses percentages to show impact.');
+  } else if (percentBullets.length === 1) {
+    score += 15;
+  }
+
+  // Dollar amounts: +20 if 1+
+  if (dollarBullets.length >= 1) {
+    score += 20;
+    good.push('Includes monetary/financial impact.');
+  }
+
+  // Action verbs + metrics: +25 if 3+, +15 if 1-2
+  if (metricBullets.length >= 3) {
+    score += 30;
+    good.push('Strong use of action verbs with measurable outcomes.');
+  } else if (metricBullets.length >= 1) {
+    score += 15;
+  } else {
+    issues.push('No strong action verbs or measurable outcomes detected.');
+  }
+
+  // Overall ratio of quantified bullets
+  const ratio = numberInBullet.length / bullets.length;
+  if (ratio >= 0.4) {
+    score += 20;
+    good.push(`High ratio (${Math.round(ratio * 100)}%) of quantified achievements.`);
+  } else if (ratio >= 0.2) {
+    score += 10;
+  } else {
+    issues.push(`Only ${numberInBullet.length}/${bullets.length} bullets contain metrics or numbers.`);
+  }
+
+  score = Math.max(0, Math.min(100, score));
+
+  return {
+    score,
+    weight: 15,
+    feedback: score >= 80
+      ? 'Strong use of quantifiable achievements throughout.'
+      : score >= 50
+        ? `Some quantified achievements found. ${issues.slice(0, 1).join(' ')}`
+        : `Few quantifiable achievements. ${issues.slice(0, 2).join(' ')}`,
+  };
+}
+
+function scoreSkillsOptimization(text: string): CriterionResult {
+  const lines = text.split('\n');
+  const headers = findSectionHeaders(lines);
+
+  // Find skills section
+  const skillsHeaderIdx = headers.findIndex((h) =>
+    /^(technical\s+)?skills|core\s+competencies|areas?\s+of\s+expertise|key\s+skills/i.test(h.trim()),
+  );
+
+  if (skillsHeaderIdx < 0) {
+    return {
+      score: 15,
+      weight: 15,
+      feedback: 'No dedicated Skills section found. ATS systems scan this for keyword matching.',
+    };
+  }
+
+  // Find the skills header in the original lines, then scan forward to the next section
+  const skillHeaderName = headers[skillsHeaderIdx];
+  const startLine = lines.findIndex((l) => l.trim() === skillHeaderName);
+  let endLine = lines.length;
+  // Scan forward from skills section until we hit another ALL-CAPS header
+  for (let i = startLine + 1; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (
+      t.length >= 5 &&
+      (/^[A-Z][A-Z\s&/.-]+$/.test(t) ||
+       /^[A-Z][a-z]+(\s+[A-Z][a-z]+)*$/.test(t)) &&
+      t !== skillHeaderName &&
+      STANDARD_HEADERS.some((re) => re.test(t))
+    ) {
+      endLine = i;
+      break;
+    }
+  }
+
+  const skillLines = lines.slice(startLine + 1, endLine).filter((l) => l.trim());
+  const skillText = skillLines.join(' ');
+
+  // Count individual skills (comma-separated items)
+  const skillItems = skillText
+    .split(/[,;|]/)
+    .map((s) => s.trim())
+    .filter((s) => s.length >= 2 && s.length <= 50);
+
+  // Filter out soft skills (non-technical)
+  const softSkills = new Set([
+    'communication', 'teamwork', 'leadership', 'problem solving',
+    'time management', 'critical thinking', 'creativity',
+    'collaboration', 'adaptability', 'organization', 'multitasking',
+    'self-motivated', 'detail-oriented', 'interpersonal',
+    'presentation', 'decision making', 'conflict resolution',
+    'emotional intelligence', 'team player', 'work ethic',
+    'analytical thinking', 'strategic thinking', 'negotiation',
+  ]);
+
+  const concreteSkills = skillItems.filter(
+    (s) => !softSkills.has(s.toLowerCase()),
+  );
+  const softSkillCount = skillItems.length - concreteSkills.length;
+
+  let score = 0;
+  const issues: string[] = [];
+  const good: string[] = [];
+
+  // Number of skills: +30 if 15+, +20 if 10+, +10 if 5+
+  if (concreteSkills.length >= 15) {
+    score += 30;
+    good.push(`Strong skills section with ${concreteSkills.length} concrete skills.`);
+  } else if (concreteSkills.length >= 10) {
+    score += 20;
+  } else if (concreteSkills.length >= 5) {
+    score += 10;
+  } else {
+    issues.push(`Only ${concreteSkills.length} concrete technical skills listed. Aim for 10-15.`);
+  }
+
+  // Soft skills ratio: -15 if too many soft skills
+  if (softSkillCount > 0 && softSkillCount > concreteSkills.length * 0.5) {
+    score -= 15;
+    issues.push(`High ratio of soft skills (${softSkillCount}). ATS prefers concrete technical keywords.`);
+  } else if (softSkillCount > 0 && softSkillCount > concreteSkills.length * 0.25) {
+    score -= 5;
+  }
+
+  // Skills organized by category? (look for ":" patterns in skill lines)
+  const categorizedLines = skillLines.filter((l) => /^[A-Za-z][A-Za-z0-9 &/+().'-]*:/.test(l.trim()));
+  if (categorizedLines.length >= 3) {
+    score += 20;
+    good.push('Skills well-organized by category.');
+  } else if (categorizedLines.length >= 1) {
+    score += 10;
+  }
+
+  // Skills appear in experience bullets (contextualization)
+  const bulletLines = findBulletLines(lines);
+  const skillContextualized = concreteSkills.filter((skill) => {
+    const lower = skill.toLowerCase();
+    return bulletLines.some((b) => b.toLowerCase().includes(lower));
+  });
+  const contextualizedRatio = concreteSkills.length > 0
+    ? skillContextualized.length / concreteSkills.length
+    : 0;
+  if (contextualizedRatio >= 0.5) {
+    score += 25;
+    good.push('Most skills are contextualized in experience bullets (ATS-friendly).');
+  } else if (contextualizedRatio >= 0.25) {
+    score += 15;
+  } else {
+    issues.push('Skills appear only in the Skills section — ATS prefers them also in experience bullets.');
+  }
+
+  // Enough total lines in skills section
+  if (skillLines.length < 2) {
+    issues.push('Skills section is very sparse. Add more detail.');
+  }
+
+  score = Math.max(0, Math.min(100, score));
+
+  return {
+    score,
+    weight: 15,
+    feedback: score >= 80
+      ? 'Well-optimized skills section with good contextualization.'
+      : score >= 50
+        ? `Skills section is decent. ${issues.slice(0, 1).join(' ')}`
+        : `Skills section needs work. ${issues.slice(0, 2).join(' ')}`,
+  };
+}
+
+function scoreLengthReadability(text: string): CriterionResult {
+  const wordCount = text.split(/\s+/).filter(Boolean).length;
+  const lineCount = text.split('\n').filter((l) => l.trim()).length;
+
+  let score = 0;
+  const issues: string[] = [];
+  const good: string[] = [];
+
+  // Word count: 400-1000 is ideal (1-2 pages)
+  if (wordCount >= 400 && wordCount <= 1000) {
+    score += 50;
+    good.push(`Resume length is ideal (~${wordCount} words, ~1-2 pages).`);
+  } else if (wordCount >= 300 && wordCount < 400) {
+    score += 35;
+    issues.push(`A bit short (~${wordCount} words). Consider adding more detail.`);
+  } else if (wordCount > 1000 && wordCount <= 1500) {
+    score += 30;
+    issues.push(`A bit long (~${wordCount} words). Consider tightening to 2 pages max.`);
+  } else if (wordCount < 300) {
+    score += 15;
+    issues.push(`Very short (~${wordCount} words). ATS needs more content to match against.`);
+  } else {
+    score += 10;
+    issues.push(`Very long (~${wordCount} words). Over 2 pages may cause ATS truncation.`);
+  }
+
+  // Line density: too many short lines = sparse content
+  const shortLines = text.split('\n').filter((l) => l.trim() && l.trim().split(/\s+/).length < 3);
+  const shortLineRatio = lineCount > 0 ? shortLines.length / lineCount : 0;
+
+  if (shortLineRatio > 0.4) {
+    score -= 15;
+    issues.push('High number of short/sparse lines. Consider consolidating.');
+  } else if (shortLineRatio > 0.2) {
+    score -= 5;
+  } else {
+    score += 10;
+    good.push('Good content density.');
+  }
+
+  score = Math.max(0, Math.min(100, score));
+
+  return {
+    score,
+    weight: 10,
+    feedback: score >= 80
+      ? 'Resume length is appropriate and well-structured.'
+      : score >= 50
+        ? `Length is acceptable. ${issues.slice(0, 1).join(' ')}`
+        : `Resume length needs adjustment. ${issues.slice(0, 2).join(' ')}`,
+  };
+}
+
+function scoreFormatCleanliness(text: string): CriterionResult {
+  let score = 100;
+  const issues: string[] = [];
+
+  // Check for smart quotes and other non-ASCII punctuation
+  const smartQuotes = (text.match(/[\u2018\u2019\u201C\u201D\u201E\u201F]/g) || []).length;
+  if (smartQuotes > 0) {
+    const penalty = Math.min(25, smartQuotes * 5);
+    score -= penalty;
+    issues.push(`${smartQuotes} smart/curly quotes detected — ATS may mis-parse them.`);
+  }
+
+  // Check for em-dashes, en-dashes
+  const dashes = (text.match(/[\u2013\u2014]/g) || []).length;
+  if (dashes > 0) {
+    const penalty = Math.min(15, dashes * 3);
+    score -= penalty;
+    issues.push(`${dashes} em/en dashes detected — use standard hyphens instead.`);
+  }
+
+  // Check for non-ASCII bullets
+  const unicodeBullets = (text.match(/[\u2022\u25CF\u25E6\u2043\u00B7]/g) || []).length;
+  if (unicodeBullets > 0) {
+    const penalty = Math.min(20, unicodeBullets * 4);
+    score -= penalty;
+    issues.push(`${unicodeBullets} unicode bullets detected — stick to "- " for best ATS parsing.`);
+  }
+
+  // Check for tab characters (can indicate tables)
+  const tabs = (text.match(/\t/g) || []).length;
+  if (tabs > 5) {
+    score -= 20;
+    issues.push(`${tabs} tab characters found — may indicate tables that confuse ATS parsers.`);
+  } else if (tabs > 0) {
+    score -= 5;
+  }
+
+  // Check for non-breaking spaces
+  const nbSpaces = (text.match(/\u00A0/g) || []).length;
+  if (nbSpaces > 0) {
+    score -= 10;
+  }
+
+  // Check for zero-width characters
+  const zwChars = (text.match(/[\u200B-\u200D\uFEFF]/g) || []).length;
+  if (zwChars > 0) {
+    score -= 10;
+    issues.push('Invisible/zero-width characters detected — can cause ATS parsing issues.');
+  }
+
+  // Check for very long lines (>200 chars — potential column layout remnants)
+  const longLines = text.split('\n').filter((l) => l.length > 200);
+  if (longLines.length > 3) {
+    score -= 15;
+    issues.push(`${longLines.length} very long lines — may indicate column layout that confuses ATS.`);
+  } else if (longLines.length > 0) {
+    score -= 5;
+  }
+
+  // Ellipsis check
+  const ellipsis = (text.match(/\u2026/g) || []).length;
+  if (ellipsis > 0) {
+    score -= 5;
+  }
+
+  score = Math.max(0, Math.min(100, score));
+
+  return {
+    score,
+    weight: 5,
+    feedback: score >= 90
+      ? 'Clean ASCII formatting — excellent ATS compatibility.'
+      : score >= 70
+        ? `Minor formatting issues. ${issues.slice(0, 2).join(' ')}`
+        : `Formatting issues detected. ${issues.slice(0, 3).join(' ')}`,
+  };
+}
+
+function scoreDateConsistency(text: string): CriterionResult {
+  const yearRanges = text.match(/\b(19|20)\d{2}\s*[-–to]+\s*((19|20)\d{2}|present|current)\b/gi) || [];
+  const monthYearDates = text.match(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}\b/gi) || [];
+
+  // Check if dates are consistently formatted
+  const yearOnly = text.match(/\b(19|20)\d{2}\b/g) || [];
+
+  let score = 50; // Start at 50
+  const issues: string[] = [];
+  const good: string[] = [];
+
+  // Year ranges (proper date format): +25 if 2+
+  if (yearRanges.length >= 2) {
+    score += 25;
+    good.push('Dates use proper year-range format (YYYY - YYYY).');
+  } else if (yearRanges.length === 1) {
+    score += 10;
+  } else {
+    // Look for any dates at all
+    if (monthYearDates.length === 0) {
+      score -= 20;
+      issues.push('No month/year dates found. ATS looks for chronological experience.');
+    }
+  }
+
+  // Month + Year format: +15 if present
+  if (monthYearDates.length >= 2) {
+    score += 15;
+    good.push('Includes month-level date granularity.');
+  } else if (monthYearDates.length === 1) {
+    score += 5;
+  }
+
+  // Only years (no months): -15
+  if (yearOnly.length > 0 && monthYearDates.length === 0) {
+    score -= 15;
+    issues.push('Only years found — adding months improves ATS parsing.');
+  }
+
+  // Consistent format check: all year ranges use same separator
+  const dashRanges = yearRanges.filter((r) => /–/.test(r));
+  const hyphenRanges = yearRanges.filter((r) => /-/.test(r));
+  if (dashRanges.length > 0 && hyphenRanges.length > 0) {
+    score -= 10;
+    issues.push('Inconsistent date separators (mixing en-dashes and hyphens).');
+  }
+
+  // "Present" usage
+  const hasPresent = /present|current/i.test(text);
+  if (hasPresent) score += 5;
+
+  score = Math.max(0, Math.min(100, score));
+
+  return {
+    score,
+    weight: 5,
+    feedback: score >= 80
+      ? 'Dates are well-formatted and consistent.'
+      : score >= 50
+        ? `Date formatting is acceptable. ${issues.slice(0, 1).join(' ')}`
+        : `Date formatting needs improvement. ${issues.slice(0, 2).join(' ')}`,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/*  File-level hints (called from the API with file metadata)          */
+/* ------------------------------------------------------------------ */
+
+function analyzeFileHints(
+  filename: string,
+  parsedText: string,
+): FileHints {
+  const lower = filename.toLowerCase();
+  const isPdf = lower.endsWith('.pdf');
+  const isDocx = lower.endsWith('.docx');
+  const isTxt = lower.endsWith('.txt');
+
+  return {
+    extension: lower.split('.').pop() ?? 'unknown',
+    isPdf,
+    isDocx,
+    isTxt,
+    mightBeScanned: isPdf && parsedText.trim().length < 100,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Main entry point                                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Analyze a resume for ATS-friendliness.
+ *
+ * @param resumeText - The plain-text content of the resume.
+ * @param filename   - Optional filename for file-level checks.
+ * @returns AtsCheckResult with scores, feedback, and improvement suggestions.
+ */
+export function checkAtsCompatibility(
+  resumeText: string,
+  filename?: string,
+): AtsCheckResult {
+  const text = resumeText.trim();
+
+  // Run all criteria
+  const sectionStructure = scoreSectionStructure(text);
+  const contactInfo = scoreContactInfo(text);
+  const bulletQuality = scoreBulletQuality(text);
+  const quantifiableAchievements = scoreQuantifiableAchievements(text);
+  const skillsOptimization = scoreSkillsOptimization(text);
+  const lengthReadability = scoreLengthReadability(text);
+  const formatCleanliness = scoreFormatCleanliness(text);
+  const dateConsistency = scoreDateConsistency(text);
+
+  // Weighted overall score
+  const allCriteria = [
+    sectionStructure,
+    contactInfo,
+    bulletQuality,
+    quantifiableAchievements,
+    skillsOptimization,
+    lengthReadability,
+    formatCleanliness,
+    dateConsistency,
+  ];
+
+  const totalWeight = allCriteria.reduce((sum, c) => sum + c.weight, 0);
+  const overallScore = Math.round(
+    allCriteria.reduce((sum, c) => sum + c.score * (c.weight / totalWeight), 0),
+  );
+
+  // Collect issues and good practices
+  const allIssues: string[] = [];
+  const allGood: string[] = [];
+
+  // Extract from feedback
+  for (const criterion of allCriteria) {
+    if (criterion.score < 50) {
+      allIssues.push(criterion.feedback);
+    } else if (criterion.score >= 80) {
+      allGood.push(criterion.feedback);
+    }
+  }
+
+  // Also extract specific detected issues from the individual functions' inline comments
+  if (contactInfo.score < 80) {
+    const textLower = text.toLowerCase();
+    if (!textLower.includes('@')) allIssues.push('Email address not detected.');
+    if (!/linkedin/i.test(text)) allIssues.push('LinkedIn profile URL not found.');
+  }
+
+  if (skillsOptimization.score < 50) {
+    allIssues.push('Add a dedicated Skills section with concrete technical keywords.');
+  }
+
+  if (quantifiableAchievements.score < 50) {
+    allIssues.push('Add numbers, percentages, and metrics to experience bullets.');
+  }
+
+  // Top improvements (prioritize lowest-scoring criteria)
+  const sortedByScore = [...allCriteria].sort((a, b) => a.score - b.score);
+  const topImprovements = sortedByScore.slice(0, 3).map((c) => {
+    const names: Record<string, string> = {
+      sectionStructure: 'Section structure',
+      contactInfo: 'Contact information',
+      bulletQuality: 'Bullet point formatting',
+      quantifiableAchievements: 'Quantifiable achievements',
+      skillsOptimization: 'Skills optimization',
+      lengthReadability: 'Resume length',
+      formatCleanliness: 'Format cleanliness',
+      dateConsistency: 'Date formatting',
+    };
+    const name = names[Object.keys(names).find((k) => allCriteria.includes(c)) ?? ''] ?? 'Area';
+    return `${name}: ${c.feedback.slice(0, 100)}`;
+  });
+
+  // File hints
+  const fileHints = filename ? analyzeFileHints(filename, text) : undefined;
+
+  return {
+    overallScore,
+    breakdown: {
+      sectionStructure,
+      contactInfo,
+      bulletQuality,
+      quantifiableAchievements,
+      skillsOptimization,
+      lengthReadability,
+      formatCleanliness,
+      dateConsistency,
+    },
+    topImprovements: [...new Set(topImprovements)].slice(0, 5),
+    detectedIssues: [...new Set(allIssues)].slice(0, 8),
+    goodPractices: [...new Set(allGood)].slice(0, 5),
+    fileHints,
+  };
+}
