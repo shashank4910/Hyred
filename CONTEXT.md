@@ -142,6 +142,7 @@ lib/
 
 | Date | PR | Summary |
 |---|---|---|
+| June 8, 2026 | **#129 (cont.)** | **ATS scoring optimized** — 3 fixes from 1200 synthetic resume analysis: Length bands for entry-level, Skills contextualization threshold lowered, Soft Skills header added |
 | June 8, 2026 | **#129** | **ATS Checker overhaul** — JD comparison, radar chart, animated UI, sample data, sample resume, keyboard shortcuts, score history, copy results |
 | May 31, 2026 | **#106** | **Status filter** — 7-column grid; all tabs on one line (no horizontal scroll) |
 | May 31, 2026 | **#105** | **Scan-started toast** — immediate notice + quick links while ingest runs (~1–2 min) |
@@ -660,6 +661,20 @@ Pastes or uploads a resume → analyses 8 ATS criteria → gives 0–100 score +
 | **Copy results** | One-click copy of full analysis to clipboard (with execCommand fallback) |
 | **File upload** | Drag-and-drop or click-to-browse for .pdf, .doc, .docx, .txt |
 
+### Scoring Optimization (session 18, same PR)
+
+Validated and tuned the scoring engine using **1,200 synthetic resumes** across 6 industries × 4 experience levels.
+
+| Fix | Before | After | Impact |
+|---|---|---|---|
+| **Length bands** — added 200-300 word tier (25pts), raised 300-400 to 40pts | Entry length: ~15pts | Entry length: 25-40pts | Entry-level resumes no longer over-penalized |
+| **Line density** — penalty only applies ≥400 words | -15 on short resumes | No penalty <400 words | Sparse sections expected for early-career |
+| **Skills contextualization** — thresholds 0.4→0.3, 0.2→0.1 | 47% scoring <50 on skills | ~30% scoring <50 | Well-structured skills sections get proper credit |
+| **Standard headers** — added Soft/Interpersonal Skills | -5 penalty on every resume | No penalty | Clean sections score correctly |
+| **Density bonus** — +5 for 10+ skills + 2+ skill lines | — | +5 baseline | Rewards well-organized skills |
+
+**Validated on 40 real resumes:** Avg 64.0 → 64.5, Max 80 → 81. Synthetic resume generator saved at `scripts/synthetic-resume-generator.ts`.
+
 ## Debugging Protocol
 
 When a feature seems broken:
@@ -703,6 +718,8 @@ When a feature seems broken:
 - New "pitfalls" or rules learned
 - Changes to the file map
 - **Keep the `AGENTS.md` Index in sync** when you add/rename a `##` section here, and append new dated session logs to `docs/context/session-log.md` (not here).
+
+**Last updated:** June 8, 2026 (session 18 — **ATS scoring optimized** vs 1200 synthetic resumes: Length bands, Skills contextualization, Soft Skills header fix. PR #129.)
 
 **Last updated:** June 8, 2026 (session 17 — this entry: **ATS Checker overhaul** — JD comparison, radar chart, animated UI, sample data, keyboard shortcuts, score history, copy results. PR #129.)
 
