@@ -19,13 +19,14 @@ import {
   Sparkles,
   Briefcase,
   Inbox,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Stats' };
 
 export default async function StatsPage() {
-  // Never serve a cached RSC payload — counts change live during ingest scans.
   noStore();
 
   const sb = supabaseAdmin();
@@ -99,10 +100,11 @@ export default async function StatsPage() {
       <div>
         <h1 className="font-headline text-heading-sm font-bold text-on-background">Stats</h1>
         <p className="text-body-md text-on-surface-variant mt-1">
-          Your personal matches and scan history — not the shared job pool.
+          Your personal matches and scan history{isAdmin ? ' — including admin diagnostics' : ''}.
         </p>
       </div>
 
+      {/* === Quick stats that matter to everyone === */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <BigStat
           label="Total tracked"
@@ -123,6 +125,7 @@ export default async function StatsPage() {
         <BigStat label="Applied" value={appliedCount ?? 0} icon={<CheckCircle2 className="h-4 w-4" />} />
       </div>
 
+      {/* === Last scan status — simple and clear === */}
       <div className="card text-sm text-on-surface-variant">
         <span className="font-medium text-on-surface">Last scan: </span>
         {activeRun
@@ -134,51 +137,109 @@ export default async function StatsPage() {
             : 'No scan yet — run one from Matches.'}
       </div>
 
-      {isAdmin && (
-      <section className="card">
-        <h2 className="font-semibold text-on-surface mb-3">Your matches by source</h2>
-        {Object.keys(bySource).length === 0 ? (
-          <p className="text-sm text-on-surface-variant">
-            No matches for your profile yet. Go to Matches and run a scan to find roles suited to your resume.
-          </p>
-        ) : (
-          <ul className="space-y-2.5">
-            {Object.entries(bySource)
-              .sort((a, b) => b[1] - a[1])
-              .map(([source, count]) => {
-                const total = visibleCount ?? 1;
-                const pct = (count / total) * 100;
-                return (
-                  <li key={source}>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-on-surface">{SOURCE_LABELS[source] ?? source}</span>
-                      <span className="text-on-surface-variant">
-                        {count.toLocaleString()} ({pct.toFixed(0)}%)
-                      </span>
-                    </div>
-                    <div className="mt-1 h-1.5 rounded-full bg-surface-container overflow-hidden">
-                      <div className="h-full teal-gradient rounded-full" style={{ width: `${pct}%` }} />
-                    </div>
-                  </li>
-                );
-              })}
-          </ul>
-        )}
-      </section>
-      )}
-
+      {/* === Scan history — simplified for everyone, detailed for admin === */}
       <section className="card">
         <h2 className="font-semibold text-on-surface mb-1 flex items-center gap-2">
-          <Clock className="h-4 w-4 text-primary" /> Recent ingest runs
+          <Clock className="h-4 w-4 text-primary" /> Recent scans
         </h2>
         <p className="text-xs text-on-surface-variant mb-3">
-          Pipeline time = fetch + embed + score + persist. GitHub Actions
-          adds ~20–30s overhead for checkout, setup-node, and npm install.
+          {isAdmin
+            ? 'Each scan fetches jobs from sources, scores them against your resume, and keeps the best matches. Pipeline time = fetch + embed + score + persist.'
+            : 'Each scan checks job boards, scores roles against your resume, and surfaces the best matches.'}
         </p>
         {(runs ?? []).length === 0 ? (
-          <p className="text-sm text-on-surface-variant">No runs yet.</p>
+          <p className="text-sm text-on-surface-variant">No scans yet.</p>
         ) : (
           <div className="overflow-x-auto -mx-5 px-5">
+            <table className="w-full text-sm min-w-[500px]">
+              <thead>
+                <tr className="text-on-surface-variant text-xs border-b border-outline-variant">
+                  <th className="py-2 text-left font-medium">When</th>
+                  <th className="py-2 text-left font-medium">Result</th>
+                  <th className="py-2 text-right font-medium">Fetched</th>
+                  <th className="py-2 text-right font-medium">Scored</th>
+                  <th className="py-2 text-right font-medium">Kept</th>
+                  <th className="py-2 text-right font-medium" title="How long the scan took">Duration</th>
+                  <th className="py-2 text-left font-medium">Trigger</th>
+                  {isAdmin && (
+                    <th className="py-2 text-left font-medium min-w-[200px]">Notes</th>
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {(runs ?? []).map((r) => (
+                  <tr key={r.id} className="border-b border-outline-variant/50 last:border-0 align-top">
+                    <td className="py-2 text-xs text-on-surface-variant whitespace-nowrap">{relativeTime(r.started_at)}</td>
+                    <td className="py-2">
+                      <RunStatus status={r.status} errors={r.errors} isAdmin={isAdmin} />
+                    </td>
+                    <td className="py-2 text-right tabular-nums text-on-surface">{r.fetched}</td>
+                    <td className="py-2 text-right tabular-nums text-on-surface">{r.scored}</td>
+                    <td className="py-2 text-right tabular-nums text-primary font-medium">{r.matches_created}</td>
+                    <td className="py-2 text-right tabular-nums text-on-surface-variant">
+                      {r.duration_ms ? `${(r.duration_ms / 1000).toFixed(0)}s` : '—'}
+                    </td>
+                    <td className="py-2 text-xs text-on-surface-variant capitalize">{r.triggered_by}</td>
+                    {isAdmin && (
+                      <td className="py-2">
+                        <RunErrorNotes errors={r.errors} status={r.status} />
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* === Admin: Matches by source === */}
+      {isAdmin && (
+        <section className="card">
+          <h2 className="font-semibold text-on-surface mb-3 flex items-center gap-2">
+            <Briefcase className="h-4 w-4 text-primary" /> Your matches by source
+          </h2>
+          {Object.keys(bySource).length === 0 ? (
+            <p className="text-sm text-on-surface-variant">
+              No matches yet. Run a scan from the Matches page.
+            </p>
+          ) : (
+            <ul className="space-y-2.5">
+              {Object.entries(bySource)
+                .sort((a, b) => b[1] - a[1])
+                .map(([source, count]) => {
+                  const total = visibleCount ?? 1;
+                  const pct = (count / total) * 100;
+                  return (
+                    <li key={source}>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-on-surface">{SOURCE_LABELS[source] ?? source}</span>
+                        <span className="text-on-surface-variant">
+                          {count.toLocaleString()} ({pct.toFixed(0)}%)
+                        </span>
+                      </div>
+                      <div className="mt-1 h-1.5 rounded-full bg-surface-container overflow-hidden">
+                        <div className="h-full teal-gradient rounded-full" style={{ width: `${pct}%` }} />
+                      </div>
+                    </li>
+                  );
+                })}
+            </ul>
+          )}
+        </section>
+      )}
+
+      {/* === Admin: Scan details collapsible === */}
+      {isAdmin && (runs ?? []).length > 0 && (
+        <details className="card group">
+          <summary className="cursor-pointer list-none flex items-center justify-between">
+            <h2 className="font-semibold text-on-surface flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-secondary" /> Pipeline diagnostics
+            </h2>
+            <ChevronDown className="h-4 w-4 text-on-surface-variant group-open:hidden" />
+            <ChevronUp className="h-4 w-4 text-on-surface-variant hidden group-open:block" />
+          </summary>
+          <div className="mt-4 overflow-x-auto -mx-5 px-5">
             <table className="w-full text-sm min-w-[640px]">
               <thead>
                 <tr className="text-on-surface-variant text-xs border-b border-outline-variant">
@@ -186,26 +247,30 @@ export default async function StatsPage() {
                   <th className="py-2 text-left font-medium">Status</th>
                   <th className="py-2 text-right font-medium">Fetched</th>
                   <th className="py-2 text-right font-medium">New</th>
+                  <th className="py-2 text-right font-medium">Embedded</th>
                   <th className="py-2 text-right font-medium">Scored</th>
                   <th className="py-2 text-right font-medium">Kept</th>
-                  <th className="py-2 text-right font-medium" title="Pipeline execution time">Pipeline time</th>
+                  <th className="py-2 text-right font-medium">Pipeline</th>
                   <th className="py-2 text-left font-medium">Trigger</th>
-                  <th className="py-2 text-left font-medium min-w-[200px]">Notes</th>
+                  <th className="py-2 text-left font-medium min-w-[250px]">Errors</th>
                 </tr>
               </thead>
               <tbody>
                 {(runs ?? []).map((r) => (
                   <tr key={r.id} className="border-b border-outline-variant/50 last:border-0 align-top">
-                    <td className="py-2 text-xs text-on-surface-variant">{relativeTime(r.started_at)}</td>
-                    <td className="py-2"><RunStatus status={r.status} errors={r.errors} /></td>
+                    <td className="py-2 text-xs text-on-surface-variant whitespace-nowrap">{relativeTime(r.started_at)}</td>
+                    <td className="py-2">
+                      <RunStatus status={r.status} errors={r.errors} isAdmin={true} detailed />
+                    </td>
                     <td className="py-2 text-right tabular-nums text-on-surface">{r.fetched}</td>
                     <td className="py-2 text-right tabular-nums text-on-surface">{r.new_jobs}</td>
+                    <td className="py-2 text-right tabular-nums text-on-surface">{r.embedded}</td>
                     <td className="py-2 text-right tabular-nums text-on-surface">{r.scored}</td>
                     <td className="py-2 text-right tabular-nums text-primary font-medium">{r.matches_created}</td>
                     <td className="py-2 text-right tabular-nums text-on-surface-variant">
                       {r.duration_ms ? `${(r.duration_ms / 1000).toFixed(1)}s` : '—'}
                     </td>
-                    <td className="py-2 text-xs text-on-surface-variant">{r.triggered_by}</td>
+                    <td className="py-2 text-xs text-on-surface-variant capitalize">{r.triggered_by}</td>
                     <td className="py-2">
                       <RunErrorNotes errors={r.errors} status={r.status} />
                     </td>
@@ -214,8 +279,11 @@ export default async function StatsPage() {
               </tbody>
             </table>
           </div>
-        )}
-      </section>
+          <p className="text-[10px] text-on-surface-variant mt-3">
+            GitHub Actions adds ~20–30s overhead for checkout and setup beyond the pipeline time shown above.
+          </p>
+        </details>
+      )}
     </div>
   );
 }
@@ -227,7 +295,7 @@ function BigStat({
   accent,
 }: {
   label: string;
-  value: number;
+  value: string | number;
   icon: React.ReactNode;
   accent?: boolean;
 }) {
@@ -244,6 +312,10 @@ function BigStat({
   );
 }
 
+/**
+ * Error notes — only rendered for admin users.
+ * Shows a red/amber badge count with error details on hover.
+ */
 function RunErrorNotes({
   status,
   errors,
@@ -268,48 +340,88 @@ function RunErrorNotes({
   );
 }
 
+/**
+ * Run status badge.
+ *
+ * For end users (isAdmin=false): simple friendly labels — "Completed",
+ * "Completed with issues", "Failed", "In progress". No error counts.
+ *
+ * For admin (isAdmin=true): detailed labels with error counts, tooltip with
+ * full error breakdown. When detailed=true, shows the full internal status
+ * name (success / partial / failed / running) with counts.
+ */
 function RunStatus({
   status,
   errors,
+  isAdmin,
+  detailed,
 }: {
   status: string;
   errors: { source: string; error: string }[] | null;
+  isAdmin: boolean;
+  detailed?: boolean;
 }) {
+  const errCount = (errors ?? []).length;
+  const hasErrors = errCount > 0;
+
   if (status === 'success') {
     return (
       <span className="inline-flex items-center gap-1 text-xs text-emerald-600 font-medium">
         <CheckCircle2 className="h-3.5 w-3.5" />
-        success
+        {isAdmin && detailed ? 'success' : 'Completed'}
       </span>
     );
   }
+
   if (status === 'partial') {
+    if (isAdmin && detailed) {
+      return (
+        <span
+          className="inline-flex items-center gap-1 text-xs text-primary-container font-medium"
+          title={(errors ?? []).map((e) => `${e.source}: ${e.error}`).join('\n')}
+        >
+          <AlertTriangle className="h-3.5 w-3.5" />
+          partial ({errCount})
+        </span>
+      );
+    }
     return (
       <span
-        className="inline-flex items-center gap-1 text-xs text-primary-container font-medium"
-        title={(errors ?? []).map((e) => `${e.source}: ${e.error}`).join('\n')}
+        className="inline-flex items-center gap-1 text-xs text-amber-600 font-medium"
+        title={isAdmin ? (errors ?? []).map((e) => `${e.source}: ${e.error}`).join('\n') : undefined}
       >
         <AlertTriangle className="h-3.5 w-3.5" />
-        partial ({(errors ?? []).length})
+        Completed with issues
       </span>
     );
   }
+
   if (status === 'failed') {
     const timedOut = (errors ?? []).some((e) => e.source === 'timeout');
+    if (isAdmin && detailed) {
+      return (
+        <span
+          className="inline-flex items-center gap-1 text-xs text-error font-medium"
+          title={(errors ?? []).map((e) => `${e.source}: ${e.error}`).join('\n')}
+        >
+          <XCircle className="h-3.5 w-3.5" />
+          {timedOut ? 'timed out' : 'failed'}
+        </span>
+      );
+    }
     return (
-      <span
-        className="inline-flex items-center gap-1 text-xs text-error font-medium"
-        title={(errors ?? []).map((e) => `${e.source}: ${e.error}`).join('\n')}
-      >
+      <span className="inline-flex items-center gap-1 text-xs text-error font-medium">
         <XCircle className="h-3.5 w-3.5" />
-        {timedOut ? 'timed out' : 'failed'}
+        {timedOut ? 'Timed out' : 'Failed'}
       </span>
     );
   }
+
+  // running
   return (
     <span className="inline-flex items-center gap-1 text-xs text-on-surface-variant">
       <Loader2 className="h-3.5 w-3.5 animate-spin" />
-      running
+      In progress
     </span>
   );
 }
