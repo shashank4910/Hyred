@@ -166,10 +166,7 @@ function buildFns(
       limit: 50,
     });
 
-  // JSearch (RapidAPI) — enabled if at least one API key is configured (env or DB)
-  // Always register it — fetchJSearch will check keys at runtime and throw
-  // a descriptive error if none exist. This way Admin Center keys work
-  // without needing the env var.
+  // JSearch (RapidAPI) — always registered; returns [] when no keys are configured.
   fns.jsearch = () =>
     fetchJSearch({
       queries: queries.length > 0 ? queries.slice(0, 5) : undefined,

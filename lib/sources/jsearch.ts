@@ -201,7 +201,8 @@ export type JSearchFetchOpts = {
 export async function fetchJSearch(opts?: JSearchFetchOpts): Promise<RawJob[]> {
   const keys = await getApiKeys();
   if (keys.length === 0) {
-    throw new Error('Missing JSearch API keys. Add via JSEARCH_API_KEYS env var or Admin Center.');
+    console.log('[jsearch] Skipped — no API keys configured (JSEARCH_API_KEYS or Admin Center).');
+    return [];
   }
 
   const queries = opts?.queries?.length ? opts.queries : ['performance engineer'];

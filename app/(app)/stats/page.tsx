@@ -190,11 +190,12 @@ export default async function StatsPage() {
                   <th className="py-2 text-right font-medium">Kept</th>
                   <th className="py-2 text-right font-medium" title="Pipeline execution time">Pipeline time</th>
                   <th className="py-2 text-left font-medium">Trigger</th>
+                  <th className="py-2 text-left font-medium min-w-[200px]">Notes</th>
                 </tr>
               </thead>
               <tbody>
                 {(runs ?? []).map((r) => (
-                  <tr key={r.id} className="border-b border-outline-variant/50 last:border-0">
+                  <tr key={r.id} className="border-b border-outline-variant/50 last:border-0 align-top">
                     <td className="py-2 text-xs text-on-surface-variant">{relativeTime(r.started_at)}</td>
                     <td className="py-2"><RunStatus status={r.status} errors={r.errors} /></td>
                     <td className="py-2 text-right tabular-nums text-on-surface">{r.fetched}</td>
@@ -205,6 +206,9 @@ export default async function StatsPage() {
                       {r.duration_ms ? `${(r.duration_ms / 1000).toFixed(1)}s` : '—'}
                     </td>
                     <td className="py-2 text-xs text-on-surface-variant">{r.triggered_by}</td>
+                    <td className="py-2">
+                      <RunErrorNotes errors={r.errors} status={r.status} />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -237,6 +241,30 @@ function BigStat({
         {value.toLocaleString()}
       </div>
     </div>
+  );
+}
+
+function RunErrorNotes({
+  status,
+  errors,
+}: {
+  status: string;
+  errors: { source: string; error: string }[] | null;
+}) {
+  if (status === 'success' || !(errors?.length)) {
+    return <span className="text-xs text-text-muted">—</span>;
+  }
+
+  return (
+    <ul className="space-y-1 text-[11px] leading-snug text-on-surface-variant max-w-md">
+      {errors.map((e) => (
+        <li key={`${e.source}-${e.error.slice(0, 40)}`}>
+          <span className="font-semibold text-primary-container">{e.source}</span>
+          {': '}
+          {e.error}
+        </li>
+      ))}
+    </ul>
   );
 }
 

@@ -35,4 +35,6 @@ jobs:
           ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
           ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
           INGEST_PROFILE_EMAIL: ${{ secrets.INGEST_PROFILE_EMAIL }}
+          # Cron runs on GHA (~15 min cap), not Vercel — allow more scoring time.
+          INGEST_WALL_BUDGET_MS: '480000'
         run: npm run ingest
