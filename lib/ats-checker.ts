@@ -1411,5 +1411,6 @@ export function checkAtsCompatibility(
     detectedIssues: [...new Set(allIssues)].slice(0, 8),
     goodPractices: [...new Set(allGood)].slice(0, 5),
     fileHints,
+    jdMatch,
   };
 }
