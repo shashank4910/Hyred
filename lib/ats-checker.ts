@@ -90,6 +90,7 @@ const STANDARD_HEADERS = [
   /^core\s+competencies$/i,
   /^areas?\s+of\s+expertise$/i,
   /^key\s+skills$/i,
+  /^(soft|interpersonal)\s+skills$/i,
   // Certifications
   /^certifications$/i,
   /^certificates$/i,
@@ -634,6 +635,11 @@ function scoreSkillsOptimization(text: string): CriterionResult {
     score += 10;
   }
 
+  // Bonus for having a clean, dense skills section with enough items
+  if (concreteSkills.length >= 10 && skillLines.length >= 2) {
+    score += 5;
+  }
+
   // Skills appear in experience bullets (contextualization)
   const bulletLines = findBulletLines(lines);
   const bulletText = bulletLines.join(' ').toLowerCase();
@@ -658,10 +664,10 @@ function scoreSkillsOptimization(text: string): CriterionResult {
   const contextualizedRatio = concreteSkills.length > 0
     ? skillContextualized.length / concreteSkills.length
     : 0;
-  if (contextualizedRatio >= 0.4) {
+  if (contextualizedRatio >= 0.3) {
     score += 25;
     good.push('Most skills are contextualized in experience descriptions (ATS-friendly).');
-  } else if (contextualizedRatio >= 0.2) {
+  } else if (contextualizedRatio >= 0.1) {
     score += 15;
   } else if (contextualizedRatio > 0) {
     score += 5;
@@ -695,17 +701,21 @@ function scoreLengthReadability(text: string): CriterionResult {
   const issues: string[] = [];
   const good: string[] = [];
 
-  // Word count: 400-1200 is ideal for experienced professionals (1-2 pages)
+  // Word count: calibrated for experience levels — entry-level (200-400),
+  // mid (400-800), senior (800-1200), lead (1000-1500)
   if (wordCount >= 400 && wordCount <= 1200) {
     score += 50;
     good.push(`Resume length is ideal (~${wordCount} words, ~1-2 pages).`);
   } else if (wordCount >= 300 && wordCount < 400) {
-    score += 35;
+    score += 40;
     issues.push(`A bit short (~${wordCount} words). Consider adding more detail.`);
+  } else if (wordCount >= 200 && wordCount < 300) {
+    score += 25;
+    issues.push(`On the shorter side (~${wordCount} words) but acceptable for early-career.`);
   } else if (wordCount > 1200 && wordCount <= 1500) {
     score += 30;
     issues.push(`Slightly long (~${wordCount} words). Consider tightening to 2 pages if possible.`);
-  } else if (wordCount < 300) {
+  } else if (wordCount < 200) {
     score += 15;
     issues.push(`Very short (~${wordCount} words). ATS needs more content to match against.`);
   } else {
@@ -714,15 +724,16 @@ function scoreLengthReadability(text: string): CriterionResult {
   }
 
   // Line density: too many short lines = sparse content
+  // Exception: entry-level resumes (<400 words) naturally have sparse sections
   const shortLines = text.split('\n').filter((l) => l.trim() && l.trim().split(/\s+/).length < 3);
   const shortLineRatio = lineCount > 0 ? shortLines.length / lineCount : 0;
 
-  if (shortLineRatio > 0.4) {
+  if (wordCount >= 400 && shortLineRatio > 0.4) {
     score -= 15;
     issues.push('High number of short/sparse lines. Consider consolidating.');
-  } else if (shortLineRatio > 0.2) {
+  } else if (wordCount >= 400 && shortLineRatio > 0.2) {
     score -= 5;
-  } else {
+  } else if (wordCount >= 400) {
     score += 10;
     good.push('Good content density.');
   }
