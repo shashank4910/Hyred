@@ -41,6 +41,10 @@ export interface FileHints {
   isTxt: boolean;
   /** True if parsed text is suspiciously short (<100 chars) — might be scanned/image PDF */
   mightBeScanned: boolean;
+  /** Format quality recommendation: 'best' | 'good' | 'poor' | 'unknown' */
+  formatQuality?: 'best' | 'good' | 'poor' | 'unknown';
+  /** Human-readable format advice */
+  formatAdvice?: string;
 }
 
 export interface CriterionResult {
@@ -74,8 +78,10 @@ export interface JdMatchResult {
 const STANDARD_HEADERS = [
   // Summary / Objective
   /^(professional\s+)?summary$/i,
+  /^summary\s+of\s+qualifications$/i,
   /^(career\s+)?objective$/i,
   /^profile$/i,
+  /^professional\s+profile$/i,
   // Experience
   /^(professional\s+)?(work\s+)?experience$/i,
   /^employment$/i,
@@ -84,17 +90,22 @@ const STANDARD_HEADERS = [
   /^relevant\s+experience$/i,
   // Education
   /^education$/i,
+  /^education\s+and\s+training$/i,
+  /^degrees?$/i,
   /^academic\s+(background|qualifications)$/i,
   // Skills
   /^(technical\s+)?skills$/i,
+  /^technical\s+competencies$/i,
   /^core\s+competencies$/i,
   /^areas?\s+of\s+expertise$/i,
   /^key\s+skills$/i,
   /^(soft|interpersonal)\s+skills$/i,
   // Certifications
   /^certifications$/i,
+  /^(professional\s+)?certifications$/i,
   /^certificates$/i,
   /^licenses?$/i,
+  /^licenses?\s+and\s+certifications$/i,
   // Projects
   /^projects$/i,
   /^key\s+projects$/i,
@@ -301,6 +312,27 @@ function scoreContactInfo(text: string): CriterionResult {
   const firstNameLine = findNameLine(lines);
   const hasName = firstNameLine !== null;
 
+  // --- Header/Footer position check ---
+  // Workday, SuccessFactors, SmartRecruiters, Bullhorn may skip content in
+  // document headers/footers. Check if contact info appears suspiciously
+  // isolated at the top or bottom of the text.
+  const firstContentLine = lines.findIndex((l) => l.trim().length > 0);
+  const firstSectionHeaderIdx = lines.findIndex((l) => {
+    const t = l.trim();
+    return t.length >= 5 && (/^[A-Z][A-Z\s&/.-]+$/.test(t) || isStandardHeader(t, STANDARD_HEADERS));
+  });
+  const gapBeforeFirstSection = firstSectionHeaderIdx > 0
+    ? lines.slice(firstContentLine, firstSectionHeaderIdx).filter((l) => l.trim().length === 0).length
+    : 0;
+  const contactInHeader = gapBeforeFirstSection >= 3 && hasName && firstSectionHeaderIdx > 0;
+
+  // Check if contact info appears in last few lines (footer risk)
+  const lastLines = lines.slice(-5).filter((l) => l.trim().length > 0).join(' ').toLowerCase();
+  const contactInFooter = (hasEmail || hasPhone) &&
+    lines.length > 30 &&
+    lastLines.length > 0 &&
+    (lastLines.includes('@') || lastLines.includes('linkedin'));
+
   let score = 0;
   const issues: string[] = [];
   const good: string[] = [];
@@ -347,6 +379,16 @@ function scoreContactInfo(text: string): CriterionResult {
 
   // Bonus for GitHub (tech roles)
   if (hasGithub) score += 10;
+
+  // Header/Footer penalties
+  if (contactInHeader) {
+    score -= 15;
+    issues.push('Contact info appears isolated at the top — likely in a document header zone. Workday, SuccessFactors, and SmartRecruiters may skip headers/footers. Move contact info into the main body.');
+  }
+  if (contactInFooter) {
+    score -= 15;
+    issues.push('Contact info detected near the end of the document — likely in a footer zone. Many ATS parsers skip footers. Move contact info to the top of the main body.');
+  }
 
   score = Math.max(0, Math.min(100, score));
 
@@ -680,6 +722,39 @@ function scoreSkillsOptimization(text: string): CriterionResult {
   // Enough total lines in skills section
   if (skillLines.length < 2) {
     issues.push('Skills section is very sparse. Add more detail.');
+  }
+
+  // --- Keyword stuffing detection ---
+  // Modern ATS (Greenhouse, Workday) can detect and penalize keyword stuffing.
+  // Check for: unnaturally dense keyword clusters, repetition, and high density.
+  const totalSkillWords = skillItems.length;
+  const skillTextWords = skillText.split(/\s+/).filter(Boolean).length;
+  const keywordDensity = skillTextWords > 0 ? totalSkillWords / skillTextWords : 0;
+
+  // High density (>0.5 means more than half the words are comma-separated items)
+  if (keywordDensity > 0.7 && totalSkillWords > 15) {
+    score -= 15;
+    issues.push(`Very high keyword density (${Math.round(keywordDensity * 100)}% keywords). ATS may flag this as keyword stuffing — spread skills naturally into experience bullets.`);
+  } else if (keywordDensity > 0.5 && totalSkillWords > 20) {
+    score -= 5;
+    issues.push(`High keyword density (${Math.round(keywordDensity * 100)}% keywords). Mix skills into experience descriptions for a more natural profile.`);
+  }
+
+  // Check for suspicious repetition of the same skill
+  const lowerSkillItems = skillItems.map((s) => s.toLowerCase().trim());
+  const uniqueSkills = new Set(lowerSkillItems);
+  if (lowerSkillItems.length > 15 && uniqueSkills.size < lowerSkillItems.length * 0.6) {
+    score -= 10;
+    issues.push(`${lowerSkillItems.length - uniqueSkills.size} duplicate or near-duplicate skills detected — remove repetitions.`);
+  }
+
+  // Check for unnaturally long single-line keyword clusters (e.g., "React, Angular, Vue, Svelte, Node.js, Express, Django...")
+  const longSkillLines = skillLines.filter((l) => {
+    const items = l.split(/[,;|]/).filter((s) => s.trim().length > 0);
+    return items.length > 10;
+  });
+  if (longSkillLines.length > 0) {
+    issues.push(`${longSkillLines.length} skill line(s) contain 10+ comma-separated items — consider grouping by category instead.`);
   }
 
   score = Math.max(0, Math.min(100, score));
@@ -1043,13 +1118,36 @@ function analyzeFileHints(
   const isPdf = lower.endsWith('.pdf');
   const isDocx = lower.endsWith('.docx');
   const isTxt = lower.endsWith('.txt');
+  const mightBeScanned = isPdf && parsedText.trim().length < 100;
+
+  let formatQuality: FileHints['formatQuality'];
+  let formatAdvice: string;
+
+  if (isDocx) {
+    formatQuality = 'best';
+    formatAdvice = '.docx is the most ATS-compatible format — excellent choice.';
+  } else if (isTxt) {
+    formatQuality = 'good';
+    formatAdvice = '.txt works but lacks formatting. Consider .docx for better ATS parsing.';
+  } else if (isPdf && mightBeScanned) {
+    formatQuality = 'poor';
+    formatAdvice = 'This PDF appears to be a scanned/image PDF. ATS parsers (Workday, SuccessFactors, Bullhorn) struggle with scanned PDFs. Use a text-based PDF or .docx instead.';
+  } else if (isPdf) {
+    formatQuality = 'good';
+    formatAdvice = 'Text-based PDF is good, but .docx is slightly more reliable for ATS parsing across all platforms.';
+  } else {
+    formatQuality = 'unknown';
+    formatAdvice = 'Unknown file format. For best ATS compatibility, use .docx.';
+  }
 
   return {
     extension: lower.split('.').pop() ?? 'unknown',
     isPdf,
     isDocx,
     isTxt,
-    mightBeScanned: isPdf && parsedText.trim().length < 100,
+    mightBeScanned,
+    formatQuality,
+    formatAdvice,
   };
 }
 
@@ -1215,6 +1313,9 @@ export function checkAtsCompatibility(
     allCriteria.reduce((sum, c) => sum + c.score * (c.weight / totalWeight), 0),
   );
 
+  // File hints (needed before issue collection for format recommendations)
+  const fileHints = filename ? analyzeFileHints(filename, text) : undefined;
+
   // Collect issues and good practices
   const allIssues: string[] = [];
   const allGood: string[] = [];
@@ -1241,6 +1342,11 @@ export function checkAtsCompatibility(
 
   if (quantifiableAchievements.score < 50) {
     allIssues.push('Add numbers, percentages, and metrics to experience bullets.');
+  }
+
+  // File format recommendation (only for poor formats)
+  if (fileHints && fileHints.formatQuality === 'poor') {
+    allIssues.push(fileHints.formatAdvice ?? '');
   }
 
   // Top improvements (prioritize lowest-scoring criteria with proper key mapping)
@@ -1278,9 +1384,6 @@ export function checkAtsCompatibility(
   const jdMatch = jobDescription
     ? compareWithJobDescription(text, jobDescription)
     : undefined;
-
-  // File hints
-  const fileHints = filename ? analyzeFileHints(filename, text) : undefined;
 
   // Resume stats
   const sectionHeaders = findSectionHeaders(textLines);
