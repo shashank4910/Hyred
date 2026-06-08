@@ -753,9 +753,145 @@ function scoreLengthReadability(text: string): CriterionResult {
   };
 }
 
+/**
+ * Detect signs of multi-column layout in parsed plain text.
+ * Multi-column resumes confuse ATS parsers (Workday, Taleo, Greenhouse, etc.)
+ * because text reads left-to-right across columns, garbling content order.
+ *
+ * Detection signals (in order of reliability):
+ * 1. Tab characters — Word/Google Docs use tabs for column alignment
+ * 2. Staggered line-length patterns — alternating short/long non-bullet lines
+ * 3. High proportion of very short lines that aren't bullets or headers
+ */
+function detectMultiColumnLayout(text: string): {
+  severity: 'high' | 'medium' | 'low' | 'none';
+  issues: string[];
+} {
+  const lines = text.split('\n');
+  const contentLines = lines.filter((l) => l.trim().length > 0);
+  const issues: string[] = [];
+
+  if (contentLines.length < 10) {
+    return { severity: 'none', issues: [] };
+  }
+
+  // Signal 1: Tab characters (strong indicator of column/tabular layout)
+  const tabCount = (text.match(/\t/g) || []).length;
+  const tabLines = lines.filter((l) => l.includes('\t')).length;
+  const tabLineRatio = tabLines / contentLines.length;
+
+  // Signal 2: Staggered line-length alternation pattern
+  // In multi-column, content reads as: col1-short, col2-short, col1-short, col2-short...
+  // which creates alternating short/long patterns when one column has dates and other has titles
+  const shortLineThreshold = 35;
+
+  // Filter out bullets and headers to analyze content lines
+  const bodyLines = contentLines.filter((l) => {
+    const t = l.trim();
+    // Skip bullet points (they naturally have varying lengths)
+    if (/^[-•*→⁃▪▸▹►‣⁌⁍∙○●\d.)]/.test(t)) return false;
+    // Skip ALL-CAPS section headers
+    if (/^[A-Z][A-Z\s&/.-]+$/.test(t) && t.length >= 5) return false;
+    // Skip only STANDARD section headers (NOT generic Title Case lines like
+    // company names, locations, or skill lists — those are content we want to analyze)
+    if (isStandardHeader(t, STANDARD_HEADERS)) return false;
+    // Skip standalone single-word lines that are clear header matches
+    if (t.length <= 30 && /^(summary|profile|education|experience|projects?|skills?|certifications?|languages?|publications?|references?|objectives?|achievements?|accomplishments?|interests?|leadership|awards?|volunteer|community|research|employment|qualifications?|addendum)$/i.test(t)) return false;
+    return true;
+  });
+
+  if (bodyLines.length < 5) {
+    return { severity: 'none', issues: [] };
+  }
+
+  // Measure alternation: count how often short/long pattern toggles
+  const lengths = bodyLines.map((l) => l.length);
+  const shortFlags = lengths.map((len) => len < shortLineThreshold);
+  let alternations = 0;
+  for (let i = 1; i < shortFlags.length; i++) {
+    if (shortFlags[i] !== shortFlags[i - 1]) alternations++;
+  }
+  // High alternation means lines keep switching between short and long
+  const maxPossibleAlternations = shortFlags.length - 1;
+  const alternationRatio =
+    maxPossibleAlternations > 0 ? alternations / maxPossibleAlternations : 0;
+
+  // Also count runs of short lines (3+ short lines in a row is suspicious)
+  let shortRuns = 0;
+  let currentRun = 0;
+  for (const isShort of shortFlags) {
+    if (isShort) {
+      currentRun++;
+    } else {
+      if (currentRun >= 3) shortRuns++;
+      currentRun = 0;
+    }
+  }
+  if (currentRun >= 3) shortRuns++;
+
+  // Signal 3: Proportion of short body lines
+  const shortBodyCount = bodyLines.filter((l) => l.trim().length < shortLineThreshold).length;
+  const shortBodyRatio = shortBodyCount / bodyLines.length;
+
+  // Signal 4: Very long lines (>250 chars — two columns concatenated into one line by ATS)
+  const veryLongLines = contentLines.filter((l) => l.length > 250).length;
+
+  // Determine severity
+  let severity: 'high' | 'medium' | 'low' | 'none' = 'none';
+
+  // High: heavy tab usage OR strong stagger + many short lines OR all lines are short (narrow columns)
+  if (tabLineRatio > 0.15 || (tabCount > 8 && shortBodyRatio > 0.35)) {
+    severity = 'high';
+    issues.push(
+      'Multi-column layout detected (heavy tab/table usage). ATS reads left-to-right across columns, garbling your content order. Use a single-column layout.',
+    );
+  } else if (
+    (veryLongLines > 5 && shortBodyRatio > 0.3) ||
+    (alternationRatio > 0.55 && shortBodyRatio > 0.4 && shortRuns >= 2) ||
+    (shortBodyRatio > 0.85 && bodyLines.length > 15)
+  ) {
+    severity = 'high';
+    issues.push(
+      shortBodyRatio > 0.85
+        ? 'Multi-column layout strongly suspected. Almost all content lines are very short — typical when a 2-column resume is parsed and each column produces narrow text lines that interleave and confuse ATS parsers.'
+        : 'Multi-column layout likely present. Lines alternate between short and long content — a classic sign of column formatting that breaks ATS parsing.',
+    );
+  } else if (
+    (tabCount > 3) ||
+    (alternationRatio > 0.4 && shortBodyRatio > 0.35) ||
+    shortRuns >= 3 ||
+    (shortBodyRatio > 0.6 && shortRuns >= 2 && bodyLines.length > 10)
+  ) {
+    severity = 'medium';
+    issues.push(
+      'Possible multi-column layout. If your resume uses columns or tables, switch to a single-column format for better ATS compatibility.',
+    );
+  } else if (shortBodyRatio > 0.5 && bodyLines.length > 25) {
+    severity = 'low';
+    issues.push(
+      'Many short content lines found — this can happen with column layouts. Verify all content reads sequentially in a single column.',
+    );
+  }
+
+  return { severity, issues };
+}
+
 function scoreFormatCleanliness(text: string): CriterionResult {
   let score = 100;
   const issues: string[] = [];
+
+  // --- Multi-column layout detection (highest impact) ---
+  const multiColumn = detectMultiColumnLayout(text);
+  if (multiColumn.severity === 'high') {
+    score -= 40;
+    issues.push(...multiColumn.issues.slice(0, 1));
+  } else if (multiColumn.severity === 'medium') {
+    score -= 20;
+    issues.push(...multiColumn.issues.slice(0, 1));
+  } else if (multiColumn.severity === 'low') {
+    score -= 10;
+    issues.push(...multiColumn.issues.slice(0, 1));
+  }
 
   // Check for smart quotes and other non-ASCII punctuation
   const smartQuotes = (text.match(/[\u2018\u2019\u201C\u201D\u201E\u201F]/g) || []).length;
@@ -781,13 +917,12 @@ function scoreFormatCleanliness(text: string): CriterionResult {
     issues.push(`${unicodeBullets} unicode bullets detected — stick to "- " for best ATS parsing.`);
   }
 
-  // Check for tab characters (can indicate tables)
+  // Check for tab characters (can indicate tables) — already handled by multi-column above
   const tabs = (text.match(/\t/g) || []).length;
-  if (tabs > 5) {
+  if (tabs > 5 && multiColumn.severity === 'none') {
+    // Only flag tabs separately if multi-column didn't already catch it
     score -= 20;
     issues.push(`${tabs} tab characters found — may indicate tables that confuse ATS parsers.`);
-  } else if (tabs > 0) {
-    score -= 5;
   }
 
   // Check for non-breaking spaces
@@ -805,10 +940,11 @@ function scoreFormatCleanliness(text: string): CriterionResult {
 
   // Check for very long lines (>200 chars — potential column layout remnants)
   const longLines = text.split('\n').filter((l) => l.length > 200);
-  if (longLines.length > 3) {
+  if (longLines.length > 3 && multiColumn.severity === 'none') {
+    // Only flag separately if multi-column didn't catch it
     score -= 15;
     issues.push(`${longLines.length} very long lines — may indicate column layout that confuses ATS.`);
-  } else if (longLines.length > 0) {
+  } else if (longLines.length > 0 && multiColumn.severity === 'none') {
     score -= 5;
   }
 
