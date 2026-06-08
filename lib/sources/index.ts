@@ -166,13 +166,18 @@ function buildFns(
       limit: 50,
     });
 
-  // JSearch (RapidAPI) — always registered; returns [] when no keys are configured.
-  fns.jsearch = () =>
-    fetchJSearch({
-      queries: queries.length > 0 ? queries.slice(0, 5) : undefined,
-      country: 'India',
-      datePosted: 'week',
-    });
+  // JSearch (RapidAPI) — only registered when API keys exist.
+  // Avoids unnecessary fetch that would fail anyway, and prevents
+  // a consistent "partial" status on every scan.
+  const jsearchKeys = process.env.JSEARCH_API_KEYS?.trim();
+  if (jsearchKeys) {
+    fns.jsearch = () =>
+      fetchJSearch({
+        queries: queries.length > 0 ? queries.slice(0, 5) : undefined,
+        country: 'India',
+        datePosted: 'week',
+      });
+  }
 
   // LinkedIn — PUBLIC GUEST API (free, no auth, no API key).
   // Searches role-title phrases across the user's PREFERRED locations (set
