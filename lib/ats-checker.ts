@@ -170,9 +170,25 @@ function findNameLine(lines: string[]): string | null {
   return null;
 }
 
-/** Collect bullet-point lines from the text (lines starting with "-", "•", "*", "→", or digits). */
+/**
+ * Collect bullet-point lines from the text.
+ * Detects multiple bullet formats for resilient parsing across file types (PDF, DOCX, TXT).
+ */
 function findBulletLines(lines: string[]): string[] {
-  return lines.filter((l) => /^\s*[-•*→\d]/.test(l.trim()));
+  // Common bullet characters that may survive parsing
+  const bulletChars = '-•*→⁃▪▸▹►‣⁌⁍∙○●•‣';
+  const bulletRegex = new RegExp(`^[${bulletChars}]`);
+  return lines.filter((l) => {
+    const t = l.trim();
+    if (!t) return false;
+    // Starts with a bullet character (any of the known unicode bullets)
+    if (bulletRegex.test(t)) return true;
+    // Starts with a digit followed by period or paren (numbered lists like "1." or "1)")
+    if (/^\d+[.)]\s/.test(t)) return true;
+    // Starts with a pipe or bracket (common in table-structured resumes)
+    if (/^[\[|]/.test(t) && t.length > 10) return true;
+    return false;
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -620,18 +636,35 @@ function scoreSkillsOptimization(text: string): CriterionResult {
 
   // Skills appear in experience bullets (contextualization)
   const bulletLines = findBulletLines(lines);
+  const bulletText = bulletLines.join(' ').toLowerCase();
+  // Pre-compile skill section pattern for reuse
+  const skillSectionPattern = /^(technical\s+)?skills|core\s+competencies|areas?\s+of\s+expertise|key\s+skills/i;
+
   const skillContextualized = concreteSkills.filter((skill) => {
     const lower = skill.toLowerCase();
-    return bulletLines.some((b) => b.toLowerCase().includes(lower));
+    // Check bullets first (most reliable)
+    if (bulletText.includes(lower)) return true;
+    // Fallback: check if skill appears in any non-skills-section line
+    // This catches paragraph-formatted resumes where skills are mentioned in experience descriptions
+    return lines.some((line) => {
+      const trimmed = line.trim().toLowerCase();
+      if (!trimmed.includes(lower)) return false;
+      if (trimmed.length <= 20) return false;          // Skip short/list lines
+      if (skillSectionPattern.test(trimmed)) return false; // Skip skills section
+      return true;
+    });
   });
+
   const contextualizedRatio = concreteSkills.length > 0
     ? skillContextualized.length / concreteSkills.length
     : 0;
-  if (contextualizedRatio >= 0.5) {
+  if (contextualizedRatio >= 0.4) {
     score += 25;
-    good.push('Most skills are contextualized in experience bullets (ATS-friendly).');
-  } else if (contextualizedRatio >= 0.25) {
+    good.push('Most skills are contextualized in experience descriptions (ATS-friendly).');
+  } else if (contextualizedRatio >= 0.2) {
     score += 15;
+  } else if (contextualizedRatio > 0) {
+    score += 5;
   } else {
     issues.push('Skills appear only in the Skills section — ATS prefers them also in experience bullets.');
   }
@@ -662,16 +695,16 @@ function scoreLengthReadability(text: string): CriterionResult {
   const issues: string[] = [];
   const good: string[] = [];
 
-  // Word count: 400-1000 is ideal (1-2 pages)
-  if (wordCount >= 400 && wordCount <= 1000) {
+  // Word count: 400-1200 is ideal for experienced professionals (1-2 pages)
+  if (wordCount >= 400 && wordCount <= 1200) {
     score += 50;
     good.push(`Resume length is ideal (~${wordCount} words, ~1-2 pages).`);
   } else if (wordCount >= 300 && wordCount < 400) {
     score += 35;
     issues.push(`A bit short (~${wordCount} words). Consider adding more detail.`);
-  } else if (wordCount > 1000 && wordCount <= 1500) {
+  } else if (wordCount > 1200 && wordCount <= 1500) {
     score += 30;
-    issues.push(`A bit long (~${wordCount} words). Consider tightening to 2 pages max.`);
+    issues.push(`Slightly long (~${wordCount} words). Consider tightening to 2 pages if possible.`);
   } else if (wordCount < 300) {
     score += 15;
     issues.push(`Very short (~${wordCount} words). ATS needs more content to match against.`);
