@@ -26,6 +26,10 @@ export interface AtsCheckResult {
   topImprovements: string[];
   detectedIssues: string[];
   goodPractices: string[];
+  /** Resume stats */
+  stats: ResumeStats;
+  /** JD keyword match (only if jobDescription was provided) */
+  jdMatch?: JdMatchResult;
   /** File-level hints only available when the raw file is provided */
   fileHints?: FileHints;
 }
@@ -43,6 +47,24 @@ export interface CriterionResult {
   score: number;    // 0–100
   weight: number;   // contribution to overall (all weights sum to 100)
   feedback: string;
+}
+
+export interface ResumeStats {
+  wordCount: number;
+  charCount: number;
+  bulletCount: number;
+  sectionCount: number;
+}
+
+export interface JdMatchResult {
+  /** Keywords found in BOTH the resume and JD */
+  matched: string[];
+  /** Keywords in the JD but NOT found in the resume */
+  missing: string[];
+  /** Keywords in the resume but NOT in the JD */
+  extra: string[];
+  /** Match score 0–100 */
+  matchScore: number;
 }
 
 /* ------------------------------------------------------------------ */
@@ -850,6 +872,121 @@ function analyzeFileHints(
 }
 
 /* ------------------------------------------------------------------ */
+/*  Keyword extraction & JD comparison                                  */
+/* ------------------------------------------------------------------ */
+
+/** Tech/domain keywords to look for in resumes and JDs */
+const TECH_KEYWORDS = new Set([
+  // Languages
+  'javascript', 'typescript', 'python', 'java', 'c#', 'c++', 'ruby', 'go', 'golang', 'rust',
+  'swift', 'kotlin', 'php', 'scala', 'r', 'perl', 'bash', 'shell', 'sql', 'graphql',
+  // Frameworks & Libraries
+  'react', 'angular', 'vue', 'svelte', 'next.js', 'nuxt', 'node.js', 'express',
+  'django', 'flask', 'spring', 'spring boot', 'rails', 'laravel', 'asp.net',
+  '.net', 'flutter', 'react native', 'tensorflow', 'pytorch',  'jquery',
+  // Databases
+  'postgresql', 'postgres', 'mysql', 'mongodb', 'redis', 'elasticsearch',
+  'cassandra', 'dynamodb', 'sqlite', 'mariadb', 'oracle', 'sql server',
+  'bigquery', 'firestore', 'supabase', 'prisma', 'drizzle',
+  // Cloud & DevOps
+  'aws', 'azure', 'gcp', 'google cloud', 'docker', 'kubernetes', 'k8s',
+  'terraform', 'ansible', 'jenkins', 'circleci', 'github actions', 'gitlab ci',
+  'ci/cd', 'helm', 'prometheus', 'grafana', 'datadog',
+  // Tools & Platforms
+  'git', 'linux', 'nginx', 'webpack', 'vite', 'babel', 'jest', 'vitest',
+  'cypress', 'playwright', 'selenium', 'kafka', 'rabbitmq', 'grpc',
+  // AI/ML
+  'machine learning', 'deep learning', 'nlp', 'llm', 'openai', 'langchain',
+  'artificial intelligence', 'computer vision', 'data science',
+  // Methodologies
+  'agile', 'scrum', 'kanban', 'waterfall', 'tdd', 'bdd',
+  // Testing & Performance
+  'load testing', 'performance testing', 'jmeter', 'gatling', 'k6',
+  'unit testing', 'integration testing', 'e2e testing',
+]);
+
+/**
+ * Extract concrete technical keywords from a text blob.
+ */
+export function extractKeywords(text: string): string[] {
+  const lower = text.toLowerCase();
+  const found = new Set<string>();
+
+  // Check against known tech keywords
+  for (const kw of TECH_KEYWORDS) {
+    if (kw.endsWith(',')) continue; // skip comma artifact
+    if (lower.includes(kw)) {
+      found.add(kw);
+    }
+  }
+
+  // Also grab single capitalized words that look like tools/products
+  // e.g., "Datadog", "Sentry", "New Relic", "Tableau", etc.
+  const words = lower.split(/[\s,;()]+/);
+  for (const w of words) {
+    if (w.length >= 4 && w.length <= 20 && /^[a-z][a-z0-9]+$/.test(w)) {
+      // Check if it looks like a proper noun (starts with uppercase in original)
+      const regex = new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+      const originalMatch = text.match(regex);
+      if (originalMatch && /^[A-Z]/.test(originalMatch[0])) {
+        found.add(w);
+      }
+    }
+  }
+
+  // Extract acronyms (2-5 uppercase letters)
+  const acronyms = text.match(/\b[A-Z]{2,5}\b/g) || [];
+  for (const acro of acronyms) {
+    const lower = acro.toLowerCase();
+    if (lower.length >= 2 && !['the', 'and', 'for', 'are', 'you', 'all', 'can', 'has', 'had', 'but', 'not', 'our', 'its', 'per', 'via'].includes(lower)) {
+      found.add(acro);
+    }
+  }
+
+  return [...found].sort();
+}
+
+/**
+ * Compare resume keywords against a job description.
+ */
+export function compareWithJobDescription(
+  resumeText: string,
+  jobDescription: string,
+): JdMatchResult {
+  const resumeKeywords = new Set(extractKeywords(resumeText).map((k) => k.toLowerCase()));
+  const jdKeywords = new Set(extractKeywords(jobDescription).map((k) => k.toLowerCase()));
+
+  const matched: string[] = [];
+  const missing: string[] = [];
+  const extra: string[] = [];
+
+  for (const kw of jdKeywords) {
+    if (resumeKeywords.has(kw)) {
+      matched.push(kw);
+    } else {
+      missing.push(kw);
+    }
+  }
+
+  for (const kw of resumeKeywords) {
+    if (!jdKeywords.has(kw)) {
+      extra.push(kw);
+    }
+  }
+
+  const matchScore = jdKeywords.size > 0
+    ? Math.round((matched.length / jdKeywords.size) * 100)
+    : 0;
+
+  return {
+    matched: matched.sort(),
+    missing: missing.sort(),
+    extra: extra.sort(),
+    matchScore: Math.min(100, matchScore),
+  };
+}
+
+/* ------------------------------------------------------------------ */
 /*  Main entry point                                                   */
 /* ------------------------------------------------------------------ */
 
@@ -858,13 +995,16 @@ function analyzeFileHints(
  *
  * @param resumeText - The plain-text content of the resume.
  * @param filename   - Optional filename for file-level checks.
+ * @param jobDescription - Optional job description for keyword gap analysis.
  * @returns AtsCheckResult with scores, feedback, and improvement suggestions.
  */
 export function checkAtsCompatibility(
   resumeText: string,
   filename?: string,
+  jobDescription?: string,
 ): AtsCheckResult {
   const text = resumeText.trim();
+  const textLines = text.split(String.fromCharCode(10));
 
   // Run all criteria
   const sectionStructure = scoreSectionStructure(text);
@@ -921,25 +1061,53 @@ export function checkAtsCompatibility(
     allIssues.push('Add numbers, percentages, and metrics to experience bullets.');
   }
 
-  // Top improvements (prioritize lowest-scoring criteria)
-  const sortedByScore = [...allCriteria].sort((a, b) => a.score - b.score);
-  const topImprovements = sortedByScore.slice(0, 3).map((c) => {
-    const names: Record<string, string> = {
-      sectionStructure: 'Section structure',
-      contactInfo: 'Contact information',
-      bulletQuality: 'Bullet point formatting',
-      quantifiableAchievements: 'Quantifiable achievements',
-      skillsOptimization: 'Skills optimization',
-      lengthReadability: 'Resume length',
-      formatCleanliness: 'Format cleanliness',
-      dateConsistency: 'Date formatting',
-    };
-    const name = names[Object.keys(names).find((k) => allCriteria.includes(c)) ?? ''] ?? 'Area';
-    return `${name}: ${c.feedback.slice(0, 100)}`;
-  });
+  // Top improvements (prioritize lowest-scoring criteria with proper key mapping)
+  const CRITERION_KEYS: (keyof AtsCheckResult['breakdown'])[] = [
+    'sectionStructure',
+    'contactInfo',
+    'bulletQuality',
+    'quantifiableAchievements',
+    'skillsOptimization',
+    'lengthReadability',
+    'formatCleanliness',
+    'dateConsistency',
+  ];
+
+  const CRITERION_LABELS: Record<keyof AtsCheckResult['breakdown'], string> = {
+    sectionStructure: 'Section structure',
+    contactInfo: 'Contact information',
+    bulletQuality: 'Bullet point formatting',
+    quantifiableAchievements: 'Quantifiable achievements',
+    skillsOptimization: 'Skills optimization',
+    lengthReadability: 'Resume length',
+    formatCleanliness: 'Format cleanliness',
+    dateConsistency: 'Date formatting',
+  };
+
+  const scoredCriteria: { key: keyof AtsCheckResult['breakdown']; result: CriterionResult }[] =
+    CRITERION_KEYS.map((key, i) => ({ key, result: allCriteria[i] }));
+
+  const sortedByScore = [...scoredCriteria].sort((a, b) => a.result.score - b.result.score);
+  const topImprovements = sortedByScore.slice(0, 3).map(({ key, result }) =>
+    `${CRITERION_LABELS[key]}: ${result.feedback.slice(0, 100)}`,
+  );
+
+  // JD keyword comparison
+  const jdMatch = jobDescription
+    ? compareWithJobDescription(text, jobDescription)
+    : undefined;
 
   // File hints
   const fileHints = filename ? analyzeFileHints(filename, text) : undefined;
+
+  // Resume stats
+  const sectionHeaders = findSectionHeaders(textLines);
+  const stats: ResumeStats = {
+    wordCount: text.split(/\s+/).filter(Boolean).length,
+    charCount: text.length,
+    bulletCount: findBulletLines(textLines).length,
+    sectionCount: sectionHeaders.length,
+  };
 
   return {
     overallScore,
@@ -953,6 +1121,7 @@ export function checkAtsCompatibility(
       formatCleanliness,
       dateConsistency,
     },
+    stats,
     topImprovements: [...new Set(topImprovements)].slice(0, 5),
     detectedIssues: [...new Set(allIssues)].slice(0, 8),
     goodPractices: [...new Set(allGood)].slice(0, 5),
