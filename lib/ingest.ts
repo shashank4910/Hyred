@@ -557,11 +557,11 @@ export async function runIngest(opts?: {
     }
 
     if (budgetStopped) {
-      runErrors.push({
-        source: 'budget',
-        error: `Scoring stopped after ${scored}/${ranked.length} jobs (time budget under Vercel limit)`,
-      });
-      console.warn(`[ingest] Scoring stopped early: ${scored}/${ranked.length} scored`);
+      // Don't push to runErrors — hitting the time budget is expected
+      // for large scans, not a real error. The run still shows the
+      // correct scored/matches counts; a "partial" warning for this
+      // would appear on every big scan and is misleading.
+      console.warn(`[ingest] Scoring stopped early: ${scored}/${ranked.length} scored (time budget)`);
     }
   } catch (e) {
     fatalError = e as Error;
