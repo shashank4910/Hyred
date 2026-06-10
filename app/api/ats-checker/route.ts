@@ -13,17 +13,19 @@ export const maxDuration = 30;
  *
  * Body (multipart):
  *   resume: File (.pdf, .doc, .docx, .txt)
+ *   job_description?: string (optional)
  *
  * Body (JSON):
- *   { "resume_text": "..." }
+ *   { "resume_text": "...", "job_description": "..." }
  *
  * Response:
- *   { overallScore, breakdown, topImprovements, detectedIssues, goodPractices, fileHints? }
+ *   { overallScore, breakdown, topImprovements, detectedIssues, goodPractices, fileHints?, jdMatch?, stats }
  */
 export async function POST(req: NextRequest) {
   const contentType = req.headers.get('content-type') ?? '';
   let resumeText: string;
   let filename: string | undefined;
+  let jobDescription: string | undefined;
 
   try {
     if (contentType.includes('multipart/form-data')) {
@@ -41,9 +43,11 @@ export async function POST(req: NextRequest) {
       filename = file.name;
       const buffer = Buffer.from(await file.arrayBuffer());
       resumeText = await parseResume({ buffer, filename, mimeType: file.type });
+      jobDescription = form.get('job_description') as string | undefined;
     } else {
       const body = (await req.json().catch(() => ({}))) as {
         resume_text?: string;
+        job_description?: string;
       };
       if (!body.resume_text || body.resume_text.trim().length < 50) {
         return NextResponse.json(
@@ -52,6 +56,7 @@ export async function POST(req: NextRequest) {
         );
       }
       resumeText = body.resume_text;
+      jobDescription = body.job_description;
     }
   } catch (e) {
     return NextResponse.json(
@@ -67,7 +72,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const result = checkAtsCompatibility(resumeText, filename);
+  const result = checkAtsCompatibility(resumeText, filename, jobDescription);
 
   return NextResponse.json({
     ...result,

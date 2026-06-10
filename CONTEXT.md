@@ -35,6 +35,7 @@ JobRadar / Hyred is a personalized AI-powered job-search dashboard that:
 | Which file owns which widget | [UI component map](#ui-component-map) |
 | Google Stitch project / screens | [Stitch design source](#stitch-design-source) |
 | What changed and when (PRs) | [UI change log](#ui-change-log) |
+| **ATS Resume Checker** | [ATS Checker](#ats-resume-checker) |
 | UI bugs already fixed | [UI pitfalls](#ui-pitfalls) |
 
 ### Current UI (live on hyred.in)
@@ -57,6 +58,8 @@ JobRadar / Hyred is a personalized AI-powered job-search dashboard that:
 | **Legal links** | Sign-up checkbox only; **none** in logged-in shell | Footer on AppShell (removed #99) |
 
 **Pages using Luminous tokens everywhere (PR #104):** Job detail, onboarding, Stats, Admin, Import, apply-profile, error/not-found — all inherit refreshed typography, cards, and form controls from `globals.css`. Dashboard-specific patterns (bento insights, 7-col status grid) live only on `/`.
+
+**ATS Checker page (PR #129):** `/ats-checker` page redesigned with animated score ring, radar chart, JD keyword comparison, sample data, keyboard shortcuts, score history, and copy results. Fully Luminous-compatible.
 
 ### Design tokens
 
@@ -102,6 +105,15 @@ app/_components/
   LegalConsentFields.tsx ← sign-up checkbox only
   LegalDocumentLayout.tsx / LegalFooterLinks.tsx ← public /privacy, /terms only
 
+app/(app)/ats-checker/
+  page.tsx               ← ATS Resume Checker (animated score ring, radar chart, JD comparison, sample data, keyboard shortcuts, score history, copy results)
+
+lib/
+  ats-checker.ts         ← Pure deterministic ATS scoring engine (8 criteria, regex/heuristic, zero LLM)
+
+app/api/ats-checker/
+  route.ts               ← POST /api/ats-checker (accepts file upload or pasted text + optional job_description)
+
 lib/
   scan-toast-id.ts       ← stable Sonner id for scan-started toast
   toast-app.ts           ← dismissAllAppToasts() on logout
@@ -130,6 +142,8 @@ lib/
 
 | Date | PR | Summary |
 |---|---|---|
+| June 8, 2026 | **#129 (cont.)** | **ATS scoring optimized** — 3 fixes from 1200 synthetic resume analysis: Length bands for entry-level, Skills contextualization threshold lowered, Soft Skills header added |
+| June 8, 2026 | **#129** | **ATS Checker overhaul** — JD comparison, radar chart, animated UI, sample data, sample resume, keyboard shortcuts, score history, copy results |
 | May 31, 2026 | **#106** | **Status filter** — 7-column grid; all tabs on one line (no horizontal scroll) |
 | May 31, 2026 | **#105** | **Scan-started toast** — immediate notice + quick links while ingest runs (~1–2 min) |
 | May 31, 2026 | **#104** | **Luminous polish** — tokens/forms/cards on job detail, onboarding, Stats, Admin, Import, errors |
@@ -603,6 +617,64 @@ supabase/migrations/0009_llm_keys.sql ← (Session 16) llm_keys + llm_usage_log 
 
 ---
 
+---
+
+## ATS Resume Checker
+
+> **PR #129** — Complete overhaul of the free, instant, no-LLM ATS compatibility checker.
+
+### What it does
+
+Pastes or uploads a resume → analyses 8 ATS criteria → gives 0–100 score + improvement suggestions. Zero LLM calls, zero API costs, fully private (in-memory processing).
+
+### 8 criteria checked
+
+| # | Criterion | Weight | What it checks |
+|---|---|---|---|
+| 1 | Section Structure | 20% | Experience, Education, Skills headers present and correctly ordered |
+| 2 | Contact Info | 15% | Name, email, phone, LinkedIn, location at top |
+| 3 | Bullet Points | 15% | Consistent formatting, sufficient detail in experience bullets |
+| 4 | Quantified Impact | 15% | Numbers, percentages, metrics showing measurable results |
+| 5 | Skills Optimization | 15% | Concrete technical keywords, organized and contextualized |
+| 6 | Length & Density | 10% | 400–1000 words (1–2 pages) with good content density |
+| 7 | Format Cleanliness | 5% | Clean ASCII — no smart quotes, unicode bullets, or special chars |
+| 8 | Date Formatting | 5% | Consistent month-level date ranges (Mon YYYY – Mon YYYY) |
+
+### Key files
+
+| File | Purpose |
+|---|---|
+| `lib/ats-checker.ts` | Scoring engine — `checkAtsCompatibility()`, `extractKeywords()`, `compareWithJobDescription()` |
+| `app/api/ats-checker/route.ts` | API endpoint — accepts file upload or JSON with optional `job_description` |
+| `app/(app)/ats-checker/page.tsx` | UI — input view, loading view, results view with radar chart, JD match, history |
+
+### Features (PR #129)
+
+| Feature | Details |
+|---|---|
+| **Score ring** | Animated SVG ring that counts up from 0 on mount |
+| **Radar chart** | SVG spider chart showing all 8 criteria at a glance |
+| **JD comparison** | Paste a job description → matched/missing/extra keyword analysis |
+| **Sample resume** | One-click "Try sample" button with realistic resume + JD |
+| **Score history** | Last 20 checks saved in localStorage with mini timeline |
+| **Keyboard shortcuts** | Cmd+Enter to check, Esc to reset |
+| **Copy results** | One-click copy of full analysis to clipboard (with execCommand fallback) |
+| **File upload** | Drag-and-drop or click-to-browse for .pdf, .doc, .docx, .txt |
+
+### Scoring Optimization (session 18, same PR)
+
+Validated and tuned the scoring engine using **1,200 synthetic resumes** across 6 industries × 4 experience levels.
+
+| Fix | Before | After | Impact |
+|---|---|---|---|
+| **Length bands** — added 200-300 word tier (25pts), raised 300-400 to 40pts | Entry length: ~15pts | Entry length: 25-40pts | Entry-level resumes no longer over-penalized |
+| **Line density** — penalty only applies ≥400 words | -15 on short resumes | No penalty <400 words | Sparse sections expected for early-career |
+| **Skills contextualization** — thresholds 0.4→0.3, 0.2→0.1 | 47% scoring <50 on skills | ~30% scoring <50 | Well-structured skills sections get proper credit |
+| **Standard headers** — added Soft/Interpersonal Skills | -5 penalty on every resume | No penalty | Clean sections score correctly |
+| **Density bonus** — +5 for 10+ skills + 2+ skill lines | — | +5 baseline | Rewards well-organized skills |
+
+**Validated on 40 real resumes:** Avg 64.0 → 64.5, Max 80 → 81. Synthetic resume generator saved at `scripts/synthetic-resume-generator.ts`.
+
 ## Debugging Protocol
 
 When a feature seems broken:
@@ -646,6 +718,10 @@ When a feature seems broken:
 - New "pitfalls" or rules learned
 - Changes to the file map
 - **Keep the `AGENTS.md` Index in sync** when you add/rename a `##` section here, and append new dated session logs to `docs/context/session-log.md` (not here).
+
+**Last updated:** June 8, 2026 (session 18 — **ATS scoring optimized** vs 1200 synthetic resumes: Length bands, Skills contextualization, Soft Skills header fix. PR #129.)
+
+**Last updated:** June 8, 2026 (session 17 — this entry: **ATS Checker overhaul** — JD comparison, radar chart, animated UI, sample data, keyboard shortcuts, score history, copy results. PR #129.)
 
 **Last updated:** May 31, 2026 (session 16 — this entry: **admin-managed multi-key LLM pool** + Cerebras `llama-3.3-70b` → `gpt-oss-120b` switch + RPM-aware rotation (cooldown ≠ exhaustion, per-request round-robin, 3 s batch delay, `res.usage` tracking) + **dashboard pagination + bulletproof back-nav** (sessionStorage snapshot, `staleTimes.dynamic = 30`, `BackToMatches`) + **JD HTML stripped at all 5 AI prompt sites** via `sanitizeJobDescriptionForAI` + **`scoreJob` seniority + experience-gap cap** with prompt rules + server-side hard cap (defense-in-depth). PRs **#94**, **#110**, **#116**. Full narrative → `docs/context/session-log.md` → **Session 16**. Earlier the same day, the UI index was refreshed for PRs **#102–#106** — layout overlap (#103), Luminous page polish (#104), scan-started toast (#105), status filter grid (#106).)
 

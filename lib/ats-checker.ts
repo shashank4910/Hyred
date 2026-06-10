@@ -26,6 +26,10 @@ export interface AtsCheckResult {
   topImprovements: string[];
   detectedIssues: string[];
   goodPractices: string[];
+  /** Resume stats */
+  stats: ResumeStats;
+  /** JD keyword match (only if jobDescription was provided) */
+  jdMatch?: JdMatchResult;
   /** File-level hints only available when the raw file is provided */
   fileHints?: FileHints;
 }
@@ -37,12 +41,34 @@ export interface FileHints {
   isTxt: boolean;
   /** True if parsed text is suspiciously short (<100 chars) — might be scanned/image PDF */
   mightBeScanned: boolean;
+  /** Format quality recommendation: 'best' | 'good' | 'poor' | 'unknown' */
+  formatQuality?: 'best' | 'good' | 'poor' | 'unknown';
+  /** Human-readable format advice */
+  formatAdvice?: string;
 }
 
 export interface CriterionResult {
   score: number;    // 0–100
   weight: number;   // contribution to overall (all weights sum to 100)
   feedback: string;
+}
+
+export interface ResumeStats {
+  wordCount: number;
+  charCount: number;
+  bulletCount: number;
+  sectionCount: number;
+}
+
+export interface JdMatchResult {
+  /** Keywords found in BOTH the resume and JD */
+  matched: string[];
+  /** Keywords in the JD but NOT found in the resume */
+  missing: string[];
+  /** Keywords in the resume but NOT in the JD */
+  extra: string[];
+  /** Match score 0–100 */
+  matchScore: number;
 }
 
 /* ------------------------------------------------------------------ */
@@ -52,8 +78,10 @@ export interface CriterionResult {
 const STANDARD_HEADERS = [
   // Summary / Objective
   /^(professional\s+)?summary$/i,
+  /^summary\s+of\s+qualifications$/i,
   /^(career\s+)?objective$/i,
   /^profile$/i,
+  /^professional\s+profile$/i,
   // Experience
   /^(professional\s+)?(work\s+)?experience$/i,
   /^employment$/i,
@@ -62,16 +90,22 @@ const STANDARD_HEADERS = [
   /^relevant\s+experience$/i,
   // Education
   /^education$/i,
+  /^education\s+and\s+training$/i,
+  /^degrees?$/i,
   /^academic\s+(background|qualifications)$/i,
   // Skills
   /^(technical\s+)?skills$/i,
+  /^technical\s+competencies$/i,
   /^core\s+competencies$/i,
   /^areas?\s+of\s+expertise$/i,
   /^key\s+skills$/i,
+  /^(soft|interpersonal)\s+skills$/i,
   // Certifications
   /^certifications$/i,
+  /^(professional\s+)?certifications$/i,
   /^certificates$/i,
   /^licenses?$/i,
+  /^licenses?\s+and\s+certifications$/i,
   // Projects
   /^projects$/i,
   /^key\s+projects$/i,
@@ -114,8 +148,10 @@ function findSectionHeaders(lines: string[]): string[] {
       continue;
     }
     // Title Case header: "Professional Experience", "Technical Skills"
+    // Also handles headers with special chars like "AI/ML Skills", "C++ Developer"
     if (
-      /^[A-Z][a-z]+(\s+[A-Z][a-z]+)*$/.test(t) &&
+      /^[A-Z][A-Za-z0-9\/#&.'\-+_]*(?:\s+[A-Z][A-Za-z0-9\/#&.'\-+_]*)*$/.test(t) &&
+      /[a-z]/.test(t) &&
       t.length >= 5 &&
       t.split(/\s+/).length >= 2
     ) {
@@ -148,9 +184,25 @@ function findNameLine(lines: string[]): string | null {
   return null;
 }
 
-/** Collect bullet-point lines from the text (lines starting with "-", "•", "*", "→", or digits). */
+/**
+ * Collect bullet-point lines from the text.
+ * Detects multiple bullet formats for resilient parsing across file types (PDF, DOCX, TXT).
+ */
 function findBulletLines(lines: string[]): string[] {
-  return lines.filter((l) => /^\s*[-•*→\d]/.test(l.trim()));
+  // Common bullet characters that may survive parsing
+  const bulletChars = '-•*→⁃▪▸▹►‣⁌⁍∙○●•‣';
+  const bulletRegex = new RegExp(`^[${bulletChars}]`);
+  return lines.filter((l) => {
+    const t = l.trim();
+    if (!t) return false;
+    // Starts with a bullet character (any of the known unicode bullets)
+    if (bulletRegex.test(t)) return true;
+    // Starts with a digit followed by period or paren (numbered lists like "1." or "1)")
+    if (/^\d+[.)]\s/.test(t)) return true;
+    // Starts with a pipe or bracket (common in table-structured resumes)
+    if (/^[\[|]/.test(t) && t.length > 10) return true;
+    return false;
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -260,6 +312,27 @@ function scoreContactInfo(text: string): CriterionResult {
   const firstNameLine = findNameLine(lines);
   const hasName = firstNameLine !== null;
 
+  // --- Header/Footer position check ---
+  // Workday, SuccessFactors, SmartRecruiters, Bullhorn may skip content in
+  // document headers/footers. Check if contact info appears suspiciously
+  // isolated at the top or bottom of the text.
+  const firstContentLine = lines.findIndex((l) => l.trim().length > 0);
+  const firstSectionHeaderIdx = lines.findIndex((l) => {
+    const t = l.trim();
+    return t.length >= 5 && (/^[A-Z][A-Z\s&/.-]+$/.test(t) || isStandardHeader(t, STANDARD_HEADERS));
+  });
+  const gapBeforeFirstSection = firstSectionHeaderIdx > 0
+    ? lines.slice(firstContentLine, firstSectionHeaderIdx).filter((l) => l.trim().length === 0).length
+    : 0;
+  const contactInHeader = gapBeforeFirstSection >= 3 && hasName && firstSectionHeaderIdx > 0;
+
+  // Check if contact info appears in last few lines (footer risk)
+  const lastLines = lines.slice(-5).filter((l) => l.trim().length > 0).join(' ').toLowerCase();
+  const contactInFooter = (hasEmail || hasPhone) &&
+    lines.length > 30 &&
+    lastLines.length > 0 &&
+    (lastLines.includes('@') || lastLines.includes('linkedin'));
+
   let score = 0;
   const issues: string[] = [];
   const good: string[] = [];
@@ -306,6 +379,16 @@ function scoreContactInfo(text: string): CriterionResult {
 
   // Bonus for GitHub (tech roles)
   if (hasGithub) score += 10;
+
+  // Header/Footer penalties
+  if (contactInHeader) {
+    score -= 15;
+    issues.push('Contact info appears isolated at the top — likely in a document header zone. Workday, SuccessFactors, and SmartRecruiters may skip headers/footers. Move contact info into the main body.');
+  }
+  if (contactInFooter) {
+    score -= 15;
+    issues.push('Contact info detected near the end of the document — likely in a footer zone. Many ATS parsers skip footers. Move contact info to the top of the main body.');
+  }
 
   score = Math.max(0, Math.min(100, score));
 
@@ -596,20 +679,42 @@ function scoreSkillsOptimization(text: string): CriterionResult {
     score += 10;
   }
 
+  // Bonus for having a clean, dense skills section with enough items
+  if (concreteSkills.length >= 10 && skillLines.length >= 2) {
+    score += 5;
+  }
+
   // Skills appear in experience bullets (contextualization)
   const bulletLines = findBulletLines(lines);
+  const bulletText = bulletLines.join(' ').toLowerCase();
+  // Pre-compile skill section pattern for reuse
+  const skillSectionPattern = /^(?:(?:technical\s+)?skills|core\s+competencies|areas?\s+of\s+expertise|key\s+skills)/i;
+
   const skillContextualized = concreteSkills.filter((skill) => {
     const lower = skill.toLowerCase();
-    return bulletLines.some((b) => b.toLowerCase().includes(lower));
+    // Check bullets first (most reliable)
+    if (bulletText.includes(lower)) return true;
+    // Fallback: check if skill appears in any non-skills-section line
+    // This catches paragraph-formatted resumes where skills are mentioned in experience descriptions
+    return lines.some((line) => {
+      const trimmed = line.trim().toLowerCase();
+      if (!trimmed.includes(lower)) return false;
+      if (trimmed.length <= 20) return false;          // Skip short/list lines
+      if (skillSectionPattern.test(trimmed)) return false; // Skip skills section
+      return true;
+    });
   });
+
   const contextualizedRatio = concreteSkills.length > 0
     ? skillContextualized.length / concreteSkills.length
     : 0;
-  if (contextualizedRatio >= 0.5) {
+  if (contextualizedRatio >= 0.3) {
     score += 25;
-    good.push('Most skills are contextualized in experience bullets (ATS-friendly).');
-  } else if (contextualizedRatio >= 0.25) {
+    good.push('Most skills are contextualized in experience descriptions (ATS-friendly).');
+  } else if (contextualizedRatio >= 0.1) {
     score += 15;
+  } else if (contextualizedRatio > 0) {
+    score += 5;
   } else {
     issues.push('Skills appear only in the Skills section — ATS prefers them also in experience bullets.');
   }
@@ -617,6 +722,39 @@ function scoreSkillsOptimization(text: string): CriterionResult {
   // Enough total lines in skills section
   if (skillLines.length < 2) {
     issues.push('Skills section is very sparse. Add more detail.');
+  }
+
+  // --- Keyword stuffing detection ---
+  // Modern ATS (Greenhouse, Workday) can detect and penalize keyword stuffing.
+  // Check for: unnaturally dense keyword clusters, repetition, and high density.
+  const totalSkillWords = skillItems.length;
+  const skillTextWords = skillText.split(/\s+/).filter(Boolean).length;
+  const keywordDensity = skillTextWords > 0 ? totalSkillWords / skillTextWords : 0;
+
+  // High density (>0.5 means more than half the words are comma-separated items)
+  if (keywordDensity > 0.7 && totalSkillWords > 15) {
+    score -= 15;
+    issues.push(`Very high keyword density (${Math.round(keywordDensity * 100)}% keywords). ATS may flag this as keyword stuffing — spread skills naturally into experience bullets.`);
+  } else if (keywordDensity > 0.5 && totalSkillWords > 20) {
+    score -= 5;
+    issues.push(`High keyword density (${Math.round(keywordDensity * 100)}% keywords). Mix skills into experience descriptions for a more natural profile.`);
+  }
+
+  // Check for suspicious repetition of the same skill
+  const lowerSkillItems = skillItems.map((s) => s.toLowerCase().trim());
+  const uniqueSkills = new Set(lowerSkillItems);
+  if (lowerSkillItems.length > 15 && uniqueSkills.size < lowerSkillItems.length * 0.6) {
+    score -= 10;
+    issues.push(`${lowerSkillItems.length - uniqueSkills.size} duplicate or near-duplicate skills detected — remove repetitions.`);
+  }
+
+  // Check for unnaturally long single-line keyword clusters (e.g., "React, Angular, Vue, Svelte, Node.js, Express, Django...")
+  const longSkillLines = skillLines.filter((l) => {
+    const items = l.split(/[,;|]/).filter((s) => s.trim().length > 0);
+    return items.length > 10;
+  });
+  if (longSkillLines.length > 0) {
+    issues.push(`${longSkillLines.length} skill line(s) contain 10+ comma-separated items — consider grouping by category instead.`);
   }
 
   score = Math.max(0, Math.min(100, score));
@@ -640,17 +778,21 @@ function scoreLengthReadability(text: string): CriterionResult {
   const issues: string[] = [];
   const good: string[] = [];
 
-  // Word count: 400-1000 is ideal (1-2 pages)
-  if (wordCount >= 400 && wordCount <= 1000) {
+  // Word count: calibrated for experience levels — entry-level (200-400),
+  // mid (400-800), senior (800-1200), lead (1000-1500)
+  if (wordCount >= 400 && wordCount <= 1200) {
     score += 50;
     good.push(`Resume length is ideal (~${wordCount} words, ~1-2 pages).`);
   } else if (wordCount >= 300 && wordCount < 400) {
-    score += 35;
+    score += 40;
     issues.push(`A bit short (~${wordCount} words). Consider adding more detail.`);
-  } else if (wordCount > 1000 && wordCount <= 1500) {
+  } else if (wordCount >= 200 && wordCount < 300) {
+    score += 25;
+    issues.push(`On the shorter side (~${wordCount} words) but acceptable for early-career.`);
+  } else if (wordCount > 1200 && wordCount <= 1500) {
     score += 30;
-    issues.push(`A bit long (~${wordCount} words). Consider tightening to 2 pages max.`);
-  } else if (wordCount < 300) {
+    issues.push(`Slightly long (~${wordCount} words). Consider tightening to 2 pages if possible.`);
+  } else if (wordCount < 200) {
     score += 15;
     issues.push(`Very short (~${wordCount} words). ATS needs more content to match against.`);
   } else {
@@ -659,15 +801,16 @@ function scoreLengthReadability(text: string): CriterionResult {
   }
 
   // Line density: too many short lines = sparse content
+  // Exception: entry-level resumes (<400 words) naturally have sparse sections
   const shortLines = text.split('\n').filter((l) => l.trim() && l.trim().split(/\s+/).length < 3);
   const shortLineRatio = lineCount > 0 ? shortLines.length / lineCount : 0;
 
-  if (shortLineRatio > 0.4) {
+  if (wordCount >= 400 && shortLineRatio > 0.4) {
     score -= 15;
     issues.push('High number of short/sparse lines. Consider consolidating.');
-  } else if (shortLineRatio > 0.2) {
+  } else if (wordCount >= 400 && shortLineRatio > 0.2) {
     score -= 5;
-  } else {
+  } else if (wordCount >= 400) {
     score += 10;
     good.push('Good content density.');
   }
@@ -685,9 +828,145 @@ function scoreLengthReadability(text: string): CriterionResult {
   };
 }
 
+/**
+ * Detect signs of multi-column layout in parsed plain text.
+ * Multi-column resumes confuse ATS parsers (Workday, Taleo, Greenhouse, etc.)
+ * because text reads left-to-right across columns, garbling content order.
+ *
+ * Detection signals (in order of reliability):
+ * 1. Tab characters — Word/Google Docs use tabs for column alignment
+ * 2. Staggered line-length patterns — alternating short/long non-bullet lines
+ * 3. High proportion of very short lines that aren't bullets or headers
+ */
+function detectMultiColumnLayout(text: string): {
+  severity: 'high' | 'medium' | 'low' | 'none';
+  issues: string[];
+} {
+  const lines = text.split('\n');
+  const contentLines = lines.filter((l) => l.trim().length > 0);
+  const issues: string[] = [];
+
+  if (contentLines.length < 10) {
+    return { severity: 'none', issues: [] };
+  }
+
+  // Signal 1: Tab characters (strong indicator of column/tabular layout)
+  const tabCount = (text.match(/\t/g) || []).length;
+  const tabLines = lines.filter((l) => l.includes('\t')).length;
+  const tabLineRatio = tabLines / contentLines.length;
+
+  // Signal 2: Staggered line-length alternation pattern
+  // In multi-column, content reads as: col1-short, col2-short, col1-short, col2-short...
+  // which creates alternating short/long patterns when one column has dates and other has titles
+  const shortLineThreshold = 35;
+
+  // Filter out bullets and headers to analyze content lines
+  const bodyLines = contentLines.filter((l) => {
+    const t = l.trim();
+    // Skip bullet points (they naturally have varying lengths)
+    if (/^[-•*→⁃▪▸▹►‣⁌⁍∙○●\d.)]/.test(t)) return false;
+    // Skip ALL-CAPS section headers
+    if (/^[A-Z][A-Z\s&/.-]+$/.test(t) && t.length >= 5) return false;
+    // Skip only STANDARD section headers (NOT generic Title Case lines like
+    // company names, locations, or skill lists — those are content we want to analyze)
+    if (isStandardHeader(t, STANDARD_HEADERS)) return false;
+    // Skip standalone single-word lines that are clear header matches
+    if (t.length <= 30 && /^(summary|profile|education|experience|projects?|skills?|certifications?|languages?|publications?|references?|objectives?|achievements?|accomplishments?|interests?|leadership|awards?|volunteer|community|research|employment|qualifications?|addendum)$/i.test(t)) return false;
+    return true;
+  });
+
+  if (bodyLines.length < 5) {
+    return { severity: 'none', issues: [] };
+  }
+
+  // Measure alternation: count how often short/long pattern toggles
+  const lengths = bodyLines.map((l) => l.length);
+  const shortFlags = lengths.map((len) => len < shortLineThreshold);
+  let alternations = 0;
+  for (let i = 1; i < shortFlags.length; i++) {
+    if (shortFlags[i] !== shortFlags[i - 1]) alternations++;
+  }
+  // High alternation means lines keep switching between short and long
+  const maxPossibleAlternations = shortFlags.length - 1;
+  const alternationRatio =
+    maxPossibleAlternations > 0 ? alternations / maxPossibleAlternations : 0;
+
+  // Also count runs of short lines (3+ short lines in a row is suspicious)
+  let shortRuns = 0;
+  let currentRun = 0;
+  for (const isShort of shortFlags) {
+    if (isShort) {
+      currentRun++;
+    } else {
+      if (currentRun >= 3) shortRuns++;
+      currentRun = 0;
+    }
+  }
+  if (currentRun >= 3) shortRuns++;
+
+  // Signal 3: Proportion of short body lines
+  const shortBodyCount = bodyLines.filter((l) => l.trim().length < shortLineThreshold).length;
+  const shortBodyRatio = shortBodyCount / bodyLines.length;
+
+  // Signal 4: Very long lines (>250 chars — two columns concatenated into one line by ATS)
+  const veryLongLines = contentLines.filter((l) => l.length > 250).length;
+
+  // Determine severity
+  let severity: 'high' | 'medium' | 'low' | 'none' = 'none';
+
+  // High: heavy tab usage OR strong stagger + many short lines OR all lines are short (narrow columns)
+  if (tabLineRatio > 0.15 || (tabCount > 8 && shortBodyRatio > 0.35)) {
+    severity = 'high';
+    issues.push(
+      'Multi-column layout detected (heavy tab/table usage). ATS reads left-to-right across columns, garbling your content order. Use a single-column layout.',
+    );
+  } else if (
+    (veryLongLines > 5 && shortBodyRatio > 0.3) ||
+    (alternationRatio > 0.55 && shortBodyRatio > 0.4 && shortRuns >= 2) ||
+    (shortBodyRatio > 0.85 && bodyLines.length > 15)
+  ) {
+    severity = 'high';
+    issues.push(
+      shortBodyRatio > 0.85
+        ? 'Multi-column layout strongly suspected. Almost all content lines are very short — typical when a 2-column resume is parsed and each column produces narrow text lines that interleave and confuse ATS parsers.'
+        : 'Multi-column layout likely present. Lines alternate between short and long content — a classic sign of column formatting that breaks ATS parsing.',
+    );
+  } else if (
+    (tabCount > 3) ||
+    (alternationRatio > 0.4 && shortBodyRatio > 0.35) ||
+    shortRuns >= 3 ||
+    (shortBodyRatio > 0.6 && shortRuns >= 2 && bodyLines.length > 10)
+  ) {
+    severity = 'medium';
+    issues.push(
+      'Possible multi-column layout. If your resume uses columns or tables, switch to a single-column format for better ATS compatibility.',
+    );
+  } else if (shortBodyRatio > 0.5 && bodyLines.length > 25) {
+    severity = 'low';
+    issues.push(
+      'Many short content lines found — this can happen with column layouts. Verify all content reads sequentially in a single column.',
+    );
+  }
+
+  return { severity, issues };
+}
+
 function scoreFormatCleanliness(text: string): CriterionResult {
   let score = 100;
   const issues: string[] = [];
+
+  // --- Multi-column layout detection (highest impact) ---
+  const multiColumn = detectMultiColumnLayout(text);
+  if (multiColumn.severity === 'high') {
+    score -= 40;
+    issues.push(...multiColumn.issues.slice(0, 1));
+  } else if (multiColumn.severity === 'medium') {
+    score -= 20;
+    issues.push(...multiColumn.issues.slice(0, 1));
+  } else if (multiColumn.severity === 'low') {
+    score -= 10;
+    issues.push(...multiColumn.issues.slice(0, 1));
+  }
 
   // Check for smart quotes and other non-ASCII punctuation
   const smartQuotes = (text.match(/[\u2018\u2019\u201C\u201D\u201E\u201F]/g) || []).length;
@@ -713,13 +992,12 @@ function scoreFormatCleanliness(text: string): CriterionResult {
     issues.push(`${unicodeBullets} unicode bullets detected — stick to "- " for best ATS parsing.`);
   }
 
-  // Check for tab characters (can indicate tables)
+  // Check for tab characters (can indicate tables) — already handled by multi-column above
   const tabs = (text.match(/\t/g) || []).length;
-  if (tabs > 5) {
+  if (tabs > 5 && multiColumn.severity === 'none') {
+    // Only flag tabs separately if multi-column didn't already catch it
     score -= 20;
     issues.push(`${tabs} tab characters found — may indicate tables that confuse ATS parsers.`);
-  } else if (tabs > 0) {
-    score -= 5;
   }
 
   // Check for non-breaking spaces
@@ -737,10 +1015,11 @@ function scoreFormatCleanliness(text: string): CriterionResult {
 
   // Check for very long lines (>200 chars — potential column layout remnants)
   const longLines = text.split('\n').filter((l) => l.length > 200);
-  if (longLines.length > 3) {
+  if (longLines.length > 3 && multiColumn.severity === 'none') {
+    // Only flag separately if multi-column didn't catch it
     score -= 15;
     issues.push(`${longLines.length} very long lines — may indicate column layout that confuses ATS.`);
-  } else if (longLines.length > 0) {
+  } else if (longLines.length > 0 && multiColumn.severity === 'none') {
     score -= 5;
   }
 
@@ -839,13 +1118,151 @@ function analyzeFileHints(
   const isPdf = lower.endsWith('.pdf');
   const isDocx = lower.endsWith('.docx');
   const isTxt = lower.endsWith('.txt');
+  const mightBeScanned = isPdf && parsedText.trim().length < 100;
+
+  let formatQuality: FileHints['formatQuality'];
+  let formatAdvice: string;
+
+  if (isDocx) {
+    formatQuality = 'best';
+    formatAdvice = '.docx is the most ATS-compatible format — excellent choice.';
+  } else if (isTxt) {
+    formatQuality = 'good';
+    formatAdvice = '.txt works but lacks formatting. Consider .docx for better ATS parsing.';
+  } else if (isPdf && mightBeScanned) {
+    formatQuality = 'poor';
+    formatAdvice = 'This PDF appears to be a scanned/image PDF. ATS parsers (Workday, SuccessFactors, Bullhorn) struggle with scanned PDFs. Use a text-based PDF or .docx instead.';
+  } else if (isPdf) {
+    formatQuality = 'good';
+    formatAdvice = 'Text-based PDF is good, but .docx is slightly more reliable for ATS parsing across all platforms.';
+  } else {
+    formatQuality = 'unknown';
+    formatAdvice = 'Unknown file format. For best ATS compatibility, use .docx.';
+  }
 
   return {
     extension: lower.split('.').pop() ?? 'unknown',
     isPdf,
     isDocx,
     isTxt,
-    mightBeScanned: isPdf && parsedText.trim().length < 100,
+    mightBeScanned,
+    formatQuality,
+    formatAdvice,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Keyword extraction & JD comparison                                  */
+/* ------------------------------------------------------------------ */
+
+/** Tech/domain keywords to look for in resumes and JDs */
+const TECH_KEYWORDS = new Set([
+  // Languages
+  'javascript', 'typescript', 'python', 'java', 'c#', 'c++', 'ruby', 'go', 'golang', 'rust',
+  'swift', 'kotlin', 'php', 'scala', 'r', 'perl', 'bash', 'shell', 'sql', 'graphql',
+  // Frameworks & Libraries
+  'react', 'angular', 'vue', 'svelte', 'next.js', 'nuxt', 'node.js', 'express',
+  'django', 'flask', 'spring', 'spring boot', 'rails', 'laravel', 'asp.net',
+  '.net', 'flutter', 'react native', 'tensorflow', 'pytorch',  'jquery',
+  // Databases
+  'postgresql', 'postgres', 'mysql', 'mongodb', 'redis', 'elasticsearch',
+  'cassandra', 'dynamodb', 'sqlite', 'mariadb', 'oracle', 'sql server',
+  'bigquery', 'firestore', 'supabase', 'prisma', 'drizzle',
+  // Cloud & DevOps
+  'aws', 'azure', 'gcp', 'google cloud', 'docker', 'kubernetes', 'k8s',
+  'terraform', 'ansible', 'jenkins', 'circleci', 'github actions', 'gitlab ci',
+  'ci/cd', 'helm', 'prometheus', 'grafana', 'datadog',
+  // Tools & Platforms
+  'git', 'linux', 'nginx', 'webpack', 'vite', 'babel', 'jest', 'vitest',
+  'cypress', 'playwright', 'selenium', 'kafka', 'rabbitmq', 'grpc',
+  // AI/ML
+  'machine learning', 'deep learning', 'nlp', 'llm', 'openai', 'langchain',
+  'artificial intelligence', 'computer vision', 'data science',
+  // Methodologies
+  'agile', 'scrum', 'kanban', 'waterfall', 'tdd', 'bdd',
+  // Testing & Performance
+  'load testing', 'performance testing', 'jmeter', 'gatling', 'k6',
+  'unit testing', 'integration testing', 'e2e testing',
+]);
+
+/**
+ * Extract concrete technical keywords from a text blob.
+ */
+export function extractKeywords(text: string): string[] {
+  const lower = text.toLowerCase();
+  const found = new Set<string>();
+
+  // Check against known tech keywords
+  for (const kw of TECH_KEYWORDS) {
+    if (kw.endsWith(',')) continue; // skip comma artifact
+    if (lower.includes(kw)) {
+      found.add(kw);
+    }
+  }
+
+  // Also grab single capitalized words that look like tools/products
+  // e.g., "Datadog", "Sentry", "New Relic", "Tableau", etc.
+  const words = lower.split(/[\s,;()]+/);
+  for (const w of words) {
+    if (w.length >= 4 && w.length <= 20 && /^[a-z][a-z0-9]+$/.test(w)) {
+      // Check if it looks like a proper noun (starts with uppercase in original)
+      const regex = new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+      const originalMatch = text.match(regex);
+      if (originalMatch && /^[A-Z]/.test(originalMatch[0])) {
+        found.add(w);
+      }
+    }
+  }
+
+  // Extract acronyms (2-5 uppercase letters)
+  const acronyms = text.match(/\b[A-Z]{2,5}\b/g) || [];
+  for (const acro of acronyms) {
+    const lower = acro.toLowerCase();
+    if (lower.length >= 2 && !['the', 'and', 'for', 'are', 'you', 'all', 'can', 'has', 'had', 'but', 'not', 'our', 'its', 'per', 'via'].includes(lower)) {
+      found.add(acro);
+    }
+  }
+
+  return [...found].sort();
+}
+
+/**
+ * Compare resume keywords against a job description.
+ */
+export function compareWithJobDescription(
+  resumeText: string,
+  jobDescription: string,
+): JdMatchResult {
+  const resumeKeywords = new Set(extractKeywords(resumeText).map((k) => k.toLowerCase()));
+  const jdKeywords = new Set(extractKeywords(jobDescription).map((k) => k.toLowerCase()));
+
+  const matched: string[] = [];
+  const missing: string[] = [];
+  const extra: string[] = [];
+
+  for (const kw of jdKeywords) {
+    if (resumeKeywords.has(kw)) {
+      matched.push(kw);
+    } else {
+      missing.push(kw);
+    }
+  }
+
+  for (const kw of resumeKeywords) {
+    if (!jdKeywords.has(kw)) {
+      extra.push(kw);
+    }
+  }
+
+  const matchScore = jdKeywords.size > 0
+    ? Math.round((matched.length / jdKeywords.size) * 100)
+    : 0;
+
+  return {
+    matched: matched.sort(),
+    missing: missing.sort(),
+    extra: extra.sort(),
+    matchScore: Math.min(100, matchScore),
   };
 }
 
@@ -858,13 +1275,16 @@ function analyzeFileHints(
  *
  * @param resumeText - The plain-text content of the resume.
  * @param filename   - Optional filename for file-level checks.
+ * @param jobDescription - Optional job description for keyword gap analysis.
  * @returns AtsCheckResult with scores, feedback, and improvement suggestions.
  */
 export function checkAtsCompatibility(
   resumeText: string,
   filename?: string,
+  jobDescription?: string,
 ): AtsCheckResult {
-  const text = resumeText.trim();
+  const text = resumeText.trim().replace(/\r\n/g, '\n');
+  const textLines = text.split(String.fromCharCode(10));
 
   // Run all criteria
   const sectionStructure = scoreSectionStructure(text);
@@ -892,6 +1312,9 @@ export function checkAtsCompatibility(
   const overallScore = Math.round(
     allCriteria.reduce((sum, c) => sum + c.score * (c.weight / totalWeight), 0),
   );
+
+  // File hints (needed before issue collection for format recommendations)
+  const fileHints = filename ? analyzeFileHints(filename, text) : undefined;
 
   // Collect issues and good practices
   const allIssues: string[] = [];
@@ -921,25 +1344,55 @@ export function checkAtsCompatibility(
     allIssues.push('Add numbers, percentages, and metrics to experience bullets.');
   }
 
-  // Top improvements (prioritize lowest-scoring criteria)
-  const sortedByScore = [...allCriteria].sort((a, b) => a.score - b.score);
-  const topImprovements = sortedByScore.slice(0, 3).map((c) => {
-    const names: Record<string, string> = {
-      sectionStructure: 'Section structure',
-      contactInfo: 'Contact information',
-      bulletQuality: 'Bullet point formatting',
-      quantifiableAchievements: 'Quantifiable achievements',
-      skillsOptimization: 'Skills optimization',
-      lengthReadability: 'Resume length',
-      formatCleanliness: 'Format cleanliness',
-      dateConsistency: 'Date formatting',
-    };
-    const name = names[Object.keys(names).find((k) => allCriteria.includes(c)) ?? ''] ?? 'Area';
-    return `${name}: ${c.feedback.slice(0, 100)}`;
-  });
+  // File format recommendation (only for poor formats)
+  if (fileHints && fileHints.formatQuality === 'poor') {
+    allIssues.push(fileHints.formatAdvice ?? '');
+  }
 
-  // File hints
-  const fileHints = filename ? analyzeFileHints(filename, text) : undefined;
+  // Top improvements (prioritize lowest-scoring criteria with proper key mapping)
+  const CRITERION_KEYS: (keyof AtsCheckResult['breakdown'])[] = [
+    'sectionStructure',
+    'contactInfo',
+    'bulletQuality',
+    'quantifiableAchievements',
+    'skillsOptimization',
+    'lengthReadability',
+    'formatCleanliness',
+    'dateConsistency',
+  ];
+
+  const CRITERION_LABELS: Record<keyof AtsCheckResult['breakdown'], string> = {
+    sectionStructure: 'Section structure',
+    contactInfo: 'Contact information',
+    bulletQuality: 'Bullet point formatting',
+    quantifiableAchievements: 'Quantifiable achievements',
+    skillsOptimization: 'Skills optimization',
+    lengthReadability: 'Resume length',
+    formatCleanliness: 'Format cleanliness',
+    dateConsistency: 'Date formatting',
+  };
+
+  const scoredCriteria: { key: keyof AtsCheckResult['breakdown']; result: CriterionResult }[] =
+    CRITERION_KEYS.map((key, i) => ({ key, result: allCriteria[i] }));
+
+  const sortedByScore = [...scoredCriteria].sort((a, b) => a.result.score - b.result.score);
+  const topImprovements = sortedByScore.slice(0, 3).map(({ key, result }) =>
+    `${CRITERION_LABELS[key]}: ${result.feedback.slice(0, 100)}`,
+  );
+
+  // JD keyword comparison
+  const jdMatch = jobDescription
+    ? compareWithJobDescription(text, jobDescription)
+    : undefined;
+
+  // Resume stats
+  const sectionHeaders = findSectionHeaders(textLines);
+  const stats: ResumeStats = {
+    wordCount: text.split(/\s+/).filter(Boolean).length,
+    charCount: text.length,
+    bulletCount: findBulletLines(textLines).length,
+    sectionCount: sectionHeaders.length,
+  };
 
   return {
     overallScore,
@@ -953,9 +1406,11 @@ export function checkAtsCompatibility(
       formatCleanliness,
       dateConsistency,
     },
+    stats,
     topImprovements: [...new Set(topImprovements)].slice(0, 5),
     detectedIssues: [...new Set(allIssues)].slice(0, 8),
     goodPractices: [...new Set(allGood)].slice(0, 5),
     fileHints,
+    jdMatch,
   };
 }

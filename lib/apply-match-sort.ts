@@ -23,7 +23,9 @@ export function applyMatchSort<T extends OrderableQuery>(query: T, sort: MatchSo
     case 'oldest':
       return query.order('fetched_at', { foreignTable: 'job', ascending: true }) as T;
     case 'newest':
-      return query.order('fetched_at', { foreignTable: 'job', ascending: false }) as T;
+      return query
+        .order('posted_at', { foreignTable: 'job', ascending: false, nullsFirst: false })
+        .order('fetched_at', { foreignTable: 'job', ascending: false }) as T;
     default:
       return query
         .order('llm_score', { ascending: false })
