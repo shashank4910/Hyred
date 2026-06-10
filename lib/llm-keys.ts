@@ -129,6 +129,77 @@ export async function getAllLlmKeys(): Promise<LlmKey[]> {
   return (data ?? []) as LlmKey[];
 }
 
+export type LlmActivityEntry = {
+  id: string;
+  createdAt: string;
+  provider: string;
+  model: string | null;
+  operation: string;
+  tokensIn: number;
+  tokensOut: number;
+  status: string;
+  errorMessage: string | null;
+  durationMs: number | null;
+  keyId: string | null;
+  keyLabel: string;
+};
+
+/**
+ * Recent per-call LLM activity for the admin live log panel. Returns the latest
+ * `limit` usage-log rows (newest first) with the human-friendly key label resolved.
+ */
+export async function getRecentLlmActivity(limit = 50): Promise<LlmActivityEntry[]> {
+  const sb = supabaseAdmin();
+  const { data: logs } = await sb
+    .from('llm_usage_log')
+    .select('id, created_at, provider, model, operation, tokens_in, tokens_out, status, error_message, duration_ms, key_id')
+    .order('created_at', { ascending: false })
+    .limit(Math.min(Math.max(limit, 1), 200));
+
+  const entries = (logs ?? []) as Array<{
+    id: string;
+    created_at: string;
+    provider: string;
+    model: string | null;
+    operation: string;
+    tokens_in: number | null;
+    tokens_out: number | null;
+    status: string;
+    error_message: string | null;
+    duration_ms: number | null;
+    key_id: string | null;
+  }>;
+
+  // Resolve key labels in one batched query
+  const keyIds = [...new Set(entries.map((e) => e.key_id).filter(Boolean))] as string[];
+  const labels: Record<string, string> = {};
+  if (keyIds.length) {
+    const { data: keys } = await sb
+      .from('llm_keys')
+      .select('id, label, api_key')
+      .in('id', keyIds);
+    for (const k of (keys ?? []) as Array<{ id: string; label: string | null; api_key: string }>) {
+      labels[k.id] = k.label
+        || (k.api_key && k.api_key.length > 10 ? `${k.api_key.slice(0, 4)}...${k.api_key.slice(-4)}` : k.id.slice(0, 6));
+    }
+  }
+
+  return entries.map((e) => ({
+    id: e.id,
+    createdAt: e.created_at,
+    provider: e.provider,
+    model: e.model,
+    operation: e.operation,
+    tokensIn: e.tokens_in ?? 0,
+    tokensOut: e.tokens_out ?? 0,
+    status: e.status,
+    errorMessage: e.error_message,
+    durationMs: e.duration_ms,
+    keyId: e.key_id,
+    keyLabel: e.key_id ? (labels[e.key_id] ?? e.key_id.slice(0, 6)) : 'env-var',
+  }));
+}
+
 /**
  * Record token usage for a key after a successful (or failed) call.
  * Updates the key's daily counter AND inserts a usage log entry.
