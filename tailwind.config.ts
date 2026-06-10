@@ -150,6 +150,23 @@ const config: Config = {
           '0%': { opacity: '0', transform: 'translateY(4px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
         },
+        'slide-up': {
+          '0%': { opacity: '0', transform: 'translateY(12px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        'scale-in': {
+          '0%': { opacity: '0', transform: 'scale(0)' },
+          '50%': { transform: 'scale(1.15)' },
+          '100%': { opacity: '1', transform: 'scale(1)' },
+        },
+        'shimmer': {
+          '0%': { backgroundPosition: '-200% 0' },
+          '100%': { backgroundPosition: '200% 0' },
+        },
+        'progress-pulse': {
+          '0%, 100%': { opacity: '0.4' },
+          '50%': { opacity: '0.8' },
+        },
         'pulse-dot': {
           '0%, 100%': { opacity: '1' },
           '50%': { opacity: '0.5' },
@@ -157,7 +174,14 @@ const config: Config = {
       },
       animation: {
         'fade-in': 'fade-in 0.2s ease-out',
+        'slide-up': 'slide-up 0.3s ease-out',
+        'scale-in': 'scale-in 0.3s ease-out',
+        'shimmer': 'shimmer 1.5s linear infinite',
+        'progress-pulse': 'progress-pulse 1.5s ease-in-out infinite',
         'pulse-dot': 'pulse-dot 2s ease-in-out infinite',
+      },
+      backgroundImage: {
+        'shimmer-gradient': 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.08) 50%, transparent 100%)',
       },
     },
   },

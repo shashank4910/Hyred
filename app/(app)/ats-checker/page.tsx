@@ -476,6 +476,11 @@ export default function AtsCheckerPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
   const resultRef = useRef<HTMLDivElement>(null);
+  const [pendingResult, setPendingResult] = useState<AtsCheckResult | null>(null);
+  const displayFilenameRef = useRef<string | null>(null);
+  const [completedMilestones, setCompletedMilestones] = useState<number[]>([]);
+  const [milestonesDone, setMilestonesDone] = useState(false);
+  const [resumeWordCount, setResumeWordCount] = useState(0);
 
   // Load history on mount
   useEffect(() => {
@@ -537,23 +542,9 @@ export default function AtsCheckerPage() {
         return;
       }
 
-      setResult(data as AtsCheckResult);
-      setFilename(displayFilename);
-      setView('results');
-
-      // Save to history
-      const item: ScoreHistoryItem = {
-        date: formatDate(),
-        score: data.overallScore,
-        label: displayFilename || 'Pasted text',
-      };
-      saveHistory(item);
-      setHistory(loadHistory());
-
-      // Scroll to results
-      setTimeout(() => {
-        resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 100);
+      displayFilenameRef.current = displayFilename || 'Pasted text';
+      setPendingResult(data as AtsCheckResult);
+      // View transitions to 'results' via useEffect when milestones complete
     } catch (e) {
       setError((e as Error).message || 'Network error. Please try again.');
       setView('input');
@@ -568,6 +559,7 @@ export default function AtsCheckerPage() {
       setError('Please upload a .pdf, .doc, .docx, or .txt file.');
       return;
     }
+    setResumeWordCount(500);
     setFilename(file.name);
     handleCheck(undefined as unknown as string, file, jobDescriptionText);
   }, [handleCheck, jobDescriptionText]);
@@ -599,6 +591,8 @@ export default function AtsCheckerPage() {
       return;
     }
     setError(null);
+    const wc = resumeText.trim().split(/\s+/).filter(Boolean).length;
+    setResumeWordCount(wc);
     handleCheck(resumeText, undefined, jobDescriptionText);
   }, [resumeText, jobDescriptionText, handleCheck]);
 
@@ -667,30 +661,124 @@ export default function AtsCheckerPage() {
     });
   }, [result]);
 
-  // ── Loading steps ─────────────────────────────────────────────
+  // ── Milestone config ──────────────────────────────────────────
 
-  const loadingSteps = [
-    'Parsing resume structure...',
-    'Checking section headers...',
-    'Analyzing contact information...',
-    'Evaluating bullet point quality...',
-    'Scanning for quantified metrics...',
-    'Reviewing skills optimization...',
-    'Checking formatting cleanliness...',
-    'Computing final score...',
-  ];
-  const [loadingStep, setLoadingStep] = useState(0);
+  const MILESTONES = [
+    { id: 'parsing', label: 'Parsing resume structure', icon: <FileText className="h-4 w-4" /> },
+    { id: 'contact', label: 'Checking contact information', icon: <AtSign className="h-4 w-4" /> },
+    { id: 'bullets', label: 'Evaluating bullet point quality', icon: <ListChecks className="h-4 w-4" /> },
+    { id: 'metrics', label: 'Scanning for quantified metrics', icon: <Target className="h-4 w-4" /> },
+    { id: 'skills', label: 'Analyzing skills optimization', icon: <Sparkles className="h-4 w-4" /> },
+    { id: 'format', label: 'Checking formatting cleanliness', icon: <FileCheck className="h-4 w-4" /> },
+    { id: 'dates', label: 'Validating date formatting', icon: <Calendar className="h-4 w-4" /> },
+    { id: 'score', label: 'Computing ATS compatibility score', icon: <TrendingUp className="h-4 w-4" /> },
+  ] as const;
+
+  function quickAnalyze(id: string): string {
+    const text = resumeText;
+    switch (id) {
+      case 'parsing': {
+        const hdrs = text.match(/^[A-Z][A-Z\s&/.-]+$/gm) || [];
+        return `${Math.max(hdrs.length, 1)} section${hdrs.length !== 1 ? 's' : ''} identified`;
+      }
+      case 'contact': {
+        const parts: string[] = [];
+        if (/@/.test(text)) parts.push('email');
+        if (/linkedin/i.test(text)) parts.push('LinkedIn');
+        if (/\+\d|\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/.test(text)) parts.push('phone');
+        return parts.length > 0 ? `Detected ${parts.join(' · ')}` : 'Checking identity fields';
+      }
+      case 'bullets': {
+        const n = text.split('\n').filter(l => /^\s*[-•*→]/.test(l.trim()) || /^\s*\d+[.)]\s/.test(l.trim())).length;
+        return `${n} bullet point${n !== 1 ? 's' : ''} parsed`;
+      }
+      case 'metrics': {
+        const pct = (text.match(/%/g) || []).length;
+        const dollars = (text.match(/\$/g) || []).length;
+        if (pct > 0 && dollars > 0) return `${pct}x percentages · ${dollars}x monetary values`;
+        if (pct > 0) return `${pct} percentage-based metrics`;
+        if (dollars > 0) return `${dollars} monetary values`;
+        return 'Scanning for quantified data';
+      }
+      case 'skills': {
+        const tech = ['javascript','typescript','python','react','node.js','docker','aws','sql','graphql','kubernetes','terraform','redis','postgresql','mongodb','kafka'];
+        const lower = text.toLowerCase();
+        const found = tech.filter(t => lower.includes(t));
+        if (found.length > 0) return `${found.length} matched (${found.slice(0,3).join(', ')}${found.length > 3 ? '…' : ''})`;
+        return 'Identifying technical keywords';
+      }
+      case 'format': {
+        const smart = (text.match(/[\u2018\u2019\u201C\u201D\u2013\u2014]/g) || []).length;
+        if (smart > 0) return `${smart} special character${smart !== 1 ? 's' : ''} found`;
+        return 'Format is clean';
+      }
+      case 'dates': {
+        const years = text.match(/\b(19|20)\d{2}\b/g) || [];
+        const unique = [...new Set(years)];
+        if (unique.length > 0) return `${unique.length} year${unique.length !== 1 ? 's' : ''} referenced`;
+        return 'Checking date consistency';
+      }
+      case 'score':
+        return 'Weighing all 8 criteria…';
+      default:
+        return '';
+    }
+  }
+
+  // ── Milestone timing effect (word-count-based) ────────────────
 
   useEffect(() => {
     if (view !== 'loading') {
-      setLoadingStep(0);
+      setCompletedMilestones([]);
+      setMilestonesDone(false);
       return;
     }
-    const interval = setInterval(() => {
-      setLoadingStep((prev) => (prev < loadingSteps.length - 1 ? prev + 1 : prev));
-    }, 350);
-    return () => clearInterval(interval);
-  }, [view]);
+
+    const count = Math.max(resumeWordCount, 1);
+    const base = count < 300 ? 250 : count < 800 ? 400 : count < 1500 ? 550 : 750;
+    const durations = [1.0, 1.2, 0.9, 1.3, 1.1, 0.8, 1.0, 1.5].map(v => Math.round(base * v));
+
+    let currentStep = 0;
+    let timer: ReturnType<typeof setTimeout>;
+
+    const advance = () => {
+      if (currentStep < MILESTONES.length) {
+        setCompletedMilestones(prev => [...prev, currentStep]);
+        currentStep++;
+        const delay = durations[Math.min(currentStep - 1, durations.length - 1)];
+        timer = setTimeout(advance, delay);
+      } else {
+        setMilestonesDone(true);
+      }
+    };
+
+    timer = setTimeout(advance, durations[0] || 400);
+    return () => clearTimeout(timer);
+  }, [view, resumeWordCount]);
+
+  // ── Show results when both milestones done AND API ready ───────
+
+  useEffect(() => {
+    if (milestonesDone && pendingResult && view === 'loading') {
+      const data = pendingResult;
+      setPendingResult(null);
+      setResult(data);
+      setFilename(displayFilenameRef.current);
+      setView('results');
+
+      const item: ScoreHistoryItem = {
+        date: formatDate(),
+        score: data.overallScore,
+        label: displayFilenameRef.current || 'Pasted text',
+      };
+      saveHistory(item);
+      setHistory(loadHistory());
+
+      setTimeout(() => {
+        resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
+    }
+  }, [milestonesDone, pendingResult, view]);
 
   // ── Render ────────────────────────────────────────────────────
 
@@ -902,54 +990,118 @@ export default function AtsCheckerPage() {
 
       {/* ── LOADING VIEW ───────────────────────────────────────── */}
       {view === 'loading' && (
-        <div className="rounded-2xl border border-outline-variant/40 bg-surface-card p-10 shadow-sm">
-          <div className="flex flex-col items-center justify-center space-y-6">
-            {/* Animated spinner */}
-            <div className="relative">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-primary-container animate-pulse flex items-center justify-center">
-                <Search className="h-7 w-7 text-on-primary" />
+        <div className="rounded-2xl border border-outline-variant/40 bg-surface-card shadow-sm overflow-hidden animate-fade-in">
+          {/* Header */}
+          <div className="relative px-6 pt-6 pb-4 border-b border-outline-variant/20">
+            <div className="absolute top-0 right-0 w-48 h-48 bg-primary/3 rounded-full blur-3xl" />
+            <div className="relative flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primary-container animate-pulse flex items-center justify-center">
+                <Search className="h-5 w-5 text-on-primary" />
               </div>
-              <div className="absolute -top-1 -right-1 w-5 h-5">
-                <span className="flex h-full w-full items-center justify-center">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary/30" />
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-primary" />
-                </span>
+              <div>
+                <h2 className="text-body-md font-semibold text-on-surface">
+                  Analyzing your resume
+                </h2>
+                <p className="text-xs text-text-muted">
+                  {resumeWordCount > 0 && `${resumeWordCount} words`}
+                  {resumeWordCount > 0 && ' · '}
+                  {MILESTONES.length} checks
+                </p>
               </div>
             </div>
+          </div>
 
-            <div className="text-center space-y-1.5">
-              <p className="text-body-md font-semibold text-on-surface">
-                Analyzing your resume
-              </p>
-              <p className="text-sm text-text-muted animate-pulse-dot">
-                {loadingSteps[loadingStep]}
-              </p>
-            </div>
+          {/* Milestone timeline */}
+          <div className="px-6 py-4 space-y-0.5">
+            {MILESTONES.map((m, i) => {
+              const isComplete = completedMilestones.includes(i);
+              const isActive = i === completedMilestones.length && !isComplete;
+              const isPending = !isComplete && !isActive;
 
-            {/* Progress bar */}
-            <div className="w-full max-w-xs space-y-2">
-              <div className="h-2 rounded-full bg-surface-container overflow-hidden">
+              return (
                 <div
-                  className="h-full rounded-full bg-gradient-to-r from-primary to-primary-container transition-all duration-500 ease-out"
-                  style={{ width: `${((loadingStep + 1) / loadingSteps.length) * 100}%` }}
-                />
-              </div>
-              <div className="flex justify-between text-[10px] text-text-muted">
-                <span>Parsing</span>
-                <span>Scoring</span>
-              </div>
-            </div>
-
-            {/* Step indicators */}
-            <div className="grid grid-cols-4 gap-2 w-full max-w-md">
-              {loadingSteps.slice(0, 8).map((step, i) => (
-                <div
-                  key={i}
-                  className={`h-1.5 rounded-full transition-all duration-300 ${
-                    i <= loadingStep ? 'bg-primary/60' : 'bg-surface-container'
+                  key={m.id}
+                  className={`flex items-center gap-3 py-2 transition-all duration-500 ${
+                    isActive ? 'opacity-100' : isPending ? 'opacity-35' : 'opacity-85'
                   }`}
-                />
-              ))}
+                >
+                  {/* Status bubble */}
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 transition-all duration-500 ${
+                    isComplete
+                      ? 'bg-emerald-500/15 text-emerald-500 scale-100'
+                      : isActive
+                        ? 'bg-primary/12 text-primary'
+                        : 'bg-surface-container text-text-muted'
+                  }`}>
+                    {isComplete ? (
+                      <Check className="h-3.5 w-3.5" />
+                    ) : isActive ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <span className="text-[10px] font-bold">{i + 1}</span>
+                    )}
+                  </div>
+
+                  {/* Icon */}
+                  <span className={`shrink-0 transition-colors duration-500 ${
+                    isComplete ? 'text-emerald-500' : isActive ? 'text-primary' : 'text-text-muted'
+                  }`}>
+                    {m.icon}
+                  </span>
+
+                  {/* Label + detail */}
+                  <div className="flex-1 min-w-0 flex items-baseline gap-2">
+                    <span className={`text-sm transition-colors duration-500 ${
+                      isComplete
+                        ? 'text-on-surface'
+                        : isActive
+                          ? 'text-on-surface font-semibold'
+                          : 'text-text-muted'
+                    }`}>
+                      {m.label}
+                    </span>
+                    {isComplete && (
+                      <span className="text-xs text-emerald-600 truncate animate-slide-up">
+                        {quickAnalyze(m.id)}
+                      </span>
+                    )}
+                    {isActive && (
+                      <span className="text-xs text-text-muted truncate animate-pulse-dot">
+                        {quickAnalyze(m.id)}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Active pulse dot */}
+                  {isActive && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary/60 animate-ping" />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Progress bar */}
+          <div className="px-6 pb-6 pt-1">
+            <div className="h-1.5 rounded-full bg-surface-container overflow-hidden">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-[#006a65] via-[#2cc9c0] to-[#006a65] transition-all duration-500 ease-out"
+                style={{
+                  width: `${completedMilestones.length > 0
+                    ? Math.round((completedMilestones.length / MILESTONES.length) * 100)
+                    : 2}%`,
+                }}
+              />
+            </div>
+            <div className="flex justify-between mt-1.5">
+              <span className="text-[10px] text-text-muted">
+                {completedMilestones.length > 0
+                  ? `${Math.round((completedMilestones.length / MILESTONES.length) * 100)}% complete`
+                  : 'Starting…'}
+              </span>
+              <span className="text-[10px] text-text-muted">
+                {completedMilestones.length}/{MILESTONES.length} steps
+              </span>
             </div>
           </div>
         </div>
@@ -957,9 +1109,12 @@ export default function AtsCheckerPage() {
 
       {/* ── RESULTS VIEW ───────────────────────────────────────── */}
       {view === 'results' && result && (
-        <div ref={resultRef} className="space-y-5 animate-fade-in">
+        <div ref={resultRef} className="space-y-5">
           {/* Score hero card */}
-          <div className="rounded-2xl border border-outline-variant/40 bg-surface-card p-6 shadow-sm overflow-hidden relative">
+          <div
+            className="rounded-2xl border border-outline-variant/40 bg-surface-card p-6 shadow-sm overflow-hidden relative animate-slide-up"
+            style={{ animationDelay: '0ms', animationFillMode: 'both' }}
+          >
             <div className="absolute top-0 right-0 w-64 h-64 bg-primary/3 rounded-full blur-3xl" />
             <div className="relative flex flex-col sm:flex-row items-center gap-6">
               <AnimatedScoreRing score={result.overallScore} size={130} />
@@ -995,7 +1150,10 @@ export default function AtsCheckerPage() {
             </div>
 
             {/* Stats row */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-6 pt-5 border-t border-outline-variant/30">
+            <div
+              className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-6 pt-5 border-t border-outline-variant/30 animate-slide-up"
+              style={{ animationDelay: '50ms', animationFillMode: 'both' }}
+            >
               <StatCard icon={<FileText className="h-4 w-4" />} label="Words" value={result.stats.wordCount.toLocaleString()} />
               <StatCard icon={<ListChecks className="h-4 w-4" />} label="Bullets" value={result.stats.bulletCount} />
               <StatCard icon={<FileCheck className="h-4 w-4" />} label="Sections" value={result.stats.sectionCount} />
@@ -1004,7 +1162,10 @@ export default function AtsCheckerPage() {
 
             {/* File hints */}
             {result.fileHints && (
-              <div className="flex flex-wrap gap-2 mt-4">
+              <div
+                className="flex flex-wrap gap-2 mt-4 animate-slide-up"
+                style={{ animationDelay: '100ms', animationFillMode: 'both' }}
+              >
                 {result.fileHints.isPdf && (
                   <span className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full bg-surface-container text-text-muted border border-outline-variant/20">
                     PDF format
@@ -1031,7 +1192,10 @@ export default function AtsCheckerPage() {
           </div>
 
           {/* Good practices & Top improvements row */}
-          <div className="grid sm:grid-cols-2 gap-5">
+          <div
+            className="grid sm:grid-cols-2 gap-5 animate-slide-up"
+            style={{ animationDelay: '100ms', animationFillMode: 'both' }}
+          >
             {/* Good practices */}
             {result.goodPractices.length > 0 && (
               <div className="rounded-2xl border border-outline-variant/40 bg-surface-card p-5 shadow-sm">
@@ -1081,7 +1245,10 @@ export default function AtsCheckerPage() {
 
           {/* JD Match section */}
           {result.jdMatch && (
-            <div className="rounded-2xl border border-outline-variant/40 bg-surface-card p-5 shadow-sm animate-fade-in">
+            <div
+              className="rounded-2xl border border-outline-variant/40 bg-surface-card p-5 shadow-sm animate-slide-up"
+              style={{ animationDelay: '200ms', animationFillMode: 'both' }}
+            >
               <h3 className="font-semibold text-on-surface flex items-center gap-2 mb-4">
                 <Briefcase className="h-4 w-4 text-primary" />
                 Job Description Keyword Match
@@ -1157,7 +1324,10 @@ export default function AtsCheckerPage() {
           )}
 
           {/* Radar + Detailed breakdown */}
-          <div className="grid md:grid-cols-5 gap-5">
+          <div
+            className="grid md:grid-cols-5 gap-5 animate-slide-up"
+            style={{ animationDelay: '300ms', animationFillMode: 'both' }}
+          >
             {/* Radar chart */}
             <div className="md:col-span-2 rounded-2xl border border-outline-variant/40 bg-surface-card p-5 shadow-sm flex flex-col items-center justify-center">
               <h3 className="font-semibold text-on-surface flex items-center gap-2 mb-3 self-start">
@@ -1243,7 +1413,10 @@ export default function AtsCheckerPage() {
           </div>
 
           {/* Action buttons */}
-          <div className="flex flex-col sm:flex-row gap-3">
+          <div
+            className="flex flex-col sm:flex-row gap-3 animate-slide-up"
+            style={{ animationDelay: '400ms', animationFillMode: 'both' }}
+          >
             <button
               type="button"
               onClick={copyResults}
