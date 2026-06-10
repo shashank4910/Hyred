@@ -676,20 +676,73 @@ export default function AtsCheckerPage() {
 
   function quickAnalyze(id: string): string {
     const text = resumeText;
+
+    // For file uploads, resumeText is empty — show generic messages
+    if (!text.trim()) {
+      const fallbacks: Record<string, string> = {
+        parsing: 'Processing file data…',
+        contact: 'Extracting contact fields…',
+        bullets: 'Reading bullet points…',
+        metrics: 'Scanning for metrics…',
+        skills: 'Identifying keywords…',
+        format: 'Checking formatting…',
+        dates: 'Validating dates…',
+        score: 'Computing score…',
+      };
+      return fallbacks[id] || '';
+    }
+
+    // ── All-CAPS headers + Title Case headers (matching findSectionHeaders logic) ──
+    function countHeaders(t: string): number {
+      const lines = t.split('\n');
+      return lines.filter((l) => {
+        const tr = l.trim();
+        if (!tr || tr.length < 5) return false;
+        // ALL-CAPS: "PROFESSIONAL EXPERIENCE", "EDUCATION"
+        if (/^[A-Z][A-Z\s&/.-]+$/.test(tr)) return true;
+        // Title Case: "Professional Experience", "Technical Skills"
+        if (/^[A-Z][A-Za-z0-9\/#&.'\-+_]*(?:\s+[A-Z][A-Za-z0-9\/#&.'\-+_]*)*$/.test(tr) &&
+            /[a-z]/.test(tr) && tr.split(/\s+/).length >= 2) return true;
+        return false;
+      }).length;
+    }
+
+    // ── Bullet detection matching findBulletLines in lib/ats-checker.ts ──
+    function countBullets(t: string): number {
+      const bulletChars = '-•*→⁃▪▸▹►‣⁌⁍∙○●';
+      const bulletRe = new RegExp(`^\\s*[${bulletChars}]`);
+      return t.split('\n').filter((l) => {
+        const tr = l.trim();
+        if (!tr) return false;
+        if (bulletRe.test(tr)) return true;
+        if (/^\d+[.)]\s/.test(tr)) return true;
+        if (/^[\[|]/.test(tr) && tr.length > 10) return true;
+        return false;
+      }).length;
+    }
+
     switch (id) {
       case 'parsing': {
-        const hdrs = text.match(/^[A-Z][A-Z\s&/.-]+$/gm) || [];
-        return `${Math.max(hdrs.length, 1)} section${hdrs.length !== 1 ? 's' : ''} identified`;
+        const n = countHeaders(text);
+        if (n === 0) return 'No standard headers detected';
+        return `${n} section${n !== 1 ? 's' : ''} identified`;
       }
       case 'contact': {
         const parts: string[] = [];
         if (/@/.test(text)) parts.push('email');
         if (/linkedin/i.test(text)) parts.push('LinkedIn');
         if (/\+\d|\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/.test(text)) parts.push('phone');
-        return parts.length > 0 ? `Detected ${parts.join(' · ')}` : 'Checking identity fields';
+        if (parts.length > 0) return `Detected ${parts.join(' · ')}`;
+        return 'Checking identity fields…';
       }
       case 'bullets': {
-        const n = text.split('\n').filter(l => /^\s*[-•*→]/.test(l.trim()) || /^\s*\d+[.)]\s/.test(l.trim())).length;
+        const n = countBullets(text);
+        if (n === 0) {
+          // Check if there are any dash-prefixed lines that the bullet regex might have missed
+          const dashLines = text.split('\n').filter(l => l.trim().startsWith('-')).length;
+          if (dashLines > 0) return `${dashLines} bullet${dashLines !== 1 ? 's' : ''} detected`;
+          return 'No bullet points found';
+        }
         return `${n} bullet point${n !== 1 ? 's' : ''} parsed`;
       }
       case 'metrics': {
@@ -698,14 +751,14 @@ export default function AtsCheckerPage() {
         if (pct > 0 && dollars > 0) return `${pct}x percentages · ${dollars}x monetary values`;
         if (pct > 0) return `${pct} percentage-based metrics`;
         if (dollars > 0) return `${dollars} monetary values`;
-        return 'Scanning for quantified data';
+        return 'Scanning for quantified data…';
       }
       case 'skills': {
-        const tech = ['javascript','typescript','python','react','node.js','docker','aws','sql','graphql','kubernetes','terraform','redis','postgresql','mongodb','kafka'];
+        const tech = ['javascript','typescript','python','react','node.js','docker','aws','sql','graphql','kubernetes','terraform','redis','postgresql','mongodb','kafka','next.js','vue.js','git','linux','jenkins','circleci','github actions','postgresql','mysql','ci/cd','machine learning','nlp','openai'];
         const lower = text.toLowerCase();
         const found = tech.filter(t => lower.includes(t));
         if (found.length > 0) return `${found.length} matched (${found.slice(0,3).join(', ')}${found.length > 3 ? '…' : ''})`;
-        return 'Identifying technical keywords';
+        return 'Identifying technical keywords…';
       }
       case 'format': {
         const smart = (text.match(/[\u2018\u2019\u201C\u201D\u2013\u2014]/g) || []).length;
@@ -716,7 +769,7 @@ export default function AtsCheckerPage() {
         const years = text.match(/\b(19|20)\d{2}\b/g) || [];
         const unique = [...new Set(years)];
         if (unique.length > 0) return `${unique.length} year${unique.length !== 1 ? 's' : ''} referenced`;
-        return 'Checking date consistency';
+        return 'Checking date consistency…';
       }
       case 'score':
         return 'Weighing all 8 criteria…';
