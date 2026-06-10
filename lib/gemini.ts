@@ -58,8 +58,10 @@ import {
 const OPENAI_CHAT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const GROQ_CHAT_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
 const CEREBRAS_CHAT_MODEL = process.env.CEREBRAS_MODEL || 'gpt-oss-120b';
+const GEMINI_CHAT_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
 const GROQ_BASE_URL = 'https://api.groq.com/openai/v1';
 const CEREBRAS_BASE_URL = 'https://api.cerebras.ai/v1';
+const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai';
 const EMBED_MODEL = 'text-embedding-3-small';
 
 // Provider priority order. Default: cerebras (free, fast) → groq (free) → openai (paid).
@@ -72,7 +74,9 @@ const LLM_PRIMARY = (process.env.LLM_PRIMARY || 'cerebras').toLowerCase();
  */
 const PROVIDER_ORDER: string[] = (() => {
   const primary = LLM_PRIMARY;
-  const all = ['cerebras', 'groq', 'openai'];
+  // Gemini sits before OpenAI: it's a free fallback that kicks in when the
+  // free providers (Cerebras/Groq) rate-limit, before resorting to paid OpenAI.
+  const all = ['cerebras', 'groq', 'gemini', 'openai'];
   // Put primary first, then the rest in order
   return [primary, ...all.filter((p) => p !== primary)];
 })();
@@ -93,6 +97,12 @@ function getCerebrasClient(): OpenAI | null {
   const key = process.env.CEREBRAS_API_KEY;
   if (!key) return null;
   return new OpenAI({ apiKey: key, baseURL: CEREBRAS_BASE_URL });
+}
+
+function getGeminiClient(): OpenAI | null {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) return null;
+  return new OpenAI({ apiKey: key, baseURL: GEMINI_BASE_URL });
 }
 
 type ProviderEntry = {
@@ -220,6 +230,20 @@ async function buildProviderChain(): Promise<ProviderEntry[]> {
         client: groqClient,
         model: GROQ_CHAT_MODEL,
         provider: 'groq',
+      });
+    }
+  }
+
+  // Gemini env-var fallback (free tier) — tried before paid OpenAI.
+  const hasDbGemini = chain.some((p) => p.provider === 'gemini');
+  if (!hasDbGemini) {
+    const geminiClient = getGeminiClient();
+    if (geminiClient) {
+      chain.push({
+        name: `Gemini[env] ${GEMINI_CHAT_MODEL}`,
+        client: geminiClient,
+        model: GEMINI_CHAT_MODEL,
+        provider: 'gemini',
       });
     }
   }
