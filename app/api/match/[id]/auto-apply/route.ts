@@ -5,7 +5,7 @@
  *  1. Fetch match + profile + apply_profile + job
  *  2. Ensure ATS resume is generated (if not already)
  *  3. Ensure PDF is uploaded to Supabase Storage (if not already)
- *  4. Ensure cover letter is generated (if not already)
+ *  4. Use existing cover letter if the user already generated one (never auto-draft)
  *  5. POST to the Python browser agent with all context
  *  6. Save task_id and mark match as auto_apply_status='running'
  *  7. Return task_id so the frontend can open the SSE stream
@@ -13,7 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { getCurrentProfile } from '@/lib/current-user';
-import { generateAtsResume, generateCoverLetter } from '@/lib/gemini';
+import { generateAtsResume } from '@/lib/gemini';
 import { ensureFullDescription } from '@/lib/jd-fetcher';
 import { generateBeautifulPdf } from '@/lib/pdf-resume';
 
@@ -129,18 +129,8 @@ export async function POST(
     }
   }
 
-  // ── 6. Ensure cover letter exists ─────────────────────────────────────────
-  let coverLetter = m.cover_letter;
-  if (!coverLetter) {
-    coverLetter = await generateCoverLetter({
-      resume: profile.resume_text,
-      candidateName: profile.full_name,
-      jobTitle: job.title,
-      jobCompany: job.company,
-      jobDescription: fullDescription,
-    });
-    await sb.from('matches').update({ cover_letter: coverLetter }).eq('id', id);
-  }
+  // ── 6. Cover letter (on-demand only — never auto-generate here) ───────────
+  const coverLetter = m.cover_letter;
 
   // ── 7. Build callback URL ─────────────────────────────────────────────────
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? req.nextUrl.origin;
