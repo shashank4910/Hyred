@@ -7,6 +7,7 @@ import {
   Loader2, Plus, Trash2, CheckCircle2, XCircle,
 } from 'lucide-react';
 import { LlmKeysPanel } from './LlmKeysPanel';
+import { LlmActivityPanel } from './LlmActivityPanel';
 
 type UsageSummary = {
   bySource: Record<string, { total: number; success: number; rateLimited: number; errors: number }>;
@@ -157,6 +158,9 @@ export function AdminDashboard() {
 
       {/* === LLM KEYS & TOKEN USAGE (Primary — Cerebras/Groq/OpenAI) === */}
       <LlmKeysPanel />
+
+      {/* === LIVE LLM KEY ACTIVITY (which key answered each call, in real time) === */}
+      <LlmActivityPanel />
 
 
       {/* === SECTION 1: Job Source Usage Overview === */}
