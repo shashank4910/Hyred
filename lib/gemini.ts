@@ -69,17 +69,20 @@ const EMBED_MODEL = 'text-embedding-3-small';
 const LLM_PRIMARY = (process.env.LLM_PRIMARY || 'cerebras').toLowerCase();
 
 /**
- * Provider priority chain. Cerebras keys from DB are tried first (round-robin),
- * then Groq from DB, then env-var fallbacks, then OpenAI (paid, last resort).
+ * Provider priority chain. Derived dynamically from PROVIDER_DEFAULTS so any
+ * provider added there (e.g. bluesminds, mistral, sambanova) is automatically
+ * included. LLM_PRIMARY controls which provider is tried first.
  */
 const PROVIDER_ORDER: string[] = (() => {
   const primary = LLM_PRIMARY;
-  // Gemini sits before OpenAI: it's a free fallback that kicks in when the
-  // free providers (Cerebras/Groq) rate-limit, before resorting to paid OpenAI.
-  const all = ['cerebras', 'groq', 'gemini', 'openai'];
+  const all = Object.keys(PROVIDER_DEFAULTS);
   // Put primary first, then the rest in order
   return [primary, ...all.filter((p) => p !== primary)];
 })();
+
+// Providers that have env-var fallback support (CEREBRAS_API_KEY, GROQ_API_KEY, etc.)
+// Only fall back to env vars when there are ZERO DB keys for that provider.
+const ENV_FALLBACK_PROVIDERS = new Set(['cerebras', 'groq', 'gemini']);
 
 function getOpenAIClient(): OpenAI | null {
   const key = process.env.OPENAI_API_KEY;
@@ -192,6 +195,21 @@ async function getAvailableKeysForProvider(provider: string): Promise<ProviderEn
 }
 
 /**
+ * Check if a provider has ANY keys in the DB (regardless of is_active status).
+ * Used to decide whether env-var fallbacks should activate — if the user has
+ * added and disabled all keys, we respect that choice and don't fall back.
+ */
+async function providerHasAnyDbKeys(provider: string): Promise<boolean> {
+  const { supabaseAdmin } = await import('./supabase/server');
+  const sb = supabaseAdmin();
+  const { count } = await sb
+    .from('llm_keys')
+    .select('id', { count: 'exact', head: true })
+    .eq('provider', provider);
+  return (count ?? 0) > 0;
+}
+
+/**
  * Build the full provider chain: ALL DB keys (round-robin) per provider,
  * then env-var fallbacks. This maximizes RPM by spreading across keys.
  *
@@ -206,60 +224,60 @@ async function buildProviderChain(): Promise<ProviderEntry[]> {
     chain.push(...dbKeys);
   }
 
-  // 2. Env-var fallbacks (only if no DB keys for that provider are in the chain)
-  const hasDbCerebras = chain.some((p) => p.provider === 'cerebras');
-  const hasDbGroq = chain.some((p) => p.provider === 'groq');
+  // 2. Env-var fallbacks — only when the provider has ZERO DB keys at all.
+  //    If the user disabled ALL keys for a provider, we respect that and
+  //    don't fall back to the env var (fixes the bypass bug).
+  for (const providerName of ENV_FALLBACK_PROVIDERS) {
+    const hasAnyDbKey = await providerHasAnyDbKeys(providerName);
+    if (hasAnyDbKey) continue; // User has DB keys (even disabled) — no fallback
 
-  if (!hasDbCerebras) {
-    const cerebrasClient = getCerebrasClient();
-    if (cerebrasClient) {
+    const fallbackClient = getEnvFallbackClient(providerName);
+    if (fallbackClient) {
+      const defaults = PROVIDER_DEFAULTS[providerName];
       chain.push({
-        name: `Cerebras[env] ${CEREBRAS_CHAT_MODEL}`,
-        client: cerebrasClient,
-        model: CEREBRAS_CHAT_MODEL,
-        provider: 'cerebras',
+        name: `${providerName.charAt(0).toUpperCase() + providerName.slice(1)}[env]`,
+        client: fallbackClient,
+        model: getEnvFallbackModel(providerName),
+        provider: providerName,
       });
     }
   }
 
-  if (!hasDbGroq) {
-    const groqClient = getGroqClient();
-    if (groqClient) {
+  // OpenAI (paid) is always last resort — no DB key check needed
+  // because OpenAI has no separate env-var fallback in the chain above
+  // (it's the universal fallback at the end).
+  const hasDbOpenai = chain.some((p) => p.provider === 'openai');
+  if (!hasDbOpenai) {
+    const openaiClient = getOpenAIClient();
+    if (openaiClient) {
       chain.push({
-        name: `Groq[env] ${GROQ_CHAT_MODEL}`,
-        client: groqClient,
-        model: GROQ_CHAT_MODEL,
-        provider: 'groq',
+        name: `OpenAI[env] ${OPENAI_CHAT_MODEL}`,
+        client: openaiClient,
+        model: OPENAI_CHAT_MODEL,
+        provider: 'openai',
       });
     }
-  }
-
-  // Gemini env-var fallback (free tier) — tried before paid OpenAI.
-  const hasDbGemini = chain.some((p) => p.provider === 'gemini');
-  if (!hasDbGemini) {
-    const geminiClient = getGeminiClient();
-    if (geminiClient) {
-      chain.push({
-        name: `Gemini[env] ${GEMINI_CHAT_MODEL}`,
-        client: geminiClient,
-        model: GEMINI_CHAT_MODEL,
-        provider: 'gemini',
-      });
-    }
-  }
-
-  // OpenAI (paid) is always last resort
-  const openaiClient = getOpenAIClient();
-  if (openaiClient) {
-    chain.push({
-      name: `OpenAI[env] ${OPENAI_CHAT_MODEL}`,
-      client: openaiClient,
-      model: OPENAI_CHAT_MODEL,
-      provider: 'openai',
-    });
   }
 
   return chain;
+}
+
+function getEnvFallbackClient(provider: string): OpenAI | null {
+  switch (provider) {
+    case 'cerebras': return getCerebrasClient();
+    case 'groq': return getGroqClient();
+    case 'gemini': return getGeminiClient();
+    default: return null;
+  }
+}
+
+function getEnvFallbackModel(provider: string): string {
+  switch (provider) {
+    case 'cerebras': return CEREBRAS_CHAT_MODEL;
+    case 'groq': return GROQ_CHAT_MODEL;
+    case 'gemini': return GEMINI_CHAT_MODEL;
+    default: return '';
+  }
 }
 
 /**
@@ -1215,7 +1233,7 @@ export function stripUnauthorizedSkillKeywords(
     // A skills category line: a label, then a colon, then the list. Bullets
     // ("- ...") and the contact block never match because they don't have a
     // leading "Label:" of word characters.
-    const m = line.match(/^(\s*[A-Za-z][A-Za-z0-9 &/+().'-]*:\s*)(.+)$/);
+    const m = line.match(/^(\s*[A-Za-z][A-Za-z0-9 &\/+().'-]*:\s*)(.+)$/);
     if (!m) { out.push(line); continue; }
     const items = m[2].split(',').map(s => s.trim()).filter(Boolean);
     // Only treat it as a skills list if it actually looks like a comma list OR
@@ -1274,7 +1292,7 @@ export function ensureSelectedKeywordsPresent(
     return t.length >= 3 && /^[A-Z][A-Z0-9 &/]*$/.test(t) && t === t.toUpperCase();
   };
   // A "Label: item, item" skills/category line (same shape strip uses).
-  const catRe = /^(\s*[A-Za-z][A-Za-z0-9 &/+().'-]*:\s*)(.+)$/;
+  const catRe = /^(\s*[A-Za-z][A-Za-z0-9 &\/+().'-]*:\s*)(.+)$/;
 
   const skillsHeaderIdx = lines.findIndex(l => /^\s*TECHNICAL SKILLS\s*$/i.test(l));
 
@@ -2028,4 +2046,4 @@ CRITICAL: do NOT prefix the output with any header label like "Resume", "RESUME"
     alreadyHad,
     missing,
   };
-}
+}

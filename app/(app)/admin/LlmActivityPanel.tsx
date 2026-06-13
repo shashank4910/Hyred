@@ -27,6 +27,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   gemini: 'Gemini',
   mistral: 'Mistral',
   sambanova: 'SambaNova',
+  bluesminds: 'Bluesminds',
 };
 
 const PROVIDER_DOT: Record<string, string> = {
@@ -36,6 +37,7 @@ const PROVIDER_DOT: Record<string, string> = {
   gemini: 'bg-blue-400',
   mistral: 'bg-amber-400',
   sambanova: 'bg-purple-400',
+  bluesminds: 'bg-cyan-400',
 };
 
 function timeAgo(iso: string): string {

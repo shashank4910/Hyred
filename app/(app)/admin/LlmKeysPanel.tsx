@@ -50,6 +50,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   gemini: 'Google Gemini',
   mistral: 'Mistral',
   sambanova: 'SambaNova',
+  bluesminds: 'Bluesminds',
 };
 
 const PROVIDER_FREE_LIMITS: Record<string, string> = {
@@ -59,6 +60,7 @@ const PROVIDER_FREE_LIMITS: Record<string, string> = {
   gemini: '~1,000 req/day',
   mistral: 'Free tier',
   sambanova: '10-30 RPM',
+  bluesminds: 'Paid',
 };
 
 export function LlmKeysPanel() {
@@ -431,6 +433,7 @@ export function LlmKeysPanel() {
                     gemini: 500000,
                     mistral: 500000,
                     sambanova: 500000,
+                    bluesminds: 500000,
                   };
                   setNewDailyLimit(limits[e.target.value] ?? 1000000);
                 }}
