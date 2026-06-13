@@ -17,7 +17,7 @@ JobRadar / Hyred is a personalized AI-powered job-search dashboard that:
 5. Provides skill-match analysis (JD requirements vs resume)
 
 **Owner:** Shashank Singh — Senior Performance Engineer (India, 7.7 years)
-**Stack:** Next.js 15, React 19, TypeScript, Supabase, **Cerebras `gpt-oss-120b` (free chat primary, admin-managed multi-key pool via `llm_keys` table)** → Groq Llama 3.3 70B (free fallback) → OpenAI gpt-4o-mini (paid last-resort) & text-embedding-3-small (embeddings), Vercel, GitHub Actions, Python FastAPI + browser-use (auto-apply agent on Render)
+**Stack:** Next.js 15, React 19, TypeScript, Supabase, **Bluesminds (`DeepSeek-V4-Flash` / `gpt-4o`, paid primary via `llm_keys` table & env `LLM_PRIMARY`)** → Gemini `gemini-2.5-flash-lite` (free fallback) → Cerebras `gpt-oss-120b` (free) → Groq `llama-3.3-70b-versatile` (free) → OpenAI `gpt-4o-mini` (paid last-resort) & text-embedding-3-small (embeddings), Vercel, GitHub Actions, Python FastAPI + browser-use (auto-apply agent on Render)
 
 ---
 
@@ -486,8 +486,8 @@ The LLM scoring prompt (`scoreJob` in `lib/gemini.ts`) has explicit rules:
 ## File Map
 
 ```
-lib/gemini.ts              ← AI: chat() with Cerebras→Groq→OpenAI provider chain, RPM-aware round-robin across DB keys, in-memory cooldowns, sanitizeJobDescriptionForAI applied at all 5 prompt sites, scoreJob seniority+years cap (server-enforced)
-lib/llm-keys.ts            ← (Session 16) Multi-key LLM rotation: getNextAvailableKey, recordUsage, daily reset, PROVIDER_DEFAULTS. Backs the `/admin` LLM keys panel.
+lib/gemini.ts              ← AI: chat() with Bluesminds→Gemini→Cerebras→Groq→OpenAI provider chain (order set by LLM_PRIMARY env, default=`bluesminds`), dynamically built from PROVIDER_DEFAULTS; RPM-aware round-robin across ALL DB keys per provider, in-memory cooldowns (65s on 429), env-var fallback only when provider has ZERO DB keys, synthetic `env:{provider}` key IDs logged to activity panel; sanitizeJobDescriptionForAI at all 5 prompt sites, scoreJob seniority+years cap (server-enforced)
+lib/llm-keys.ts            ← (Session 16 + later) Multi-key LLM rotation + PROVIDER_DEFAULTS (cerebras/groq/openai/gemini/mistral/sambanova/bluesminds). Bluesminds: `{ baseUrl: 'https://api.bluesminds.com/v1', model: 'gpt-4o' }`. Gets: getNextAvailableKey, recordUsage, daily reset, getRecentLlmActivity (live log), getAllLlmKeys, addLlmKey, updateLlmKey, deleteLlmKey, getLlmUsageSummary. Synthetic `env:{provider}` key IDs let env-var fallbacks appear in the admin activity panel.
 lib/jd-fetcher.ts          ← Fetches full JDs from source URLs; exports stripHtml + containsHtml + sanitizeJobDescriptionForAI; ensureFullDescription self-heals HTML in stored rows
 lib/search-profile.ts      ← AI SearchProfile generation + title classification + AI relevance filter
 lib/ingest.ts              ← Main ingest pipeline (10 steps). SCORE_CONCURRENCY=5 + 3s SCORE_BATCH_DELAY_MS to respect free-tier RPM.
@@ -602,6 +602,7 @@ supabase/migrations/0009_llm_keys.sql ← (Session 16) llm_keys + llm_usage_log 
 | **`scoreJob` had ZERO seniority/experience-gap rule → over-scoring** (session 16) | A 7.7-year senior IC scored **90/100** on "Director of Performance Engineering CoE, 18+ years". The testing-umbrella floor (65-80) and tool overlap drove it; nothing in the prompt compared candidate years vs JD requirement. | **Defense-in-depth (4-phase pattern):** (1) prompt has explicit YEARS GAP table (gap ≥ 11 → cap 40, ≥ 7 → 55, ≥ 4 → 65, ≥ 2 → 78) + SENIORITY-LEVEL rules (IC → director cap 50; IC → vp/exec cap 40) + 2 worked examples. (2) Response shape extended with `requiredYears` + `jdSeniority`. (3) Server-side hard cap parses those vs `insights.years_experience` + `insights.seniority`; lower of years/seniority cap wins. (4) Seniority cap only fires with real years shortfall (gap ≥ 4 or `requiredYears === 0`) so a 12y Staff IC → 12y Director isn't unfairly capped. Reason string always says "Score capped due to …" so users see why. |
 | **Back-nav from job detail → 2-3 s skeleton + landed at top, not on the clicked card** (session 16) | `app/(app)/page.tsx` is `force-dynamic` and `app/(app)/loading.tsx` exists, so `router.back()` ran ~12 Supabase queries every time. Worse: infinite-scroll pages 2-N live in client state — back-nav re-rendered only the first 20 cards, so a card at position #45 wasn't in the DOM, `scrollTo(savedY)` landed wrong, `querySelector('[data-match-id="#45"]')` returned `null`, no flash. My initial `?from=matchId` Link approach inherited the same flaw. | **Two mechanisms:** (a) `next.config.mjs` `experimental.staleTimes = { dynamic: 30, static: 180 }` — Router Cache reuses the dashboard for 30 s, no server hit, no `loading.tsx`. (b) `MatchList` writes a sessionStorage snapshot on card click (`signature` + `matches[]` capped at 200 + `page` + `hasMore` + `total` + `scrollY` + `clickedId`, TTL 10 min). On mount a `useLayoutEffect` (SSR-safe via `useIsoLayoutEffect`) rehydrates the FULL list **before paint**, then a `useEffect` (post-paint, two `requestAnimationFrame` ticks) restores scroll and flashes the clicked card. Initialize `useState` with **server props** to avoid hydration mismatch — never read sessionStorage in a `useState` lazy initializer. |
 | **`useState` lazy initializer reading sessionStorage = hydration mismatch** (session 16) | First snapshot-restore attempt initialized `useState(() => readSnapshot()?.matches ?? initialMatches)`. On cold loads / refreshes the server rendered 20 cards but the client init produced 80 (from a stale snapshot) → React hydration error + flash. | Initialize state with **the server data first**, then swap to the snapshot in `useLayoutEffect` (client-only, before paint). Use a `didInit` ref so the swap runs once. The `useEffect` that consumes the snapshot must also guard with a one-shot ref. |
+| **Bluesminds provider added as primary — full provider chain restructured** (June 2026) | Bluesminds (`DeepSeek-V4-Flash` → `gpt-4o`) added to the LLM fallback chain. `LLM_PRIMARY` default changed from `groq` to `bluesminds`. The provider chain is now dynamically built from `PROVIDER_DEFAULTS` keys, so any new provider added to `lib/llm-keys.ts` is auto-included. Order: Bluesminds (paid primary) → Gemini (free, env-var) → Cerebras (free) → Groq (free) → OpenAI (paid, last resort). Two model-name fixes were required (`DeepSeek-V4-Flash` case-sensitive, then switched to `gpt-4o` for speed). | **Provider chain is now dynamic and configurable via `LLM_PRIMARY` env var. `buildProviderChain()` iterates `PROVIDER_ORDER` (primary first, then rest), grabs ALL DB keys per provider (round-robin with rotation index), and only falls back to env vars when a provider has ZERO DB keys (fixes the bypass bug where disabled DB keys still fell through to the env). Env-var fallback calls now get synthetic `keyId: 'env:{provider}'` so they log to `llm_usage_log` and appear in the Live Key Activity panel.** |
 
 ---
 
@@ -690,23 +691,23 @@ When a feature seems broken:
 
 ## Cost Model
 
-> **Updated session 16.** Cerebras is now the chat **primary** (free, admin-managed multi-key pool, `gpt-oss-120b`). The numbers below assume the Cerebras pool absorbs all chat traffic; OpenAI gpt-4o-mini only runs as paid overflow when every Cerebras + Groq key is on cooldown or daily-exhausted. Embeddings remain OpenAI-only (`text-embedding-3-small`).
+> **Updated post-Bluesminds.** Bluesminds (`gpt-4o` via `api.bluesminds.com/v1`) is now the chat **primary** (paid, admin-managed via `llm_keys` table or `LLM_PRIMARY=bluesminds` env). The fallback chain is: Bluesminds → Gemini `gemini-2.5-flash-lite` (free, env-var) → Cerebras `gpt-oss-120b` (free) → Groq `llama-3.3-70b-versatile` (free) → OpenAI `gpt-4o-mini` (paid, last resort). Embeddings remain OpenAI-only (`text-embedding-3-small`).
 
-| Operation | Cost (Cerebras primary) | OpenAI overflow cost | Frequency |
+| Operation | Cost (Bluesminds primary) | Fallback cost (any free provider) | Frequency |
 |---|---|---|---|
-| Generate SearchProfile | $0 | ~$0.005 | Once per 7 days |
+| Generate SearchProfile | ~$0.005 (paid) | $0 (on free fallback) | Once per 7 days |
 | Embed a job (OpenAI text-embedding-3-small) | ~$0.00002 | n/a (OpenAI-only) | Per new job (~$1.30/mo flat) |
-| AI relevance filter (batch of 15) | $0 | ~$0.0005 | Per cron run (2–4 batches) |
-| LLM score a job | $0 | ~$0.0005 | Per scored job (30–80/run) |
-| Skill match (per job detail view) | $0 | ~$0.0009 | On demand |
-| ATS resume generation | $0 | ~$0.0024 | Per job apply |
-| Cover letter generation | $0 | ~$0.0009 | Per job apply |
-| **Per cron run, fully on Cerebras** | **~$0** | — | 4×/day |
-| **Per cron run, fully overflowed to OpenAI** | — | ~$0.07–0.10 | (worst case) |
-| **Monthly estimate, owner-only, Cerebras pool healthy** | **~$1–3** (embeddings) | — | |
-| **Monthly estimate, OpenAI primary (legacy)** | — | ~$10–15 | — |
+| AI relevance filter (batch of 15) | ~$0.0005 | $0 on free fallback | Per cron run (2–4 batches) |
+| LLM score a job | ~$0.0005 | $0 on free fallback | Per scored job (30–80/run) |
+| Skill match (per job detail view) | ~$0.0009 | $0 on free fallback | On demand |
+| ATS resume generation | ~$0.0024 | $0 on free fallback | Per job apply |
+| Cover letter generation | ~$0.0009 | $0 on free fallback | Per job apply |
+| **Per cron run, fully on Bluesminds** | **~$0.07–0.10** | — | 4×/day |
+| **Per cron run, fully on free fallback** | — | **~$0** | (best case, quota permitting) |
+| **Monthly estimate, Bluesminds primary** | **~$8–12** (paid) | — | |
+| **Monthly estimate, all on free fallback** | — | **~$1–3** (embeddings only) | (requires Groq/Gemini/Cerebras quotas to absorb all traffic) |
 
-**Free-tier capacity (per Cerebras account):** 1 M tokens/day, ~5 RPM (currently reduced for high-demand models). **Same-account keys do NOT stack** — RPM/TPD limits are per-account. To scale, create separate Cerebras accounts and add each one's key in the `/admin` LLM keys panel.
+**Provider chain dynamics:** `buildProviderChain()` in `lib/gemini.ts` dynamically iterates all providers from `PROVIDER_DEFAULTS`, putting `LLM_PRIMARY` first. At each provider it round-robins across ALL DB keys (spreading RPM load), with 65s in-memory cooldowns on 429s (not daily exhaustion). Env-var fallback only activates when a provider has ZERO DB keys configured — if you disabled all keys for a provider, the env var is NOT used (fixes the bypass bug). All calls (even env-var fallbacks) log to `llm_usage_log` with synthetic `env:{provider}` key IDs so they appear in the admin Live Key Activity panel.
 
 ---
 
@@ -718,6 +719,8 @@ When a feature seems broken:
 - New "pitfalls" or rules learned
 - Changes to the file map
 - **Keep the `AGENTS.md` Index in sync** when you add/rename a `##` section here, and append new dated session logs to `docs/context/session-log.md` (not here).
+
+**Last updated:** June 2026 — **Bluesminds provider restructured** — added `bluesminds` to `PROVIDER_DEFAULTS` in `lib/llm-keys.ts` (`baseUrl: 'https://api.bluesminds.com/v1'`, model `gpt-4o`), `LLM_PRIMARY` default changed to `bluesminds`, provider chain dynamically built from `PROVIDER_DEFAULTS` keys, env-var fallback bypass fixed (ZERO DB keys gate), synthetic `env:{provider}` key IDs for activity panel logging, Bluesminds added to `LlmKeysPanel` and `LlmActivityPanel` UIs with `bg-cyan-400` dot. Commits: `a963795` (add + env-var fix), `0d5b934` (model name fix), `77fa75b` (model → gpt-4o), `f4514c6` (chain restructured), `e0ba6c8` + `09569b0` (paginated admin activity log + env-var logging).
 
 **Last updated:** June 8, 2026 (session 18 — **ATS scoring optimized** vs 1200 synthetic resumes: Length bands, Skills contextualization, Soft Skills header fix. PR #129.)
 

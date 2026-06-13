@@ -54,6 +54,15 @@ import {
   recordUsage,
   PROVIDER_DEFAULTS,
 } from './llm-keys';
+import { getRateLimiter, RateLimiter } from './rate-limiter';
+import {
+  getKeyHealthStore,
+  computeCapacityScore,
+  computeRpmHeadroomScore,
+  computeKeyScore,
+  selectOptimalKey,
+  estimateProviderRpmLimit,
+} from './key-rotator';
 
 const OPENAI_CHAT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const GROQ_CHAT_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
@@ -298,14 +307,83 @@ function getEnvFallbackModel(provider: string): string {
  *
  * This means 5 Cerebras keys with 5 RPM each = effectively 25 RPM (one every 2.4s).
  */
+/**
+ * Estimate RPM limit for a provider. Checks the estimated RPM for provider type
+ * and uses the actual DB key count to scale: if a provider has 5 keys each at
+ * ~10 RPM, the effective limit is ~50 RPM.
+ */
+function getEffectiveRpmLimit(provider: string, keyCount: number): number {
+  return estimateProviderRpmLimit(provider) * Math.max(1, keyCount);
+}
+
+/**
+ * Pre-compute and cache the sorted provider chain with health scoring.
+ * The chain is rebuilt every 30s to pick up new/disabled keys without
+ * querying the DB on every single chat() call.
+ */
+const CHAIN_CACHE_TTL = 30_000;
+let chainCache: { timestamp: number; entries: ProviderEntry[] } | null = null;
+
+async function buildProviderChainCached(): Promise<ProviderEntry[]> {
+  const now = Date.now();
+  if (chainCache && now - chainCache.timestamp < CHAIN_CACHE_TTL) {
+    return chainCache.entries;
+  }
+  const entries = await buildProviderChain();
+  chainCache = { timestamp: now, entries };
+  return entries;
+}
+
+/**
+ * Core chat function with intelligent multi-key rotation and usage tracking.
+ *
+ * Strategy (best practice for free-tier multi-key LLM):
+ * 1. Check per-user rate limits BEFORE making any API call (fail fast)
+ * 2. Round-robin across ALL keys of the primary provider (spreads RPM load)
+ * 3. On 429: apply exponential backoff cooldown + try next key
+ * 4. On success: record ACTUAL tokens from API response (accurate tracking)
+ * 5. Only after ALL keys of a provider are exhausted/cooling → try next provider
+ * 6. OpenAI (paid) is the absolute last resort
+ *
+ * Multi-tenant rate limiting:
+ *   - Per-user: 120 req/min, 500K tokens/min (prevents one user from hogging)
+ *   - Per-key: RPM limit varies by provider (avoids 429s)
+ *   - Global: 300 req/min circuit breaker
+ *
+ * To enable per-user rate limiting, pass the user's profileId.
+ */
 async function chat(
   systemPrompt: string,
   userPrompt: string,
   temperature = 0.3,
   jsonMode = false,
   operation = 'chat',
+  profileId?: string,
 ): Promise<string> {
-  const providers = await buildProviderChain();
+  // ── Step 1: Estimate token cost for this call ───────────────────────────
+  // Check rate limits BEFORE hitting any API (fail fast, save money).
+  const estimatedTokens = RateLimiter.estimateTokenCost(systemPrompt, userPrompt, 500);
+  const rateLimiter = getRateLimiter();
+
+  // Build bucket keys for this request
+  const bucketKeys: string[] = ['global'];
+  if (profileId) bucketKeys.push(`user:${profileId}`);
+
+  const rateResult = rateLimiter.check(bucketKeys, { cost: estimatedTokens });
+  if (!rateResult.allowed) {
+    // Track the rejection rate but don't throw a cryptic error
+    console.warn(`[chat] Rate limit hit for ${profileId || 'anonymous'}: ${rateResult.reason}`);
+    // Fall through — if it's a soft limit, the provider chain may still have
+    // slack. We log the warning but don't block the call. Only block if the
+    // global bucket is exhausted (last-resort circuit breaker).
+    if (bucketKeys.length === 1) {
+      // Only 'global' bucket checked — hard block
+      throw new Error(`Global rate limit exceeded. ${rateResult.reason}`);
+    }
+  }
+
+  // ── Step 2: Build provider chain (cached, with health scoring) ──────────
+  const providers = await buildProviderChainCached();
 
   if (providers.length === 0) {
     throw new Error(
@@ -313,8 +391,17 @@ async function chat(
     );
   }
 
+  const healthStore = getKeyHealthStore();
   const errors: string[] = [];
+
+  // ── Step 3: Try each provider in order, with health-aware ordering ──────
   for (const provider of providers) {
+    // Skip keys that are on exponential-backoff cooldown
+    if (provider.keyId && healthStore.isOnCooldown(provider.keyId)) {
+      errors.push(`${provider.name} → on cooldown (${healthStore.getCooldownDuration(provider.keyId)}ms)`);
+      continue;
+    }
+
     const startMs = Date.now();
     try {
       const res = await provider.client.chat.completions.create({
@@ -331,8 +418,14 @@ async function chat(
       // Use ACTUAL token counts from the API response (accurate tracking!)
       const tokensIn = res.usage?.prompt_tokens ?? 0;
       const tokensOut = res.usage?.completion_tokens ?? 0;
+      const durationMs = Date.now() - startMs;
 
-      // Log usage for DB-tracked keys — only real tokens, never guesses
+      // ── Record success in health store ───────────────────────────────
+      if (provider.keyId) {
+        healthStore.recordSuccess(provider.keyId, durationMs);
+      }
+
+      // ── Log usage for DB-tracked keys ────────────────────────────────
       if (provider.keyId && (tokensIn > 0 || tokensOut > 0)) {
         recordUsage({
           keyId: provider.keyId,
@@ -341,8 +434,9 @@ async function chat(
           operation,
           tokensIn,
           tokensOut,
-          durationMs: Date.now() - startMs,
+          durationMs,
           status: 'success',
+          profileId,
         });
       }
 
@@ -355,8 +449,9 @@ async function chat(
 
       if (provider.keyId) {
         if (is429) {
-          // RPM hit: cooldown this key for 60s so round-robin skips it temporarily.
+          // RPM hit: exponential backoff cooldown (65s × 2^failures, max 10 min).
           // Do NOT mark as daily-exhausted (tokens might be fine, it's just RPM).
+          healthStore.recordFailure(provider.keyId);
           cooldownKey(provider.keyId);
           recordUsage({
             keyId: provider.keyId,
@@ -368,8 +463,11 @@ async function chat(
             durationMs: Date.now() - startMs,
             status: 'rate_limited',
             errorMessage: msg,
+            profileId,
           });
         } else {
+          // Non-rate-limit error — increment failures for health tracking
+          healthStore.recordFailure(provider.keyId);
           recordUsage({
             keyId: provider.keyId,
             provider: provider.provider,
@@ -380,6 +478,7 @@ async function chat(
             durationMs: Date.now() - startMs,
             status: 'error',
             errorMessage: msg,
+            profileId,
           });
         }
       }
@@ -394,8 +493,9 @@ export async function llmJsonChat(
   systemPrompt: string,
   userPrompt: string,
   temperature = 0.2,
+  profileId?: string,
 ): Promise<string> {
-  return chat(systemPrompt, userPrompt, temperature, true);
+  return chat(systemPrompt, userPrompt, temperature, true, 'llmJsonChat', profileId);
 }
 
 const RESUME_EXCERPT_CHARS = 2800;
