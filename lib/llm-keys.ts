@@ -204,6 +204,11 @@ export async function getRecentLlmActivity(limit = 50): Promise<LlmActivityEntry
 /**
  * Record token usage for a key after a successful (or failed) call.
  * Updates the key's daily counter AND inserts a usage log entry.
+ *
+ * Synthetic keyIds (starting with 'env:') are used for env-var fallback
+ * providers (Gemini, Cerebras, Groq, OpenAI from env vars). These skip
+ * the DB key increment but still get logged to llm_usage_log so they
+ * appear in the Live Key Activity panel.
  */
 export async function recordUsage(opts: {
   keyId: string;
@@ -219,40 +224,44 @@ export async function recordUsage(opts: {
 }): Promise<void> {
   const sb = supabaseAdmin();
   const totalTokens = opts.tokensIn + opts.tokensOut;
+  const isEnvKey = opts.keyId.startsWith('env:');
 
-  // Atomic increment via RPC (best), with fallback to read-then-write
-  try {
-    const { error: rpcError } = await sb.rpc('increment_llm_key_usage', {
-      key_id: opts.keyId,
-      token_count: totalTokens,
-    });
-    if (rpcError) {
-      // RPC doesn't exist yet (pre-migration) — do a simple update
-      const { data: current } = await sb
-        .from('llm_keys')
-        .select('tokens_used_today, requests_today')
-        .eq('id', opts.keyId)
-        .single();
-      if (current) {
-        const row = current as { tokens_used_today: number; requests_today: number };
-        await sb
+  // Atomic increment via RPC — only for real DB keys, skip for env-var fallbacks
+  if (!isEnvKey) {
+    try {
+      const { error: rpcError } = await sb.rpc('increment_llm_key_usage', {
+        key_id: opts.keyId,
+        token_count: totalTokens,
+      });
+      if (rpcError) {
+        // RPC doesn't exist yet (pre-migration) — do a simple update
+        const { data: current } = await sb
           .from('llm_keys')
-          .update({
-            tokens_used_today: row.tokens_used_today + totalTokens,
-            requests_today: row.requests_today + 1,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', opts.keyId);
+          .select('tokens_used_today, requests_today')
+          .eq('id', opts.keyId)
+          .single();
+        if (current) {
+          const row = current as { tokens_used_today: number; requests_today: number };
+          await sb
+            .from('llm_keys')
+            .update({
+              tokens_used_today: row.tokens_used_today + totalTokens,
+              requests_today: row.requests_today + 1,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', opts.keyId);
+        }
       }
+    } catch {
+      // Never crash the pipeline for usage tracking failures
     }
-  } catch {
-    // Never crash the pipeline for usage tracking failures
   }
 
   // Insert usage log entry (fire and forget)
+  // Use null for key_id on env-var fallbacks (no real DB key to reference)
   sb.from('llm_usage_log')
     .insert({
-      key_id: opts.keyId,
+      key_id: isEnvKey ? null : opts.keyId,
       provider: opts.provider,
       model: opts.model ?? null,
       operation: opts.operation,

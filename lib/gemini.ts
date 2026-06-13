@@ -229,6 +229,8 @@ async function buildProviderChain(): Promise<ProviderEntry[]> {
   // 2. Env-var fallbacks — only when the provider has ZERO DB keys at all.
   //    If the user disabled ALL keys for a provider, we respect that and
   //    don't fall back to the env var (fixes the bypass bug).
+  //    These use a synthetic keyId (env:{provider}) so usage gets logged
+  //    to llm_usage_log and appears in the Live Key Activity panel.
   for (const providerName of ENV_FALLBACK_PROVIDERS) {
     const hasAnyDbKey = await providerHasAnyDbKeys(providerName);
     if (hasAnyDbKey) continue; // User has DB keys (even disabled) — no fallback
@@ -241,6 +243,7 @@ async function buildProviderChain(): Promise<ProviderEntry[]> {
         client: fallbackClient,
         model: getEnvFallbackModel(providerName),
         provider: providerName,
+        keyId: `env:${providerName}`, // synthetic ID for usage logging
       });
     }
   }
@@ -257,6 +260,7 @@ async function buildProviderChain(): Promise<ProviderEntry[]> {
         client: openaiClient,
         model: OPENAI_CHAT_MODEL,
         provider: 'openai',
+        keyId: 'env:openai', // synthetic ID for usage logging
       });
     }
   }
