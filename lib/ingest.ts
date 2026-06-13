@@ -598,9 +598,17 @@ function formatPreferences(prefs: Profile['preferences']): string {
 async function upsertJobs(rawJobs: RawJob[]): Promise<string[]> {
   if (!rawJobs.length) return [];
   const sb = supabaseAdmin();
+
+  // Add fetched_at timestamp to all jobs being upserted
+  const now = new Date().toISOString();
+  const jobsWithTimestamp = rawJobs.map(job => ({
+    ...job,
+    fetched_at: now
+  }));
+
   const ids: string[] = [];
-  for (let i = 0; i < rawJobs.length; i += 100) {
-    const chunk = rawJobs.slice(i, i + 100);
+  for (let i = 0; i < jobsWithTimestamp.length; i += 100) {
+    const chunk = jobsWithTimestamp.slice(i, i + 100);
     const { data, error } = await sb
       .from('jobs')
       .upsert(chunk, {
