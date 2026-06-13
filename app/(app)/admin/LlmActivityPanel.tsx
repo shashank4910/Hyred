@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, memo } from 'react';
 import {
   Activity, RefreshCw, Loader2, Pause, Play, CheckCircle2, XCircle, Clock,
 } from 'lucide-react';
@@ -40,6 +40,8 @@ const PROVIDER_DOT: Record<string, string> = {
   bluesminds: 'bg-cyan-400',
 };
 
+const ITEMS_PER_PAGE = 15;
+
 function timeAgo(iso: string): string {
   const then = new Date(iso).getTime();
   const diff = Math.max(0, Date.now() - then);
@@ -57,21 +59,66 @@ function clockTime(iso: string): string {
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
+/** Memoized row to prevent re-render on every 8s poll */
+const ActivityRow = memo(function ActivityRow({ e }: { e: ActivityEntry }) {
+  const ok = e.status === 'success';
+  const rateLimited = e.status === 'rate_limited';
+  return (
+    <tr className="border-t border-border-muted hover:bg-surface-card/50" style={{ contain: 'layout style' }}>
+      <td className="px-3 py-2 whitespace-nowrap text-on-surface-variant" title={new Date(e.createdAt).toLocaleString()}>
+        <span className="inline-flex items-center gap-1">
+          <Clock className="h-3 w-3 opacity-50" /> {timeAgo(e.createdAt)}
+        </span>
+      </td>
+      <td className="px-3 py-2 whitespace-nowrap">
+        <span className="inline-flex items-center gap-1.5">
+          <span className={`h-2 w-2 rounded-full ${PROVIDER_DOT[e.provider] ?? 'bg-gray-400'}`} />
+          {PROVIDER_LABELS[e.provider] ?? e.provider}
+        </span>
+      </td>
+      <td className="px-3 py-2 whitespace-nowrap font-mono text-xs">{e.keyLabel}</td>
+      <td className="px-3 py-2 whitespace-nowrap">{e.operation}</td>
+      <td className="px-3 py-2 whitespace-nowrap text-on-surface-variant hidden md:table-cell font-mono text-xs">{e.model ?? '—'}</td>
+      <td className="px-3 py-2 whitespace-nowrap text-right text-on-surface-variant hidden sm:table-cell">
+        {(e.tokensIn + e.tokensOut).toLocaleString()}
+      </td>
+      <td className="px-3 py-2 whitespace-nowrap text-right">
+        {ok ? (
+          <span className="inline-flex items-center gap-1 text-success-green text-xs" title={e.durationMs ? `${e.durationMs}ms` : undefined}>
+            <CheckCircle2 className="h-3.5 w-3.5" /> ok
+          </span>
+        ) : rateLimited ? (
+          <span className="inline-flex items-center gap-1 text-amber-500 text-xs" title={e.errorMessage ?? undefined}>
+            <XCircle className="h-3.5 w-3.5" /> 429
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 text-error text-xs" title={e.errorMessage ?? undefined}>
+            <XCircle className="h-3.5 w-3.5" /> error
+          </span>
+        )}
+      </td>
+    </tr>
+  );
+});
+
 export function LlmActivityPanel() {
-  const [entries, setEntries] = useState<ActivityEntry[]>([]);
+  const [allEntries, setAllEntries] = useState<ActivityEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [live, setLive] = useState(true);
   const [lastFetched, setLastFetched] = useState<Date | null>(null);
+  const [displayCount, setDisplayCount] = useState(ITEMS_PER_PAGE);
   const liveRef = useRef(live);
   liveRef.current = live;
 
   const fetchActivity = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/llm-keys/activity?limit=60', { cache: 'no-store' });
+      const res = await fetch('/api/admin/llm-keys/activity?limit=25', { cache: 'no-store' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to load activity');
-      setEntries(data.entries ?? []);
+      const entries = data.entries ?? [];
+      setAllEntries(entries);
+      setDisplayCount(ITEMS_PER_PAGE);
       setError(null);
       setLastFetched(new Date());
     } catch (e) {
@@ -85,15 +132,18 @@ export function LlmActivityPanel() {
     fetchActivity();
     const id = setInterval(() => {
       if (liveRef.current) fetchActivity();
-    }, 4000);
+    }, 8000); // 8s instead of 4s — less aggressive polling
     return () => clearInterval(id);
   }, [fetchActivity]);
 
+  const visibleEntries = allEntries.slice(0, displayCount);
+  const hasMore = displayCount < allEntries.length;
+
   const providerCounts: Record<string, number> = {};
-  for (const e of entries) providerCounts[e.provider] = (providerCounts[e.provider] ?? 0) + 1;
+  for (const e of allEntries) providerCounts[e.provider] = (providerCounts[e.provider] ?? 0) + 1;
 
   return (
-    <section className="glass-card p-6">
+    <section className="glass-card p-6" style={{ contentVisibility: 'auto', containIntrinsicSize: '400px' }}>
       <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
         <h2 className="font-headline text-headline-md font-bold text-on-background flex items-center gap-2">
           <Activity className="h-5 w-5 text-primary" /> Live Key Activity
@@ -166,59 +216,40 @@ export function LlmActivityPanel() {
               </tr>
             </thead>
             <tbody>
-              {loading && entries.length === 0 && (
+              {loading && allEntries.length === 0 && (
                 <tr><td colSpan={7} className="px-3 py-8 text-center text-on-surface-variant">
                   <Loader2 className="h-4 w-4 animate-spin inline mr-2" /> Loading activity…
                 </td></tr>
               )}
-              {!loading && entries.length === 0 && (
+              {!loading && allEntries.length === 0 && (
                 <tr><td colSpan={7} className="px-3 py-8 text-center text-on-surface-variant">
                   No LLM calls recorded yet. Run a scan or generate a resume to see activity here.
                 </td></tr>
               )}
-              {entries.map((e) => {
-                const ok = e.status === 'success';
-                const rateLimited = e.status === 'rate_limited';
-                return (
-                  <tr key={e.id} className="border-t border-border-muted hover:bg-surface-card/50">
-                    <td className="px-3 py-2 whitespace-nowrap text-on-surface-variant" title={new Date(e.createdAt).toLocaleString()}>
-                      <span className="inline-flex items-center gap-1">
-                        <Clock className="h-3 w-3 opacity-50" /> {timeAgo(e.createdAt)}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 whitespace-nowrap">
-                      <span className="inline-flex items-center gap-1.5">
-                        <span className={`h-2 w-2 rounded-full ${PROVIDER_DOT[e.provider] ?? 'bg-gray-400'}`} />
-                        {PROVIDER_LABELS[e.provider] ?? e.provider}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 whitespace-nowrap font-mono text-xs">{e.keyLabel}</td>
-                    <td className="px-3 py-2 whitespace-nowrap">{e.operation}</td>
-                    <td className="px-3 py-2 whitespace-nowrap text-on-surface-variant hidden md:table-cell font-mono text-xs">{e.model ?? '—'}</td>
-                    <td className="px-3 py-2 whitespace-nowrap text-right text-on-surface-variant hidden sm:table-cell">
-                      {(e.tokensIn + e.tokensOut).toLocaleString()}
-                    </td>
-                    <td className="px-3 py-2 whitespace-nowrap text-right">
-                      {ok ? (
-                        <span className="inline-flex items-center gap-1 text-success-green text-xs" title={e.durationMs ? `${e.durationMs}ms` : undefined}>
-                          <CheckCircle2 className="h-3.5 w-3.5" /> ok
-                        </span>
-                      ) : rateLimited ? (
-                        <span className="inline-flex items-center gap-1 text-amber-500 text-xs" title={e.errorMessage ?? undefined}>
-                          <XCircle className="h-3.5 w-3.5" /> 429
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-error text-xs" title={e.errorMessage ?? undefined}>
-                          <XCircle className="h-3.5 w-3.5" /> error
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+              {visibleEntries.map((e) => (
+                <ActivityRow key={e.id} e={e} />
+              ))}
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* Load More / pagination */}
+      {hasMore && (
+        <div className="flex justify-center mt-4">
+          <button
+            onClick={() => setDisplayCount((prev) => Math.min(prev + ITEMS_PER_PAGE, allEntries.length))}
+            className="btn text-xs"
+          >
+            Load more ({allEntries.length - displayCount} remaining)
+          </button>
+        </div>
+      )}
+
+      {allEntries.length > 0 && (
+        <p className="text-center text-[10px] text-on-surface-variant mt-2">
+          Showing {Math.min(displayCount, allEntries.length)} of {allEntries.length} entries
+        </p>
       )}
     </section>
   );

@@ -164,7 +164,7 @@ export function AdminDashboard() {
 
 
       {/* === SECTION 1: Job Source Usage Overview === */}
-      <section className="glass-card p-6">
+      <section className="glass-card p-6" style={{ contentVisibility: 'auto', containIntrinsicSize: '300px' }}>
         <h2 className="font-headline text-headline-md font-bold text-on-background flex items-center gap-2 mb-4">
           <BarChart3 className="h-5 w-5 text-primary" /> Job Source API Usage
         </h2>
@@ -217,7 +217,7 @@ export function AdminDashboard() {
 
       {/* === SECTION 2: Per-Key Breakdown === */}
       {stats && Object.keys(stats.byKey).length > 0 && (
-        <section className="glass-card p-6">
+        <section className="glass-card p-6" style={{ contentVisibility: 'auto', containIntrinsicSize: '300px' }}>
           <h2 className="font-headline text-headline-md font-bold text-on-background flex items-center gap-2 mb-4">
             <Key className="h-5 w-5 text-secondary" /> Per-Key Usage
           </h2>
@@ -260,7 +260,7 @@ export function AdminDashboard() {
 
       {/* === SECTION 3: Error Log === */}
       {stats && stats.recentErrors.length > 0 && (
-        <section className="glass-card p-6">
+        <section className="glass-card p-6" style={{ contentVisibility: 'auto', containIntrinsicSize: '300px' }}>
           <h2 className="font-headline text-headline-md font-bold text-on-background flex items-center gap-2 mb-4">
             <AlertTriangle className="h-5 w-5 text-error" /> Recent Errors & Rate Limits
           </h2>
@@ -296,7 +296,7 @@ export function AdminDashboard() {
 
 
       {/* === SECTION 4: API Key Management === */}
-      <section className="glass-card p-6">
+      <section className="glass-card p-6" style={{ contentVisibility: 'auto', containIntrinsicSize: '500px' }}>
         <h2 className="font-headline text-headline-md font-bold text-on-background flex items-center gap-2 mb-4">
           <Key className="h-5 w-5 text-primary" /> API Key Management
         </h2>
