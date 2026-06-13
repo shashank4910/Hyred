@@ -613,7 +613,8 @@ async function upsertJobs(rawJobs: RawJob[]): Promise<string[]> {
       .from('jobs')
       .upsert(chunk, {
         onConflict: 'source,source_id',
-        ignoreDuplicates: true,
+        // Update on conflict to refresh fetched_at and other fields
+        ignoreDuplicates: false,
       })
       .select('id');
     if (error) throw new Error(`Upsert jobs failed: ${error.message}`);
