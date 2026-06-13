@@ -112,6 +112,8 @@ export function LlmActivityPanel() {
   liveRef.current = live;
 
   const fetchActivity = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
       const res = await fetch('/api/admin/llm-keys/activity?limit=25', { cache: 'no-store' });
       const data = await res.json();
@@ -119,7 +121,6 @@ export function LlmActivityPanel() {
       const entries = data.entries ?? [];
       setAllEntries(entries);
       setDisplayCount(ITEMS_PER_PAGE);
-      setError(null);
       setLastFetched(new Date());
     } catch (e) {
       setError((e as Error).message);
