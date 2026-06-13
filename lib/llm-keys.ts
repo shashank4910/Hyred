@@ -40,7 +40,7 @@ export const PROVIDER_DEFAULTS: Record<string, { baseUrl: string; model: string 
   gemini: { baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-2.5-flash-lite' },
   mistral: { baseUrl: 'https://api.mistral.ai/v1', model: 'mistral-large-latest' },
   sambanova: { baseUrl: 'https://api.sambanova.ai/v1', model: 'Meta-Llama-3.3-70B-Instruct' },
-  bluesminds: { baseUrl: 'https://api.bluesminds.com/v1', model: 'deepseek-v4-flash' },
+  bluesminds: { baseUrl: 'https://api.bluesminds.com/v1', model: 'DeepSeek-V4-Flash' },
 };
 
 /**
