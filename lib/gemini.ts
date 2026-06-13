@@ -64,9 +64,10 @@ const CEREBRAS_BASE_URL = 'https://api.cerebras.ai/v1';
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai';
 const EMBED_MODEL = 'text-embedding-3-small';
 
-// Provider priority order. Default: cerebras (free, fast) → groq (free) → openai (paid).
+// Provider priority order. Default: bluesminds (gpt-4o via Blueminds API) → gemini (free)
+// → cerebras/groq (free fallbacks) → openai (paid, last resort).
 // Override with LLM_PRIMARY env var for specific deployments.
-const LLM_PRIMARY = (process.env.LLM_PRIMARY || 'cerebras').toLowerCase();
+const LLM_PRIMARY = (process.env.LLM_PRIMARY || 'bluesminds').toLowerCase();
 
 /**
  * Provider priority chain. Derived dynamically from PROVIDER_DEFAULTS so any
@@ -80,9 +81,10 @@ const PROVIDER_ORDER: string[] = (() => {
   return [primary, ...all.filter((p) => p !== primary)];
 })();
 
-// Providers that have env-var fallback support (CEREBRAS_API_KEY, GROQ_API_KEY, etc.)
+// Providers that have env-var fallback support (GEMINI_API_KEY, CEREBRAS_API_KEY, GROQ_API_KEY, etc.)
+// Ordered by priority: gemini (free) first, then cerebras/groq (free fallbacks).
 // Only fall back to env vars when there are ZERO DB keys for that provider.
-const ENV_FALLBACK_PROVIDERS = new Set(['cerebras', 'groq', 'gemini']);
+const ENV_FALLBACK_PROVIDERS = ['gemini', 'cerebras', 'groq'];
 
 function getOpenAIClient(): OpenAI | null {
   const key = process.env.OPENAI_API_KEY;
