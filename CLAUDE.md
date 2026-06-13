@@ -8,3 +8,6 @@ Critical rules (full list in `AGENTS.md`):
 - Run `npm run typecheck` before pushing; new branch → PR → merge (never reuse a merged PR's branch); verify changes live via `raw.githubusercontent.com/.../main/<path>`.
 - AI: Groq primary + OpenAI fallback (`LLM_PRIMARY`); never reintroduce `gemini-2.0-flash`.
 - Multi-user: resolve users via `getCurrentProfile()`; scope every query by `profile_id`.
+
+## Vercel Deployment Test
+This is a test edit to verify Vercel deployment workflow.
