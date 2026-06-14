@@ -683,8 +683,8 @@ Respond with strict JSON:
 
 matchedSkills/missingSkills RULES:
 - Keep each entry 1-3 words max. Real tools/skills/domains only, no sentences.
-- matchedSkills: only include terms genuinely present in BOTH JD and resume.
-- missingSkills: only terms the JD explicitly wants that the resume lacks.
+- matchedSkills: only include terms genuinely present in BOTH the JOB POSTING (Title or Description) and the resume. Use the exact skill/tool terminology from the JOB POSTING, not the resume (e.g., if the JD requires "JMeter" and candidate knows "LoadRunner", score high under interchangeable tools guidelines but output "JMeter" as matched only if "JMeter" is in the JD). Under no circumstances include tools that are NOT physically present in the JOB POSTING.
+- missingSkills: only include terms the JOB POSTING explicitly requires that the resume lacks. Under no circumstances include tools that are NOT physically present in the JOB POSTING.
 - If the JD is too short to tell, return best-effort based on the title.`;
 
   const text = await chat(
@@ -745,13 +745,14 @@ matchedSkills/missingSkills RULES:
       }
     }
 
-    const cleanSkills = (arr: unknown): string[] =>
-      Array.isArray(arr)
-        ? arr
-            .map((s) => String(s).trim())
-            .filter((s) => s.length > 0 && s.length <= 40)
-            .slice(0, 5)
-        : [];
+    const cleanSkills = (arr: unknown): string[] => {
+      if (!Array.isArray(arr)) return [];
+      return arr
+        .map((s) => String(s).trim())
+        .filter((s) => s.length > 0 && s.length <= 40)
+        .filter((s) => isSkillPresentInJd(s, args.jobDescription, args.jobTitle))
+        .slice(0, 5);
+    };
     return {
       score,
       reason,
@@ -905,7 +906,7 @@ JOB DESCRIPTION:
 ${jdText}
 ${resumeBlock}${topSkillsBlock}
 
-Extract 8-12 of the MOST IMPORTANT skills/tools the JD requires.
+Extract 8-12 of the MOST IMPORTANT skills/tools the JD requires. Only extract skills/tools that are physically present in the job description text (case-insensitively).
 Then classify each as matched (present in resume) or missing (absent from resume).
 
 Synonym rules — count as MATCHED:
@@ -942,11 +943,14 @@ INVARIANTS: matched ∪ missing = jdRequirements, matched ∩ missing = ∅`;
       ? v.map(String).map(s => s.trim()).filter(s => s.length >= 2 && s.length <= 80)
       : [];
 
-  const jdRequirements = cleanList(parsed.jdRequirements);
+  const jdRequirements = cleanList(parsed.jdRequirements).filter((r) =>
+    isSkillPresentInJd(r, args.jobDescription, null)
+  );
   const jdLower = jdRequirements.map(r => r.toLowerCase());
   const isFromJd = (item: string) => {
     const l = item.toLowerCase();
-    return jdLower.some(r => r === l || r.includes(l) || l.includes(r));
+    return jdLower.some(r => r === l || r.includes(l) || l.includes(r)) &&
+      isSkillPresentInJd(item, args.jobDescription, null);
   };
 
   let matched = cleanList(parsed.matched).filter(isFromJd);
@@ -2152,4 +2156,60 @@ CRITICAL: do NOT prefix the output with any header label like "Resume", "RESUME"
     alreadyHad,
     missing,
   };
+}
+
+/**
+ * Programmatically check if a skill keyword is present in the job description or title.
+ * It enforces case-insensitive whole-word matching.
+ * Handles boundary conditions for special characters (e.g., C++, .NET) and simple plurals (trailing 's').
+ */
+export function isSkillPresentInJd(skill: string, jdText: string | null, jobTitle: string | null): boolean {
+  if (!skill) return false;
+  const normalizedSkill = skill.trim().toLowerCase();
+  if (!normalizedSkill) return false;
+  
+  const textToCheck = `${jobTitle ?? ''}\n${jdText ?? ''}`.toLowerCase();
+  if (!textToCheck) return false;
+
+  const firstCharAlpha = /[a-zA-Z0-9]/.test(normalizedSkill[0]);
+  const lastCharAlpha = /[a-zA-Z0-9]/.test(normalizedSkill[normalizedSkill.length - 1]);
+
+  let index = 0;
+  while (true) {
+    const foundIdx = textToCheck.indexOf(normalizedSkill, index);
+    if (foundIdx === -1) break;
+
+    let isMatch = true;
+
+    if (firstCharAlpha && foundIdx > 0) {
+      const charBefore = textToCheck[foundIdx - 1];
+      if (/[a-zA-Z0-9]/.test(charBefore)) {
+        isMatch = false;
+      }
+    }
+
+    if (lastCharAlpha && foundIdx + normalizedSkill.length < textToCheck.length) {
+      const charAfter = textToCheck[foundIdx + normalizedSkill.length];
+      if (/[a-zA-Z0-9]/.test(charAfter)) {
+        // Check if it's just a plural 's'
+        if (charAfter === 's') {
+          const charAfterS = foundIdx + normalizedSkill.length + 1 < textToCheck.length
+            ? textToCheck[foundIdx + normalizedSkill.length + 1]
+            : '';
+          if (/[a-zA-Z0-9]/.test(charAfterS)) {
+            isMatch = false; // E.g., "containerization" is not a match for "container"
+          }
+        } else {
+          isMatch = false;
+        }
+      }
+    }
+
+    if (isMatch) {
+      return true;
+    }
+    index = foundIdx + 1;
+  }
+
+  return false;
 }
