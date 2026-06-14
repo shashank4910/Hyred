@@ -167,6 +167,7 @@ export default async function JobMatchPage({
           <MatchSkillPills
             matchedSkills={(match as unknown as { matched_skills: string[] | null }).matched_skills ?? []}
             missingSkills={(match as unknown as { missing_skills: string[] | null }).missing_skills ?? []}
+            resumeHref="#ats-resume"
           />
         </div>
       </div>

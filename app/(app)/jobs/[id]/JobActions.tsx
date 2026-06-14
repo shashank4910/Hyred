@@ -452,7 +452,7 @@ export function JobActions({
 
 
       {/* ATS-Optimized Resume */}
-      <div className="card">
+      <div id="ats-resume" className="card">
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <h2 className="font-semibold text-on-surface flex items-center gap-2">
             <FileText className="h-4 w-4 text-primary" /> ATS Resume

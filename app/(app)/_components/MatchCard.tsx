@@ -180,7 +180,13 @@ export function MatchCard({
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <MatchSkillPills matchedSkills={matchedSkills} missingSkills={missingSkills} />
+        <div onClick={(e) => e.preventDefault()}>
+          <MatchSkillPills
+            matchedSkills={matchedSkills}
+            missingSkills={missingSkills}
+            resumeHref={`/jobs/${matchId}#ats-resume`}
+          />
+        </div>
         <div className="flex gap-2" onClick={(e) => e.preventDefault()}>
           <button
             type="button"
