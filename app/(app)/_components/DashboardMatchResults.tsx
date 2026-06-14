@@ -61,15 +61,15 @@ export async function DashboardMatchResults({
   }
 
   if (isAdmin && searchParams.source) {
-    query = query.eq('jobs.source', searchParams.source);
+    query = query.eq('job.source', searchParams.source);
   }
   if (searchParams.remote === '1') {
-    query = query.eq('jobs.remote', true);
+    query = query.eq('job.remote', true);
   }
   if (searchParams.q) {
     const term = searchParams.q.replace(/[%]/g, '');
     query = query.or(`title.ilike.%${term}%,company.ilike.%${term}%`, {
-      foreignTable: 'jobs',
+      foreignTable: 'job',
     });
   }
 

@@ -61,14 +61,14 @@ export async function GET(req: NextRequest) {
 
   if (q) {
     const term = q.replace(/[%]/g, '');
-    query = query.or(`title.ilike.%${term}%,company.ilike.%${term}%`, { foreignTable: 'jobs' });
+    query = query.or(`title.ilike.%${term}%,company.ilike.%${term}%`, { foreignTable: 'job' });
   }
   if (remote) {
-    query = query.eq('jobs.remote', true);
+    query = query.eq('job.remote', true);
   }
   const source = url.searchParams.get('source') ?? '';
   if (isAdmin && source) {
-    query = query.eq('jobs.source', source);
+    query = query.eq('job.source', source);
   }
 
   const { data: matches, count } = await query.range(offset, offset + PAGE_SIZE - 1);
