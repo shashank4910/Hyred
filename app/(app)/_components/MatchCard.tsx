@@ -142,16 +142,45 @@ export function MatchCard({
                   </span>
                 </>
               )}
-              {shortDate && (
-                <>
-                  <span className="h-1 w-1 rounded-full bg-outline-variant" />
-                  <span className="inline-flex items-center gap-1" title={tooltip}>
+              {/* Date shows discovery date (fetched_at) and optionally posted date */}
+              {/* Note: fetched_at is always present per Job type definition */}
+              <span className="h-1 w-1 rounded-full bg-outline-variant" />
+              <span className="inline-flex items-center gap-1 flex-col" title={tooltip}>
+                {/* Discovery date (always shown) */}
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4" />
+                  <div>
+                    <div className="text-[10px] font-medium text-text-muted">Discovered</div>
+                    <div className="flex items-center gap-1">
+                      {job.fetched_at && (
+                        <>
+                          {formatShortDate(job.fetched_at)}
+                          {relativeTime(job.fetched_at) && (
+                            <span className="text-text-muted">· {relativeTime(job.fetched_at)}</span>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                {/* Posted date (if available) */}
+                {job.posted_at && (
+                  <div className="flex items-center gap-2 mt-1">
                     <Clock className="h-4 w-4" />
-                    {shortDate}
-                    {relative && <span className="text-text-muted">· {relative}</span>}
-                  </span>
-                </>
-              )}
+                    <div>
+                      <div className="text-[10px] font-medium text-text-muted">Posted</div>
+                      <div className="flex items-center gap-1">
+                        <>
+                          {formatShortDate(job.posted_at)}
+                          {relativeTime(job.posted_at) && (
+                            <span className="text-text-muted">· {relativeTime(job.posted_at)}</span>
+                          )}
+                        </>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </span>
               {job.salary && (
                 <>
                   <span className="h-1 w-1 rounded-full bg-outline-variant" />

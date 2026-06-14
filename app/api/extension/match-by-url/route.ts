@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
       `id, llm_score, reason, status, cover_letter,
        job:jobs!inner(id, title, company, url, description)`,
     )
-    .ilike('jobs.url', `${canonical}%`)
+    .ilike('job.url', `${canonical}%`)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
