@@ -2184,44 +2184,75 @@ export function isSkillPresentInJd(skill: string, jdText: string | null, jobTitl
   const textToCheck = `${jobTitle ?? ''}\n${jdText ?? ''}`.toLowerCase();
   if (!textToCheck) return false;
 
-  const firstCharAlpha = /[a-zA-Z0-9]/.test(normalizedSkill[0]);
-  const lastCharAlpha = /[a-zA-Z0-9]/.test(normalizedSkill[normalizedSkill.length - 1]);
+  // Helper function for strict whole-word check of a specific string
+  const hasExactWord = (word: string): boolean => {
+    const firstCharAlpha = /[a-zA-Z0-9]/.test(word[0]);
+    const lastCharAlpha = /[a-zA-Z0-9]/.test(word[word.length - 1]);
 
-  let index = 0;
-  while (true) {
-    const foundIdx = textToCheck.indexOf(normalizedSkill, index);
-    if (foundIdx === -1) break;
+    let index = 0;
+    while (true) {
+      const foundIdx = textToCheck.indexOf(word, index);
+      if (foundIdx === -1) break;
 
-    let isMatch = true;
+      let isMatch = true;
 
-    if (firstCharAlpha && foundIdx > 0) {
-      const charBefore = textToCheck[foundIdx - 1];
-      if (/[a-zA-Z0-9]/.test(charBefore)) {
-        isMatch = false;
-      }
-    }
-
-    if (lastCharAlpha && foundIdx + normalizedSkill.length < textToCheck.length) {
-      const charAfter = textToCheck[foundIdx + normalizedSkill.length];
-      if (/[a-zA-Z0-9]/.test(charAfter)) {
-        // Check if it's just a plural 's'
-        if (charAfter === 's') {
-          const charAfterS = foundIdx + normalizedSkill.length + 1 < textToCheck.length
-            ? textToCheck[foundIdx + normalizedSkill.length + 1]
-            : '';
-          if (/[a-zA-Z0-9]/.test(charAfterS)) {
-            isMatch = false; // E.g., "containerization" is not a match for "container"
-          }
-        } else {
+      if (firstCharAlpha && foundIdx > 0) {
+        const charBefore = textToCheck[foundIdx - 1];
+        if (/[a-zA-Z0-9]/.test(charBefore)) {
           isMatch = false;
         }
       }
-    }
 
-    if (isMatch) {
-      return true;
+      if (lastCharAlpha && foundIdx + word.length < textToCheck.length) {
+        const charAfter = textToCheck[foundIdx + word.length];
+        if (/[a-zA-Z0-9]/.test(charAfter)) {
+          // Check if it's just a plural 's'
+          if (charAfter === 's') {
+            const charAfterS = foundIdx + word.length + 1 < textToCheck.length
+              ? textToCheck[foundIdx + word.length + 1]
+              : '';
+            if (/[a-zA-Z0-9]/.test(charAfterS)) {
+              isMatch = false;
+            }
+          } else {
+            isMatch = false;
+          }
+        }
+      }
+
+      if (isMatch) return true;
+      index = foundIdx + 1;
     }
-    index = foundIdx + 1;
+    return false;
+  };
+
+  // 1. Direct exact word check
+  if (hasExactWord(normalizedSkill)) return true;
+
+  // 2. Singular / Plural fallbacks
+  if (normalizedSkill.endsWith('s') && normalizedSkill.length > 3) {
+    const singular = normalizedSkill.slice(0, -1);
+    if (hasExactWord(singular)) return true;
+  } else {
+    const plural = normalizedSkill + 's';
+    if (hasExactWord(plural)) return true;
+  }
+
+  // 3. Multi-word / Separator fallback (e.g. "CI/CD pipelines", "Python scripting", "JMeter/Gatling")
+  const words = normalizedSkill.split(/[\s\-\/]+/);
+  if (words.length > 1) {
+    const stopWords = new Set([
+      'and', 'the', 'for', 'with', 'use', 'using', 'dev', 'developer', 'engineer',
+      'engineering', 'development', 'programming', 'scripting', 'testing', 'automation',
+      'systems', 'platform', 'framework', 'tools', 'tool', 'cloud', 'architecture', 'services'
+    ]);
+
+    for (const w of words) {
+      // If we find a significant word (length >= 3 and not a common stop word) that is in the JD, count it as a match
+      if (w.length >= 3 && !stopWords.has(w)) {
+        if (hasExactWord(w)) return true;
+      }
+    }
   }
 
   return false;
