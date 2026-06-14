@@ -18,6 +18,7 @@ import {
 } from './search-profile';
 import type { Profile, RawJob } from './types';
 import { dashboardMinScore } from './match-stats';
+import { verifyWithHermes } from './hermes-verifier';
 
 export type IngestResult = {
   fetched: number;
@@ -516,16 +517,38 @@ export async function runIngest(opts?: {
               jobLocation: c.location,
               jobDescription: c.description,
             });
-            if (score < minScore) {
+
+            let finalScore = score;
+            let finalReason = reason;
+
+            if (score >= 70) {
+              const verification = await verifyWithHermes({
+                jobTitle: c.title,
+                jobCompany: c.company,
+                jobLocation: c.location,
+                jobDescription: c.description,
+                resumeText: p.resume_text!,
+                insights: p.insights,
+                profileId: p.id,
+              });
+
+              if (verification.action === 'filter') {
+                finalScore = verification.adjustedScore ?? 50;
+                finalReason = `${reason ? reason.replace(/\s*$/, '. ') : ''}Hermes verification: ${verification.reason}`;
+              }
+            }
+
+            if (finalScore < minScore) {
               return { scored: 1, kept: 0 };
             }
+
             const { error } = await sb.from('matches').upsert(
               {
                 profile_id: p.id,
                 job_id: c.id,
                 similarity: c.similarity,
-                llm_score: score,
-                reason,
+                llm_score: finalScore,
+                reason: finalReason,
                 matched_skills: matchedSkills,
                 missing_skills: missingSkills,
                 // Omit status — new rows default to 'new'; updates keep viewed/saved/applied.

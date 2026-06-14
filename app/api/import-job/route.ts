@@ -4,6 +4,7 @@ import { getCurrentProfile } from '@/lib/current-user';
 import { embed, scoreJob } from '@/lib/gemini';
 import { mergeInsightsForScoring } from '@/lib/experience-match';
 import { jobToEmbeddingText } from '@/lib/matcher';
+import { verifyWithHermes } from '@/lib/hermes-verifier';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -521,6 +522,26 @@ export async function POST(req: NextRequest) {
       },
       { status: 500 },
     );
+  }
+
+  if (scoreOut.score >= 70) {
+    try {
+      const verification = await verifyWithHermes({
+        jobTitle: title,
+        jobCompany: company,
+        jobLocation: location,
+        jobDescription: description,
+        resumeText: profile.resume_text,
+        insights: scoringInsights,
+        profileId: profile.id,
+      });
+      if (verification.action === 'filter') {
+        scoreOut.score = verification.adjustedScore ?? 50;
+        scoreOut.reason = `${scoreOut.reason ? scoreOut.reason.replace(/\s*$/, '. ') : ''}Hermes verification: ${verification.reason}`;
+      }
+    } catch (e) {
+      console.error('[hermes] Manual verify failed:', e);
+    }
   }
 
   if (vec) {

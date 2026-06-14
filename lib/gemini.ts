@@ -160,49 +160,54 @@ const ROUND_ROBIN_INDEX: Map<string, number> = new Map();
  * Skips keys that are on cooldown or have exceeded their daily token limit.
  */
 async function getAvailableKeysForProvider(provider: string): Promise<ProviderEntry[]> {
-  const { supabaseAdmin } = await import('./supabase/server');
-  const sb = supabaseAdmin();
+  try {
+    const { supabaseAdmin } = await import('./supabase/server');
+    const sb = supabaseAdmin();
 
-  const { data: keys } = await sb
-    .from('llm_keys')
-    .select('*')
-    .eq('provider', provider)
-    .eq('is_active', true)
-    .order('priority', { ascending: true });
+    const { data: keys } = await sb
+      .from('llm_keys')
+      .select('*')
+      .eq('provider', provider)
+      .eq('is_active', true)
+      .order('priority', { ascending: true });
 
-  if (!keys?.length) return [];
+    if (!keys?.length) return [];
 
-  const entries: ProviderEntry[] = [];
-  const defaults = PROVIDER_DEFAULTS[provider];
+    const entries: ProviderEntry[] = [];
+    const defaults = PROVIDER_DEFAULTS[provider];
 
-  for (const k of keys) {
-    const key = k as { id: string; api_key: string; label: string | null; model: string | null; base_url: string | null; daily_token_limit: number; tokens_used_today: number };
-    // Skip keys on RPM cooldown
-    if (isKeyOnCooldown(key.id)) continue;
-    // Skip keys that exceeded daily token limit
-    if (key.tokens_used_today >= key.daily_token_limit) continue;
+    for (const k of keys) {
+      const key = k as { id: string; api_key: string; label: string | null; model: string | null; base_url: string | null; daily_token_limit: number; tokens_used_today: number };
+      // Skip keys on RPM cooldown
+      if (isKeyOnCooldown(key.id)) continue;
+      // Skip keys that exceeded daily token limit
+      if (key.tokens_used_today >= key.daily_token_limit) continue;
 
-    const baseUrl = key.base_url || defaults?.baseUrl || '';
-    const model = key.model || defaults?.model || '';
-    const client = new OpenAI({ apiKey: key.api_key, baseURL: baseUrl });
-    entries.push({
-      name: `${provider}[DB:${key.label || key.id.slice(0, 6)}]`,
-      client,
-      model,
-      keyId: key.id,
-      provider,
-    });
+      const baseUrl = key.base_url || defaults?.baseUrl || '';
+      const model = key.model || defaults?.model || '';
+      const client = new OpenAI({ apiKey: key.api_key, baseURL: baseUrl });
+      entries.push({
+        name: `${provider}[DB:${key.label || key.id.slice(0, 6)}]`,
+        client,
+        model,
+        keyId: key.id,
+        provider,
+      });
+    }
+
+    // Round-robin: rotate starting position so each call uses a different key
+    if (entries.length > 1) {
+      const idx = (ROUND_ROBIN_INDEX.get(provider) ?? 0) % entries.length;
+      ROUND_ROBIN_INDEX.set(provider, idx + 1);
+      // Rotate array so the "next" key is first
+      return [...entries.slice(idx), ...entries.slice(0, idx)];
+    }
+
+    return entries;
+  } catch (e) {
+    // Graceful fallback for environments (like CLI scripts) without DB config
+    return [];
   }
-
-  // Round-robin: rotate starting position so each call uses a different key
-  if (entries.length > 1) {
-    const idx = (ROUND_ROBIN_INDEX.get(provider) ?? 0) % entries.length;
-    ROUND_ROBIN_INDEX.set(provider, idx + 1);
-    // Rotate array so the "next" key is first
-    return [...entries.slice(idx), ...entries.slice(0, idx)];
-  }
-
-  return entries;
 }
 
 /**
@@ -211,13 +216,17 @@ async function getAvailableKeysForProvider(provider: string): Promise<ProviderEn
  * added and disabled all keys, we respect that choice and don't fall back.
  */
 async function providerHasAnyDbKeys(provider: string): Promise<boolean> {
-  const { supabaseAdmin } = await import('./supabase/server');
-  const sb = supabaseAdmin();
-  const { count } = await sb
-    .from('llm_keys')
-    .select('id', { count: 'exact', head: true })
-    .eq('provider', provider);
-  return (count ?? 0) > 0;
+  try {
+    const { supabaseAdmin } = await import('./supabase/server');
+    const sb = supabaseAdmin();
+    const { count } = await sb
+      .from('llm_keys')
+      .select('id', { count: 'exact', head: true })
+      .eq('provider', provider);
+    return (count ?? 0) > 0;
+  } catch {
+    return false;
+  }
 }
 
 /**
