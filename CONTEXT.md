@@ -476,7 +476,7 @@ Phase 4 (CODE): Verify items appear in JD text (catch hallucinations)
 ### 4. Scoring Prompt Rules
 
 The LLM scoring prompt (`scoreJob` in `lib/gemini.ts`) has explicit rules:
-- Performance Engineering, QA, SDET, Test Automation = same "testing umbrella" → score 65-80 for each other
+- Performance Engineering, QA/Automation, and SRE are distinct sub-specialties → cap mismatched roles at 60-65 (e.g., Performance Engineer matching a general QA Automation role is capped at 65)
 - "Performance" is ambiguous — marketing/finance uses ≠ engineering uses
 - Tools are interchangeable (JMeter ≈ Gatling ≈ LoadRunner)
 - Location alone should never drop score below 60

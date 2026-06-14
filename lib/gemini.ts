@@ -612,19 +612,11 @@ Score this match on a scale of 0-100 where:
 
 SCORING GUIDELINES — READ CAREFULLY:
 
-THE TESTING UMBRELLA (CRITICAL RULE):
-Performance Engineering, QA, SDET, Test Automation, Quality Engineering, Software Engineer in Test, Reliability Engineering — these are NOT different domains. They are sub-specialties of the same TESTING discipline. A senior in one is qualified for the others.
-
-If the candidate's primary experience is in any of these areas, ALL of the following job titles → score 65-80 (BEFORE applying the seniority cap below):
-  - Quality Engineer / QA Engineer / QA Lead / QA Automation Engineer / QA Automation Lead
-  - SDET / Software Development Engineer in Test / Software Engineer in Test
-  - Test Automation Engineer / Senior Test Automation Engineer
-  - Test Engineer / Senior Test Engineer / Test Analyst
-  - Quality Assurance Automation Engineer
-  - Reliability Engineer / Site Reliability Engineer
-  - Performance Tester / Performance Test Engineer / Load Testing Engineer
-
-DO NOT say "the candidate's expertise is primarily in performance engineering, while the job focuses on test automation" — THIS IS WRONG REASONING. They are the same domain. Score 65+.
+THE TESTING SUB-SPECIALTIES (CRITICAL RULE):
+Performance Engineering, Site Reliability Engineering (SRE), and functional Test Automation / QA are distinct sub-specialties under the broad QA/Testing domain. Do not treat them as identical.
+  - If a candidate's background is primarily in Performance Engineering (load testing, profiling, tuning, JMeter, Gatling, LoadRunner) and the job is a general QA / functional Test Automation role (writing Selenium/Cypress E2E tests, manual testing, general QA planning), cap the score at 65. They are adjacent but not a direct fit.
+  - If a candidate's background is primarily in general QA / functional Test Automation, and the job is a specialized Performance Engineering role (requiring profiling, load testing, performance tuning), cap the score at 60.
+  - Only score 75+ if the sub-specialty matches (e.g., Performance Engineer matching a Performance Engineering/Testing role, or a general QA Automation Engineer matching a QA/Automation role).
 
 ⚠️ SENIORITY / EXPERIENCE GAP (HARD CAP — APPLY AFTER skill match):
 First, identify the JD's experience requirement and seniority level:
@@ -646,13 +638,18 @@ Then compare to the candidate (CANDIDATE_YEARS=${candidateYears ?? 'unknown'}, C
     Candidate is "manager", JD is "vp" or "executive"     → cap at 50
     Same level or one step up                              → no penalty
 
-  TAKE THE LOWER of the years cap and the seniority cap. Then take the LOWER of that and the testing-umbrella floor's UPPER bound. Never override the cap upward — the cap is a HARD ceiling.
+  TAKE THE LOWER of the years cap, the seniority cap, and the testing sub-specialty cap (if applicable). Never override the cap upward — the cap is a HARD ceiling.
 
 WORKED EXAMPLES (apply the rules above):
   • Candidate 7 years, JD "Director of Performance Engineering, 18+ years"
-    → Skills/domain align (testing umbrella → would otherwise be 80-90)
+    → Skills/domain align (both performance engineering → would otherwise be 80-90)
     → Years gap = 11 → cap 40. Seniority IC→director → cap 50. Take lower → 40.
     → FINAL: 40-45 with reason mentioning the experience gap.
+
+  • Candidate is Performance Engineer (7 years), JD is "Senior QA Automation Engineer, 5+ years"
+    → Skills/domain mismatch (Performance Engineering vs general QA Automation).
+    → Apply Testing Sub-specialty Cap: cap at 65.
+    → FINAL: 60-65 with reason mentioning that candidate specializes in performance engineering whereas the role is general QA automation.
 
   • Candidate 7 years (senior), JD "Senior Performance Engineer, 5+ years"
     → Years gap = -2 (over). Seniority same. → No cap.
