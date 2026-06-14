@@ -53,14 +53,19 @@ Description:
 ${(jobDescription || '').slice(0, 4000)}
 
 AUDIT ALIGNMENT CHECKLIST:
-1. Sub-Specialty Check: Are the candidate's core day-to-day focus and expertise aligned with the job's actual day-to-day expectations?
-   - Mismatches to catch:
-     - Performance Engineering (load testing, database/JVM profiling, JMeter/Gatling) vs. general Test Automation / functional QA (writing UI/E2E test scripts, Selenium, Cypress, manual testing).
-     - Frontend Developer (HTML, CSS, React, UI design) vs. Backend Developer (Java, Go, APIs, database architecture).
-     - Data Scientist (ML modeling, python notebook research) vs. Data Engineer (building pipeline ETLs, Spark, data lakes).
-     - DevOps/Platform Engineer (K8s, CI/CD, Terraform) vs. Software Developer (writing feature code).
-     - Product Manager (strategy, roadmap, market fit) vs. Project Manager / Scrum Master (Jira tickets, timeline delivery, scrum ceremonies).
-2. If there is a clear domain mismatch or sub-specialty gap that makes the role irrelevant to this specific candidate's career track, return "action": "filter" and an "adjustedScore" of 50 (or lower).
+1. Dynamic Sub-Specialty & Domain Check:
+   - Identify the candidate's core sub-specialty and primary expertise (from their resume and insights).
+   - Identify the job's actual day-to-day focus and expected sub-specialty (from the JD).
+   - Determine if there is a fundamental mismatch between the candidate's specific core track and the job expectations, even if they share a broad category/industry.
+   - Use these exemplars to apply similar reasoning across ANY domain:
+     - Performance Engineering (load, profiling) vs. general QA Automation (UI test scripts, manual QA).
+     - Frontend UI Developer vs. Backend API/Database Developer.
+     - Data Scientist (ML research) vs. Data Engineer (ETL pipelines).
+     - DevOps/Platform vs. Software Feature Developer.
+     - Product Manager (strategy, roadmap) vs. Project Manager / Scrum Master (timelines, sprints).
+     - Product/UX Designer (user flows, wireframes) vs. Graphic/Visual Designer (marketing assets, brochures).
+     - Cyber Security / Penetration Tester vs. General IT Helpdesk / Network Support.
+2. If there is a clear mismatch or sub-specialty gap that makes the role irrelevant to the candidate's specific career track and expertise, return "action": "filter" and an "adjustedScore" of 50 (or lower).
 3. If the candidate's background matches the requirements and domain well, return "action": "keep".`;
 
   try {
