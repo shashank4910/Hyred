@@ -4,7 +4,6 @@ import { getCurrentProfile, isCurrentUserAdmin } from '@/lib/current-user';
 import { closeStaleIngestRuns } from '@/lib/ingest-runs';
 import { StatusFilter } from './_components/StatusFilter';
 import { MatchFilters } from './_components/MatchFilters';
-import { DashboardInsights } from './_components/DashboardInsights';
 import { DashboardMatchResults } from './_components/DashboardMatchResults';
 import { DashboardMatchesSection } from './_components/DashboardMatchesSection';
 import { DashboardNavProvider } from './_components/DashboardNavContext';
@@ -145,36 +144,25 @@ export default async function Dashboard({
         <RunIngestButton isAdmin={isAdmin} luminous />
       </div>
 
-      <div className="flex flex-col gap-6 xl:flex-row xl:items-start">
-        <div className="min-w-0 flex-1 space-y-6">
-          <DashboardNavProvider>
-            <StatusFilter
-              counts={counts}
-              active={status}
-              inboxCount={inboxCount ?? 0}
-              bookmarkedCount={bookmarkedCount ?? 0}
-              onlyBookmarked={onlyBookmarked}
-            />
-            <MatchFilters isAdmin={isAdmin} />
-            <DashboardMatchesSection cacheKey={matchListKey}>
-              <DashboardMatchResults
-                profileId={profile.id}
-                isAdmin={isAdmin}
-                totalMatches={totalMatches ?? 0}
-                searchParams={sp}
-              />
-            </DashboardMatchesSection>
-          </DashboardNavProvider>
-        </div>
-
-        <aside className="min-w-0 w-full shrink-0 xl:w-72">
-          <DashboardInsights
+      <div className="space-y-6">
+        <DashboardNavProvider>
+          <StatusFilter
+            counts={counts}
+            active={status}
             inboxCount={inboxCount ?? 0}
-            lastScanMatches={activeRun ? activeRun.matches_created : lastRun?.matches_created ?? null}
-            totalMatches={totalMatches ?? 0}
-            lastScanLabel={lastScanLabel}
+            bookmarkedCount={bookmarkedCount ?? 0}
+            onlyBookmarked={onlyBookmarked}
           />
-        </aside>
+          <MatchFilters isAdmin={isAdmin} />
+          <DashboardMatchesSection cacheKey={matchListKey}>
+            <DashboardMatchResults
+              profileId={profile.id}
+              isAdmin={isAdmin}
+              totalMatches={totalMatches ?? 0}
+              searchParams={sp}
+            />
+          </DashboardMatchesSection>
+        </DashboardNavProvider>
       </div>
 
       <section className="mt-4">
