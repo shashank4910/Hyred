@@ -2,6 +2,54 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 19 — Seen/Unseen card indicators + Hallucinated-skills guardrail + Sort/filter fixes (June 14, 2026)
+
+A focused bug-fix and UX polish session. Three independent improvements shipped.
+
+### (a) Dashboard match-card sort and filter alignment
+
+**Problem:** the sort dropdown had 5 options (newest, oldest, score_desc, score_asc, bookmarked) but the API and MatchList only correctly handled 3. The status-filter tab counts were also mismatched because the PostgREST alias `job!inner(...)` was being used without the correct foreign table qualifier in the count queries.
+
+**Fix:** simplified sort dropdown to 3 options (**Score (High → Low)**, **Score (Low → High)**, **Newest First**) matching what the API route actually supports. Corrected PostgREST foreignTable alias in count queries in `lib/match-stats.ts`.
+
+**Files changed:** `app/(app)/_components/DashboardMatchResults.tsx`, `lib/match-stats.ts`, `app/api/matches/route.ts`.
+
+### (b) Seen/Unseen card visual indicators — PR #137
+
+**Problem:** once a user clicked a job card and went back, they had no visual cue which cards they had already seen. Every card looked identical, making it hard to quickly spot fresh matches.
+
+**Design decision (Product Owner perspective):** we already have a `viewed_at` timestamp column. Rather than adding a new DB field, we derive "viewed" from `status !== 'new'`. The card styling uses the well-understood "read email" metaphor:
+
+- **Unseen (new):** highlighted 4px primary left border, default elevated background, elevated shadow, **bold** title, `New` pill badge.
+- **Seen (viewed):** transparent left border, softer recessed background (`bg-surface-container-low/40`), `opacity-75` (snaps back to 100% on hover), muted title colour (`text-on-surface-variant`, normal weight).
+
+This pattern creates an immediate at-a-glance overview of which jobs are fresh without any new data or server round-trips.
+
+**Files changed:** `app/(app)/_components/MatchCard.tsx` — added `isViewed` derived bool, conditional class sets on the card wrapper and `<h3>`, `New` pill guard.
+
+### (c) Hallucinated-skills matching fix — gemini.ts guardrail + DB cleanup script
+
+**Root cause (evidence-based RCA):** the `scoreJob` and `matchSkills` functions ask the LLM to identify matched/missing skills. The LLM occasionally **hallucinated** skill keywords that were not in the Job Description text — for example returning `"C++"` as matched for a Python-only JD. Because we trusted the LLM output verbatim and wrote it to `matches.matched_skills` / `matches.missing_skills`, these phantom matches were displayed as green chips on both the dashboard card and the job detail page.
+
+The root cause is pure LLM non-determinism — the model infers related concepts from its training data. It was not a database or transport bug.
+
+**Fix in `lib/gemini.ts`:**
+
+1. **`isSkillPresentInJd(skill, jdText, jobTitle)`** — new exported helper (line ~2166). Case-insensitive, whole-word regex match that handles:
+   - Special characters in skill names (C++, .NET, Node.js — escaped for regex).
+   - Trailing plural 's': `"container"` matches `"containers"` but not `"containerisation"`.
+   - Falls back to `jobTitle` if `jdText` is null/empty.
+2. **`scoreJob`** — prompt instructions updated to tell the LLM to only report skills physically present in the JD. After the LLM responds, `matchedSkills` and `missingSkills` are **both filtered** through `isSkillPresentInJd` (skill must appear in JD to be matched; skill must appear in JD to be listed as missing — i.e., it's a real requirement we can't meet, not a hallucination).
+3. **`matchSkills`** — `jdRequirements` extraction list is filtered through `isSkillPresentInJd` before scoring; `matched` and `missing` arrays are also post-filtered.
+
+**DB cleanup script:** `scripts/clean-hallucinated-skills.ts` — one-time script that reads every match with a job description, runs `isSkillPresentInJd` against each stored skill, and upserts cleaned `matched_skills` / `missing_skills` arrays back to the DB, removing any hallucinated entries from historical records.
+
+**Files changed:** `lib/gemini.ts` (3 sites), `scripts/clean-hallucinated-skills.ts` (new).
+
+**PR:** #137.
+
+---
+
 ## Session 16 — DB-managed multi-key LLMs, Cerebras model deprecation, RPM rotation, dashboard pagination, JD HTML + scoreJob seniority cap (May 31, 2026)
 
 A long working session that took the AI runtime, the dashboard performance, and scoring quality from "single shared key + 100-card SSR fetch + no seniority guard" → "admin-managed multi-provider key pool + paginated infinite-scroll dashboard with bulletproof back-nav + experience-aware scoreJob with server-side cap." Five PRs: **#94** (LLM key system), **#110** (pagination), **#116** (JD HTML + seniority).
