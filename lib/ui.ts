@@ -79,10 +79,8 @@ export const DEFAULT_MATCH_SORT = 'score' as const;
 
 export const MATCH_SORT_MODES = [
   'newest',
-  'posted',
   'score',
   'activity',
-  'oldest',
 ] as const;
 
 export type MatchSortMode = (typeof MATCH_SORT_MODES)[number];

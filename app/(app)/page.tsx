@@ -22,7 +22,7 @@ type SearchParams = {
   min?: string;
   remote?: string;
   bookmarked?: string;
-  sort?: 'newest' | 'posted' | 'score' | 'activity' | 'oldest';
+  sort?: 'newest' | 'score' | 'activity';
   from?: string; // match ID to highlight on back-navigation
 };
 

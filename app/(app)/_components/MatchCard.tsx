@@ -52,14 +52,8 @@ export function MatchCard({
   showSource = false,
   returnHref,
 }: Props) {
-  const dateSource = job.posted_at ?? job.fetched_at ?? null;
-  const relative = relativeTime(dateSource);
-  const shortDate = formatShortDate(dateSource);
-  const fullDate = formatFullDate(dateSource);
-  const isAdded = !job.posted_at && !!job.fetched_at;
-  const tooltip = isAdded
-    ? `Added to Hyred on ${fullDate} (source did not provide a posted date)`
-    : `Posted on the source on ${fullDate}`;
+  const fullDate = formatFullDate(job.fetched_at);
+  const tooltip = `Discovered on ${fullDate}`;
   const isViewed = status === 'viewed' || status !== 'new';
   const [bookmarked, setBookmarked] = useState(initialBookmarked);
   const [saving, setSaving] = useState(false);
@@ -142,45 +136,22 @@ export function MatchCard({
                   </span>
                 </>
               )}
-              {/* Date shows discovery date (fetched_at) and optionally posted date */}
+              {/* Date shows discovery date (fetched_at) */}
               {/* Note: fetched_at is always present per Job type definition */}
-              <span className="h-1 w-1 rounded-full bg-outline-variant" />
-              <span className="inline-flex items-center gap-1 flex-col" title={tooltip}>
-                {/* Discovery date (always shown) */}
-                <div className="flex items-center gap-2">
+              <>
+                <span className="h-1 w-1 rounded-full bg-outline-variant" />
+                <span className="inline-flex items-center gap-1" title={tooltip}>
                   <Clock className="h-4 w-4" />
-                  <div>
-                    <div className="text-[10px] font-medium text-text-muted">Discovered</div>
-                    <div className="flex items-center gap-1">
-                      {job.fetched_at && (
-                        <>
-                          {formatShortDate(job.fetched_at)}
-                          {relativeTime(job.fetched_at) && (
-                            <span className="text-text-muted">· {relativeTime(job.fetched_at)}</span>
-                          )}
-                        </>
+                  {job.fetched_at && (
+                    <>
+                      {formatShortDate(job.fetched_at)}
+                      {relativeTime(job.fetched_at) && (
+                        <span className="text-text-muted">· {relativeTime(job.fetched_at)}</span>
                       )}
-                    </div>
-                  </div>
-                </div>
-                {/* Posted date (if available) */}
-                {job.posted_at && (
-                  <div className="flex items-center gap-2 mt-1">
-                    <Clock className="h-4 w-4" />
-                    <div>
-                      <div className="text-[10px] font-medium text-text-muted">Posted</div>
-                      <div className="flex items-center gap-1">
-                        <>
-                          {formatShortDate(job.posted_at)}
-                          {relativeTime(job.posted_at) && (
-                            <span className="text-text-muted">· {relativeTime(job.posted_at)}</span>
-                          )}
-                        </>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </span>
+                    </>
+                  )}
+                </span>
+              </>
               {job.salary && (
                 <>
                   <span className="h-1 w-1 rounded-full bg-outline-variant" />
