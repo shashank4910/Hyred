@@ -1,8 +1,10 @@
 import Link from 'next/link';
 import { Inbox } from 'lucide-react';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { getCurrentProfile } from '@/lib/current-user';
 import { applyMatchSort } from '@/lib/apply-match-sort';
 import { resolveMatchSort } from '@/lib/ui';
+import { isSkillPresentInJd } from '@/lib/gemini';
 import { MatchList } from './MatchList';
 
 const PAGE_SIZE = 20;
@@ -36,6 +38,13 @@ export async function DashboardMatchResults({
   const highlightId = searchParams.from ?? null;
 
   const sb = supabaseAdmin();
+
+  // Fetch profile top_skills so we can compute matched/missing for cards
+  // that pre-date the skills backfill (matched_skills is null).
+  const profile = await getCurrentProfile();
+  const topSkills: string[] = Array.isArray((profile?.insights as any)?.top_skills)
+    ? (profile!.insights as any).top_skills
+    : [];
 
   let query = sb
     .from('matches')
@@ -91,26 +100,49 @@ export async function DashboardMatchResults({
     );
   }
 
+  // For cards missing matched_skills, derive them from profile top_skills × JD.
+  // Keep it fast: only compute for cards where matched_skills is null/empty.
+  const enriched = (matches ?? []).map((m) => {
+    const raw = m as unknown as {
+      matched_skills: string[] | null;
+      missing_skills: string[] | null;
+      job: { title: string; description: string | null };
+    };
+    let matchedSkills = raw.matched_skills ?? [];
+    let missingSkills = raw.missing_skills ?? [];
+
+    if (matchedSkills.length === 0 && topSkills.length > 0) {
+      const jd = raw.job?.description ?? '';
+      const title = raw.job?.title ?? '';
+      matchedSkills = topSkills.filter((s) => isSkillPresentInJd(s, jd, title));
+      missingSkills = topSkills
+        .filter((s) => !matchedSkills.includes(s))
+        .slice(0, 5);
+    }
+
+    return {
+      ...m,
+      bookmarked: (m as unknown as { bookmarked: boolean }).bookmarked ?? false,
+      matched_skills: matchedSkills,
+      missing_skills: missingSkills,
+      job: m.job as unknown as {
+        id: string;
+        title: string;
+        company: string | null;
+        location: string | null;
+        remote: boolean;
+        url: string;
+        source: string;
+        salary: string | null;
+        posted_at: string | null;
+        fetched_at: string | null;
+      },
+    };
+  });
+
   return (
     <MatchList
-      initialMatches={(matches ?? []).map((m) => ({
-        ...m,
-        bookmarked: (m as unknown as { bookmarked: boolean }).bookmarked ?? false,
-        matched_skills: (m as unknown as { matched_skills: string[] | null }).matched_skills ?? null,
-        missing_skills: (m as unknown as { missing_skills: string[] | null }).missing_skills ?? null,
-        job: m.job as unknown as {
-          id: string;
-          title: string;
-          company: string | null;
-          location: string | null;
-          remote: boolean;
-          url: string;
-          source: string;
-          salary: string | null;
-          posted_at: string | null;
-          fetched_at: string | null;
-        },
-      }))}
+      initialMatches={enriched}
       total={totalInFilter}
       initialHasMore={hasMore}
       showSource={isAdmin}
@@ -118,6 +150,8 @@ export async function DashboardMatchResults({
     />
   );
 }
+
+
 
 function EmptyMatches({
   status,
