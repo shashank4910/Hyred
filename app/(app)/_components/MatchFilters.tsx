@@ -75,11 +75,9 @@ export function MatchFilters({ isAdmin = false }: { isAdmin?: boolean }) {
         className="input w-auto"
         title="Sort matches"
       >
-        <option value="newest">Newest first</option>
-        <option value="posted">Original posted date</option>
         <option value="score">Best score</option>
+        <option value="newest">Newest first</option>
         <option value="activity">Recent activity</option>
-        <option value="oldest">Oldest first</option>
       </select>
 
       {hasFilters && (
