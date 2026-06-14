@@ -57,6 +57,40 @@ const SCORE_BATCH_DELAY_MS = 3_000; // 3 seconds between batches → ~20 RPM eff
  */
 const MAX_JOB_AGE_DAYS = 45;
 
+async function cleanOldJobs(sb: any) {
+  try {
+    const cutoffDate = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString();
+    
+    // Find all job_ids that are active and should NOT be deleted
+    const { data: activeMatches } = await sb
+      .from('matches')
+      .select('job_id')
+      .in('status', ['saved', 'applied', 'interviewing', 'offer']);
+
+    const activeJobIds = (activeMatches ?? [])
+      .map((m: any) => m.job_id as string)
+      .filter(Boolean);
+
+    let deleteBuilder = sb
+      .from('jobs')
+      .delete()
+      .lt('fetched_at', cutoffDate);
+
+    if (activeJobIds.length > 0) {
+      deleteBuilder = deleteBuilder.not('id', 'in', `(${activeJobIds.join(',')})`);
+    }
+
+    const { error } = await deleteBuilder;
+    if (error) {
+      console.error('[ingest] Stale jobs cleanup failed:', error.message);
+    } else {
+      console.log('[ingest] Successfully flushed jobs older than 45 days.');
+    }
+  } catch (err) {
+    console.error('[ingest] Error running stale jobs cleanup:', err);
+  }
+}
+
 /**
  * Full ingest pipeline:
  *  1. Open ingest_runs row
@@ -68,7 +102,8 @@ const MAX_JOB_AGE_DAYS = 45;
  *  7. Pre-filter by title patterns from SearchProfile (cheap regex)
  *  8. AI relevance filter on "maybe" candidates (batched, cheap)
  *  9. LLM-score the relevant candidates (existing detailed scoring)
- *  10. Persist matches and close run
+ *  10. Clean up stale jobs older than 45 days
+ *  11. Persist matches and close run
  */
 export async function runIngest(opts?: {
   profileId?: string;
@@ -586,6 +621,9 @@ export async function runIngest(opts?: {
       // would appear on every big scan and is misleading.
       console.warn(`[ingest] Scoring stopped early: ${scored}/${ranked.length} scored (time budget)`);
     }
+
+    // ---------- 10. Clean up stale jobs older than 45 days ----------
+    await cleanOldJobs(sb);
   } catch (e) {
     fatalError = e as Error;
   } finally {
