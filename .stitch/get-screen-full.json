@@ -1,0 +1,28 @@
+﻿{
+    "id":  1,
+    "jsonrpc":  "2.0",
+    "result":  {
+                   "content":  [
+                                   {
+                                       "text":  "{\"name\":\"projects/3444316686130112255/screens/5bfaf7f2edd94ffca0cb356e70ce7c2b\",\"title\":\"Matches Dashboard (Luminous)\",\"screenshot\":{\"name\":\"projects/3444316686130112255/files/067fd254b61a416c8520d31d51f47667\",\"downloadUrl\":\"https://lh3.googleusercontent.com/aida/ADBb0uj9WE0yeTbjYVLETWWO4P7TP0_oOIEJNHaVmkidwi2fQi2ivF5dzf7RX8BBX9CpG9oRdwgoo_pxJnb1e0XarxqOCPPxQwohIv5ZqWqfnUQ4gea2wEhumlC1KQr-hSI8kutzIGR1nlHzZ-53oQxchyw3QJFD0NnRy7ocR9GC7SgOwg95LG_vBTEix0LHUSUEZgmH-oSYl51U_YnhEXs6omesNAdbKRnyCPoVDn7s-wY6CZiBSvyjLRGj6UA\"},\"htmlCode\":{\"name\":\"projects/3444316686130112255/files/fda3de89218d4a3c9d0146c61f3582c3\",\"downloadUrl\":\"https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ7Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpaCiVodG1sXzIxYmEyN2VhMTEyZTRkZDE4YTBjM2ExNjZlNTMwNDRjEgsSBxCLvOKpyx4YAZIBIwoKcHJvamVjdF9pZBIVQhMzNDQ0MzE2Njg2MTMwMTEyMjU1\u0026filename=\u0026opi=89354086\",\"mimeType\":\"text/html\"},\"width\":\"2560\",\"height\":\"2938\",\"deviceType\":\"DESKTOP\"}",
+                                       "type":  "text"
+                                   }
+                               ],
+                   "structuredContent":  {
+                                             "deviceType":  "DESKTOP",
+                                             "height":  "2938",
+                                             "htmlCode":  {
+                                                              "downloadUrl":  "https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ7Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpaCiVodG1sXzIxYmEyN2VhMTEyZTRkZDE4YTBjM2ExNjZlNTMwNDRjEgsSBxCLvOKpyx4YAZIBIwoKcHJvamVjdF9pZBIVQhMzNDQ0MzE2Njg2MTMwMTEyMjU1\u0026filename=\u0026opi=89354086",
+                                                              "mimeType":  "text/html",
+                                                              "name":  "projects/3444316686130112255/files/fda3de89218d4a3c9d0146c61f3582c3"
+                                                          },
+                                             "name":  "projects/3444316686130112255/screens/5bfaf7f2edd94ffca0cb356e70ce7c2b",
+                                             "screenshot":  {
+                                                                "downloadUrl":  "https://lh3.googleusercontent.com/aida/ADBb0uj9WE0yeTbjYVLETWWO4P7TP0_oOIEJNHaVmkidwi2fQi2ivF5dzf7RX8BBX9CpG9oRdwgoo_pxJnb1e0XarxqOCPPxQwohIv5ZqWqfnUQ4gea2wEhumlC1KQr-hSI8kutzIGR1nlHzZ-53oQxchyw3QJFD0NnRy7ocR9GC7SgOwg95LG_vBTEix0LHUSUEZgmH-oSYl51U_YnhEXs6omesNAdbKRnyCPoVDn7s-wY6CZiBSvyjLRGj6UA",
+                                                                "name":  "projects/3444316686130112255/files/067fd254b61a416c8520d31d51f47667"
+                                                            },
+                                             "title":  "Matches Dashboard (Luminous)",
+                                             "width":  "2560"
+                                         }
+               }
+}

@@ -1,0 +1,44 @@
+Brian Wilson
+Minneapolis, MN | brian.wilson16@yahoo.com | (782) 993-2858
+linkedin.com/in/brian-wilson
+
+Professional Summary
+Experienced software engineer with 9 years of experience building scalable distributed systems. Passionate about clean architecture, developer experience, and delivering impact.
+
+Professional Experience
+Full Stack Developer | Microsoft
+Jun 2024 – Present
+  • Optimized database queries resulting in 37% improvement in API response times
+  • Implemented CI/CD pipeline reducing deployment time from 2 hours to 3 minutes
+  • Automated infrastructure provisioning reducing new service setup from 7 weeks to 2 days
+  • Designed and built a real-time data pipeline processing 1M+ events/day using Docker
+  • Led migration of monolith to serverless platform, reducing latency by 35% and infrastructure costs by $5K annually
+  • Led squad of 12 engineers delivering feature rollout in 12 months
+
+Staff Engineer | Pinterest
+Feb 2020 – 2022
+  • Implemented CI/CD pipeline reducing deployment time from 11 hours to 1 minutes
+  • Optimized database queries resulting in 25% improvement in API response times
+  • Automated infrastructure provisioning reducing new service setup from 7 weeks to 1 days
+  • Reduced p99 latency from 8ms to 2ms through caching and query optimization
+  • Led squad of 9 engineers delivering analytics dashboard in 12 months
+  • Optimized database queries resulting in 60% improvement in API response times
+
+Engineering Manager | Microsoft
+Oct 2018 – 2018
+  • Designed and built a real-time data pipeline processing 1M+ events/day using JavaScript
+  • Designed and built a real-time data pipeline processing 1M+ events/day using Terraform
+  • Automated infrastructure provisioning reducing new service setup from 8 weeks to 2 days
+  • Reduced p99 latency from 11ms to 1ms through caching and query optimization
+  • Architected event-driven system handling 1M+ concurrent users
+  • Optimized database queries resulting in 49% improvement in API response times
+
+Education
+Bachelor of Arts in Marketing
+MIT | 2015
+
+Technical Skills
+Kubernetes, Node.js, Terraform, Go, Docker, React, gRPC, PostgreSQL, TypeScript, Jest, Git, CI/CD, Postgres, Microservices, Kafka, GraphQL
+
+Soft Skills
+Mentoring, Cross-functional Collaboration, Problem Solving

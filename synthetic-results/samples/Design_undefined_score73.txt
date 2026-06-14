@@ -1,0 +1,57 @@
+Ronald Green
+Atlanta, GA | ronald.green6@icloud.com | (382) 581-6758
+linkedin.com/in/ronald-green
+
+Professional Summary
+Senior design lead who has shipped products used by millions, with expertise in end-to-end product design.
+
+Professional Experience
+UX Designer | Notion
+Dec 2025 – Present
+  - Reduced design-to-dev handoff time by 51% through improved documentation and design specs
+  - Collaborated with engineering to implement design token system
+  - Established design review process adopted by 14 product teams
+  - Mentored 9 junior designers through structured growth program
+  - Mentored 7 junior designers through structured growth program
+  - Led user research with 1M++ participants informing product strategy
+  - Increased trial-to-paid conversion by 37% through redesigned onboarding flow
+
+Design Lead | Discord
+Nov 2023 – 2023
+  - Led user research with 1M++ participants informing product strategy
+  - Established design review process adopted by 11 product teams
+  - Improved accessibility score from 8/100 to 1/100 achieving WCAG 2.1 AA compliance
+  - Improved accessibility score from 4/100 to 3/100 achieving WCAG 2.1 AA compliance
+  - Reduced design-to-dev handoff time by 77% through improved documentation and design specs
+  - Designed and shipped design system used by 8 product teams across 1M++ components
+  - Redesigned core user flow increasing task completion rate by 36%
+
+Product Designer | Apple
+Aug 2019 – 2021
+  - Improved accessibility score from 3/100 to 2/100 achieving WCAG 2.1 AA compliance
+  - Created interactive prototypes tested with 1M+ users, iterating based on feedback
+  - Redesigned core user flow increasing task completion rate by 32%
+  - Created interactive prototypes tested with 1M+ users, iterating based on feedback
+  - Redesigned core user flow increasing task completion rate by 57%
+  - Improved accessibility score from 2/100 to 2/100 achieving WCAG 2.1 AA compliance
+  - Mentored 7 junior designers through structured growth program
+
+UI Designer | Linear
+Sep 2017 – 2017
+  - Collaborated with engineering to implement design token system
+  - Increased trial-to-paid conversion by 55% through redesigned onboarding flow
+  - Led user research with 500++ participants informing product strategy
+  - Mentored 8 junior designers through structured growth program
+  - Mentored 7 junior designers through structured growth program
+  - Mentored 7 junior designers through structured growth program
+  - Improved accessibility score from 2/100 to 2/100 achieving WCAG 2.1 AA compliance
+
+Education
+Master of Science in Mathematics
+University of Texas | 2019
+
+Technical Skills
+User Research, Interaction Design, Prototyping, Design Systems, Sketch, Responsive Design, Adobe Creative Suite, Wireframing, Figma, Design Tokens, Principle, Information Architecture, Framer
+
+Soft Skills
+Visual Storytelling, User Empathy, Collaboration, Design Critique

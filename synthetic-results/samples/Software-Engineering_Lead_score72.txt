@@ -1,0 +1,57 @@
+Steven Harris
+Houston, TX | steven.harris38@gmail.com | (770) 317-1732
+linkedin.com/in/steven-harris
+
+Professional Summary
+Senior engineer specializing in backend systems and cloud infrastructure. Led multiple 0-to-1 initiatives serving 1M++ users.
+
+Professional Experience
+Platform Engineer | Netflix
+Jun 2025 – Present
+  • Mentored 5 junior engineers through structured onboarding program
+  • Reduced p99 latency from 9ms to 1ms through caching and query optimization
+  • Designed and built a real-time data pipeline processing 1M+ events/day using Docker
+  • Led squad of 2 engineers delivering new product launch in 4 months
+  • Implemented CI/CD pipeline reducing deployment time from 6 hours to 1 minutes
+  • Automated infrastructure provisioning reducing new service setup from 10 weeks to 2 days
+  • Designed and built a real-time data pipeline processing 1M+ events/day using Kubernetes
+
+Site Reliability Engineer | Twitter
+Aug 2021 – 2023
+  • Implemented CI/CD pipeline reducing deployment time from 11 hours to 3 minutes
+  • Built monitoring dashboard tracking 500++ metrics across 14 microservices
+  • Optimized database queries resulting in 24% improvement in API response times
+  • Led migration of monolithic app to event-driven architecture, reducing latency by 44% and infrastructure costs by $5K annually
+  • Architected event-driven system handling 1M+ concurrent users
+  • Designed and built a real-time data pipeline processing 1M+ events/day using AWS
+  • Built monitoring dashboard tracking 1M++ metrics across 15 microservices
+
+Frontend Engineer | Datadog
+Mar 2019 – 2019
+  • Led squad of 14 engineers delivering infrastructure upgrade in 4 months
+  • Led migration of legacy system to serverless platform, reducing latency by 20% and infrastructure costs by $5K annually
+  • Led squad of 13 engineers delivering analytics dashboard in 4 months
+  • Designed and built a real-time data pipeline processing 1M+ events/day using Kafka
+  • Architected event-driven system handling 1M+ concurrent users
+  • Reduced p99 latency from 10ms to 2ms through caching and query optimization
+  • Designed and built a real-time data pipeline processing 500+ events/day using Kafka
+
+Platform Engineer | LinkedIn
+Aug 2015 – 2017
+  • Mentored 4 junior engineers through structured onboarding program
+  • Designed and built a real-time data pipeline processing 1M+ events/day using MongoDB
+  • Mentored 13 junior engineers through structured onboarding program
+  • Led squad of 15 engineers delivering feature rollout in 12 months
+  • Built monitoring dashboard tracking 1M++ metrics across 3 microservices
+  • Optimized database queries resulting in 43% improvement in API response times
+  • Reduced p99 latency from 10ms to 2ms through caching and query optimization
+
+Education
+Bachelor of Science in Computer Science
+UCLA | 2019
+
+Technical Skills
+React, TypeScript, GCP, MongoDB, Cypress, Linux, PostgreSQL, Jest, AWS, SQL, Postgres, Git
+
+Soft Skills
+Mentoring, Problem Solving, Technical Writing

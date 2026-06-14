@@ -1,0 +1,48 @@
+Karen Torres
+Houston, TX | karen.torres29@outlook.com | (375) 831-9583
+linkedin.com/in/karen-torres
+
+Professional Summary
+Machine learning engineer focused on productionizing models at scale. Built systems serving 1M++ predictions daily.
+
+Professional Experience
+ML Ops Engineer | Databricks
+May 2025 – Present
+  • Reduced feature engineering time by 75% through automated feature store
+  • Increased model inference speed by 31% through quantization and pruning techniques
+  • Designed A/B testing framework used by 13 product teams across the organization
+  • Designed A/B testing framework used by 3 product teams across the organization
+  • Designed A/B testing framework used by 3 product teams across the organization
+  • Reduced feature engineering time by 25% through automated feature store
+
+Analytics Lead | Zoom
+Oct 2023 – 2023
+  • Built NLP pipeline processing 1M+ documents/day for information extraction
+  • Developed customer churn prediction model with 29% precision, reducing churn by {PCT}%
+  • Designed A/B testing framework used by 12 product teams across the organization
+  • Developed customer churn prediction model with 74% precision, reducing churn by {PCT}%
+  • Built NLP pipeline processing 1M+ documents/day for information extraction
+  • Designed A/B testing framework used by 13 product teams across the organization
+
+ML Ops Engineer | PagerDuty
+Oct 2019 – 2021
+  • Implemented ML Ops infrastructure reducing model deployment from 8 weeks to 3 hours
+  • Developed customer churn prediction model with 39% precision, reducing churn by {PCT}%
+  • Implemented ML Ops infrastructure reducing model deployment from 7 weeks to 2 hours
+  • Designed A/B testing framework used by 9 product teams across the organization
+  • Built ML model achieving 67% accuracy that saved $5K/month in fraud losses
+  • Developed customer churn prediction model with 36% precision, reducing churn by {PCT}%
+
+Education
+Master of Arts in Data Science
+UCLA | 2020
+
+Technical Skills
+Statistics, TensorFlow, NumPy, R, Computer Vision, Tableau, PyTorch, scikit-learn, MLflow, Airflow, Jupyter, Pandas, NLP, PostgreSQL
+
+Soft Skills
+Cross-functional Communication, Storytelling with Data, Statistical Reasoning
+
+
+Certifications
+- Databricks ML Practitioner

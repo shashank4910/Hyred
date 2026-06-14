@@ -1,0 +1,23 @@
+Deborah Jones
+Houston, TX | deborah.jones88@icloud.com | (211) 709-7750
+linkedin.com/in/deborah-jones
+
+Professional Summary
+Analytics leader with expertise in experimental design and causal inference. Track record of translating data insights into product strategy.
+
+Professional Experience
+Research Scientist | Zoom
+Sep 2024 – Present
+  - Created automated anomaly detection pipeline monitoring 1M++ metrics in real-time
+  - Led data science team of 14 delivering insights that drove $5M in revenue
+  - Built NLP pipeline processing 1M+ documents/day for information extraction
+
+Education
+Master of Business Administration in Marketing
+University of Michigan | 2016
+
+Technical Skills
+Python, NLP, LLM, Tableau, TensorFlow, PyTorch, LangChain, Jupyter, A/B Testing, scikit-learn, Spark, Computer Vision, Airflow, Pandas, MLflow, NumPy, Statistics
+
+Soft Skills
+Experimental Design, Cross-functional Communication, Storytelling with Data, Statistical Reasoning

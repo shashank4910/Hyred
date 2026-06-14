@@ -1,0 +1,35 @@
+Kimberly Garcia
+Raleigh, NC | kimberly.garcia35@proton.me | (964) 943-8580
+linkedin.com/in/kimberly-garcia
+
+Professional Summary
+Experienced software engineer with 5 years of experience building scalable distributed systems. Passionate about clean architecture, developer experience, and delivering impact.
+
+Professional Experience
+Frontend Engineer | Twilio
+Sep 2025 – Present
+  Built monitoring dashboard tracking 1M++ metrics across 6 microservices.
+  Led migration of on-prem infrastructure to event-driven architecture, reducing latency by 41% and infrastructure costs by $1.5K annually.
+  Mentored 3 junior engineers through structured onboarding program.
+  Mentored 7 junior engineers through structured onboarding program.
+
+Staff Engineer | GitHub
+Dec 2023 – 2023
+  Reduced p99 latency from 12ms to 3ms through caching and query optimization.
+  Implemented CI/CD pipeline reducing deployment time from 9 hours to 3 minutes.
+  Built monitoring dashboard tracking 1M++ metrics across 4 microservices.
+  Led squad of 9 engineers delivering analytics dashboard in 8 months.
+
+Education
+Master of Arts in Finance
+Cornell University | 2012
+
+Technical Skills
+Git, REST API, GCP, Next.js, Express, Linux, Kafka, Node.js, React
+
+Soft Skills
+Communication, Leadership, Technical Writing
+
+
+Certifications
+- Kubernetes CKA

@@ -8,6 +8,7 @@ import { JobActions } from './JobActions';
 import { AutoApplyButton } from './AutoApplyButton';
 import { MatchSkillPills } from '../../_components/MatchSkillPills';
 import { relativeTime, scoreColorClass, scoreLabel, SOURCE_LABELS } from '@/lib/ui';
+import { ReferralRadar } from './ReferralRadar';
 
 export const dynamic = 'force-dynamic';
 
@@ -156,6 +157,17 @@ export default async function JobMatchPage({
         notes={match.notes}
         applyUrl={job.url}
       />
+
+      {/* Referral Radar */}
+      {job.company && (
+        <ReferralRadar
+          company={job.company}
+          jobTitle={job.title}
+          matchScore={match.llm_score}
+          matchedSkills={(match as unknown as { matched_skills: string[] | null }).matched_skills ?? []}
+          jobUrl={job.url}
+        />
+      )}
 
       {/* Auto Apply */}
       <div className="glass-card p-6 border-secondary/20 bg-gradient-to-r from-secondary-fixed/20 to-transparent">

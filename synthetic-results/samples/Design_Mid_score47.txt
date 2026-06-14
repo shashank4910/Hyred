@@ -1,0 +1,35 @@
+David Green
+Portland, OR | david.green50@outlook.com | (502) 950-2074
+linkedin.com/in/david-green
+
+Professional Summary
+Designer passionate about design systems and creating cohesive user experiences across platforms.
+
+Professional Experience
+Principal Designer | Stripe
+Sep 2025 – Present
+  Redesigned core user flow increasing task completion rate by 47%.
+  Mentored 11 junior designers through structured growth program.
+  Created interactive prototypes tested with 1M+ users, iterating based on feedback.
+  Reduced design-to-dev handoff time by 51% through improved documentation and design specs.
+
+Senior Designer | Duolingo
+Jun 2021 – 2023
+  Created interactive prototypes tested with 1M+ users, iterating based on feedback.
+  Mentored 11 junior designers through structured growth program.
+  Redesigned core user flow increasing task completion rate by 54%.
+  Established design review process adopted by 9 product teams.
+
+Education
+Master of Arts in Information Systems
+Carnegie Mellon | 2022
+
+Technical Skills
+Information Architecture, Prototyping, Framer, Design Tokens, Adobe Creative Suite, User Research, Sketch, Figma, Interaction Design, Principle, Design Systems
+
+Soft Skills
+Creative Problem Solving, Design Critique, Collaboration, User Empathy, Visual Storytelling
+
+
+Certifications
+- Interaction Design Foundation

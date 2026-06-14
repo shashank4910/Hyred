@@ -1,0 +1,21 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Freebuff (AI agent)",
+      "type": "shell",
+      "command": "freebuff",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "isBackground": true,
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "freebuff",
+        "focus": true
+      },
+      "problemMatcher": []
+    }
+  ]
+}

@@ -1,0 +1,1595 @@
+[
+  {
+    "filename": "resume-ats-optimized (1).pdf",
+    "sizeKb": 42.4,
+    "chars": 3122,
+    "overallScore": 39,
+    "breakdown": {
+      "sectionStructure": 40,
+      "contactInfo": 80,
+      "bulletQuality": 10,
+      "quantifiableAchievements": 15,
+      "skillsOptimization": 20,
+      "lengthReadability": 40,
+      "formatCleanliness": 86,
+      "dateConsistency": 80
+    },
+    "topImprovements": [
+      "Bullet point formatting: No bullet points found. Use \"- \" formatted bullets for better ATS readability.",
+      "Quantifiable achievements: No experience bullets found to check for quantifiable achievements.",
+      "Skills optimization: Skills section needs work. Only 0 concrete technical skills listed. Aim for 10-15. Skills appear onl"
+    ],
+    "goodPractices": [
+      "All key contact details present.",
+      "Minor formatting issues. 2 em/en dashes detected — use standard hyphens instead. 2 unicode bullets detected — stick to \"- \" for best ATS parsing.",
+      "Dates are well-formatted and consistent."
+    ],
+    "stats": {
+      "wordCount": 382,
+      "charCount": 3122,
+      "bulletCount": 0,
+      "sectionCount": 5
+    },
+    "keywordsFound": 95,
+    "fileHints": {
+      "extension": "pdf",
+      "isPdf": true,
+      "isDocx": false,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "Shashank_Singh_Senior_Performance_Engineer.docx",
+    "sizeKb": 40.4,
+    "chars": 8658,
+    "overallScore": 41,
+    "breakdown": {
+      "sectionStructure": 55,
+      "contactInfo": 80,
+      "bulletQuality": 10,
+      "quantifiableAchievements": 15,
+      "skillsOptimization": 15,
+      "lengthReadability": 60,
+      "formatCleanliness": 70,
+      "dateConsistency": 50
+    },
+    "topImprovements": [
+      "Bullet point formatting: No bullet points found. Use \"- \" formatted bullets for better ATS readability.",
+      "Quantifiable achievements: No experience bullets found to check for quantifiable achievements.",
+      "Skills optimization: No dedicated Skills section found. ATS systems scan this for keyword matching."
+    ],
+    "goodPractices": [
+      "All key contact details present."
+    ],
+    "stats": {
+      "wordCount": 990,
+      "charCount": 8658,
+      "bulletCount": 0,
+      "sectionCount": 8
+    },
+    "keywordsFound": 169,
+    "fileHints": {
+      "extension": "docx",
+      "isPdf": false,
+      "isDocx": true,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "resume-ats-optimized (4).pdf",
+    "sizeKb": 99,
+    "chars": 9880,
+    "overallScore": 44,
+    "breakdown": {
+      "sectionStructure": 70,
+      "contactInfo": 80,
+      "bulletQuality": 10,
+      "quantifiableAchievements": 15,
+      "skillsOptimization": 20,
+      "lengthReadability": 40,
+      "formatCleanliness": 73,
+      "dateConsistency": 80
+    },
+    "topImprovements": [
+      "Bullet point formatting: No bullet points found. Use \"- \" formatted bullets for better ATS readability.",
+      "Quantifiable achievements: No experience bullets found to check for quantifiable achievements.",
+      "Skills optimization: Skills section needs work. Only 0 concrete technical skills listed. Aim for 10-15. Skills appear onl"
+    ],
+    "goodPractices": [
+      "All key contact details present.",
+      "Dates are well-formatted and consistent."
+    ],
+    "stats": {
+      "wordCount": 1220,
+      "charCount": 9880,
+      "bulletCount": 0,
+      "sectionCount": 7
+    },
+    "keywordsFound": 169,
+    "fileHints": {
+      "extension": "pdf",
+      "isPdf": true,
+      "isDocx": false,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "resume-ats-optimized (2).pdf",
+    "sizeKb": 44,
+    "chars": 4230,
+    "overallScore": 45,
+    "breakdown": {
+      "sectionStructure": 40,
+      "contactInfo": 80,
+      "bulletQuality": 10,
+      "quantifiableAchievements": 15,
+      "skillsOptimization": 45,
+      "lengthReadability": 60,
+      "formatCleanliness": 83,
+      "dateConsistency": 80
+    },
+    "topImprovements": [
+      "Bullet point formatting: No bullet points found. Use \"- \" formatted bullets for better ATS readability.",
+      "Quantifiable achievements: No experience bullets found to check for quantifiable achievements.",
+      "Section structure: Needs improvement. Missing Education section. Missing Skills section (only has Summary)."
+    ],
+    "goodPractices": [
+      "All key contact details present.",
+      "Minor formatting issues. 3 em/en dashes detected — use standard hyphens instead. 2 unicode bullets detected — stick to \"- \" for best ATS parsing.",
+      "Dates are well-formatted and consistent."
+    ],
+    "stats": {
+      "wordCount": 522,
+      "charCount": 4230,
+      "bulletCount": 0,
+      "sectionCount": 6
+    },
+    "keywordsFound": 107,
+    "fileHints": {
+      "extension": "pdf",
+      "isPdf": true,
+      "isDocx": false,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "resume-ats-optimized (3).pdf",
+    "sizeKb": 44,
+    "chars": 4230,
+    "overallScore": 45,
+    "breakdown": {
+      "sectionStructure": 40,
+      "contactInfo": 80,
+      "bulletQuality": 10,
+      "quantifiableAchievements": 15,
+      "skillsOptimization": 45,
+      "lengthReadability": 60,
+      "formatCleanliness": 83,
+      "dateConsistency": 80
+    },
+    "topImprovements": [
+      "Bullet point formatting: No bullet points found. Use \"- \" formatted bullets for better ATS readability.",
+      "Quantifiable achievements: No experience bullets found to check for quantifiable achievements.",
+      "Section structure: Needs improvement. Missing Education section. Missing Skills section (only has Summary)."
+    ],
+    "goodPractices": [
+      "All key contact details present.",
+      "Minor formatting issues. 3 em/en dashes detected — use standard hyphens instead. 2 unicode bullets detected — stick to \"- \" for best ATS parsing.",
+      "Dates are well-formatted and consistent."
+    ],
+    "stats": {
+      "wordCount": 522,
+      "charCount": 4230,
+      "bulletCount": 0,
+      "sectionCount": 6
+    },
+    "keywordsFound": 107,
+    "fileHints": {
+      "extension": "pdf",
+      "isPdf": true,
+      "isDocx": false,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "Shashank_PerformanceTest_7y4m (1).docx",
+    "sizeKb": 16.2,
+    "chars": 9106,
+    "overallScore": 48,
+    "breakdown": {
+      "sectionStructure": 65,
+      "contactInfo": 80,
+      "bulletQuality": 10,
+      "quantifiableAchievements": 15,
+      "skillsOptimization": 50,
+      "lengthReadability": 60,
+      "formatCleanliness": 65,
+      "dateConsistency": 50
+    },
+    "topImprovements": [
+      "Bullet point formatting: No bullet points found. Use \"- \" formatted bullets for better ATS readability.",
+      "Quantifiable achievements: No experience bullets found to check for quantifiable achievements.",
+      "Skills optimization: Skills section is decent. "
+    ],
+    "goodPractices": [
+      "All key contact details present."
+    ],
+    "stats": {
+      "wordCount": 1096,
+      "charCount": 9106,
+      "bulletCount": 0,
+      "sectionCount": 5
+    },
+    "keywordsFound": 180,
+    "fileHints": {
+      "extension": "docx",
+      "isPdf": false,
+      "isDocx": true,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "Shashank_PerformanceTest_7y4m.docx",
+    "sizeKb": 16.2,
+    "chars": 9106,
+    "overallScore": 48,
+    "breakdown": {
+      "sectionStructure": 65,
+      "contactInfo": 80,
+      "bulletQuality": 10,
+      "quantifiableAchievements": 15,
+      "skillsOptimization": 50,
+      "lengthReadability": 60,
+      "formatCleanliness": 65,
+      "dateConsistency": 50
+    },
+    "topImprovements": [
+      "Bullet point formatting: No bullet points found. Use \"- \" formatted bullets for better ATS readability.",
+      "Quantifiable achievements: No experience bullets found to check for quantifiable achievements.",
+      "Skills optimization: Skills section is decent. "
+    ],
+    "goodPractices": [
+      "All key contact details present."
+    ],
+    "stats": {
+      "wordCount": 1096,
+      "charCount": 9106,
+      "bulletCount": 0,
+      "sectionCount": 5
+    },
+    "keywordsFound": 180,
+    "fileHints": {
+      "extension": "docx",
+      "isPdf": false,
+      "isDocx": true,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "Shashank_Singh_Senior_Performance_Engineer_Resume (1).docx",
+    "sizeKb": 40.8,
+    "chars": 10454,
+    "overallScore": 53,
+    "breakdown": {
+      "sectionStructure": 75,
+      "contactInfo": 80,
+      "bulletQuality": 10,
+      "quantifiableAchievements": 15,
+      "skillsOptimization": 80,
+      "lengthReadability": 40,
+      "formatCleanliness": 50,
+      "dateConsistency": 80
+    },
+    "topImprovements": [
+      "Bullet point formatting: No bullet points found. Use \"- \" formatted bullets for better ATS readability.",
+      "Quantifiable achievements: No experience bullets found to check for quantifiable achievements.",
+      "Resume length: Resume length needs adjustment. Slightly long (~1304 words). Consider tightening to 2 pages if possi"
+    ],
+    "goodPractices": [
+      "All key contact details present.",
+      "Well-optimized skills section with good contextualization.",
+      "Dates are well-formatted and consistent."
+    ],
+    "stats": {
+      "wordCount": 1304,
+      "charCount": 10454,
+      "bulletCount": 0,
+      "sectionCount": 9
+    },
+    "keywordsFound": 197,
+    "fileHints": {
+      "extension": "docx",
+      "isPdf": false,
+      "isDocx": true,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "Shashank_Singh_Senior_Performance_Engineer_Resume (3).docx",
+    "sizeKb": 30.9,
+    "chars": 9727,
+    "overallScore": 53,
+    "breakdown": {
+      "sectionStructure": 75,
+      "contactInfo": 80,
+      "bulletQuality": 10,
+      "quantifiableAchievements": 15,
+      "skillsOptimization": 80,
+      "lengthReadability": 40,
+      "formatCleanliness": 53,
+      "dateConsistency": 80
+    },
+    "topImprovements": [
+      "Bullet point formatting: No bullet points found. Use \"- \" formatted bullets for better ATS readability.",
+      "Quantifiable achievements: No experience bullets found to check for quantifiable achievements.",
+      "Resume length: Resume length needs adjustment. Slightly long (~1214 words). Consider tightening to 2 pages if possi"
+    ],
+    "goodPractices": [
+      "All key contact details present.",
+      "Well-optimized skills section with good contextualization.",
+      "Dates are well-formatted and consistent."
+    ],
+    "stats": {
+      "wordCount": 1214,
+      "charCount": 9727,
+      "bulletCount": 0,
+      "sectionCount": 8
+    },
+    "keywordsFound": 181,
+    "fileHints": {
+      "extension": "docx",
+      "isPdf": false,
+      "isDocx": true,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "Shashank_Singh__Performance_Engineer_Resume_7.7.docx",
+    "sizeKb": 31,
+    "chars": 9727,
+    "overallScore": 53,
+    "breakdown": {
+      "sectionStructure": 75,
+      "contactInfo": 80,
+      "bulletQuality": 10,
+      "quantifiableAchievements": 15,
+      "skillsOptimization": 80,
+      "lengthReadability": 40,
+      "formatCleanliness": 53,
+      "dateConsistency": 80
+    },
+    "topImprovements": [
+      "Bullet point formatting: No bullet points found. Use \"- \" formatted bullets for better ATS readability.",
+      "Quantifiable achievements: No experience bullets found to check for quantifiable achievements.",
+      "Resume length: Resume length needs adjustment. Slightly long (~1214 words). Consider tightening to 2 pages if possi"
+    ],
+    "goodPractices": [
+      "All key contact details present.",
+      "Well-optimized skills section with good contextualization.",
+      "Dates are well-formatted and consistent."
+    ],
+    "stats": {
+      "wordCount": 1214,
+      "charCount": 9727,
+      "bulletCount": 0,
+      "sectionCount": 8
+    },
+    "keywordsFound": 181,
+    "fileHints": {
+      "extension": "docx",
+      "isPdf": false,
+      "isDocx": true,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "Shashank_Singh_Senior_Performance_Engineer_Final.docx",
+    "sizeKb": 31.8,
+    "chars": 9754,
+    "overallScore": 54,
+    "breakdown": {
+      "sectionStructure": 75,
+      "contactInfo": 80,
+      "bulletQuality": 10,
+      "quantifiableAchievements": 15,
+      "skillsOptimization": 80,
+      "lengthReadability": 40,
+      "formatCleanliness": 58,
+      "dateConsistency": 80
+    },
+    "topImprovements": [
+      "Bullet point formatting: No bullet points found. Use \"- \" formatted bullets for better ATS readability.",
+      "Quantifiable achievements: No experience bullets found to check for quantifiable achievements.",
+      "Resume length: Resume length needs adjustment. Slightly long (~1217 words). Consider tightening to 2 pages if possi"
+    ],
+    "goodPractices": [
+      "All key contact details present.",
+      "Well-optimized skills section with good contextualization.",
+      "Dates are well-formatted and consistent."
+    ],
+    "stats": {
+      "wordCount": 1217,
+      "charCount": 9754,
+      "bulletCount": 0,
+      "sectionCount": 8
+    },
+    "keywordsFound": 182,
+    "fileHints": {
+      "extension": "docx",
+      "isPdf": false,
+      "isDocx": true,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "Shashan_Senior_Performance_Engineer_May26.docx",
+    "sizeKb": 31.8,
+    "chars": 9754,
+    "overallScore": 54,
+    "breakdown": {
+      "sectionStructure": 75,
+      "contactInfo": 80,
+      "bulletQuality": 10,
+      "quantifiableAchievements": 15,
+      "skillsOptimization": 80,
+      "lengthReadability": 40,
+      "formatCleanliness": 58,
+      "dateConsistency": 80
+    },
+    "topImprovements": [
+      "Bullet point formatting: No bullet points found. Use \"- \" formatted bullets for better ATS readability.",
+      "Quantifiable achievements: No experience bullets found to check for quantifiable achievements.",
+      "Resume length: Resume length needs adjustment. Slightly long (~1217 words). Consider tightening to 2 pages if possi"
+    ],
+    "goodPractices": [
+      "All key contact details present.",
+      "Well-optimized skills section with good contextualization.",
+      "Dates are well-formatted and consistent."
+    ],
+    "stats": {
+      "wordCount": 1217,
+      "charCount": 9754,
+      "bulletCount": 0,
+      "sectionCount": 8
+    },
+    "keywordsFound": 182,
+    "fileHints": {
+      "extension": "docx",
+      "isPdf": false,
+      "isDocx": true,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "resume-ats-optimized (5).pdf",
+    "sizeKb": 44.7,
+    "chars": 10303,
+    "overallScore": 56,
+    "breakdown": {
+      "sectionStructure": 85,
+      "contactInfo": 80,
+      "bulletQuality": 10,
+      "quantifiableAchievements": 15,
+      "skillsOptimization": 80,
+      "lengthReadability": 40,
+      "formatCleanliness": 73,
+      "dateConsistency": 80
+    },
+    "topImprovements": [
+      "Bullet point formatting: No bullet points found. Use \"- \" formatted bullets for better ATS readability.",
+      "Quantifiable achievements: No experience bullets found to check for quantifiable achievements.",
+      "Resume length: Resume length needs adjustment. Slightly long (~1286 words). Consider tightening to 2 pages if possi"
+    ],
+    "goodPractices": [
+      "Strong section structure with all required headers.",
+      "All key contact details present.",
+      "Well-optimized skills section with good contextualization."
+    ],
+    "stats": {
+      "wordCount": 1286,
+      "charCount": 10303,
+      "bulletCount": 0,
+      "sectionCount": 7
+    },
+    "keywordsFound": 195,
+    "fileHints": {
+      "extension": "pdf",
+      "isPdf": true,
+      "isDocx": false,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "resume-ats-optimized (6).pdf",
+    "sizeKb": 44.9,
+    "chars": 10350,
+    "overallScore": 56,
+    "breakdown": {
+      "sectionStructure": 85,
+      "contactInfo": 80,
+      "bulletQuality": 10,
+      "quantifiableAchievements": 15,
+      "skillsOptimization": 80,
+      "lengthReadability": 40,
+      "formatCleanliness": 73,
+      "dateConsistency": 80
+    },
+    "topImprovements": [
+      "Bullet point formatting: No bullet points found. Use \"- \" formatted bullets for better ATS readability.",
+      "Quantifiable achievements: No experience bullets found to check for quantifiable achievements.",
+      "Resume length: Resume length needs adjustment. Slightly long (~1289 words). Consider tightening to 2 pages if possi"
+    ],
+    "goodPractices": [
+      "Strong section structure with all required headers.",
+      "All key contact details present.",
+      "Well-optimized skills section with good contextualization."
+    ],
+    "stats": {
+      "wordCount": 1289,
+      "charCount": 10350,
+      "bulletCount": 0,
+      "sectionCount": 7
+    },
+    "keywordsFound": 196,
+    "fileHints": {
+      "extension": "pdf",
+      "isPdf": true,
+      "isDocx": false,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "shashank_7.7_NFT.pdf",
+    "sizeKb": 44.9,
+    "chars": 10333,
+    "overallScore": 56,
+    "breakdown": {
+      "sectionStructure": 85,
+      "contactInfo": 80,
+      "bulletQuality": 10,
+      "quantifiableAchievements": 15,
+      "skillsOptimization": 80,
+      "lengthReadability": 40,
+      "formatCleanliness": 73,
+      "dateConsistency": 80
+    },
+    "topImprovements": [
+      "Bullet point formatting: No bullet points found. Use \"- \" formatted bullets for better ATS readability.",
+      "Quantifiable achievements: No experience bullets found to check for quantifiable achievements.",
+      "Resume length: Resume length needs adjustment. Slightly long (~1288 words). Consider tightening to 2 pages if possi"
+    ],
+    "goodPractices": [
+      "Strong section structure with all required headers.",
+      "All key contact details present.",
+      "Well-optimized skills section with good contextualization."
+    ],
+    "stats": {
+      "wordCount": 1288,
+      "charCount": 10333,
+      "bulletCount": 0,
+      "sectionCount": 7
+    },
+    "keywordsFound": 195,
+    "fileHints": {
+      "extension": "pdf",
+      "isPdf": true,
+      "isDocx": false,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "Shashank_Singh_Senior_Performance_Engineer_Resume.docx",
+    "sizeKb": 39.9,
+    "chars": 9274,
+    "overallScore": 56,
+    "breakdown": {
+      "sectionStructure": 75,
+      "contactInfo": 80,
+      "bulletQuality": 10,
+      "quantifiableAchievements": 15,
+      "skillsOptimization": 80,
+      "lengthReadability": 60,
+      "formatCleanliness": 56,
+      "dateConsistency": 80
+    },
+    "topImprovements": [
+      "Bullet point formatting: No bullet points found. Use \"- \" formatted bullets for better ATS readability.",
+      "Quantifiable achievements: No experience bullets found to check for quantifiable achievements.",
+      "Format cleanliness: Formatting issues detected. 3 em/en dashes detected — use standard hyphens instead. 10 tab character"
+    ],
+    "goodPractices": [
+      "All key contact details present.",
+      "Well-optimized skills section with good contextualization.",
+      "Dates are well-formatted and consistent."
+    ],
+    "stats": {
+      "wordCount": 1147,
+      "charCount": 9274,
+      "bulletCount": 0,
+      "sectionCount": 8
+    },
+    "keywordsFound": 176,
+    "fileHints": {
+      "extension": "docx",
+      "isPdf": false,
+      "isDocx": true,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "Shiva Agrawal  Resume 2026 .pdf",
+    "sizeKb": 168.2,
+    "chars": 8452,
+    "overallScore": 56,
+    "breakdown": {
+      "sectionStructure": 70,
+      "contactInfo": 75,
+      "bulletQuality": 10,
+      "quantifiableAchievements": 15,
+      "skillsOptimization": 80,
+      "lengthReadability": 60,
+      "formatCleanliness": 85,
+      "dateConsistency": 95
+    },
+    "topImprovements": [
+      "Bullet point formatting: No bullet points found. Use \"- \" formatted bullets for better ATS readability.",
+      "Quantifiable achievements: No experience bullets found to check for quantifiable achievements.",
+      "Resume length: Length is acceptable. "
+    ],
+    "goodPractices": [
+      "Well-optimized skills section with good contextualization.",
+      "Minor formatting issues. 17 em/en dashes detected — use standard hyphens instead.",
+      "Dates are well-formatted and consistent."
+    ],
+    "stats": {
+      "wordCount": 1129,
+      "charCount": 8452,
+      "bulletCount": 0,
+      "sectionCount": 7
+    },
+    "keywordsFound": 181,
+    "fileHints": {
+      "extension": "pdf",
+      "isPdf": true,
+      "isDocx": false,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "Shashank_Singh_Senior_Performance_Engineer_Resume (2).docx",
+    "sizeKb": 38.8,
+    "chars": 5513,
+    "overallScore": 58,
+    "breakdown": {
+      "sectionStructure": 85,
+      "contactInfo": 80,
+      "bulletQuality": 10,
+      "quantifiableAchievements": 15,
+      "skillsOptimization": 80,
+      "lengthReadability": 60,
+      "formatCleanliness": 60,
+      "dateConsistency": 80
+    },
+    "topImprovements": [
+      "Bullet point formatting: No bullet points found. Use \"- \" formatted bullets for better ATS readability.",
+      "Quantifiable achievements: No experience bullets found to check for quantifiable achievements.",
+      "Resume length: Length is acceptable. "
+    ],
+    "goodPractices": [
+      "Strong section structure with all required headers.",
+      "All key contact details present.",
+      "Well-optimized skills section with good contextualization."
+    ],
+    "stats": {
+      "wordCount": 711,
+      "charCount": 5513,
+      "bulletCount": 0,
+      "sectionCount": 7
+    },
+    "keywordsFound": 164,
+    "fileHints": {
+      "extension": "docx",
+      "isPdf": false,
+      "isDocx": true,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "SHIVA_Data_8.pdf",
+    "sizeKb": 28.5,
+    "chars": 9347,
+    "overallScore": 61,
+    "breakdown": {
+      "sectionStructure": 75,
+      "contactInfo": 80,
+      "bulletQuality": 100,
+      "quantifiableAchievements": 40,
+      "skillsOptimization": 0,
+      "lengthReadability": 40,
+      "formatCleanliness": 80,
+      "dateConsistency": 95
+    },
+    "topImprovements": [
+      "Skills optimization: Skills section needs work. Only 1 concrete technical skills listed. Aim for 10-15. Skills appear onl",
+      "Quantifiable achievements: Few quantifiable achievements. ",
+      "Resume length: Resume length needs adjustment. Slightly long (~1227 words). Consider tightening to 2 pages if possi"
+    ],
+    "goodPractices": [
+      "All key contact details present.",
+      "Well-formatted bullet points throughout.",
+      "Minor formatting issues. 3 smart/curly quotes detected — ATS may mis-parse them."
+    ],
+    "stats": {
+      "wordCount": 1227,
+      "charCount": 9347,
+      "bulletCount": 35,
+      "sectionCount": 9
+    },
+    "keywordsFound": 186,
+    "fileHints": {
+      "extension": "pdf",
+      "isPdf": true,
+      "isDocx": false,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "resume-ats-optimized.pdf",
+    "sizeKb": 10.6,
+    "chars": 3479,
+    "overallScore": 62,
+    "breakdown": {
+      "sectionStructure": 40,
+      "contactInfo": 80,
+      "bulletQuality": 100,
+      "quantifiableAchievements": 45,
+      "skillsOptimization": 35,
+      "lengthReadability": 60,
+      "formatCleanliness": 94,
+      "dateConsistency": 80
+    },
+    "topImprovements": [
+      "Skills optimization: Skills section needs work. ",
+      "Section structure: Needs improvement. Missing Education section. Missing Skills section (only has Summary).",
+      "Quantifiable achievements: Few quantifiable achievements. Only 3/27 bullets contain metrics or numbers."
+    ],
+    "goodPractices": [
+      "All key contact details present.",
+      "Well-formatted bullet points throughout.",
+      "Clean ASCII formatting — excellent ATS compatibility."
+    ],
+    "stats": {
+      "wordCount": 445,
+      "charCount": 3479,
+      "bulletCount": 27,
+      "sectionCount": 6
+    },
+    "keywordsFound": 102,
+    "fileHints": {
+      "extension": "pdf",
+      "isPdf": true,
+      "isDocx": false,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "SHASHANK_Qa_7 (1).pdf",
+    "sizeKb": 30.8,
+    "chars": 10246,
+    "overallScore": 69,
+    "breakdown": {
+      "sectionStructure": 75,
+      "contactInfo": 80,
+      "bulletQuality": 100,
+      "quantifiableAchievements": 70,
+      "skillsOptimization": 25,
+      "lengthReadability": 40,
+      "formatCleanliness": 100,
+      "dateConsistency": 80
+    },
+    "topImprovements": [
+      "Skills optimization: Skills section needs work. Only 3 concrete technical skills listed. Aim for 10-15. Skills section is",
+      "Resume length: Resume length needs adjustment. Slightly long (~1289 words). Consider tightening to 2 pages if possi",
+      "Quantifiable achievements: Some quantified achievements found. "
+    ],
+    "goodPractices": [
+      "All key contact details present.",
+      "Well-formatted bullet points throughout.",
+      "Clean ASCII formatting — excellent ATS compatibility."
+    ],
+    "stats": {
+      "wordCount": 1289,
+      "charCount": 10246,
+      "bulletCount": 43,
+      "sectionCount": 9
+    },
+    "keywordsFound": 154,
+    "fileHints": {
+      "extension": "pdf",
+      "isPdf": true,
+      "isDocx": false,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "SHASHANK_Qa_7 (2).pdf",
+    "sizeKb": 30.6,
+    "chars": 10220,
+    "overallScore": 69,
+    "breakdown": {
+      "sectionStructure": 75,
+      "contactInfo": 80,
+      "bulletQuality": 100,
+      "quantifiableAchievements": 70,
+      "skillsOptimization": 25,
+      "lengthReadability": 40,
+      "formatCleanliness": 100,
+      "dateConsistency": 80
+    },
+    "topImprovements": [
+      "Skills optimization: Skills section needs work. Only 2 concrete technical skills listed. Aim for 10-15. Skills section is",
+      "Resume length: Resume length needs adjustment. Slightly long (~1289 words). Consider tightening to 2 pages if possi",
+      "Quantifiable achievements: Some quantified achievements found. "
+    ],
+    "goodPractices": [
+      "All key contact details present.",
+      "Well-formatted bullet points throughout.",
+      "Clean ASCII formatting — excellent ATS compatibility."
+    ],
+    "stats": {
+      "wordCount": 1289,
+      "charCount": 10220,
+      "bulletCount": 43,
+      "sectionCount": 9
+    },
+    "keywordsFound": 154,
+    "fileHints": {
+      "extension": "pdf",
+      "isPdf": true,
+      "isDocx": false,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "Shashan_Senior_Performance_Engineer_May26.pdf",
+    "sizeKb": 203.4,
+    "chars": 9806,
+    "overallScore": 72,
+    "breakdown": {
+      "sectionStructure": 75,
+      "contactInfo": 80,
+      "bulletQuality": 75,
+      "quantifiableAchievements": 70,
+      "skillsOptimization": 80,
+      "lengthReadability": 40,
+      "formatCleanliness": 65,
+      "dateConsistency": 80
+    },
+    "topImprovements": [
+      "Resume length: Resume length needs adjustment. Slightly long (~1262 words). Consider tightening to 2 pages if possi",
+      "Format cleanliness: Formatting issues detected. 5 em/en dashes detected — use standard hyphens instead. 44 unicode bulle",
+      "Quantifiable achievements: Some quantified achievements found. "
+    ],
+    "goodPractices": [
+      "All key contact details present.",
+      "Well-optimized skills section with good contextualization.",
+      "Dates are well-formatted and consistent."
+    ],
+    "stats": {
+      "wordCount": 1262,
+      "charCount": 9806,
+      "bulletCount": 41,
+      "sectionCount": 8
+    },
+    "keywordsFound": 182,
+    "fileHints": {
+      "extension": "pdf",
+      "isPdf": true,
+      "isDocx": false,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "Shashank_Singh_Senior_Performance_Engineer_Final.pdf",
+    "sizeKb": 203.5,
+    "chars": 9870,
+    "overallScore": 74,
+    "breakdown": {
+      "sectionStructure": 85,
+      "contactInfo": 80,
+      "bulletQuality": 75,
+      "quantifiableAchievements": 70,
+      "skillsOptimization": 80,
+      "lengthReadability": 40,
+      "formatCleanliness": 65,
+      "dateConsistency": 80
+    },
+    "topImprovements": [
+      "Resume length: Resume length needs adjustment. Slightly long (~1265 words). Consider tightening to 2 pages if possi",
+      "Format cleanliness: Formatting issues detected. 5 em/en dashes detected — use standard hyphens instead. 44 unicode bulle",
+      "Quantifiable achievements: Some quantified achievements found. "
+    ],
+    "goodPractices": [
+      "Strong section structure with all required headers.",
+      "All key contact details present.",
+      "Well-optimized skills section with good contextualization."
+    ],
+    "stats": {
+      "wordCount": 1265,
+      "charCount": 9870,
+      "bulletCount": 41,
+      "sectionCount": 7
+    },
+    "keywordsFound": 183,
+    "fileHints": {
+      "extension": "pdf",
+      "isPdf": true,
+      "isDocx": false,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "SHASHANK_Specialist_7.txt",
+    "sizeKb": 10.1,
+    "chars": 10138,
+    "overallScore": 77,
+    "breakdown": {
+      "sectionStructure": 75,
+      "contactInfo": 80,
+      "bulletQuality": 100,
+      "quantifiableAchievements": 70,
+      "skillsOptimization": 80,
+      "lengthReadability": 40,
+      "formatCleanliness": 85,
+      "dateConsistency": 80
+    },
+    "topImprovements": [
+      "Resume length: Resume length needs adjustment. Slightly long (~1304 words). Consider tightening to 2 pages if possi",
+      "Quantifiable achievements: Some quantified achievements found. ",
+      "Section structure: Decent structure. 3 non-standard section headers detected — ATS may not recognize them."
+    ],
+    "goodPractices": [
+      "All key contact details present.",
+      "Well-formatted bullet points throughout.",
+      "Well-optimized skills section with good contextualization."
+    ],
+    "stats": {
+      "wordCount": 1304,
+      "charCount": 10138,
+      "bulletCount": 42,
+      "sectionCount": 8
+    },
+    "keywordsFound": 184,
+    "fileHints": {
+      "extension": "txt",
+      "isPdf": false,
+      "isDocx": false,
+      "isTxt": true,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "resume-ats-optimized (11).pdf",
+    "sizeKb": 30.4,
+    "chars": 9893,
+    "overallScore": 78,
+    "breakdown": {
+      "sectionStructure": 75,
+      "contactInfo": 80,
+      "bulletQuality": 100,
+      "quantifiableAchievements": 70,
+      "skillsOptimization": 80,
+      "lengthReadability": 40,
+      "formatCleanliness": 100,
+      "dateConsistency": 80
+    },
+    "topImprovements": [
+      "Resume length: Resume length needs adjustment. Slightly long (~1239 words). Consider tightening to 2 pages if possi",
+      "Quantifiable achievements: Some quantified achievements found. ",
+      "Section structure: Decent structure. 3 non-standard section headers detected — ATS may not recognize them."
+    ],
+    "goodPractices": [
+      "All key contact details present.",
+      "Well-formatted bullet points throughout.",
+      "Well-optimized skills section with good contextualization."
+    ],
+    "stats": {
+      "wordCount": 1239,
+      "charCount": 9893,
+      "bulletCount": 41,
+      "sectionCount": 8
+    },
+    "keywordsFound": 158,
+    "fileHints": {
+      "extension": "pdf",
+      "isPdf": true,
+      "isDocx": false,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "SHASHANK_Performance_7 (1).pdf",
+    "sizeKb": 30.1,
+    "chars": 9883,
+    "overallScore": 78,
+    "breakdown": {
+      "sectionStructure": 75,
+      "contactInfo": 80,
+      "bulletQuality": 100,
+      "quantifiableAchievements": 70,
+      "skillsOptimization": 80,
+      "lengthReadability": 40,
+      "formatCleanliness": 100,
+      "dateConsistency": 80
+    },
+    "topImprovements": [
+      "Resume length: Resume length needs adjustment. Slightly long (~1243 words). Consider tightening to 2 pages if possi",
+      "Quantifiable achievements: Some quantified achievements found. ",
+      "Section structure: Decent structure. 3 non-standard section headers detected — ATS may not recognize them."
+    ],
+    "goodPractices": [
+      "All key contact details present.",
+      "Well-formatted bullet points throughout.",
+      "Well-optimized skills section with good contextualization."
+    ],
+    "stats": {
+      "wordCount": 1243,
+      "charCount": 9883,
+      "bulletCount": 42,
+      "sectionCount": 8
+    },
+    "keywordsFound": 137,
+    "fileHints": {
+      "extension": "pdf",
+      "isPdf": true,
+      "isDocx": false,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "SHASHANK_Performance_7 (2).pdf",
+    "sizeKb": 29.9,
+    "chars": 9874,
+    "overallScore": 78,
+    "breakdown": {
+      "sectionStructure": 75,
+      "contactInfo": 80,
+      "bulletQuality": 100,
+      "quantifiableAchievements": 70,
+      "skillsOptimization": 80,
+      "lengthReadability": 40,
+      "formatCleanliness": 100,
+      "dateConsistency": 80
+    },
+    "topImprovements": [
+      "Resume length: Resume length needs adjustment. Slightly long (~1238 words). Consider tightening to 2 pages if possi",
+      "Quantifiable achievements: Some quantified achievements found. ",
+      "Section structure: Decent structure. 3 non-standard section headers detected — ATS may not recognize them."
+    ],
+    "goodPractices": [
+      "All key contact details present.",
+      "Well-formatted bullet points throughout.",
+      "Well-optimized skills section with good contextualization."
+    ],
+    "stats": {
+      "wordCount": 1238,
+      "charCount": 9874,
+      "bulletCount": 41,
+      "sectionCount": 8
+    },
+    "keywordsFound": 162,
+    "fileHints": {
+      "extension": "pdf",
+      "isPdf": true,
+      "isDocx": false,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "SHASHANK_Performance_7.pdf",
+    "sizeKb": 31.8,
+    "chars": 10378,
+    "overallScore": 78,
+    "breakdown": {
+      "sectionStructure": 75,
+      "contactInfo": 80,
+      "bulletQuality": 100,
+      "quantifiableAchievements": 70,
+      "skillsOptimization": 80,
+      "lengthReadability": 40,
+      "formatCleanliness": 100,
+      "dateConsistency": 80
+    },
+    "topImprovements": [
+      "Resume length: Resume length needs adjustment. Slightly long (~1299 words). Consider tightening to 2 pages if possi",
+      "Quantifiable achievements: Some quantified achievements found. ",
+      "Section structure: Decent structure. 3 non-standard section headers detected — ATS may not recognize them."
+    ],
+    "goodPractices": [
+      "All key contact details present.",
+      "Well-formatted bullet points throughout.",
+      "Well-optimized skills section with good contextualization."
+    ],
+    "stats": {
+      "wordCount": 1299,
+      "charCount": 10378,
+      "bulletCount": 42,
+      "sectionCount": 8
+    },
+    "keywordsFound": 176,
+    "fileHints": {
+      "extension": "pdf",
+      "isPdf": true,
+      "isDocx": false,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "SHASHANK_Qa_7 (3).pdf",
+    "sizeKb": 29.8,
+    "chars": 10055,
+    "overallScore": 78,
+    "breakdown": {
+      "sectionStructure": 75,
+      "contactInfo": 80,
+      "bulletQuality": 100,
+      "quantifiableAchievements": 70,
+      "skillsOptimization": 80,
+      "lengthReadability": 40,
+      "formatCleanliness": 100,
+      "dateConsistency": 80
+    },
+    "topImprovements": [
+      "Resume length: Resume length needs adjustment. Slightly long (~1261 words). Consider tightening to 2 pages if possi",
+      "Quantifiable achievements: Some quantified achievements found. ",
+      "Section structure: Decent structure. 3 non-standard section headers detected — ATS may not recognize them."
+    ],
+    "goodPractices": [
+      "All key contact details present.",
+      "Well-formatted bullet points throughout.",
+      "Well-optimized skills section with good contextualization."
+    ],
+    "stats": {
+      "wordCount": 1261,
+      "charCount": 10055,
+      "bulletCount": 41,
+      "sectionCount": 8
+    },
+    "keywordsFound": 168,
+    "fileHints": {
+      "extension": "pdf",
+      "isPdf": true,
+      "isDocx": false,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "SHASHANK_Quality_7.pdf",
+    "sizeKb": 30.6,
+    "chars": 10174,
+    "overallScore": 78,
+    "breakdown": {
+      "sectionStructure": 75,
+      "contactInfo": 80,
+      "bulletQuality": 100,
+      "quantifiableAchievements": 70,
+      "skillsOptimization": 80,
+      "lengthReadability": 40,
+      "formatCleanliness": 100,
+      "dateConsistency": 80
+    },
+    "topImprovements": [
+      "Resume length: Resume length needs adjustment. Slightly long (~1277 words). Consider tightening to 2 pages if possi",
+      "Quantifiable achievements: Some quantified achievements found. ",
+      "Section structure: Decent structure. 3 non-standard section headers detected — ATS may not recognize them."
+    ],
+    "goodPractices": [
+      "All key contact details present.",
+      "Well-formatted bullet points throughout.",
+      "Well-optimized skills section with good contextualization."
+    ],
+    "stats": {
+      "wordCount": 1277,
+      "charCount": 10174,
+      "bulletCount": 42,
+      "sectionCount": 8
+    },
+    "keywordsFound": 158,
+    "fileHints": {
+      "extension": "pdf",
+      "isPdf": true,
+      "isDocx": false,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "SHASHANK_Software_7.pdf",
+    "sizeKb": 30.8,
+    "chars": 10388,
+    "overallScore": 78,
+    "breakdown": {
+      "sectionStructure": 75,
+      "contactInfo": 80,
+      "bulletQuality": 100,
+      "quantifiableAchievements": 70,
+      "skillsOptimization": 80,
+      "lengthReadability": 40,
+      "formatCleanliness": 100,
+      "dateConsistency": 80
+    },
+    "topImprovements": [
+      "Resume length: Resume length needs adjustment. Slightly long (~1302 words). Consider tightening to 2 pages if possi",
+      "Quantifiable achievements: Some quantified achievements found. ",
+      "Section structure: Decent structure. 3 non-standard section headers detected — ATS may not recognize them."
+    ],
+    "goodPractices": [
+      "All key contact details present.",
+      "Well-formatted bullet points throughout.",
+      "Well-optimized skills section with good contextualization."
+    ],
+    "stats": {
+      "wordCount": 1302,
+      "charCount": 10388,
+      "bulletCount": 42,
+      "sectionCount": 8
+    },
+    "keywordsFound": 169,
+    "fileHints": {
+      "extension": "pdf",
+      "isPdf": true,
+      "isDocx": false,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "SHASHANK_Specialist_7.pdf",
+    "sizeKb": 30.8,
+    "chars": 10090,
+    "overallScore": 78,
+    "breakdown": {
+      "sectionStructure": 75,
+      "contactInfo": 80,
+      "bulletQuality": 100,
+      "quantifiableAchievements": 70,
+      "skillsOptimization": 80,
+      "lengthReadability": 40,
+      "formatCleanliness": 100,
+      "dateConsistency": 80
+    },
+    "topImprovements": [
+      "Resume length: Resume length needs adjustment. Slightly long (~1263 words). Consider tightening to 2 pages if possi",
+      "Quantifiable achievements: Some quantified achievements found. ",
+      "Section structure: Decent structure. 3 non-standard section headers detected — ATS may not recognize them."
+    ],
+    "goodPractices": [
+      "All key contact details present.",
+      "Well-formatted bullet points throughout.",
+      "Well-optimized skills section with good contextualization."
+    ],
+    "stats": {
+      "wordCount": 1263,
+      "charCount": 10090,
+      "bulletCount": 42,
+      "sectionCount": 8
+    },
+    "keywordsFound": 164,
+    "fileHints": {
+      "extension": "pdf",
+      "isPdf": true,
+      "isDocx": false,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "SHASHANK_Test_7.7.pdf",
+    "sizeKb": 28.8,
+    "chars": 9571,
+    "overallScore": 78,
+    "breakdown": {
+      "sectionStructure": 75,
+      "contactInfo": 80,
+      "bulletQuality": 100,
+      "quantifiableAchievements": 70,
+      "skillsOptimization": 80,
+      "lengthReadability": 40,
+      "formatCleanliness": 100,
+      "dateConsistency": 80
+    },
+    "topImprovements": [
+      "Resume length: Resume length needs adjustment. Slightly long (~1201 words). Consider tightening to 2 pages if possi",
+      "Quantifiable achievements: Some quantified achievements found. ",
+      "Section structure: Decent structure. 3 non-standard section headers detected — ATS may not recognize them."
+    ],
+    "goodPractices": [
+      "All key contact details present.",
+      "Well-formatted bullet points throughout.",
+      "Well-optimized skills section with good contextualization."
+    ],
+    "stats": {
+      "wordCount": 1201,
+      "charCount": 9571,
+      "bulletCount": 40,
+      "sectionCount": 8
+    },
+    "keywordsFound": 148,
+    "fileHints": {
+      "extension": "pdf",
+      "isPdf": true,
+      "isDocx": false,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "resume-ats-optimized (7).pdf",
+    "sizeKb": 30.7,
+    "chars": 10182,
+    "overallScore": 80,
+    "breakdown": {
+      "sectionStructure": 85,
+      "contactInfo": 80,
+      "bulletQuality": 100,
+      "quantifiableAchievements": 70,
+      "skillsOptimization": 80,
+      "lengthReadability": 40,
+      "formatCleanliness": 100,
+      "dateConsistency": 80
+    },
+    "topImprovements": [
+      "Resume length: Resume length needs adjustment. Slightly long (~1283 words). Consider tightening to 2 pages if possi",
+      "Quantifiable achievements: Some quantified achievements found. ",
+      "Contact information: All key contact details present."
+    ],
+    "goodPractices": [
+      "Strong section structure with all required headers.",
+      "All key contact details present.",
+      "Well-formatted bullet points throughout."
+    ],
+    "stats": {
+      "wordCount": 1283,
+      "charCount": 10182,
+      "bulletCount": 42,
+      "sectionCount": 7
+    },
+    "keywordsFound": 175,
+    "fileHints": {
+      "extension": "pdf",
+      "isPdf": true,
+      "isDocx": false,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "resume-ats-optimized (8).pdf",
+    "sizeKb": 30.2,
+    "chars": 10069,
+    "overallScore": 80,
+    "breakdown": {
+      "sectionStructure": 85,
+      "contactInfo": 80,
+      "bulletQuality": 100,
+      "quantifiableAchievements": 70,
+      "skillsOptimization": 80,
+      "lengthReadability": 40,
+      "formatCleanliness": 100,
+      "dateConsistency": 80
+    },
+    "topImprovements": [
+      "Resume length: Resume length needs adjustment. Slightly long (~1266 words). Consider tightening to 2 pages if possi",
+      "Quantifiable achievements: Some quantified achievements found. ",
+      "Contact information: All key contact details present."
+    ],
+    "goodPractices": [
+      "Strong section structure with all required headers.",
+      "All key contact details present.",
+      "Well-formatted bullet points throughout."
+    ],
+    "stats": {
+      "wordCount": 1266,
+      "charCount": 10069,
+      "bulletCount": 42,
+      "sectionCount": 7
+    },
+    "keywordsFound": 159,
+    "fileHints": {
+      "extension": "pdf",
+      "isPdf": true,
+      "isDocx": false,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "resume-ats-optimized (9).pdf",
+    "sizeKb": 30.3,
+    "chars": 10135,
+    "overallScore": 80,
+    "breakdown": {
+      "sectionStructure": 85,
+      "contactInfo": 80,
+      "bulletQuality": 100,
+      "quantifiableAchievements": 70,
+      "skillsOptimization": 80,
+      "lengthReadability": 40,
+      "formatCleanliness": 100,
+      "dateConsistency": 80
+    },
+    "topImprovements": [
+      "Resume length: Resume length needs adjustment. Slightly long (~1278 words). Consider tightening to 2 pages if possi",
+      "Quantifiable achievements: Some quantified achievements found. ",
+      "Contact information: All key contact details present."
+    ],
+    "goodPractices": [
+      "Strong section structure with all required headers.",
+      "All key contact details present.",
+      "Well-formatted bullet points throughout."
+    ],
+    "stats": {
+      "wordCount": 1278,
+      "charCount": 10135,
+      "bulletCount": 42,
+      "sectionCount": 7
+    },
+    "keywordsFound": 164,
+    "fileHints": {
+      "extension": "pdf",
+      "isPdf": true,
+      "isDocx": false,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "SHASHANK_PerfEngg_7.pdf",
+    "sizeKb": 30.3,
+    "chars": 9981,
+    "overallScore": 80,
+    "breakdown": {
+      "sectionStructure": 85,
+      "contactInfo": 80,
+      "bulletQuality": 100,
+      "quantifiableAchievements": 70,
+      "skillsOptimization": 80,
+      "lengthReadability": 40,
+      "formatCleanliness": 100,
+      "dateConsistency": 80
+    },
+    "topImprovements": [
+      "Resume length: Resume length needs adjustment. Slightly long (~1252 words). Consider tightening to 2 pages if possi",
+      "Quantifiable achievements: Some quantified achievements found. ",
+      "Contact information: All key contact details present."
+    ],
+    "goodPractices": [
+      "Strong section structure with all required headers.",
+      "All key contact details present.",
+      "Well-formatted bullet points throughout."
+    ],
+    "stats": {
+      "wordCount": 1252,
+      "charCount": 9981,
+      "bulletCount": 42,
+      "sectionCount": 7
+    },
+    "keywordsFound": 142,
+    "fileHints": {
+      "extension": "pdf",
+      "isPdf": true,
+      "isDocx": false,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "SHASHANK_Qa_7.pdf",
+    "sizeKb": 30.1,
+    "chars": 9966,
+    "overallScore": 80,
+    "breakdown": {
+      "sectionStructure": 85,
+      "contactInfo": 80,
+      "bulletQuality": 100,
+      "quantifiableAchievements": 70,
+      "skillsOptimization": 80,
+      "lengthReadability": 40,
+      "formatCleanliness": 100,
+      "dateConsistency": 80
+    },
+    "topImprovements": [
+      "Resume length: Resume length needs adjustment. Slightly long (~1251 words). Consider tightening to 2 pages if possi",
+      "Quantifiable achievements: Some quantified achievements found. ",
+      "Contact information: All key contact details present."
+    ],
+    "goodPractices": [
+      "Strong section structure with all required headers.",
+      "All key contact details present.",
+      "Well-formatted bullet points throughout."
+    ],
+    "stats": {
+      "wordCount": 1251,
+      "charCount": 9966,
+      "bulletCount": 41,
+      "sectionCount": 7
+    },
+    "keywordsFound": 160,
+    "fileHints": {
+      "extension": "pdf",
+      "isPdf": true,
+      "isDocx": false,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  },
+  {
+    "filename": "resume-ats-optimized (10).pdf",
+    "sizeKb": 30.4,
+    "chars": 9897,
+    "overallScore": 81,
+    "breakdown": {
+      "sectionStructure": 85,
+      "contactInfo": 90,
+      "bulletQuality": 100,
+      "quantifiableAchievements": 70,
+      "skillsOptimization": 80,
+      "lengthReadability": 40,
+      "formatCleanliness": 100,
+      "dateConsistency": 80
+    },
+    "topImprovements": [
+      "Resume length: Resume length needs adjustment. Slightly long (~1240 words). Consider tightening to 2 pages if possi",
+      "Quantifiable achievements: Some quantified achievements found. ",
+      "Skills optimization: Well-optimized skills section with good contextualization."
+    ],
+    "goodPractices": [
+      "Strong section structure with all required headers.",
+      "All key contact details present.",
+      "Well-formatted bullet points throughout."
+    ],
+    "stats": {
+      "wordCount": 1240,
+      "charCount": 9897,
+      "bulletCount": 41,
+      "sectionCount": 7
+    },
+    "keywordsFound": 158,
+    "fileHints": {
+      "extension": "pdf",
+      "isPdf": true,
+      "isDocx": false,
+      "isTxt": false,
+      "mightBeScanned": false
+    }
+  }
+]

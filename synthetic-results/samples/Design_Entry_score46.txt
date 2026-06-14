@@ -1,0 +1,27 @@
+George Harris
+Phoenix, AZ | george.harris9@yahoo.com | (649) 600-6460
+linkedin.com/in/george-harris
+
+Professional Summary
+Product designer with 2 years of experience crafting intuitive, accessible digital experiences. Proficient in Principle, Interaction Design, Design Systems.
+
+Professional Experience
+Product Designer | Stripe
+Mar 2023 – Present
+  Established design review process adopted by 2 product teams.
+  Improved accessibility score from 4/100 to 1/100 achieving WCAG 2.1 AA compliance.
+  Improved accessibility score from 6/100 to 1/100 achieving WCAG 2.1 AA compliance.
+
+Education
+Master of Arts in Design
+University of Chicago | 2012
+
+Technical Skills
+Design Systems, Figma, Principle, Sketch, Wireframing, Information Architecture, Framer, Adobe Creative Suite, User Research, Responsive Design, Interaction Design, Prototyping, Design Tokens
+
+Soft Skills
+Visual Storytelling, User Empathy, Creative Problem Solving, Presentation Skills, Collaboration
+
+
+Certifications
+- NN/g UX Certification

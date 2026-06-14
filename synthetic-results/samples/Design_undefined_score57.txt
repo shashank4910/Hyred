@@ -1,0 +1,35 @@
+Thomas Thomas
+Los Angeles, CA | thomas.thomas40@icloud.com | (596) 361-3748
+linkedin.com/in/thomas-thomas
+
+Professional Summary
+Senior design lead who has shipped products used by millions, with expertise in end-to-end product design.
+
+Professional Experience
+Design Lead | Stripe
+Feb 2025 – Present
+  • Led user research with 1M++ participants informing product strategy
+  • Established design review process adopted by 14 product teams
+  • Created interactive prototypes tested with 1M+ users, iterating based on feedback
+  • Established design review process adopted by 12 product teams
+
+Principal Designer | Netflix
+Nov 2022 – 2023
+  • Created interactive prototypes tested with 1M+ users, iterating based on feedback
+  • Designed and shipped design system used by 14 product teams across 1M++ components
+  • Redesigned core user flow increasing task completion rate by 29%
+  • Created interactive prototypes tested with 1M+ users, iterating based on feedback
+
+Education
+Bachelor of Science in Information Systems
+MIT | 2010
+
+Technical Skills
+Wireframing, Prototyping, Responsive Design, Figma, Design Systems, Interaction Design, Principle, Sketch, Framer, User Research
+
+Soft Skills
+Presentation Skills, Visual Storytelling, User Empathy, Creative Problem Solving
+
+
+Certifications
+- Google UX Design Certificate

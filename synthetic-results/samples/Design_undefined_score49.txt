@@ -1,0 +1,36 @@
+Timothy Anderson
+Denver, CO | timothy.anderson19@proton.me | (277) 906-4675
+linkedin.com/in/timothy-anderson
+
+Professional Summary
+Designer passionate about design systems and creating cohesive user experiences across platforms.
+
+Professional Experience
+Senior Designer | Duolingo
+Jul 2023 – Present
+  Mentored 5 junior designers through structured growth program.
+  Established design review process adopted by 3 product teams.
+  Redesigned core user flow increasing task completion rate by 80%.
+  Mentored 12 junior designers through structured growth program.
+
+Senior Designer | Duolingo
+Jan 2021 – 2021
+  Collaborated with engineering to implement design token system.
+  Increased trial-to-paid conversion by 63% through redesigned onboarding flow.
+  Reduced design-to-dev handoff time by 43% through improved documentation and design specs.
+  Improved accessibility score from 8/100 to 3/100 achieving WCAG 2.1 AA compliance.
+
+Education
+Master of Science in Statistics
+Purdue University | 2017
+
+Technical Skills
+Figma, Sketch, Adobe Creative Suite, Design Tokens, Principle, User Research, Framer, Interaction Design, Prototyping, Responsive Design, Information Architecture
+
+Soft Skills
+Collaboration, Creative Problem Solving, User Empathy, Presentation Skills, Visual Storytelling
+
+
+Certifications
+- NN/g UX Certification
+- Google UX Design Certificate

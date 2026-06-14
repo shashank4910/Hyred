@@ -1,0 +1,48 @@
+Anthony Torres
+Philadelphia, PA | anthony.torres71@gmail.com | (286) 981-6943
+linkedin.com/in/anthony-torres
+
+Professional Summary
+Senior engineer specializing in backend systems and cloud infrastructure. Led multiple 0-to-1 initiatives serving 1M++ users.
+
+Professional Experience
+Staff Engineer | Uber
+Aug 2025 – Present
+  • Built monitoring dashboard tracking 1M++ metrics across 3 microservices
+  • Optimized database queries resulting in 31% improvement in API response times
+  • Implemented CI/CD pipeline reducing deployment time from 12 hours to 1 minutes
+  • Optimized database queries resulting in 40% improvement in API response times
+  • Optimized database queries resulting in 54% improvement in API response times
+  • Led migration of monolith to cloud-native solution, reducing latency by 60% and infrastructure costs by $5K annually
+
+Software Engineer | Twitter
+Apr 2022 – 2023
+  • Built monitoring dashboard tracking 500++ metrics across 15 microservices
+  • Reduced p99 latency from 5ms to 1ms through caching and query optimization
+  • Implemented CI/CD pipeline reducing deployment time from 8 hours to 2 minutes
+  • Automated infrastructure provisioning reducing new service setup from 8 weeks to 1 days
+  • Optimized database queries resulting in 29% improvement in API response times
+  • Mentored 5 junior engineers through structured onboarding program
+
+Backend Engineer | Twitter
+Nov 2019 – 2020
+  • Designed and built a real-time data pipeline processing 1M+ events/day using Docker
+  • Led squad of 5 engineers delivering platform migration in 5 months
+  • Designed and built a real-time data pipeline processing 1M+ events/day using Rust
+  • Optimized database queries resulting in 54% improvement in API response times
+  • Reduced p99 latency from 5ms to 3ms through caching and query optimization
+  • Designed and built a real-time data pipeline processing 1M+ events/day using Jest
+
+Education
+Master of Arts in Statistics
+Georgia Tech | 2012
+
+Technical Skills
+GCP, Rust, Node.js, Kubernetes, REST API, SQL, Cypress, Linux, Git, PostgreSQL, Python, Next.js
+
+Soft Skills
+Mentoring, Technical Writing, Communication, Leadership, Problem Solving
+
+
+Certifications
+- AWS Solutions Architect

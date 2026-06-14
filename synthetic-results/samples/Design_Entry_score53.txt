@@ -1,0 +1,23 @@
+Ashley Young
+Chicago, IL | ashley.young16@yahoo.com | (621) 742-8500
+linkedin.com/in/ashley-young
+
+Professional Summary
+Product designer with 2 years of experience crafting intuitive, accessible digital experiences. Proficient in Wireframing, Prototyping, Design Tokens.
+
+Professional Experience
+UX Designer | Pinterest
+Jul 2024 – Present
+  • Improved accessibility score from 8/100 to 1/100 achieving WCAG 2.1 AA compliance
+  • Increased trial-to-paid conversion by 35% through redesigned onboarding flow
+  • Established design review process adopted by 12 product teams
+
+Education
+Master of Science in Economics
+UC Berkeley | 2017
+
+Technical Skills
+Sketch, Figma, Design Systems, Interaction Design, Responsive Design, User Research, Adobe Creative Suite, Information Architecture, Design Tokens
+
+Soft Skills
+Visual Storytelling, User Empathy, Design Critique

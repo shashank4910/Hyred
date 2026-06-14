@@ -1,0 +1,61 @@
+Steven Lopez
+San Francisco, CA | steven.lopez67@outlook.com | (507) 693-7217
+linkedin.com/in/steven-lopez
+
+Professional Summary
+Senior product leader with a track record of growing products from $0 to $5M ARR and leading cross-functional teams of 12+.
+
+Professional Experience
+Director of Product | Amazon
+Mar 2023 – Present
+  - Built product analytics framework adopted by 3 teams across the org
+  - Led cross-functional team of 11 engineers, designers, and data scientists
+  - Led product initiative that grew monthly active users by 50% to 1M++
+  - Led cross-functional team of 4 engineers, designers, and data scientists
+  - Conducted 500++ user research sessions informing product direction
+  - Built product analytics framework adopted by 14 teams across the org
+  - Conducted 1M++ user research sessions informing product direction
+
+Associate Product Manager | Figma
+Dec 2020 – 2021
+  - Defined and tracked OKRs for 9 product teams, achieving 68% on key metrics
+  - Developed product strategy that increased conversion rate by 43%
+  - Conducted 1M++ user research sessions informing product direction
+  - Conducted 1M++ user research sessions informing product direction
+  - Developed product strategy that increased conversion rate by 39%
+  - Improved NPS score by 37 points through UX improvements
+  - Reduced time-to-market for new features from 6 weeks to 3 weeks through process improvements
+
+Director of Product | Notion
+Sep 2018 – 2018
+  - Defined and tracked OKRs for 2 product teams, achieving 36% on key metrics
+  - Launched in 15 new markets through strategic partnerships
+  - Defined and tracked OKRs for 5 product teams, achieving 25% on key metrics
+  - Developed product strategy that increased conversion rate by 22%
+  - Led cross-functional team of 13 engineers, designers, and data scientists
+  - Conducted 1M++ user research sessions informing product direction
+  - Reduced time-to-market for new features from 9 weeks to 1 weeks through process improvements
+
+Associate Product Manager | Meta
+Nov 2014 – 2016
+  - Led cross-functional team of 2 engineers, designers, and data scientists
+  - Led product initiative that grew monthly active users by 26% to 1M++
+  - Led product initiative that grew monthly active users by 36% to 1M++
+  - Built product analytics framework adopted by 9 teams across the org
+  - Improved NPS score by 34 points through UX improvements
+  - Led cross-functional team of 9 engineers, designers, and data scientists
+  - Built product analytics framework adopted by 11 teams across the org
+
+Education
+Bachelor of Science in Economics
+University of Chicago | 2011
+
+Technical Skills
+Product Strategy, Roadmapping, Data Analysis, Confluence, User Research, A/B Testing, JIRA, Stakeholder Management, Product Analytics, Figma, OKR Planning, Wireframing, SQL, Agile Methodologies
+
+Soft Skills
+Strategic Thinking, Storytelling, User Empathy, Negotiation, Cross-functional Leadership
+
+
+Certifications
+- SAFe Product Owner

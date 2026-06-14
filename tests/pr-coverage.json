@@ -1,0 +1,1156 @@
+{
+  "version": 1,
+  "generatedAt": "2026-05-31T20:12:53.102Z",
+  "prs": {
+    "1": {
+      "number": 1,
+      "title": "feat: production-grade upgrade — auth, resume upload, insights, skill match, stats",
+      "mergedAt": "2026-05-25T18:10:01Z",
+      "testId": "TC-001",
+      "testCase": "New user completes sign-up, uploads resume, sees dashboard with matches and stats.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/auth-dashboard.spec.ts",
+      "testName": "PR-001 production-grade onboarding smoke"
+    },
+    "2": {
+      "number": 2,
+      "title": "feat: keyword picker + beautiful PDF resume",
+      "mergedAt": "2026-05-26T19:13:00Z",
+      "testId": "TC-002",
+      "testCase": "Verify feature/fix described in PR #2: \"feat: keyword picker + beautiful PDF resume\".",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-002 manual verify"
+    },
+    "3": {
+      "number": 3,
+      "title": "fix: stronger LLM scoring for adjacent testing roles + smarter title patterns",
+      "mergedAt": "2026-05-26T19:40:24Z",
+      "testId": "TC-003",
+      "testCase": "Skill match / scoreJob output includes JD keywords and respects resume content.",
+      "type": "unit",
+      "automatedIn": "tests/unit/scoring.test.ts",
+      "testName": "PR-003 scoring"
+    },
+    "4": {
+      "number": 4,
+      "title": "fix(skill-match): use full resume for matching, not just top 12 skills",
+      "mergedAt": "2026-05-27T04:13:07Z",
+      "testId": "TC-004",
+      "testCase": "Skill match / scoreJob output includes JD keywords and respects resume content.",
+      "type": "unit",
+      "automatedIn": "tests/unit/scoring.test.ts",
+      "testName": "PR-004 scoring"
+    },
+    "5": {
+      "number": 5,
+      "title": "fix(skill-match): strict JD-only requirements + 4-phase verification",
+      "mergedAt": "2026-05-27T04:22:59Z",
+      "testId": "TC-005",
+      "testCase": "Skill match / scoreJob output includes JD keywords and respects resume content.",
+      "type": "unit",
+      "automatedIn": "tests/unit/scoring.test.ts",
+      "testName": "PR-005 scoring"
+    },
+    "6": {
+      "number": 6,
+      "title": "fix(skill-match): include strong technical keywords from JD",
+      "mergedAt": "2026-05-27T04:38:29Z",
+      "testId": "TC-006",
+      "testCase": "Skill match / scoreJob output includes JD keywords and respects resume content.",
+      "type": "unit",
+      "automatedIn": "tests/unit/scoring.test.ts",
+      "testName": "PR-006 scoring"
+    },
+    "7": {
+      "number": 7,
+      "title": "fix: fetch full JDs from source URL (Adzuna truncates to 500 chars)",
+      "mergedAt": "2026-05-27T04:56:43Z",
+      "testId": "TC-007",
+      "testCase": "Verify feature/fix described in PR #7: \"fix: fetch full JDs from source URL (Adzuna truncates to 500 chars)\".",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-007 manual verify"
+    },
+    "8": {
+      "number": 8,
+      "title": "Add backfill-jds script and manual workflow",
+      "mergedAt": "2026-05-27T05:41:35Z",
+      "testId": "TC-008",
+      "testCase": "Verify feature/fix described in PR #8: \"Add backfill-jds script and manual workflow\".",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-008 manual verify"
+    },
+    "9": {
+      "number": 9,
+      "title": "docs: add AI context files for cross-tool continuity",
+      "mergedAt": "2026-05-27T05:47:35Z",
+      "testId": "TC-009",
+      "testCase": "Verify documentation updated as described in PR #9 title (manual review).",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-009 docs review"
+    },
+    "10": {
+      "number": 10,
+      "title": "Redesign UI: Runway-inspired warm analytical canvas",
+      "mergedAt": "2026-05-27T06:02:38Z",
+      "testId": "TC-010",
+      "testCase": "Verify feature/fix described in PR #10: \"Redesign UI: Runway-inspired warm analytical canvas\".",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-010 manual verify"
+    },
+    "11": {
+      "number": 11,
+      "title": "feat: Bookmark toggle + Seen/Unseen visual indicator on match cards",
+      "mergedAt": "2026-05-27T17:47:53Z",
+      "testId": "TC-011",
+      "testCase": "Match list interactions from PR #11 work on dashboard (sort, bookmark, status).",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/dashboard-ui.spec.ts",
+      "testName": "PR-011 matches"
+    },
+    "12": {
+      "number": 12,
+      "title": "fix(browser_agent): launch Chromium in headless mode (Render fix)",
+      "mergedAt": "2026-05-28T05:17:52Z",
+      "testId": "TC-012",
+      "testCase": "Auto-apply agent health check on Render (manual/staging).",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-012 browser agent staging"
+    },
+    "13": {
+      "number": 13,
+      "title": "fix(browser_agent): wire OpenAI selector, step visibility, truthful status (re-do of dropped commits)",
+      "mergedAt": "2026-05-28T06:26:19Z",
+      "testId": "TC-013",
+      "testCase": "Auto-apply agent health check on Render (manual/staging).",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-013 browser agent staging"
+    },
+    "14": {
+      "number": 14,
+      "title": "feat(ats-resume): JD-tailored generation + ATS Match Score + parser-safe PDF",
+      "mergedAt": "2026-05-28T18:47:15Z",
+      "testId": "TC-014",
+      "testCase": "Generate ATS PDF on job detail; verify header, keywords, and download filename per PR #14.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/job-detail.spec.ts",
+      "testName": "PR-014 ATS PDF"
+    },
+    "15": {
+      "number": 15,
+      "title": "feat(ats-resume): clickable missing keywords + USER PRIORITY enforcement",
+      "mergedAt": "2026-05-28T19:03:23Z",
+      "testId": "TC-015",
+      "testCase": "Generate ATS PDF on job detail; verify header, keywords, and download filename per PR #15.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/job-detail.spec.ts",
+      "testName": "PR-015 ATS PDF"
+    },
+    "16": {
+      "number": 16,
+      "title": "feat(ats-resume): client name privacy + strict keyword scope + JD title alignment",
+      "mergedAt": "2026-05-28T19:18:55Z",
+      "testId": "TC-016",
+      "testCase": "Generate ATS PDF on job detail; verify header, keywords, and download filename per PR #16.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/job-detail.spec.ts",
+      "testName": "PR-016 ATS PDF"
+    },
+    "17": {
+      "number": 17,
+      "title": "feat(ats-resume): print JD-aligned title in PDF + cleaner header (no navy band)",
+      "mergedAt": "2026-05-28T19:36:51Z",
+      "testId": "TC-017",
+      "testCase": "Generate ATS PDF on job detail; verify header, keywords, and download filename per PR #17.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/job-detail.spec.ts",
+      "testName": "PR-017 ATS PDF"
+    },
+    "18": {
+      "number": 18,
+      "title": "feat(ats-resume): default download filename = FirstName_Specialization_Years",
+      "mergedAt": "2026-05-28T19:46:02Z",
+      "testId": "TC-018",
+      "testCase": "Generate ATS PDF on job detail; verify header, keywords, and download filename per PR #18.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/job-detail.spec.ts",
+      "testName": "PR-018 ATS PDF"
+    },
+    "19": {
+      "number": 19,
+      "title": "feat(ats-resume): aggressive title cleaner + multi-line PDF header + remove-keyword flow",
+      "mergedAt": "2026-05-28T19:54:49Z",
+      "testId": "TC-019",
+      "testCase": "Generate ATS PDF on job detail; verify header, keywords, and download filename per PR #19.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/job-detail.spec.ts",
+      "testName": "PR-019 ATS PDF"
+    },
+    "20": {
+      "number": 20,
+      "title": "fix(ats-resume): strip ' - Designation' and ' / Specialization' from cleaned JD titles",
+      "mergedAt": "2026-05-28T20:15:53Z",
+      "testId": "TC-020",
+      "testCase": "Generate ATS PDF on job detail; verify header, keywords, and download filename per PR #20.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/job-detail.spec.ts",
+      "testName": "PR-020 ATS PDF"
+    },
+    "21": {
+      "number": 21,
+      "title": "feat(ats-resume): restore navy header band + skip 'Resume' label leak",
+      "mergedAt": "2026-05-28T20:23:48Z",
+      "testId": "TC-021",
+      "testCase": "Generate ATS PDF on job detail; verify header, keywords, and download filename per PR #21.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/job-detail.spec.ts",
+      "testName": "PR-021 ATS PDF"
+    },
+    "22": {
+      "number": 22,
+      "title": "feat(ats-resume): unified missing list + clickable Skill Match chips + custom keyword input",
+      "mergedAt": "2026-05-28T20:34:45Z",
+      "testId": "TC-022",
+      "testCase": "Generate ATS PDF on job detail; verify header, keywords, and download filename per PR #22.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/job-detail.spec.ts",
+      "testName": "PR-022 ATS PDF"
+    },
+    "23": {
+      "number": 23,
+      "title": "feat(matches): default sort by freshness + 5 sort modes + fetched_at fallback",
+      "mergedAt": "2026-05-28T20:44:42Z",
+      "testId": "TC-023",
+      "testCase": "Match list interactions from PR #23 work on dashboard (sort, bookmark, status).",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/dashboard-ui.spec.ts",
+      "testName": "PR-023 matches"
+    },
+    "24": {
+      "number": 24,
+      "title": "fix(ingest): wire GEMINI_API_KEY into workflow + defensive early-bail in embed loop",
+      "mergedAt": "2026-05-28T20:56:02Z",
+      "testId": "TC-024",
+      "testCase": "Run Scan / ingest behavior from PR #24 completes or fails with readable message.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/scan.spec.ts",
+      "testName": "PR-024 ingest"
+    },
+    "25": {
+      "number": 25,
+      "title": "docs(context): add Session 4 — JD-tailored ATS resume, parser-safe PDF, sort modes, ingest fixes",
+      "mergedAt": "2026-05-28T21:36:24Z",
+      "testId": "TC-025",
+      "testCase": "Verify documentation updated as described in PR #25 title (manual review).",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-025 docs review"
+    },
+    "26": {
+      "number": 26,
+      "title": "fix(embed): switch from deprecated Gemini text-embedding-004 to OpenAI text-embedding-3-small",
+      "mergedAt": "2026-05-29T05:12:28Z",
+      "testId": "TC-026",
+      "testCase": "Verify feature/fix described in PR #26: \"fix(embed): switch from deprecated Gemini text-embedding-004 to OpenAI text-embedding-3-small\".",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-026 manual verify"
+    },
+    "27": {
+      "number": 27,
+      "title": "fix(matches): repair sort dropdown (foreignTable alias bug) + show discovery date on cards",
+      "mergedAt": "2026-05-29T05:22:31Z",
+      "testId": "TC-027",
+      "testCase": "Match list interactions from PR #27 work on dashboard (sort, bookmark, status).",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/dashboard-ui.spec.ts",
+      "testName": "PR-027 matches"
+    },
+    "28": {
+      "number": 28,
+      "title": "feat(skill): install UI UX Pro Max into .kiro/steering/ via official uipro-cli",
+      "mergedAt": "2026-05-29T05:33:26Z",
+      "testId": "TC-028",
+      "testCase": "Verify feature/fix described in PR #28: \"feat(skill): install UI UX Pro Max into .kiro/steering/ via official uipro-cli\".",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-028 manual verify"
+    },
+    "29": {
+      "number": 29,
+      "title": "feat(skill+docs): pre-install UI UX Pro Max for Cursor + Antigravity, add Session 5 to CONTEXT",
+      "mergedAt": "2026-05-29T05:46:06Z",
+      "testId": "TC-029",
+      "testCase": "Verify feature/fix described in PR #29: \"feat(skill+docs): pre-install UI UX Pro Max for Cursor + Antigravity, add Session 5 to CONTEXT\".",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-029 manual verify"
+    },
+    "30": {
+      "number": 30,
+      "title": "Design/UI redesign reference",
+      "mergedAt": "2026-05-29T05:57:15Z",
+      "testId": "TC-030",
+      "testCase": "Verify feature/fix described in PR #30: \"Design/UI redesign reference\".",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-030 manual verify"
+    },
+    "31": {
+      "number": 31,
+      "title": "feat(ui): M3 glass design system redesign",
+      "mergedAt": "2026-05-29T07:08:10Z",
+      "testId": "TC-031",
+      "testCase": "Visual/regression: UI change in PR #31 renders without overlap or broken layout.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/dashboard-ui.spec.ts",
+      "testName": "PR-031 UI regression"
+    },
+    "32": {
+      "number": 32,
+      "title": "fix(ingest): Run Scan button 401 unauthorized",
+      "mergedAt": "2026-05-29T07:20:36Z",
+      "testId": "TC-032",
+      "testCase": "Authenticated user clicks Run Scan; POST /api/ingest returns 200 (not 401).",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/scan.spec.ts",
+      "testName": "PR-032 run scan authenticated"
+    },
+    "33": {
+      "number": 33,
+      "title": "fix: filter out jobs older than 45 days",
+      "mergedAt": "2026-05-29T11:36:49Z",
+      "testId": "TC-033",
+      "testCase": "Jobs posted >45 days ago excluded from dashboard query (posted_at filter).",
+      "type": "unit",
+      "automatedIn": "tests/unit/match-stats.test.ts",
+      "testName": "PR-033 stale job cutoff 45 days"
+    },
+    "34": {
+      "number": 34,
+      "title": "feat: Top MNC Hiring — premium feature page",
+      "mergedAt": "2026-05-29T12:22:02Z",
+      "testId": "TC-034",
+      "testCase": "Verify feature/fix described in PR #34: \"feat: Top MNC Hiring — premium feature page\".",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-034 manual verify"
+    },
+    "35": {
+      "number": 35,
+      "title": "fix(top-mnc): MNC badge inline — no text overlap",
+      "mergedAt": "2026-05-29T12:34:30Z",
+      "testId": "TC-035",
+      "testCase": "Verify feature/fix described in PR #35: \"fix(top-mnc): MNC badge inline — no text overlap\".",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-035 manual verify"
+    },
+    "36": {
+      "number": 36,
+      "title": "fix(import): enable Import button for manual JD paste",
+      "mergedAt": "2026-05-29T12:47:30Z",
+      "testId": "TC-036",
+      "testCase": "Verify feature/fix described in PR #36: \"fix(import): enable Import button for manual JD paste\".",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-036 manual verify"
+    },
+    "37": {
+      "number": 37,
+      "title": "feat(sources): Himalayas + JSearch + Adzuna multi-key rotation",
+      "mergedAt": "2026-05-29T14:11:38Z",
+      "testId": "TC-037",
+      "testCase": "Ingest from source in PR #37 returns normalized jobs (mocked in unit tests).",
+      "type": "unit",
+      "automatedIn": "tests/unit/sources.test.ts",
+      "testName": "PR-037 source"
+    },
+    "38": {
+      "number": 38,
+      "title": "feat: Admin Center — key management, usage tracking, error diagnostics",
+      "mergedAt": "2026-05-29T14:11:35Z",
+      "testId": "TC-038",
+      "testCase": "Admin-only feature from PR #38 blocked for regular users (403/redirect).",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/admin-privacy.spec.ts",
+      "testName": "PR-038 admin gate"
+    },
+    "39": {
+      "number": 39,
+      "title": "fix(himalayas): API returns no 'id' field — use guid instead",
+      "mergedAt": "2026-05-29T14:52:59Z",
+      "testId": "TC-039",
+      "testCase": "Verify feature/fix described in PR #39: \"fix(himalayas): API returns no 'id' field — use guid instead\".",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-039 manual verify"
+    },
+    "40": {
+      "number": 40,
+      "title": "feat: source selector on Run Scan to save tokens",
+      "mergedAt": "2026-05-29T18:02:19Z",
+      "testId": "TC-040",
+      "testCase": "Run Scan / ingest behavior from PR #40 completes or fails with readable message.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/scan.spec.ts",
+      "testName": "PR-040 ingest"
+    },
+    "41": {
+      "number": 41,
+      "title": "feat: LinkedIn public guest API — free, legal, no ban risk",
+      "mergedAt": "2026-05-29T18:37:56Z",
+      "testId": "TC-041",
+      "testCase": "Ingest from source in PR #41 returns normalized jobs (mocked in unit tests).",
+      "type": "unit",
+      "automatedIn": "tests/unit/sources.test.ts",
+      "testName": "PR-041 source"
+    },
+    "42": {
+      "number": 42,
+      "title": "fix: add LinkedIn to scan source selector",
+      "mergedAt": "2026-05-29T18:44:43Z",
+      "testId": "TC-042",
+      "testCase": "Run Scan / ingest behavior from PR #42 completes or fails with readable message.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/scan.spec.ts",
+      "testName": "PR-042 ingest"
+    },
+    "43": {
+      "number": 43,
+      "title": "feat: 10x LinkedIn jobs (pagination fix) + top skills on cards",
+      "mergedAt": "2026-05-29T19:06:13Z",
+      "testId": "TC-043",
+      "testCase": "Ingest from source in PR #43 returns normalized jobs (mocked in unit tests).",
+      "type": "unit",
+      "automatedIn": "tests/unit/sources.test.ts",
+      "testName": "PR-043 source"
+    },
+    "44": {
+      "number": 44,
+      "title": "feat: LinkedIn role-title queries — stop missing premium jobs",
+      "mergedAt": "2026-05-29T19:30:56Z",
+      "testId": "TC-044",
+      "testCase": "Ingest from source in PR #44 returns normalized jobs (mocked in unit tests).",
+      "type": "unit",
+      "automatedIn": "tests/unit/sources.test.ts",
+      "testName": "PR-044 source"
+    },
+    "45": {
+      "number": 45,
+      "title": "feat: LinkedIn multi-city search — stop missing city-level jobs",
+      "mergedAt": "2026-05-29T19:41:25Z",
+      "testId": "TC-045",
+      "testCase": "Ingest from source in PR #45 returns normalized jobs (mocked in unit tests).",
+      "type": "unit",
+      "automatedIn": "tests/unit/sources.test.ts",
+      "testName": "PR-045 source"
+    },
+    "46": {
+      "number": 46,
+      "title": "feat: personalise LinkedIn search with user's preferred locations",
+      "mergedAt": "2026-05-29T19:56:41Z",
+      "testId": "TC-046",
+      "testCase": "Ingest from source in PR #46 returns normalized jobs (mocked in unit tests).",
+      "type": "unit",
+      "automatedIn": "tests/unit/sources.test.ts",
+      "testName": "PR-046 source"
+    },
+    "47": {
+      "number": 47,
+      "title": "fix: top-company jobs (TCS/Infosys/Levi) now reach matches + Top MNC",
+      "mergedAt": "2026-05-29T20:18:22Z",
+      "testId": "TC-047",
+      "testCase": "Match list interactions from PR #47 work on dashboard (sort, bookmark, status).",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/dashboard-ui.spec.ts",
+      "testName": "PR-047 matches"
+    },
+    "48": {
+      "number": 48,
+      "title": "fix(ai): replace dead gemini-2.0-flash fallback with free Groq + surface OpenAI errors",
+      "mergedAt": "2026-05-29T20:38:04Z",
+      "testId": "TC-048",
+      "testCase": "Verify feature/fix described in PR #48: \"fix(ai): replace dead gemini-2.0-flash fallback with free Groq + surface OpenAI errors\".",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-048 manual verify"
+    },
+    "49": {
+      "number": 49,
+      "title": "fix: load full JD server-side — no more hard-refresh needed",
+      "mergedAt": "2026-05-29T20:34:48Z",
+      "testId": "TC-049",
+      "testCase": "Verify feature/fix described in PR #49: \"fix: load full JD server-side — no more hard-refresh needed\".",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-049 manual verify"
+    },
+    "50": {
+      "number": 50,
+      "title": "feat(ai): make Groq the free primary, OpenAI the paid fallback",
+      "mergedAt": "2026-05-29T20:47:50Z",
+      "testId": "TC-050",
+      "testCase": "Verify feature/fix described in PR #50: \"feat(ai): make Groq the free primary, OpenAI the paid fallback\".",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-050 manual verify"
+    },
+    "51": {
+      "number": 51,
+      "title": "fix: garbled JD-aligned resume title (Senior Lead- Performance Engineering)",
+      "mergedAt": "2026-05-29T21:13:28Z",
+      "testId": "TC-051",
+      "testCase": "Verify feature/fix described in PR #51: \"fix: garbled JD-aligned resume title (Senior Lead- Performance Engineering)\".",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-051 manual verify"
+    },
+    "52": {
+      "number": 52,
+      "title": "docs(context): add Phase 3 Groq free-tier capacity analysis",
+      "mergedAt": "2026-05-29T21:10:37Z",
+      "testId": "TC-052",
+      "testCase": "Verify documentation updated as described in PR #52 title (manual review).",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-052 docs review"
+    },
+    "53": {
+      "number": 53,
+      "title": "docs(context): add OpenAI-primary cost model (1 to 1,000 user scaling)",
+      "mergedAt": "2026-05-29T21:25:49Z",
+      "testId": "TC-053",
+      "testCase": "Verify documentation updated as described in PR #53 title (manual review).",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-053 docs review"
+    },
+    "54": {
+      "number": 54,
+      "title": "feat(auth): multi-user via Supabase Auth (email + Google) + per-user data isolation",
+      "mergedAt": "2026-05-30T05:31:58Z",
+      "testId": "TC-054",
+      "testCase": "User A cannot see User B matches; API routes return only own profile_id data.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/auth-dashboard.spec.ts",
+      "testName": "PR-054 per-user data isolation"
+    },
+    "55": {
+      "number": 55,
+      "title": "docs: add multi-user auth go-live runbook",
+      "mergedAt": "2026-05-30T06:11:38Z",
+      "testId": "TC-055",
+      "testCase": "Verify documentation updated as described in PR #55 title (manual review).",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-055 docs review"
+    },
+    "56": {
+      "number": 56,
+      "title": "fix(auth): adopt existing same-email profile instead of crashing on duplicate",
+      "mergedAt": "2026-05-30T06:41:08Z",
+      "testId": "TC-056",
+      "testCase": "Auth flow from PR #56: sign-up/sign-in succeeds without server error.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/auth-dashboard.spec.ts",
+      "testName": "PR-056 auth"
+    },
+    "57": {
+      "number": 57,
+      "title": "docs(context): log the Phase 1 duplicate-email sign-in fix (PR #56)",
+      "mergedAt": "2026-05-30T06:48:39Z",
+      "testId": "TC-057",
+      "testCase": "Verify documentation updated as described in PR #57 title (manual review).",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-057 docs review"
+    },
+    "58": {
+      "number": 58,
+      "title": "fix(auth): resolve profile via atomic upsert to stop duplicate-email crash",
+      "mergedAt": "2026-05-30T07:03:27Z",
+      "testId": "TC-058",
+      "testCase": "Auth flow from PR #58: sign-up/sign-in succeeds without server error.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/auth-dashboard.spec.ts",
+      "testName": "PR-058 auth"
+    },
+    "59": {
+      "number": 59,
+      "title": "docs(context): note PR #56 was partial, PR #58 upsert is the real fix",
+      "mergedAt": "2026-05-30T07:05:31Z",
+      "testId": "TC-059",
+      "testCase": "Verify documentation updated as described in PR #59 title (manual review).",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-059 docs review"
+    },
+    "60": {
+      "number": 60,
+      "title": "docs(context): token-efficient context architecture (AGENTS.md router + index + archive split)",
+      "mergedAt": "2026-05-30T07:14:11Z",
+      "testId": "TC-060",
+      "testCase": "Verify documentation updated as described in PR #60 title (manual review).",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-060 docs review"
+    },
+    "61": {
+      "number": 61,
+      "title": "chore(db): 0006 — profiles FK ON DELETE SET NULL + lowercase email (prevent data loss)",
+      "mergedAt": "2026-05-30T07:44:39Z",
+      "testId": "TC-061",
+      "testCase": "Confirm chore change from PR #61 does not break build or typecheck.",
+      "type": "ci",
+      "automatedIn": ".github/workflows/test.yml",
+      "testName": "PR-061 build passes"
+    },
+    "62": {
+      "number": 62,
+      "title": "docs(context): record session 8 — multi-user auth hardening (pitfalls + session log)",
+      "mergedAt": "2026-05-30T08:04:50Z",
+      "testId": "TC-062",
+      "testCase": "Verify documentation updated as described in PR #62 title (manual review).",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-062 docs review"
+    },
+    "63": {
+      "number": 63,
+      "title": "feat(admin): DB-backed admin role so the Admin portal isn't env-only",
+      "mergedAt": "2026-05-30T11:38:53Z",
+      "testId": "TC-063",
+      "testCase": "Admin-only feature from PR #63 blocked for regular users (403/redirect).",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/admin-privacy.spec.ts",
+      "testName": "PR-063 admin gate"
+    },
+    "64": {
+      "number": 64,
+      "title": "fix(ats): correct keyword add/delete/regenerate logic",
+      "mergedAt": "2026-05-30T12:02:47Z",
+      "testId": "TC-064",
+      "testCase": "Verify feature/fix described in PR #64: \"fix(ats): correct keyword add/delete/regenerate logic\".",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-064 manual verify"
+    },
+    "65": {
+      "number": 65,
+      "title": "docs(ats): fix stale missing-list comment",
+      "mergedAt": "2026-05-30T12:04:56Z",
+      "testId": "TC-065",
+      "testCase": "Verify documentation updated as described in PR #65 title (manual review).",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-065 docs review"
+    },
+    "66": {
+      "number": 66,
+      "title": "feat(ats): simple keyword manager + fix prompt keyword leakage",
+      "mergedAt": "2026-05-30T12:57:43Z",
+      "testId": "TC-066",
+      "testCase": "Generate ATS PDF on job detail; verify header, keywords, and download filename per PR #66.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/job-detail.spec.ts",
+      "testName": "PR-066 ATS PDF"
+    },
+    "67": {
+      "number": 67,
+      "title": "fix(ats): guarantee selected keywords are present after optimize",
+      "mergedAt": "2026-05-30T13:46:35Z",
+      "testId": "TC-067",
+      "testCase": "Verify feature/fix described in PR #67: \"fix(ats): guarantee selected keywords are present after optimize\".",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-067 manual verify"
+    },
+    "68": {
+      "number": 68,
+      "title": "fix(ats): place selected keywords smartly, not all into TECHNICAL SKILLS",
+      "mergedAt": "2026-05-30T14:37:11Z",
+      "testId": "TC-068",
+      "testCase": "Verify feature/fix described in PR #68: \"fix(ats): place selected keywords smartly, not all into TECHNICAL SKILLS\".",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-068 manual verify"
+    },
+    "69": {
+      "number": 69,
+      "title": "fix(ats): hard guarantee for selected keywords (restore dropped activity terms)",
+      "mergedAt": "2026-05-30T14:57:45Z",
+      "testId": "TC-069",
+      "testCase": "Verify feature/fix described in PR #69: \"fix(ats): hard guarantee for selected keywords (restore dropped activity terms)\".",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-069 manual verify"
+    },
+    "70": {
+      "number": 70,
+      "title": "feat(ats): LLM-decided keyword types replace hardcoded classifier lists",
+      "mergedAt": "2026-05-30T15:14:56Z",
+      "testId": "TC-070",
+      "testCase": "Generate ATS PDF on job detail; verify header, keywords, and download filename per PR #70.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/job-detail.spec.ts",
+      "testName": "PR-070 ATS PDF"
+    },
+    "71": {
+      "number": 71,
+      "title": "fix(pdf): resume contact details on one clean line",
+      "mergedAt": "2026-05-30T15:33:20Z",
+      "testId": "TC-071",
+      "testCase": "Generate ATS PDF on job detail; verify header, keywords, and download filename per PR #71.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/job-detail.spec.ts",
+      "testName": "PR-071 ATS PDF"
+    },
+    "72": {
+      "number": 72,
+      "title": "docs(context): log session 11 (ATS keyword guarantee + LLM-typed placement + header)",
+      "mergedAt": "2026-05-30T15:37:18Z",
+      "testId": "TC-072",
+      "testCase": "Verify documentation updated as described in PR #72 title (manual review).",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-072 docs review"
+    },
+    "73": {
+      "number": 73,
+      "title": "fix(pdf): all-caps name misparsed as section (blank band, stacked contacts)",
+      "mergedAt": "2026-05-30T16:10:04Z",
+      "testId": "TC-073",
+      "testCase": "Generate ATS PDF on job detail; verify header, keywords, and download filename per PR #73.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/job-detail.spec.ts",
+      "testName": "PR-073 ATS PDF"
+    },
+    "74": {
+      "number": 74,
+      "title": "docs(context): correct PDF header root cause (PR #73)",
+      "mergedAt": "2026-05-30T16:11:46Z",
+      "testId": "TC-074",
+      "testCase": "Verify documentation updated as described in PR #74 title (manual review).",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-074 docs review"
+    },
+    "75": {
+      "number": 75,
+      "title": "fix(resume): stop owner data leaking into other users' resumes + arrow corruption",
+      "mergedAt": "2026-05-30T18:15:50Z",
+      "testId": "TC-075",
+      "testCase": "Verify feature/fix described in PR #75: \"fix(resume): stop owner data leaking into other users' resumes + arrow corruption\".",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-075 manual verify"
+    },
+    "76": {
+      "number": 76,
+      "title": "fix(onboarding): remove owner PII from form defaults and placeholders",
+      "mergedAt": "2026-05-30T18:17:26Z",
+      "testId": "TC-076",
+      "testCase": "Verify feature/fix described in PR #76: \"fix(onboarding): remove owner PII from form defaults and placeholders\".",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-076 manual verify"
+    },
+    "77": {
+      "number": 77,
+      "title": "chore(brand): rename JobRadar -> Hyred (hyred.in)",
+      "mergedAt": "2026-05-30T19:04:39Z",
+      "testId": "TC-077",
+      "testCase": "Confirm chore change from PR #77 does not break build or typecheck.",
+      "type": "ci",
+      "automatedIn": ".github/workflows/test.yml",
+      "testName": "PR-077 build passes"
+    },
+    "78": {
+      "number": 78,
+      "title": "fix(resume): stop hardcoding owner role title in ATS generation",
+      "mergedAt": "2026-05-30T20:08:53Z",
+      "testId": "TC-078",
+      "testCase": "Verify feature/fix described in PR #78: \"fix(resume): stop hardcoding owner role title in ATS generation\".",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-078 manual verify"
+    },
+    "79": {
+      "number": 79,
+      "title": "fix(resume): restore role title in PDF header after regeneration",
+      "mergedAt": "2026-05-30T20:22:29Z",
+      "testId": "TC-079",
+      "testCase": "Verify feature/fix described in PR #79: \"fix(resume): restore role title in PDF header after regeneration\".",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-079 manual verify"
+    },
+    "80": {
+      "number": 80,
+      "title": "docs(context): session 12 context sync",
+      "mergedAt": "2026-05-30T20:25:02Z",
+      "testId": "TC-080",
+      "testCase": "Verify documentation updated as described in PR #80 title (manual review).",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-080 docs review"
+    },
+    "81": {
+      "number": 81,
+      "title": "fix(pdf): render ALL CAPS role title in navy header band",
+      "mergedAt": "2026-05-30T20:31:34Z",
+      "testId": "TC-081",
+      "testCase": "Generate ATS PDF on job detail; verify header, keywords, and download filename per PR #81.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/job-detail.spec.ts",
+      "testName": "PR-081 ATS PDF"
+    },
+    "82": {
+      "number": 82,
+      "title": "fix(pdf): show role title on iOS Safari PDF preview",
+      "mergedAt": "2026-05-30T20:39:29Z",
+      "testId": "TC-082",
+      "testCase": "Generate ATS PDF on job detail; verify header, keywords, and download filename per PR #82.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/job-detail.spec.ts",
+      "testName": "PR-082 ATS PDF"
+    },
+    "83": {
+      "number": 83,
+      "title": "fix: deleted user ghost data and stale job preferences",
+      "mergedAt": "2026-05-31T04:48:35Z",
+      "testId": "TC-083",
+      "testCase": "Verify feature/fix described in PR #83: \"fix: deleted user ghost data and stale job preferences\".",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-083 manual verify"
+    },
+    "84": {
+      "number": 84,
+      "title": "Install Vercel Speed Insights with docs",
+      "mergedAt": "2026-05-31T05:13:06Z",
+      "testId": "TC-084",
+      "testCase": "Verify feature/fix described in PR #84: \"Install Vercel Speed Insights with docs\".",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-084 manual verify"
+    },
+    "85": {
+      "number": 85,
+      "title": "fix(stats): user-scoped metrics, not global job pool",
+      "mergedAt": "2026-05-31T05:04:56Z",
+      "testId": "TC-085",
+      "testCase": "Stats page counts match dashboard filters (user-scoped) per PR #85.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/stats.spec.ts",
+      "testName": "PR-085 stats"
+    },
+    "86": {
+      "number": 86,
+      "title": "fix(ingest): stop scans stuck on running forever",
+      "mergedAt": "2026-05-31T05:15:35Z",
+      "testId": "TC-086",
+      "testCase": "Run Scan / ingest behavior from PR #86 completes or fails with readable message.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/scan.spec.ts",
+      "testName": "PR-086 ingest"
+    },
+    "87": {
+      "number": 87,
+      "title": "fix(ui): hide job source details from non-admin users",
+      "mergedAt": "2026-05-31T05:38:00Z",
+      "testId": "TC-087",
+      "testCase": "Non-admin user does not see job source badges or source filter on dashboard.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/admin-privacy.spec.ts",
+      "testName": "PR-087 hide sources from non-admin"
+    },
+    "88": {
+      "number": 88,
+      "title": "docs(context): session 14 — multi-tenant bugs + admin source privacy",
+      "mergedAt": "2026-05-31T06:35:00Z",
+      "testId": "TC-088",
+      "testCase": "Verify documentation updated as described in PR #88 title (manual review).",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-088 docs review"
+    },
+    "89": {
+      "number": 89,
+      "title": "perf(ingest): finish scans within Vercel time limit",
+      "mergedAt": "2026-05-31T06:44:35Z",
+      "testId": "TC-089",
+      "testCase": "Run Scan / ingest behavior from PR #89 completes or fails with readable message.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/scan.spec.ts",
+      "testName": "PR-089 ingest"
+    },
+    "90": {
+      "number": 90,
+      "title": "perf(ingest): reduce LLM cost on scans and rescans",
+      "mergedAt": "2026-05-31T08:14:35Z",
+      "testId": "TC-090",
+      "testCase": "Run Scan / ingest behavior from PR #90 completes or fails with readable message.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/scan.spec.ts",
+      "testName": "PR-090 ingest"
+    },
+    "91": {
+      "number": 91,
+      "title": "fix(ui): repair stuck scan toast showing [object Object]",
+      "mergedAt": "2026-05-31T08:49:27Z",
+      "testId": "TC-091",
+      "testCase": "readableError({ error: { message: \"fail\" } }) never returns \"[object Object]\".",
+      "type": "unit",
+      "automatedIn": "tests/unit/ui-errors.test.ts",
+      "testName": "PR-091 readableError object"
+    },
+    "92": {
+      "number": 92,
+      "title": "fix(stats): align match counts with Matches page filters",
+      "mergedAt": "2026-05-31T08:48:26Z",
+      "testId": "TC-092",
+      "testCase": "Stats page counts match dashboard filters (user-scoped) per PR #92.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/stats.spec.ts",
+      "testName": "PR-092 stats"
+    },
+    "93": {
+      "number": 93,
+      "title": "fix(stats): remove stat card footnotes and subtitles",
+      "mergedAt": "2026-05-31T11:08:39Z",
+      "testId": "TC-093",
+      "testCase": "Stats page counts match dashboard filters (user-scoped) per PR #93.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/stats.spec.ts",
+      "testName": "PR-093 stats"
+    },
+    "94": {
+      "number": 94,
+      "title": "feat(admin): LLM key management with DB rotation & usage dashboard",
+      "mergedAt": "2026-05-31T12:33:49Z",
+      "testId": "TC-094",
+      "testCase": "Admin-only feature from PR #94 blocked for regular users (403/redirect).",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/admin-privacy.spec.ts",
+      "testName": "PR-094 admin gate"
+    },
+    "95": {
+      "number": 95,
+      "title": "feat(legal): Privacy Policy, Terms, and consent checkboxes",
+      "mergedAt": "2026-05-31T12:31:07Z",
+      "testId": "TC-095",
+      "testCase": "/privacy and /terms load; sign-up shows Terms/Privacy consent checkbox.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/public-pages.spec.ts",
+      "testName": "PR-095 legal pages and signup consent"
+    },
+    "96": {
+      "number": 96,
+      "title": "fix(ui): stop scan and logout toasts blocking header controls",
+      "mergedAt": "2026-05-31T13:19:36Z",
+      "testId": "TC-096",
+      "testCase": "Toasts render bottom-right; logout dismisses all toasts including scan notice.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/toasts.spec.ts",
+      "testName": "PR-096 toast placement and logout cleanup"
+    },
+    "97": {
+      "number": 97,
+      "title": "fix(auth): resolve signup crash on concurrent profile creation",
+      "mergedAt": "2026-05-31T13:19:23Z",
+      "testId": "TC-097",
+      "testCase": "Concurrent profile upsert on sign-up does not throw duplicate key error.",
+      "type": "unit",
+      "automatedIn": "tests/e2e/auth-dashboard.spec.ts",
+      "testName": "PR-097 signup no duplicate profile crash"
+    },
+    "98": {
+      "number": 98,
+      "title": "chore: always merge PRs when user approves and CI is green",
+      "mergedAt": "2026-05-31T13:20:35Z",
+      "testId": "TC-098",
+      "testCase": "Confirm chore change from PR #98 does not break build or typecheck.",
+      "type": "ci",
+      "automatedIn": ".github/workflows/test.yml",
+      "testName": "PR-098 build passes"
+    },
+    "99": {
+      "number": 99,
+      "title": "fix(legal): remove post-login consent friction",
+      "mergedAt": "2026-05-31T13:31:03Z",
+      "testId": "TC-099",
+      "testCase": "Logged-in app shell has no Privacy/Terms footer links; onboarding has no AI consent checkbox.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/public-pages.spec.ts",
+      "testName": "PR-099 no post-login legal friction"
+    },
+    "100": {
+      "number": 100,
+      "title": "feat(ui): apply Stitch Luminous redesign to Hyred",
+      "mergedAt": "2026-05-31T16:27:15Z",
+      "testId": "TC-100",
+      "testCase": "Visual/regression: UI change in PR #100 renders without overlap or broken layout.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/dashboard-ui.spec.ts",
+      "testName": "PR-100 UI regression"
+    },
+    "101": {
+      "number": 101,
+      "title": "fix(ui): stop Run Scan source picker clipping under sidebar",
+      "mergedAt": "2026-05-31T16:35:41Z",
+      "testId": "TC-101",
+      "testCase": "Visual/regression: UI change in PR #101 renders without overlap or broken layout.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/dashboard-ui.spec.ts",
+      "testName": "PR-101 UI regression"
+    },
+    "102": {
+      "number": 102,
+      "title": "docs: add UI and Design System index to CONTEXT.md",
+      "mergedAt": "2026-05-31T16:38:57Z",
+      "testId": "TC-102",
+      "testCase": "Verify documentation updated as described in PR #102 title (manual review).",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-102 docs review"
+    },
+    "103": {
+      "number": 103,
+      "title": "Fix dashboard Match activity overlap and layout stacking",
+      "mergedAt": "2026-05-31T16:47:51Z",
+      "testId": "TC-103",
+      "testCase": "Verify feature/fix described in PR #103: \"Fix dashboard Match activity overlap and layout stacking\".",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-103 manual verify"
+    },
+    "104": {
+      "number": 104,
+      "title": "fix(ui): Complete Luminous design polish across all pages",
+      "mergedAt": "2026-05-31T17:01:41Z",
+      "testId": "TC-104",
+      "testCase": "Visual/regression: UI change in PR #104 renders without overlap or broken layout.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/dashboard-ui.spec.ts",
+      "testName": "PR-104 UI regression"
+    },
+    "105": {
+      "number": 105,
+      "title": "Show scan-started toast with browse-while-waiting guidance",
+      "mergedAt": "2026-05-31T17:07:15Z",
+      "testId": "TC-105",
+      "testCase": "Click Run Scan → scan-started toast appears immediately with browse links.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/scan.spec.ts",
+      "testName": "PR-105 scan started toast"
+    },
+    "106": {
+      "number": 106,
+      "title": "Status filter: all tabs on one line, no horizontal scroll",
+      "mergedAt": "2026-05-31T17:18:44Z",
+      "testId": "TC-106",
+      "testCase": "Dashboard status bar shows all 7 tabs on one row without horizontal scrollbar.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/dashboard-ui.spec.ts",
+      "testName": "PR-106 status filter no scroll"
+    },
+    "107": {
+      "number": 107,
+      "title": "docs: refresh CONTEXT.md UI index for PRs #102–#106",
+      "mergedAt": "2026-05-31T17:25:12Z",
+      "testId": "TC-107",
+      "testCase": "Verify documentation updated as described in PR #107 title (manual review).",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-107 docs review"
+    },
+    "109": {
+      "number": 109,
+      "title": "feat: Cancel running scan + personalized ETA message",
+      "mergedAt": "2026-05-31T18:35:06Z",
+      "testId": "TC-109",
+      "testCase": "POST /api/ingest/cancel returns 404 when no scan running; 401 when logged out.",
+      "type": "api",
+      "automatedIn": "tests/e2e/scan.spec.ts",
+      "testName": "PR-109 cancel scan API"
+    },
+    "110": {
+      "number": 110,
+      "title": "feat: pagination, infinite scroll, scroll restore + highlight",
+      "mergedAt": "2026-05-31T18:53:18Z",
+      "testId": "TC-110",
+      "testCase": "Verify feature/fix described in PR #110: \"feat: pagination, infinite scroll, scroll restore + highlight\".",
+      "type": "manual",
+      "automatedIn": null,
+      "testName": "PR-110 manual verify"
+    },
+    "111": {
+      "number": 111,
+      "title": "feat: Progressive scan status messages (keep user informed)",
+      "mergedAt": "2026-05-31T18:52:42Z",
+      "testId": "TC-111",
+      "testCase": "Run Scan / ingest behavior from PR #111 completes or fails with readable message.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/scan.spec.ts",
+      "testName": "PR-111 ingest"
+    },
+    "112": {
+      "number": 112,
+      "title": "fix(jd): unified HTML stripping + fix truncated descriptions",
+      "mergedAt": "2026-05-31T19:24:41Z",
+      "testId": "TC-112",
+      "testCase": "stripHtml removes script/style tags and decodes entities from JD HTML.",
+      "type": "unit",
+      "automatedIn": "tests/unit/jd-fetcher.test.ts",
+      "testName": "PR-112 stripHtml sanitization"
+    },
+    "113": {
+      "number": 113,
+      "title": "feat: Progressive scan toast — card updates at 45s/2m/3.5m/5m",
+      "mergedAt": "2026-05-31T19:27:27Z",
+      "testId": "TC-113",
+      "testCase": "Run Scan / ingest behavior from PR #113 completes or fails with readable message.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/scan.spec.ts",
+      "testName": "PR-113 ingest"
+    },
+    "114": {
+      "number": 114,
+      "title": "fix: Single scan card with live elapsed counter + granular updates",
+      "mergedAt": "2026-05-31T19:41:02Z",
+      "testId": "TC-114",
+      "testCase": "Run Scan / ingest behavior from PR #114 completes or fails with readable message.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/scan.spec.ts",
+      "testName": "PR-114 ingest"
+    },
+    "115": {
+      "number": 115,
+      "title": "fix: Compact non-blocking scan toast with live counter",
+      "mergedAt": "2026-05-31T20:08:31Z",
+      "testId": "TC-115",
+      "testCase": "Run Scan / ingest behavior from PR #115 completes or fails with readable message.",
+      "type": "e2e",
+      "automatedIn": "tests/e2e/scan.spec.ts",
+      "testName": "PR-115 ingest"
+    },
+    "116": {
+      "number": 116,
+      "title": "fix(scoring): strip HTML in JD + experience/seniority cap in scoreJob",
+      "mergedAt": "2026-05-31T20:08:10Z",
+      "testId": "TC-116",
+      "testCase": "scoreJob input JD with HTML tags does not inflate score from markup noise.",
+      "type": "unit",
+      "automatedIn": "tests/unit/jd-fetcher.test.ts",
+      "testName": "PR-116 stripHtml before scoring"
+    }
+  }
+}

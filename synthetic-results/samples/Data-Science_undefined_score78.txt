@@ -1,0 +1,62 @@
+Carol Thompson
+Washington, DC | carol.thompson72@outlook.com | (318) 370-7031
+linkedin.com/in/carol-thompson
+
+Professional Summary
+Machine learning engineer focused on productionizing models at scale. Built systems serving 1M++ predictions daily.
+
+Professional Experience
+Research Scientist | HubSpot
+Apr 2024 – Present
+  - Built ML model achieving 71% accuracy that saved $5K/month in fraud losses
+  - Developed recommendation system that improved user engagement by 68%
+  - Created automated anomaly detection pipeline monitoring 1M++ metrics in real-time
+  - Created automated anomaly detection pipeline monitoring 1M++ metrics in real-time
+  - Increased model inference speed by 67% through quantization and pruning techniques
+  - Designed A/B testing framework used by 2 product teams across the organization
+  - Built NLP pipeline processing 500+ documents/day for information extraction
+
+Analytics Lead | Pinterest
+Nov 2022 – 2022
+  - Built ML model achieving 33% accuracy that saved $5K/month in fraud losses
+  - Built NLP pipeline processing 500+ documents/day for information extraction
+  - Created automated anomaly detection pipeline monitoring 1M++ metrics in real-time
+  - Built ML model achieving 40% accuracy that saved $3K/month in fraud losses
+  - Led data science team of 10 delivering insights that drove $5M in revenue
+  - Implemented ML Ops infrastructure reducing model deployment from 4 weeks to 1 hours
+  - Led data science team of 2 delivering insights that drove $5M in revenue
+
+Machine Learning Engineer | Coursera
+Sep 2019 – 2020
+  - Built ML model achieving 24% accuracy that saved $5K/month in fraud losses
+  - Built NLP pipeline processing 1M+ documents/day for information extraction
+  - Reduced feature engineering time by 32% through automated feature store
+  - Built ML model achieving 27% accuracy that saved $5K/month in fraud losses
+  - Developed recommendation system that improved user engagement by 57%
+  - Reduced feature engineering time by 28% through automated feature store
+  - Increased model inference speed by 77% through quantization and pruning techniques
+
+Senior Data Scientist | Airbnb
+Jun 2015 – 2017
+  - Increased model inference speed by 80% through quantization and pruning techniques
+  - Reduced feature engineering time by 47% through automated feature store
+  - Built ML model achieving 50% accuracy that saved $5K/month in fraud losses
+  - Built ML model achieving 42% accuracy that saved $5K/month in fraud losses
+  - Increased model inference speed by 48% through quantization and pruning techniques
+  - Designed A/B testing framework used by 14 product teams across the organization
+  - Developed recommendation system that improved user engagement by 70%
+
+Education
+Master of Business Administration in Marketing
+Northwestern University | 2013
+
+Technical Skills
+Statistics, Python, Computer Vision, scikit-learn, NLP, TensorFlow, SQL, PyTorch, Spark, BigQuery, Tableau, Pandas, Airflow, PostgreSQL, Docker, MLflow, LLM, LangChain
+
+Soft Skills
+Analytical Thinking, Experimental Design, Statistical Reasoning
+
+
+Certifications
+- Deep Learning Specialization
+- AWS ML Specialty

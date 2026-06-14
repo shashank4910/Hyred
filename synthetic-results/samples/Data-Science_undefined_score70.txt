@@ -1,0 +1,57 @@
+Daniel Smith
+Portland, OR | daniel.smith7@gmail.com | (730) 626-4348
+linkedin.com/in/daniel-smith
+
+Professional Summary
+Analytics leader with expertise in experimental design and causal inference. Track record of translating data insights into product strategy.
+
+Professional Experience
+Data Science Manager | Zoom
+Apr 2025 – Present
+  • Implemented ML Ops infrastructure reducing model deployment from 6 weeks to 3 hours
+  • Developed customer churn prediction model with 76% precision, reducing churn by {PCT}%
+  • Led data science team of 4 delivering insights that drove $5M in revenue
+  • Developed customer churn prediction model with 25% precision, reducing churn by {PCT}%
+  • Developed recommendation system that improved user engagement by 60%
+  • Built NLP pipeline processing 1M+ documents/day for information extraction
+  • Created automated anomaly detection pipeline monitoring 1M++ metrics in real-time
+
+NLP Engineer | Asana
+Nov 2023 – 2023
+  • Created automated anomaly detection pipeline monitoring 1M++ metrics in real-time
+  • Developed customer churn prediction model with 77% precision, reducing churn by {PCT}%
+  • Designed A/B testing framework used by 13 product teams across the organization
+  • Implemented ML Ops infrastructure reducing model deployment from 9 weeks to 3 hours
+  • Built NLP pipeline processing 1M+ documents/day for information extraction
+  • Designed A/B testing framework used by 2 product teams across the organization
+  • Reduced feature engineering time by 43% through automated feature store
+
+Analytics Lead | Coursera
+Jun 2020 – 2021
+  • Developed customer churn prediction model with 43% precision, reducing churn by {PCT}%
+  • Developed recommendation system that improved user engagement by 63%
+  • Increased model inference speed by 70% through quantization and pruning techniques
+  • Designed A/B testing framework used by 2 product teams across the organization
+  • Built NLP pipeline processing 1M+ documents/day for information extraction
+  • Built ML model achieving 38% accuracy that saved $3K/month in fraud losses
+  • Led data science team of 8 delivering insights that drove $5M in revenue
+
+Data Science Manager | Pinterest
+Jan 2018 – 2018
+  • Developed recommendation system that improved user engagement by 22%
+  • Increased model inference speed by 80% through quantization and pruning techniques
+  • Built ML model achieving 43% accuracy that saved $5K/month in fraud losses
+  • Reduced feature engineering time by 72% through automated feature store
+  • Built ML model achieving 70% accuracy that saved $3K/month in fraud losses
+  • Developed customer churn prediction model with 40% precision, reducing churn by {PCT}%
+  • Reduced feature engineering time by 66% through automated feature store
+
+Education
+Bachelor of Science in Marketing
+NYU | 2013
+
+Technical Skills
+PyTorch, R, Tableau, Spark, scikit-learn, A/B Testing, SQL, BigQuery
+
+Soft Skills
+Experimental Design, Analytical Thinking, Cross-functional Communication, Problem Formulation

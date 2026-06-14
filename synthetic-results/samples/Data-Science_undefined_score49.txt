@@ -1,0 +1,57 @@
+Amanda Smith
+Phoenix, AZ | amanda.smith23@gmail.com | (605) 391-8419
+linkedin.com/in/amanda-smith
+
+Professional Summary
+Machine learning engineer focused on productionizing models at scale. Built systems serving 1M++ predictions daily.
+
+Professional Experience
+Analytics Lead | Coursera
+Dec 2024 – Present
+  Built ML model achieving 38% accuracy that saved $5K/month in fraud losses.
+  Increased model inference speed by 48% through quantization and pruning techniques.
+  Built ML model achieving 77% accuracy that saved $5K/month in fraud losses.
+  Developed customer churn prediction model with 39% precision, reducing churn by {PCT}%.
+  Developed recommendation system that improved user engagement by 71%.
+  Developed customer churn prediction model with 40% precision, reducing churn by {PCT}%.
+  Implemented ML Ops infrastructure reducing model deployment from 6 weeks to 3 hours.
+
+Senior Data Scientist | HubSpot
+Aug 2020 – 2022
+  Built ML model achieving 61% accuracy that saved $1.5K/month in fraud losses.
+  Led data science team of 3 delivering insights that drove $5M in revenue.
+  Built NLP pipeline processing 500+ documents/day for information extraction.
+  Increased model inference speed by 35% through quantization and pruning techniques.
+  Developed customer churn prediction model with 48% precision, reducing churn by {PCT}%.
+  Implemented ML Ops infrastructure reducing model deployment from 8 weeks to 3 hours.
+  Designed A/B testing framework used by 15 product teams across the organization.
+
+NLP Engineer | Netflix
+Feb 2016 – 2018
+  Built NLP pipeline processing 1M+ documents/day for information extraction.
+  Led data science team of 15 delivering insights that drove $5M in revenue.
+  Developed recommendation system that improved user engagement by 65%.
+  Designed A/B testing framework used by 4 product teams across the organization.
+  Built NLP pipeline processing 1M+ documents/day for information extraction.
+  Developed recommendation system that improved user engagement by 57%.
+  Reduced feature engineering time by 33% through automated feature store.
+
+Analytics Lead | Duolingo
+May 2013 – 2014
+  Reduced feature engineering time by 30% through automated feature store.
+  Developed recommendation system that improved user engagement by 60%.
+  Developed customer churn prediction model with 60% precision, reducing churn by {PCT}%.
+  Designed A/B testing framework used by 6 product teams across the organization.
+  Implemented ML Ops infrastructure reducing model deployment from 4 weeks to 1 hours.
+  Created automated anomaly detection pipeline monitoring 1M++ metrics in real-time.
+  Developed customer churn prediction model with 48% precision, reducing churn by {PCT}%.
+
+Education
+Bachelor of Arts in Information Systems
+UC Berkeley | 2022
+
+Technical Skills
+Docker, NumPy, Spark, LLM, NLP, Jupyter, Python, SQL, Pandas
+
+Soft Skills
+Cross-functional Communication, Experimental Design, Storytelling with Data

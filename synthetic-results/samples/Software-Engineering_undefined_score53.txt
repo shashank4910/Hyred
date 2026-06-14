@@ -1,0 +1,49 @@
+Paul Brown
+Chicago, IL | paul.brown56@outlook.com | (878) 778-8270
+linkedin.com/in/paul-brown
+
+Professional Summary
+Full-stack engineer with a track record of delivering high-quality products from concept to launch. Skilled in Kubernetes, MongoDB, TypeScript.
+
+Professional Experience
+Backend Engineer | Twitter
+Jun 2024 – Present
+  Reduced p99 latency from 6ms to 3ms through caching and query optimization.
+  Led squad of 4 engineers delivering infrastructure upgrade in 8 months.
+  Designed and built a real-time data pipeline processing 1M+ events/day using GraphQL.
+  Led migration of on-prem infrastructure to automated pipeline, reducing latency by 49% and infrastructure costs by $5K annually.
+  Optimized database queries resulting in 44% improvement in API response times.
+  Optimized database queries resulting in 67% improvement in API response times.
+
+Backend Engineer | Meta
+Aug 2020 – 2022
+  Designed and built a real-time data pipeline processing 1M+ events/day using GraphQL.
+  Implemented CI/CD pipeline reducing deployment time from 5 hours to 1 minutes.
+  Implemented CI/CD pipeline reducing deployment time from 10 hours to 3 minutes.
+  Implemented CI/CD pipeline reducing deployment time from 8 hours to 1 minutes.
+  Implemented CI/CD pipeline reducing deployment time from 2 hours to 3 minutes.
+  Led migration of on-prem infrastructure to automated pipeline, reducing latency by 71% and infrastructure costs by $3K annually.
+
+DevOps Engineer | Shopify
+Jan 2016 – 2018
+  Mentored 8 junior engineers through structured onboarding program.
+  Built monitoring dashboard tracking 1M++ metrics across 15 microservices.
+  Mentored 15 junior engineers through structured onboarding program.
+  Led squad of 11 engineers delivering infrastructure upgrade in 6 months.
+  Designed and built a real-time data pipeline processing 1M+ events/day using React.
+  Designed and built a real-time data pipeline processing 1M+ events/day using Git.
+
+Education
+Master of Business Administration in Marketing
+University of Illinois | 2022
+
+Technical Skills
+Postgres, JavaScript, AWS, GCP, PostgreSQL, Terraform, Docker, TypeScript, MongoDB, Cypress, Kafka, REST API, Jest, Redis, gRPC
+
+Soft Skills
+Cross-functional Collaboration, Code Review, Mentoring
+
+
+Certifications
+- Google Cloud Professional Architect
+- AWS Developer Associate

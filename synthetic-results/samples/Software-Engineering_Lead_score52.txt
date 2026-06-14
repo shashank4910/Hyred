@@ -1,0 +1,57 @@
+Kenneth Smith
+Seattle, WA | kenneth.smith24@gmail.com | (869) 831-2121
+linkedin.com/in/kenneth-smith
+
+Professional Summary
+Full-stack engineer with a track record of delivering high-quality products from concept to launch. Skilled in Jest, Git, Go.
+
+Professional Experience
+Backend Engineer | GitHub
+Jan 2023 – Present
+  Led squad of 8 engineers delivering infrastructure upgrade in 5 months.
+  Led squad of 4 engineers delivering feature rollout in 4 months.
+  Led migration of monolithic app to microservices, reducing latency by 32% and infrastructure costs by $3K annually.
+  Automated infrastructure provisioning reducing new service setup from 3 weeks to 3 days.
+  Architected event-driven system handling 1M+ concurrent users.
+  Designed and built a real-time data pipeline processing 1M+ events/day using REST API.
+  Built monitoring dashboard tracking 500++ metrics across 3 microservices.
+
+Engineering Manager | LinkedIn
+Jan 2021 – 2021
+  Reduced p99 latency from 11ms to 2ms through caching and query optimization.
+  Automated infrastructure provisioning reducing new service setup from 12 weeks to 3 days.
+  Reduced p99 latency from 11ms to 1ms through caching and query optimization.
+  Automated infrastructure provisioning reducing new service setup from 8 weeks to 3 days.
+  Mentored 9 junior engineers through structured onboarding program.
+  Designed and built a real-time data pipeline processing 1M+ events/day using Linux.
+  Reduced p99 latency from 3ms to 2ms through caching and query optimization.
+
+Full Stack Developer | Airbnb
+Apr 2018 – 2019
+  Implemented CI/CD pipeline reducing deployment time from 4 hours to 3 minutes.
+  Led migration of on-prem infrastructure to automated pipeline, reducing latency by 44% and infrastructure costs by $5K annually.
+  Implemented CI/CD pipeline reducing deployment time from 5 hours to 1 minutes.
+  Architected event-driven system handling 1M+ concurrent users.
+  Architected event-driven system handling 1M+ concurrent users.
+  Led migration of legacy system to microservices, reducing latency by 41% and infrastructure costs by $5K annually.
+  Reduced p99 latency from 10ms to 2ms through caching and query optimization.
+
+Senior Software Engineer | Meta
+Jun 2016 – 2016
+  Implemented CI/CD pipeline reducing deployment time from 7 hours to 2 minutes.
+  Optimized database queries resulting in 44% improvement in API response times.
+  Architected event-driven system handling 1M+ concurrent users.
+  Built monitoring dashboard tracking 1M++ metrics across 15 microservices.
+  Built monitoring dashboard tracking 1M++ metrics across 14 microservices.
+  Led migration of monolith to event-driven architecture, reducing latency by 57% and infrastructure costs by $3K annually.
+  Led squad of 2 engineers delivering platform migration in 10 months.
+
+Education
+Bachelor of Arts in Computer Science
+University of Chicago | 2022
+
+Technical Skills
+Redis, Express, Microservices, REST API, Linux, GraphQL, JavaScript, CI/CD, MongoDB, TypeScript, Git, Jest, Terraform, Go, Postgres, React, Node.js
+
+Soft Skills
+Technical Writing, Communication, Leadership, Problem Solving

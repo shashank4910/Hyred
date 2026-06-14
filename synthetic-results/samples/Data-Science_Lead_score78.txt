@@ -1,0 +1,62 @@
+Jessica Harris
+Seattle, WA | jessica.harris14@icloud.com | (764) 310-7418
+linkedin.com/in/jessica-harris
+
+Professional Summary
+Machine learning engineer focused on productionizing models at scale. Built systems serving 1M++ predictions daily.
+
+Professional Experience
+Analytics Lead | Stripe
+Sep 2024 – Present
+  - Created automated anomaly detection pipeline monitoring 1M++ metrics in real-time
+  - Created automated anomaly detection pipeline monitoring 1M++ metrics in real-time
+  - Increased model inference speed by 70% through quantization and pruning techniques
+  - Led data science team of 12 delivering insights that drove $5M in revenue
+  - Led data science team of 15 delivering insights that drove $3M in revenue
+  - Built NLP pipeline processing 1M+ documents/day for information extraction
+  - Implemented ML Ops infrastructure reducing model deployment from 3 weeks to 3 hours
+
+Analytics Lead | Coursera
+Oct 2022 – 2022
+  - Built ML model achieving 34% accuracy that saved $5K/month in fraud losses
+  - Created automated anomaly detection pipeline monitoring 1M++ metrics in real-time
+  - Implemented ML Ops infrastructure reducing model deployment from 11 weeks to 3 hours
+  - Developed customer churn prediction model with 44% precision, reducing churn by {PCT}%
+  - Reduced feature engineering time by 22% through automated feature store
+  - Built ML model achieving 75% accuracy that saved $5K/month in fraud losses
+  - Designed A/B testing framework used by 4 product teams across the organization
+
+AI Engineer | Stripe
+Jul 2020 – 2020
+  - Built ML model achieving 75% accuracy that saved $1.5K/month in fraud losses
+  - Implemented ML Ops infrastructure reducing model deployment from 5 weeks to 1 hours
+  - Designed A/B testing framework used by 13 product teams across the organization
+  - Designed A/B testing framework used by 6 product teams across the organization
+  - Designed A/B testing framework used by 5 product teams across the organization
+  - Built NLP pipeline processing 1M+ documents/day for information extraction
+  - Built ML model achieving 26% accuracy that saved $5K/month in fraud losses
+
+Data Scientist | Uber
+Aug 2018 – 2018
+  - Built ML model achieving 63% accuracy that saved $5K/month in fraud losses
+  - Implemented ML Ops infrastructure reducing model deployment from 10 weeks to 2 hours
+  - Created automated anomaly detection pipeline monitoring 500++ metrics in real-time
+  - Designed A/B testing framework used by 13 product teams across the organization
+  - Designed A/B testing framework used by 12 product teams across the organization
+  - Built NLP pipeline processing 1M+ documents/day for information extraction
+  - Developed recommendation system that improved user engagement by 30%
+
+Education
+Master of Science in Business Administration
+University of Washington | 2015
+
+Technical Skills
+Python, Spark, MLflow, LangChain, Jupyter, BigQuery, A/B Testing, NLP, TensorFlow, LLM, PyTorch, Docker, Pandas, scikit-learn, PostgreSQL, Airflow, Computer Vision, R
+
+Soft Skills
+Storytelling with Data, Cross-functional Communication, Statistical Reasoning
+
+
+Certifications
+- AWS ML Specialty
+- Databricks ML Practitioner
