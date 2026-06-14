@@ -9,6 +9,7 @@
     "lint": "next lint",
     "ingest": "tsx scripts/ingest.ts",
     "backfill:jds": "tsx scripts/backfill-jds.ts",
+    "backfill:skills": "tsx scripts/repopulate-stale-skills.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
