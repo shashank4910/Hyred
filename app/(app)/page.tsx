@@ -11,6 +11,7 @@ import { DashboardNavProvider } from './_components/DashboardNavContext';
 import { RunIngestButton } from './_components/RunIngestButton';
 import { Inbox, Sparkles, TrendingUp, Briefcase, ArrowRight } from 'lucide-react';
 import { relativeTime, STATUS_ORDER } from '@/lib/ui';
+import { getDashboardCounts } from '@/lib/match-stats';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,30 +56,18 @@ export default async function Dashboard({
 
   await closeStaleIngestRuns(sb, profile.id);
 
-  // Status counts
-  const counts: Record<string, number> = {};
-  await Promise.all(
-    STATUS_ORDER.map(async (s) => {
-      const { count } = await sb
-        .from('matches')
-        .select('id', { count: 'exact', head: true })
-        .eq('profile_id', profile.id)
-        .eq('status', s);
-      counts[s] = count ?? 0;
-    }),
+  // Status counts (aligned with active dashboard filters and age limits)
+  const { counts, inboxCount, bookmarkedCount } = await getDashboardCounts(
+    sb,
+    profile.id,
+    {
+      min: sp.min,
+      remote: sp.remote,
+      source: sp.source,
+      q: sp.q,
+    },
+    isAdmin
   );
-
-  const { count: inboxCount } = await sb
-    .from('matches')
-    .select('id', { count: 'exact', head: true })
-    .eq('profile_id', profile.id)
-    .in('status', ['new', 'viewed']);
-
-  const { count: bookmarkedCount } = await sb
-    .from('matches')
-    .select('id', { count: 'exact', head: true })
-    .eq('profile_id', profile.id)
-    .eq('bookmarked', true);
 
   const [{ count: totalMatches }, { data: lastRun }, { data: activeRun }] =
     await Promise.all([
