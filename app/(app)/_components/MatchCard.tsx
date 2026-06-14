@@ -91,8 +91,10 @@ export function MatchCard({
     <Link
       href={jobHref}
       className={[
-        'group block min-w-0 animate-fade-in rounded-2xl bg-surface-container-lowest p-6 shadow-card transition-all hover:-translate-y-1 hover:border-primary/10 hover:shadow-elevated',
-        isViewed ? 'opacity-90 hover:opacity-100' : '',
+        'group block min-w-0 animate-fade-in rounded-2xl p-6 shadow-card transition-all hover:-translate-y-1 hover:border-primary/10 hover:shadow-elevated border-l-4',
+        isViewed
+          ? 'bg-surface-container-low/40 border-l-transparent opacity-75 hover:opacity-100'
+          : 'bg-surface-container-lowest border-l-primary shadow-elevated',
       ].join(' ')}
     >
       <div className="mb-6 flex items-start justify-between gap-4">
@@ -102,7 +104,10 @@ export function MatchCard({
           </div>
           <div className="min-w-0">
             <div className="mb-1 flex flex-wrap items-center gap-2">
-              <h3 className="text-headline-md font-semibold leading-tight text-on-surface group-hover:text-primary transition-colors">
+              <h3 className={[
+                'text-headline-md leading-tight group-hover:text-primary transition-colors',
+                isViewed ? 'text-on-surface-variant font-medium' : 'text-on-surface font-bold'
+              ].join(' ')}>
                 {job.title}
               </h3>
               {!isViewed && (
