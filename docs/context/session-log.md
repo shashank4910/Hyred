@@ -56,14 +56,17 @@ The root cause is pure LLM non-determinism — the model infers related concepts
 
 **Files changed:** `app/(app)/jobs/[id]/ReferralRadar.tsx`
 
-### (e) Differentiate testing sub-specialties to fix over-scoring
+### (e) Differentiate sub-specialties to fix over-scoring
 
-**Root cause:** The "TESTING UMBRELLA" scoring rule forced the LLM to treat Performance Engineering, Site Reliability Engineering (SRE), and functional Test Automation / QA as identical domains. If a candidate was a specialized Performance Engineer, the model scored a generic "QA Automation" job at 90/100, which made relevance filtering highly inaccurate.
+**Root cause:** Broad domain descriptions forced the LLM to treat distinct specialties under a shared field (e.g. testing, engineering, data, management) as identical domains. If a candidate was a specialized Performance Engineer, the model scored a generic "QA Automation" job at 90/100. Similarly, backend developers could be matched with frontend roles, or data scientists with data engineer roles.
 
-**Fix:** Replaced the broad "Testing Umbrella" rule with a "Testing Sub-specialties" rule in the `scoreJob` LLM prompt in `lib/gemini.ts`. Added explicit caps:
-- Performance Engineering candidate matching a general functional Test Automation / QA job is capped at **65**.
-- QA/Automation candidate matching a specialized Performance Engineering role is capped at **60**.
-- Modified cap precedence to include this sub-specialty cap.
+**Fix:** Added explicit sub-specialty alignment rules in the `scoreJob` LLM prompt in `lib/gemini.ts`. Added explicit caps:
+- **Testing**: Performance Engineering matching general Test Automation/QA is capped at **65**; general QA/Automation matching Performance Engineering is capped at **60**.
+- **Frontend vs. Backend**: Capped at **60** unless the resume shows experience in both or it's a hybrid Fullstack role.
+- **Data roles**: Data Scientist vs. Data Engineer vs. Data Analyst capped at **60**.
+- **DevOps vs. Developer**: DevOps/Platform Engineer vs. Backend/Frontend Developer capped at **60**.
+- **Product vs. Project**: Product Manager vs. Project Manager/Scrum Master capped at **50**.
+- Modified cap precedence to resolve the lowest of all caps.
 - Updated worked examples.
 - Updated `CONTEXT.md` reference to match the new scoring behavior.
 

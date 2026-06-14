@@ -618,6 +618,13 @@ Performance Engineering, Site Reliability Engineering (SRE), and functional Test
   - If a candidate's background is primarily in general QA / functional Test Automation, and the job is a specialized Performance Engineering role (requiring profiling, load testing, performance tuning), cap the score at 60.
   - Only score 75+ if the sub-specialty matches (e.g., Performance Engineer matching a Performance Engineering/Testing role, or a general QA Automation Engineer matching a QA/Automation role).
 
+OTHER DOMAIN SUB-SPECIALTIES (CRITICAL RULE):
+Apply a similar cap for other distinct sub-specialties that are under a shared broad category:
+  - Frontend Developer vs. Backend Developer: Cap at 60 unless the candidate's resume explicitly shows professional experience in both or the job is a hybrid "Fullstack" role.
+  - Data Scientist vs. Data Engineer vs. Data Analyst: Cap at 60. A statistical ML researcher is not a direct fit for building production database pipelines (ETL/Spark) or writing business intelligence reports (SQL/Tableau).
+  - Product Manager vs. Project Manager / Scrum Master: Cap at 50. Product strategy is entirely distinct from scrum facilitation and timeline tracking.
+  - DevOps / Platform Engineer vs. Software Developer (Backend/Frontend): Cap at 60. Building infrastructure pipelines is distinct from writing feature code.
+
 ⚠️ SENIORITY / EXPERIENCE GAP (HARD CAP — APPLY AFTER skill match):
 First, identify the JD's experience requirement and seniority level:
   - Required years: parse the JD ("18+ years", "10+ years", "5-7 years", "minimum 8 years"). If multiple appear, use the HIGHEST. If only "Senior" / "Lead" / "Principal" appears with no years, infer: Senior ≈ 5+, Lead ≈ 8+, Principal/Staff ≈ 10+, Manager ≈ 8+, Director ≈ 12+, VP/Head/Chief ≈ 15+.
@@ -638,7 +645,7 @@ Then compare to the candidate (CANDIDATE_YEARS=${candidateYears ?? 'unknown'}, C
     Candidate is "manager", JD is "vp" or "executive"     → cap at 50
     Same level or one step up                              → no penalty
 
-  TAKE THE LOWER of the years cap, the seniority cap, and the testing sub-specialty cap (if applicable). Never override the cap upward — the cap is a HARD ceiling.
+  TAKE THE LOWER of the years cap, the seniority cap, and any domain/testing sub-specialty cap (if applicable). Never override the cap upward — the cap is a HARD ceiling.
 
 WORKED EXAMPLES (apply the rules above):
   • Candidate 7 years, JD "Director of Performance Engineering, 18+ years"

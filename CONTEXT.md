@@ -477,6 +477,7 @@ Phase 4 (CODE): Verify items appear in JD text (catch hallucinations)
 
 The LLM scoring prompt (`scoreJob` in `lib/gemini.ts`) has explicit rules:
 - Performance Engineering, QA/Automation, and SRE are distinct sub-specialties → cap mismatched roles at 60-65 (e.g., Performance Engineer matching a general QA Automation role is capped at 65)
+- Differentiate other domain sub-specialties → cap Frontend vs. Backend at 60, Data Scientist vs. Data Engineer/Analyst at 60, DevOps vs. Developer at 60, and Product vs. Project Manager at 50
 - "Performance" is ambiguous — marketing/finance uses ≠ engineering uses
 - Tools are interchangeable (JMeter ≈ Gatling ≈ LoadRunner)
 - Location alone should never drop score below 60
