@@ -4,6 +4,7 @@ import { ArrowLeft, MapPin, Building2, Clock } from 'lucide-react';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { getCurrentProfile, isCurrentUserAdmin } from '@/lib/current-user';
 import { ensureFullDescription } from '@/lib/jd-fetcher';
+import { isSkillPresentInJd } from '@/lib/gemini';
 import { JobActions } from './JobActions';
 import { AutoApplyButton } from './AutoApplyButton';
 import { MatchSkillPills } from '../../_components/MatchSkillPills';
@@ -75,6 +76,27 @@ export default async function JobMatchPage({
     currentDescription: job.description,
     url: job.url,
   });
+
+  // Dynamic self-healing: Recalculate matched skills using the full description
+  // and the user's top profile skills if they are not in sync.
+  const candidateSkills = (match.profile as any)?.insights?.top_skills;
+  if (Array.isArray(candidateSkills)) {
+    const updatedMatched = candidateSkills.filter((s: string) =>
+      isSkillPresentInJd(s, fullDescription, job.title)
+    );
+    const currentMatched = (match as any).matched_skills ?? [];
+    const hasDiff = currentMatched.length !== updatedMatched.length ||
+      currentMatched.some((s: string, idx: number) => s !== updatedMatched[idx]);
+
+    if (hasDiff) {
+      await sb
+        .from('matches')
+        .update({ matched_skills: updatedMatched })
+        .eq('id', id);
+      match.matched_skills = updatedMatched;
+    }
+  }
+
 
   return (
     <div className="space-y-5">
