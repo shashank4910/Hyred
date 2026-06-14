@@ -13,7 +13,7 @@ export async function GET() {
     const sb = supabaseAdmin();
     console.log('[API backfill] Fetching matches...');
 
-    const { data: matches, error } = await sb
+        const { data: matches, error } = await sb
       .from('matches')
       .select(`
         id,
@@ -31,7 +31,9 @@ export async function GET() {
           company,
           description
         )
-      `);
+      `)
+      .order('created_at', { ascending: false })
+      .limit(100);
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
@@ -40,13 +42,13 @@ export async function GET() {
     const report: any[] = [];
     let updatedCount = 0;
 
-    for (const m of matches ?? []) {
+    const tasks = (matches ?? []).map(async (m) => {
       const job = m.job as any;
       const profile = m.profile as any;
-      if (!job || !profile) continue;
+      if (!job || !profile) return;
 
       const candidateSkills = profile.insights?.top_skills;
-      if (!candidateSkills || !Array.isArray(candidateSkills)) continue;
+      if (!candidateSkills || !Array.isArray(candidateSkills)) return;
 
       const matchedSkills = candidateSkills.filter((s: string) =>
         isSkillPresentInJd(s, job.description, job.title)
@@ -75,30 +77,25 @@ export async function GET() {
           })
           .eq('id', m.id);
 
-        report.push({
-          matchId: m.id,
-          company: job.company,
-          title: job.title,
-          score: m.llm_score,
-          candidateSkills,
-          before: {
-            matched: currentMatched,
-            missing: currentMissing
-          },
-          after: {
-            matched: matchedSkills,
-            missing: missingSkills
-          },
-          updated: !updateErr,
-          updateError: updateErr?.message
-        });
-
-        if (!updateErr) updatedCount++;
+        if (!updateErr) {
+          updatedCount++;
+          report.push({
+            matchId: m.id,
+            company: job.company,
+            title: job.title,
+            score: m.llm_score,
+            before: { matched: currentMatched, missing: currentMissing },
+            after: { matched: matchedSkills, missing: missingSkills }
+          });
+        }
       }
-    }
+    });
+
+    await Promise.all(tasks);
 
     return NextResponse.json({
       success: true,
+      processedLimit: 100,
       updatedCount,
       report
     });
