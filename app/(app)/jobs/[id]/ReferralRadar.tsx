@@ -13,9 +13,12 @@ import {
   ChevronUp,
   Briefcase,
   Send,
+  Sparkles,
+  Loader2,
 } from 'lucide-react';
 
 interface Props {
+  matchId: string;
   company: string;
   jobTitle: string;
   matchScore: number | null;
@@ -90,6 +93,7 @@ function buildLinkedIn2ndUrl(company: string): string {
 }
 
 export function ReferralRadar({
+  matchId,
   company,
   jobTitle,
   matchScore: _matchScore,
@@ -101,13 +105,52 @@ export function ReferralRadar({
   const [expanded, setExpanded] = useState(true);
   const [reached, setReached] = useState(false);
 
-  const message = buildMessage(activeTemplate, company, jobTitle, matchedSkills);
+  // AI customized messages state
+  const [aiMessages, setAiMessages] = useState<Record<Template, string>>({
+    peer: '',
+    recruiter: '',
+    warm: '',
+  });
+  const [generating, setGenerating] = useState<Record<Template, boolean>>({
+    peer: false,
+    recruiter: false,
+    warm: false,
+  });
+  const [error, setError] = useState<string | null>(null);
+
+  const staticMessage = buildMessage(activeTemplate, company, jobTitle, matchedSkills);
+  const isAIGenerated = !!aiMessages[activeTemplate];
+  const message = aiMessages[activeTemplate] || staticMessage;
+  const isCurrentGenerating = generating[activeTemplate];
+
+  async function generateAIOutreach(templateType: Template) {
+    setGenerating((prev) => ({ ...prev, [templateType]: true }));
+    setError(null);
+    try {
+      const res = await fetch(`/api/match/${matchId}/outreach`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ template: templateType }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Failed to generate message');
+      }
+      const data = await res.json();
+      setAiMessages((prev) => ({ ...prev, [templateType]: data.message }));
+    } catch (e: any) {
+      setError(e.message || 'Something went wrong');
+    } finally {
+      setGenerating((prev) => ({ ...prev, [templateType]: false }));
+    }
+  }
 
   async function copyText(text: string, key: string) {
     await navigator.clipboard.writeText(text);
     setCopied(key);
     setTimeout(() => setCopied(null), 2000);
   }
+
 
   return (
     <div className="glass-card overflow-hidden border border-outline-variant/30">
@@ -245,9 +288,56 @@ export function ReferralRadar({
               })}
             </div>
 
+            {/* AI Personalization Alert/Action Banner */}
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/20 bg-primary/5 p-3.5">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-primary animate-pulse" />
+                <div className="text-[11px] leading-snug font-medium text-on-surface-variant">
+                  {isAIGenerated ? (
+                    <span>
+                      <strong className="text-primary">Tailored with AI!</strong> Draft matched to your resume accomplishments.
+                    </span>
+                  ) : (
+                    <span>
+                      Personalize this draft with your specific resume experience.
+                    </span>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => generateAIOutreach(activeTemplate)}
+                disabled={isCurrentGenerating}
+                className="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-[11px] font-bold text-on-primary hover:bg-primary/95 transition-all shadow-sm disabled:opacity-50"
+              >
+                {isCurrentGenerating ? (
+                  <>
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Generating...
+                  </>
+                ) : isAIGenerated ? (
+                  'Regenerate'
+                ) : (
+                  'Personalize with AI'
+                )}
+              </button>
+            </div>
+
+            {error && (
+              <p className="text-[11px] text-red-500 mb-3 bg-red-50 p-2 rounded-lg border border-red-200">
+                {error}
+              </p>
+            )}
+
             {/* Message box */}
-            <div className="relative rounded-xl border border-outline-variant/40 bg-surface-container/50">
-              <pre className="whitespace-pre-wrap p-4 pr-16 text-xs leading-relaxed text-on-surface-variant font-sans">
+            <div className="relative rounded-xl border border-outline-variant/40 bg-surface-container/50 min-h-[120px] overflow-hidden">
+              {isCurrentGenerating ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-surface-container/30 backdrop-blur-[1px] gap-2">
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                  <span className="text-[11px] font-medium text-on-surface-variant animate-pulse">Drafting message using your profile achievements...</span>
+                </div>
+              ) : null}
+              <pre className={`whitespace-pre-wrap p-4 pr-16 text-xs leading-relaxed text-on-surface-variant font-sans transition-opacity duration-200 ${isCurrentGenerating ? 'opacity-20' : 'opacity-100'}`}>
                 {message}
               </pre>
               <div className="absolute right-2 top-2 flex flex-col gap-1.5">

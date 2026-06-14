@@ -183,6 +183,7 @@ export default async function JobMatchPage({
       {/* Referral Radar */}
       {job.company && (
         <ReferralRadar
+          matchId={match.id}
           company={job.company}
           jobTitle={job.title}
           matchScore={match.llm_score}

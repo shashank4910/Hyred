@@ -2256,4 +2256,58 @@ export function isSkillPresentInJd(skill: string, jdText: string | null, jobTitl
   }
 
   return false;
-}
+}
+
+/**
+ * Generate a hyper-personalized outreach message for a referral or recruiter connection.
+ */
+export async function generateOutreachMessage(args: {
+  resume: string;
+  jobTitle: string;
+  jobCompany: string;
+  jobDescription: string | null;
+  template: 'peer' | 'recruiter' | 'warm';
+  candidateName: string | null;
+  profileId: string;
+}): Promise<string> {
+  const { resume, jobTitle, jobCompany, jobDescription, template, candidateName, profileId } = args;
+
+  const systemPrompt = `You are a world-class professional career coach and copywriter specializing in high-conversion job search outreach.
+Your task is to write a highly tailored, authentic, and compelling outreach message.
+Rules:
+1. Be extremely concise (under 110 words) - suitable for a LinkedIn connection request note or short message.
+2. Align specific tool/specialty accomplishments from the candidate's resume with the job requirements.
+3. Keep the tone warm, confident, and professional. Avoid AI clichés (e.g., "I hope this message finds you well", "Dear [Name]").
+4. Use placeholder '[Name]' for the recipient's name.
+5. Sign off with '${candidateName || '[Your Name]'}'.`;
+
+  let templateInstructions = '';
+  if (template === 'peer') {
+    templateInstructions = `Write to a potential peer/colleague working at ${jobCompany}. The goal is to ask for a brief chat about the team culture or a potential referral. Highlight a shared technology or domain alignment.`;
+  } else if (template === 'recruiter') {
+    templateInstructions = `Write directly to the hiring manager or recruiter at ${jobCompany}. Keep it punchy, focus on your direct match for the ${jobTitle} role, and invite them for a brief chat.`;
+  } else {
+    templateInstructions = `Write to a mutual connection (a warm contact) asking if they would be open to introducing you to someone they know at ${jobCompany} regarding the ${jobTitle} role.`;
+  }
+
+  const userPrompt = `Candidate Resume:
+${resume}
+
+Job Title: ${jobTitle}
+Company: ${jobCompany}
+Job Description:
+${jobDescription ?? 'No description.'}
+
+Outreach Template Type: ${template.toUpperCase()} (${templateInstructions})
+
+Draft the message now:`;
+
+  try {
+    const text = await chat(systemPrompt, userPrompt, 0.7, false, 'generateOutreachMessage', profileId);
+    return text.trim();
+  } catch (err: any) {
+    console.error('[gemini] Failed to generate outreach message:', err.message);
+    throw err;
+  }
+}
+
