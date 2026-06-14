@@ -180,7 +180,7 @@ export function MatchCard({
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <div onClick={(e) => e.preventDefault()}>
+        <div onClick={(e) => e.stopPropagation()}>
           <MatchSkillPills
             matchedSkills={matchedSkills}
             missingSkills={missingSkills}
