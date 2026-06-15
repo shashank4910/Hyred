@@ -41,36 +41,14 @@ export type IngestResult = {
 
 const SIMILARITY_TOP_N = 45;
 const TOP_COMPANY_CAP = 12;
-const _embedPerRun = parseInt(process.env.EMBED_PER_RUN ?? '300', 10);
-const EMBED_PER_RUN = isNaN(_embedPerRun) ? 300 : _embedPerRun;
-const _embedConcurrency = parseInt(process.env.EMBED_CONCURRENCY ?? '15', 10);
-const EMBED_CONCURRENCY = isNaN(_embedConcurrency) ? 15 : _embedConcurrency;
-/** Max wall-clock time (ms) for the embed phase. After this, stop embedding
- * and proceed to scoring so the manual scan has time to score at least some
- * jobs within Vercel's 300s maxDuration. Override via EMBED_TIMEOUT_MS. */
-const _embedTimeout = parseInt(process.env.EMBED_TIMEOUT_MS ?? '180000', 10);
-const EMBED_TIMEOUT_MS = isNaN(_embedTimeout) ? 180000 : _embedTimeout;
+const EMBED_PER_RUN = 50;
+const EMBED_CONCURRENCY = 6;
 const SCORE_CONCURRENCY = 5; // Matches free-tier RPM (one call per key per batch cycle)
-/** ROOT CAUSE FIX: match the cron's proven 480s budget (set in
- * .github/workflows/ingest.yml). The manual scan had NO explicit env var
- * on Vercel, so it relied on the code default — which was originally 50s,
- * then 160s, then 260s. When the jobs table was emptied, fetch+embed for
- * 1244 new jobs took ~165-175s alone, leaving 0s of budget for scoring.
- * The cron always worked because the workflow explicitly sets 480s.
- *
- * Vercel Pro maxDuration is 300s (app/api/ingest/route.ts), so the function
- * is hard-capped at 300s regardless. 480s > 300s means this budget never
- * fires on Vercel — scoring runs until maxDuration, and closeStaleIngestRuns()
- * cleans up if the function is killed mid-run. In other environments (local
- * dev, custom deployments), 480s is a generous safety net.
- * Override via INGEST_WALL_BUDGET_MS env var if needed. */
-const INGEST_WALL_BUDGET_MS = parseInt(process.env.INGEST_WALL_BUDGET_MS ?? '480000', 10);
-/** Delay between scoring batches to spread LLM calls across keys.
- * Was 3s (for Cerebras 5 RPM free-tier keys). Now your primary provider
- * (bluesminds/gemini/groq) handles higher RPM, so 500ms is enough to
- * avoid thundering-herd on rate limiters. Override via SCORE_BATCH_DELAY_MS. */
-const _batchDelay = parseInt(process.env.SCORE_BATCH_DELAY_MS ?? '500', 10);
-const SCORE_BATCH_DELAY_MS = isNaN(_batchDelay) ? 500 : _batchDelay;
+/** Vercel `/api/ingest` maxDuration is 300s on Pro but 60s max on Free/Hobby tier.
+ * Default to 50s so the scan can gracefully save progress and exit before Vercel hard-kills it. */
+const INGEST_WALL_BUDGET_MS = parseInt(process.env.INGEST_WALL_BUDGET_MS ?? '50000', 10);
+/** Delay between scoring batches to respect RPM limits across providers. */
+const SCORE_BATCH_DELAY_MS = 3_000; // 3 seconds between batches → ~20 RPM effective
 
 /**
  * Maximum age (in days) for a job to be ingested. Any job whose posted_at
@@ -136,14 +114,6 @@ export async function runIngest(opts?: {
 }): Promise<IngestResult> {
   const sb = supabaseAdmin();
   const startedAt = Date.now();
-
-  // Structured timing logger — grep for [ingest:timing] in terminal logs to
-  // get a complete phase-by-phase timeline of where time is spent.
-  const logTiming = (phase: string, extra?: Record<string, unknown>) => {
-    const elapsed = Date.now() - startedAt;
-    const extraStr = extra ? ' ' + JSON.stringify(extra) : '';
-    console.log(`[ingest:timing] phase=${phase} elapsed=${elapsed}ms${extraStr}`);
-  };
 
   const { data: runRow } = await sb
     .from('ingest_runs')
@@ -242,7 +212,6 @@ export async function runIngest(opts?: {
     if (!profile.resume_text || !profile.resume_embedding) {
       throw new Error('Profile is missing resume_text or resume_embedding.');
     }
-    logTiming('profile_pick');
     const { data: applyProfileRow } = await sb
       .from('apply_profiles')
       .select('years_experience')
@@ -266,7 +235,6 @@ export async function runIngest(opts?: {
       ),
     );
 
-    logTiming('search_profile_check');
     // ---------- 2. Ensure fresh SearchProfile ----------
     // The SearchProfile is AI-generated from the resume. It contains:
     //  - searchKeywords for Adzuna queries
@@ -297,10 +265,9 @@ export async function runIngest(opts?: {
           .update({ insights: updatedInsights })
           .eq('id', p.id);
 
-        logTiming('search_profile_generated', {
-          domain: searchProfile.primaryDomain,
-          keywords: searchProfile.searchKeywords.length,
-        });
+        console.log(
+          `[ingest] SearchProfile: domain="${searchProfile.primaryDomain}", keywords=${searchProfile.searchKeywords.length}, titlePatterns=${searchProfile.titlePatterns.length}, antiPatterns=${searchProfile.antiPatterns.length}`,
+        );
       } catch (e) {
         runErrors.push({
           source: 'search_profile',
@@ -318,7 +285,6 @@ export async function runIngest(opts?: {
     );
     runErrors = [...runErrors, ...errors];
     fetched = rawJobs.length;
-    logTiming('fetch_sources', { fetched });
 
     // ---------- 3.5. Filter out stale jobs (older than MAX_JOB_AGE_DAYS) ----------
     const maxAgeMs = MAX_JOB_AGE_DAYS * 24 * 60 * 60 * 1000;
@@ -342,7 +308,6 @@ export async function runIngest(opts?: {
     // ---------- 4. Upsert jobs ----------
     const newJobIds = await upsertJobs(freshJobs);
     newJobsCount = newJobIds.length;
-    logTiming('upsert', { newJobs: newJobsCount });
     if (runId) {
       await patchIngestRun(sb, runId, {
         fetched,
@@ -402,19 +367,12 @@ export async function runIngest(opts?: {
 
     const embedJobs = needEmbed ?? [];
     for (let i = 0; i < embedJobs.length; i += EMBED_CONCURRENCY) {
-      // Wall-clock budget: stop embedding after EMBED_TIMEOUT_MS (default 180s)
-      // so scoring has time to run within Vercel's 300s maxDuration. Without
-      // this check, the embed phase can consume all 300s and scoring never starts.
-      if (Date.now() - startedAt > EMBED_TIMEOUT_MS) {
-        console.log(`[ingest] Embed phase stopped early (${embedded} embedded in ${Date.now() - startedAt}ms)`);
-        break;
-      }
+      if (Date.now() - startedAt > INGEST_WALL_BUDGET_MS) break;
       if (embedAborted) break;
       const batch = embedJobs.slice(i, i + EMBED_CONCURRENCY);
       const ok = await Promise.all(batch.map((j) => embedOne(j)));
       embedded += ok.filter(Boolean).length;
     }
-    logTiming('embed', { embedded, needEmbedTotal: embedJobs.length, aborted: !!embedAborted });
     if (runId) {
       await patchIngestRun(sb, runId, {
         embedded,
@@ -466,7 +424,6 @@ export async function runIngest(opts?: {
             embedding: c.embedding,
           }) as Cand,
       );
-    logTiming('candidate_pool', { totalCandidates: (candidates ?? []).length, eligible: eligible.length, alreadyScored: alreadyScored.size });
 
     // ---------- 7. AI-driven pre-filter (title patterns + AI relevance) ----------
     let toScore: Cand[] = [];
@@ -513,9 +470,7 @@ export async function runIngest(opts?: {
         ...maybeWithSim.filter((c) => aiKeptIds.has(c.id)),
       ];
       toScore = finalSet.slice(0, SIMILARITY_TOP_N);
-    }
-    logTiming('prefilter', { toScore: toScore.length, hasSearchProfile: !!searchProfile });
-    if (!searchProfile) {
+    } else {
       // Fallback: no SearchProfile available, use cosine similarity only
       const resumeVec = p.resume_embedding!;
       toScore = eligible
@@ -558,7 +513,6 @@ export async function runIngest(opts?: {
       ...c,
       similarity: cosineSimilarity(resumeVec, c.embedding as number[]),
     }));
-    logTiming('scoring_start', { candidatesToScore: ranked.length });
 
     // ---------- 9. LLM score (parallel batches + wall-clock budget) ----------
     // Check for cancellation before expensive LLM scoring stage
@@ -587,8 +541,6 @@ export async function runIngest(opts?: {
         await new Promise((r) => setTimeout(r, SCORE_BATCH_DELAY_MS));
       }
       const batch = ranked.slice(i, i + SCORE_CONCURRENCY);
-      const batchNum = (i / SCORE_CONCURRENCY) + 1;
-      logTiming('scoring_batch', { batch: batchNum, scoredSoFar: scored });
       await Promise.all(
         batch.map(async (c) => {
           try {
@@ -663,7 +615,6 @@ export async function runIngest(opts?: {
       }
     }
 
-    logTiming('scoring_done', { scored, kept, budgetStopped, totalCandidates: ranked.length });
     if (budgetStopped) {
       // Don't push to runErrors — hitting the time budget is expected
       // for large scans, not a real error. The run still shows the
@@ -676,10 +627,8 @@ export async function runIngest(opts?: {
     await cleanOldJobs(sb);
   } catch (e) {
     fatalError = e as Error;
-    logTiming('fatal_error', { message: (e as Error).message });
   } finally {
     await finalizeRun();
-    logTiming('finalize', { status: fatalError ? 'failed' : runErrors.length ? 'partial' : 'success', durationMs: Date.now() - startedAt });
   }
 
   if (fatalError) throw fatalError;
@@ -712,16 +661,21 @@ async function upsertJobs(rawJobs: RawJob[]): Promise<string[]> {
   if (!rawJobs.length) return [];
   const sb = supabaseAdmin();
 
+  // Add fetched_at timestamp to all jobs being upserted
+  const now = new Date().toISOString();
+  const jobsWithTimestamp = rawJobs.map(job => ({
+    ...job,
+    fetched_at: now
+  }));
+
   const ids: string[] = [];
-  for (let i = 0; i < rawJobs.length; i += 100) {
-    const chunk = rawJobs.slice(i, i + 100);
+  for (let i = 0; i < jobsWithTimestamp.length; i += 100) {
+    const chunk = jobsWithTimestamp.slice(i, i + 100);
     const { data, error } = await sb
       .from('jobs')
       .upsert(chunk, {
         onConflict: 'source,source_id',
-        // Update on conflict to return IDs and refresh metadata, but
-        // since fetched_at is omitted from chunk, the DB default now()
-        // only applies to new inserts, preserving original fetched_at for duplicates.
+        // Update on conflict to refresh fetched_at and other fields
         ignoreDuplicates: false,
       })
       .select('id');
