@@ -38,8 +38,27 @@
       </div>
     </section>
 
-    <!-- Setup state -->
-    <section id="setup">
+    <!-- Connect state (primary auto-connect flow) -->
+    <section id="connect-intro">
+      <p class="lead">
+        Link your Hyred account to start autofilling job applications.
+      </p>
+      <button id="btn-connect-extension" class="btn-primary" type="button">
+        Connect to Hyred
+      </button>
+      <p id="connect-status" class="status-msg"></p>
+      <div class="alt-row">
+        <button id="btn-show-setup" class="btn-link" type="button">
+          Use app password instead
+        </button>
+      </div>
+    </section>
+
+    <!-- Setup state (fallback APP_PASSWORD flow) -->
+    <section id="setup" class="hidden">
+      <button id="btn-back-connect" class="btn-link" type="button" style="margin-bottom:10px">
+        &larr; Back
+      </button>
       <p class="lead">
         Connect this extension to your Hyred deployment. Takes 10 seconds.
       </p>

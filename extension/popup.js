@@ -29,11 +29,21 @@ function host(u) {
   }
 }
 
+function showConnectIntro() {
+  $('#connected').classList.add('hidden');
+  $('#setup').classList.add('hidden');
+  $('#connect-intro').classList.remove('hidden');
+  $('#connect-status').textContent = '';
+  $('#error').textContent = '';
+}
 function showSetup() {
   $('#connected').classList.add('hidden');
+  $('#connect-intro').classList.add('hidden');
   $('#setup').classList.remove('hidden');
+  $('#error').textContent = '';
 }
 function showConnected(url, profile) {
+  $('#connect-intro').classList.add('hidden');
   $('#setup').classList.add('hidden');
   $('#connected').classList.remove('hidden');
   $('#connected-host').textContent = host(url);
@@ -61,7 +71,7 @@ function escape(s) {
 async function refreshConnected() {
   const { jr_url, jr_token } = await getStored();
   if (!jr_url || !jr_token) {
-    showSetup();
+    showConnectIntro();
     return;
   }
   const prof = await fetchJson(`${jr_url}/api/extension/profile`, {
@@ -70,7 +80,7 @@ async function refreshConnected() {
   if (prof.ok) {
     showConnected(jr_url, prof.data.profile);
   } else {
-    // Token expired — try auto-connect or show setup
+    // Token expired — clear and try auto-connect
     await clearStored();
     await tryAutoConnect();
   }
@@ -99,13 +109,14 @@ const sendBg = (type, payload) =>
     }
   });
 
-// Try to auto-connect via Supabase session cookie (primary auth for multi-user).
-// The call goes through the background service worker to avoid CORS issues.
-// Falls back to APP_PASSWORD setup if the user isn't logged into hyred.in.
+// Try to auto-connect via background.js strategies:
+//   1. Stored token → verify
+//   2. getCookieToken (tab localStorage → fallback to cookies → exchange)
+// If all fail, show the "Connect to Hyred" intro page.
 async function tryAutoConnect() {
   const { jr_url, jr_token } = await getStored();
 
-  // If we already have a stored token, verify it first
+  // Strategy 1: stored token → verify it
   if (jr_url && jr_token) {
     const verify = await fetchJson(`${jr_url}/api/extension/verify`, {
       headers: { authorization: `Bearer ${jr_token}` },
@@ -117,29 +128,78 @@ async function tryAutoConnect() {
       showConnected(jr_url, prof.ok ? prof.data.profile : null);
       return;
     }
-    // Token expired — try session refresh below
+    // Token expired — clear and try other strategies
     await clearStored();
   }
 
-  // Try to auto-connect by reading the Supabase session cookie directly
-  // via chrome.cookies API (the ONLY reliable way for extensions to access
-  // cross-origin cookies). The background.js handler reads the cookie,
-  // extracts the access_token, exchanges it for an extension JWT, and
-  // stores the result — all in one call.
+  // Strategy 2: try reading session from open tab or cookies
   const bg = await sendBg('getCookieToken');
   if (bg.ok && bg.data?.token) {
-    // Token was already saved by background.js; just show connected
     const { jr_url } = await getStored();
     showConnected(jr_url || 'https://hyred.in', bg.data.profile || null);
     return;
   }
 
-  // No session found — show the old setup form (APP_PASSWORD fallback)
-  showSetup();
+  // All auto-connect strategies failed — show the connect-intro page
+  showConnectIntro();
 }
+
+// Initiate the auth tab flow: opens hyred.in/auth/extension in a new tab,
+// background.js will inject a script to read the JWT from localStorage.
+// We poll every 2s for the stored token.
+async function initiateConnect() {
+  const statusEl = $('#connect-status');
+  const btn = $('#btn-connect-extension');
+  btn.disabled = true;
+  btn.textContent = 'Opening Hyred...';
+  statusEl.textContent = 'Opening a new tab to connect your account...';
+
+  // Fire-and-forget: tell background to open the auth tab and extract the token.
+  // We DON'T await the response — the background saves the token to storage
+  // when done, and we poll for it here. This keeps the popup responsive.
+  sendBg('connectExtension');
+
+  // Poll for the token to appear in storage (background.js saves it)
+  statusEl.textContent = 'Waiting for connection...';
+  let attempts = 0;
+  const maxAttempts = 15; // 15 * 2s = 30s — matches background timeout
+  const poll = setInterval(async () => {
+    attempts++;
+    const { jr_token } = await getStored();
+    if (jr_token) {
+      clearInterval(poll);
+      btn.disabled = false;
+      btn.textContent = 'Connect to Hyred';
+      await refreshConnected();
+      return;
+    }
+    if (attempts >= maxAttempts) {
+      clearInterval(poll);
+      btn.disabled = false;
+      btn.textContent = 'Connect to Hyred';
+      statusEl.textContent = 'Timed out. Make sure you are logged into Hyred and try again.';
+      // Also clear any stale "connected" background state
+      await clearStored();
+    }
+  }, 2000);
+}
+
+// -------------------------------------------------------------------
+// Event wiring
+// -------------------------------------------------------------------
 
 document.addEventListener('DOMContentLoaded', tryAutoConnect);
 
+// Primary connect button
+$('#btn-connect-extension').addEventListener('click', initiateConnect);
+
+// Show APP_PASSWORD setup form
+$('#btn-show-setup').addEventListener('click', showSetup);
+
+// Back button from setup to connect-intro
+$('#btn-back-connect').addEventListener('click', showConnectIntro);
+
+// Setup form (APP_PASSWORD)
 $('#setup-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   $('#error').textContent = '';
@@ -173,7 +233,7 @@ $('#btn-recheck').addEventListener('click', refreshConnected);
 
 $('#btn-disconnect').addEventListener('click', async () => {
   await clearStored();
-  showSetup();
+  showConnectIntro();
 });
 
 // Manual-trigger button: works on any URL even if the FAB didn't auto-mount.

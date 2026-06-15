@@ -444,6 +444,305 @@ Shipped the full single-user → multi-user transformation. Anyone can sign up (
 
 ---
 
+## ⭐ ACTIVE INITIATIVE — AI Auto-Apply (One-Click Job Application)
+
+> **This is the new active north-star.** The goal: one click → AI agent applies to any job on any ATS platform. The user clicks "Auto Apply" on a match, and the agent navigates the apply page, fills every field using their profile + tailored resume + cover letter, handles logins (via saved sessions), and submits. **AI-first philosophy** — one agent with vision + LLM handles ALL platforms: Workday, Greenhouse, Lever, BambooHR, SuccessFactors, iCIMS, Taleo, and any custom career portal. No hardcoded scripts per platform.
+
+### Current state (what already exists)
+
+The auto-apply pipeline was built in Sessions 3-4 but has **never actually worked end-to-end** due to infrastructure blockers. All code is on `main`:
+
+| Component | File | Status |
+|---|---|---|
+| Python agent | `browser_agent/main.py` | ✅ Built, `browser-use==0.1.40` (ancient), Groq primary LLM |
+| Docker for Render | `browser_agent/Dockerfile` | ✅ Built, deployed on Render free tier |
+| Orchestration API | `app/api/match/[id]/auto-apply/route.ts` | ✅ Built — generates resume, PDF, cover letter, calls agent |
+| Callback API | `app/api/match/[id]/apply-callback/route.ts` | ✅ Built — receives agent result, updates match |
+| SSE live log UI | `app/(app)/jobs/[id]/AutoApplyButton.tsx` | ✅ Built — terminal-style log panel |
+| Apply profile form | `app/(app)/apply-profile/` | ✅ Built — 50+ fields |
+| DB schema | `apply_profiles` table, `auto_apply_*` columns on `matches` | ✅ Built |
+
+### Known blockers (must fix before testing)
+
+| # | Blocker | Detail | Fix |
+|---|---|---|---|
+| 1 | **Render 512MB can't run Chromium** | Agent starts and silently crashes on real page loads | Upgrade Render to $7/mo (1GB) OR switch to cloud browser service like Browserbase/Steel free tier |
+| 2 | **`browser-use` pinned at v0.1.40 (ancient)** | Current version is well past 0.1.x with cloud-native architecture, session persistence, 2FA, anti-bot protection | Update `requirements.txt` to latest version; rewrite agent API calls to match new SDK |
+| 3 | **Callback 401** | `INGEST_SECRET` env var not synced between Vercel and Render | Sync the secret, or better: rename to `APPLY_CALLBACK_SECRET` for clarity |
+| 4 | **No session persistence** | Every apply starts fresh — no saved logins, no cookies | Add Playwright `storageState` → browser-use profile syncing (Phase 2) |
+
+### Architecture (target)
+
+```
+User clicks "Auto Apply" on match
+         │
+         ▼
+  ┌─────────────────────────────────────────┐
+  │  app/api/match/[id]/auto-apply/route.ts │
+  │  1. Fetch match + profile + job         │
+  │  2. Ensure tailored resume exists       │
+  │  3. Ensure PDF uploaded to Storage      │
+  │  4. Load cover letter (user-generated)  │
+  │  5. Load apply profile (50+ fields)     │
+  │  6. Load saved browser session (if any) │
+  └──────────┬──────────────────────────────┘
+             │ POST /apply
+             ▼
+  ┌─────────────────────────────────────────┐
+  │  browser_agent/main.py (Python FastAPI) │
+  │                                         │
+  │  Prompt to LLM:                         │
+  │  "You are applying for a job...          │
+  │   Candidate info: {profile}             │
+  │   Resume PDF: {url}                     │
+  │   Cover letter: {text}                  │
+  │   Navigate to {job_url}                 │
+  │   → Detect form type (any ATS)          │
+  │   → Fill all fields via vision + LLM    │
+  │   → Upload resume                       │
+  │   → Paste cover letter if asked         │
+  │   → Handle login (saved session or ask) │
+  │   → Pause before submit (human review)  │
+  │   → Submit → confirm success"           │
+  │                                         │
+  │  AI Agent (browser-use + vision LLM):   │
+  │  • Sees the page (screenshot)           │
+  │  • Understands each field's intent      │
+  │  • Fills based on candidate profile     │
+  │  • Handles ANY ATS (Workday, GH, etc.)  │
+  └──────────┬──────────────────────────────┘
+             │ SSE stream + callback
+             ▼
+  ┌─────────────────────────────────────────┐
+  │  AutoApplyButton.tsx (React)            │
+  │  • Live terminal log via SSE            │
+  │  • Shows each step the agent takes      │
+  │  • Pause for human review before submit │
+  │  • Shows final result (success/fail)    │
+  └─────────────────────────────────────────┘
+```
+
+### AI-First Agent Prompt Strategy
+
+The agent prompt is the KEY — not scripts. A single prompt handles all platforms:
+
+```
+You are applying for a job on behalf of a candidate.
+
+JOB: {title} at {company}
+URL: {apply_url}
+
+CANDIDATE PROFILE:
+{full_name} | {email} | {phone}
+{location} | {linkedin}
+Resume: {resume_pdf_url}
+Experience: {years} years
+{essay_answers}
+
+COVER LETTER: {text}
+
+YOUR GOAL:
+1. Navigate to the job URL
+2. Look at the page — detect if it's Workday, Greenhouse, Lever,
+   BambooHR, SuccessFactors, iCIMS, Taleo, or a custom portal
+   (Doesn't matter — you handle ALL of them)
+3. Check if logged in:
+   - Yes → proceed
+   - No → try saved session cookies
+   - If expired → ask user to log in once
+4. Find the apply button / form
+5. Fill EVERY field using the candidate profile above
+   - Name, email, phone → obvious
+   - Work authorization → {work_auth}
+   - Salary expectation → {salary}
+   - Custom questions → use essay answers
+6. Upload resume PDF from {url}
+7. Paste cover letter if there's a textarea for it
+8. Before clicking Submit: PAUSE and wait for user confirmation
+9. Submit → confirm on confirmation page
+10. Report result back via callback
+```
+
+### ATS Platform Strategy
+
+| Platform | Phase | Approach | Expected Success |
+|---|---|---|---|
+| **BambooHR** | Phase 1 | Simple form, no login wall. Agent fills and submits directly. | ~90% |
+| **Lever** | Phase 1 | Clean forms, API-friendly. Session may be needed. | ~85% |
+| **Greenhouse** | Phase 1 | Structured forms, may require account. Session persistence helps. | ~80% |
+| **Direct career portals** | Phase 1 | Company's own site — usually simple html forms | ~85% |
+| **iCIMS** | Phase 2 | More complex, multi-step. Vision LLM needed for iframes. | ~70% |
+| **Workday** | Phase 3 | Most complex. Profile creation, multi-step, iFrames, anti-bot. Needs saved session + vision. | ~60% |
+| **SuccessFactors** | Phase 3 | Enterprise-locked, complex. Similar to Workday. | ~55% |
+| **Taleo** | Phase 3 | Legacy, outdated UI but simpler DOM than Workday. | ~65% |
+
+### Phased Implementation Plan
+
+#### Phase 1 — Get one apply working end-to-end
+
+**Goal:** Click "Auto Apply" on a BambooHR/Greenhouse job and see it actually fill and submit.
+
+| Step | Task | Dependencies |
+|---|---|---|---|
+| 1.1 | Upgrade `browser-use` from v0.1.40 to latest in `requirements.txt` | None |
+| 1.2 | Update `main.py` agent API to match new browser-use SDK (likely cloud-enabled) | 1.1 |
+| 1.3 | Solve hosting: upgrade Render to $7/mo (Starter, 1GB RAM), or switch to Browserbase/Steel free-tier cloud browsers | None |
+| 1.4 | Fix callback 401: ensure `INGEST_SECRET` (or renamed `APPLY_CALLBACK_SECRET`) is set in both Vercel and Render env vars | None |
+| 1.5 | Test end-to-end on a simple BambooHR/Greenhouse apply URL | 1.1-1.4 |
+| 1.6 | Add human-in-the-loop pause before submit (SSE sends user a confirm button) | 1.5 |
+| 1.7 | Polish the UI: better status messages, error handling, retry button | 1.5 |
+
+**Estimated effort:** 1-2 focused sessions
+
+#### Phase 2 — Session persistence & login management
+
+**Goal:** Agent remembers the user's login. First use → user logs into a platform → session saved. Next apply → auto-logged-in.
+
+| Step | Task | Dependencies |
+|---|---|---|---|
+| 2.1 | Add Playwright `storageState` persistence per user (store in Supabase Storage as JSON) | None |
+| 2.2 | On agent start: load saved session cookies before navigating | 2.1 |
+| 2.3 | After successful login: save cookies back to storage | 2.1 |
+| 2.4 | Handle session expiry: agent detects login page → ask user to log in again | 2.1-2.3 |
+| 2.5 | (Optional) Store TOTP secrets in apply profile for 2FA auto-fill | Phase 1 done |
+| 2.6 | UI: show "Saved session for {platform}" indicator, "Log in to {platform}" button | 2.2 |
+
+**Estimated effort:** 1-2 sessions
+
+#### Phase 3 — Complex platforms & edge cases
+
+**Goal:** Handle Workday, SuccessFactors, Taleo, iCIMS. Multi-step applications, CAPTCHA, iframes.
+
+| Step | Task | Dependencies |
+|---|---|---|---|
+| 3.1 | Upgrade agent to use cloud browser (anti-bot bypass) for Workday/SuccessFactors | $7/mo or paid cloud tier |
+| 3.2 | CAPTCHA handling: agent detects → pauses → user solves → agent continues | Phase 1 |
+| 3.3 | Multi-page applications (screener questions, assessments) — agent navigates all pages | Phase 1 |
+| 3.4 | Resume upload variant handling (drag-drop vs file picker vs URL field) | Phase 1 |
+| 3.5 | Better error recovery: if agent gets stuck on a field, skip it and log the reason | Phase 1 |
+
+**Estimated effort:** 2-3 sessions
+
+#### Phase 4 — Account creation & scale
+
+**Goal:** Agent can create accounts on platforms that require them. Scale to multiple concurrent users.
+
+| Step | Task | Dependencies |
+|---|---|---|---|
+| 4.1 | Agent detects "Create Account" vs "Sign In" → fills registration from apply profile | Phase 2 |
+| 4.2 | Handle email verification: pause and wait for user to click the link | 4.1 |
+| 4.3 | Queue system for concurrent user applies (one agent per user, not per job) | All previous phases |
+| 4.4 | Success/failure monitoring dashboard per platform | 4.3 |
+| 4.5 | Rate limiting per platform (don't trigger anti-abuse) | 4.3 |
+
+**Estimated effort:** 2-3 sessions
+
+### What the next session should do first
+
+Open this file in a **new chat**, read this section, then start **Phase 1 Step 1.1**: upgrade `browser-use` and get the agent working on one simple apply URL. The code is already there — just needs the infrastructure fixes and the library upgrade.
+
+### Key files reference for auto-apply
+
+```
+browser_agent/main.py              ← Python FastAPI agent (NEEDS REWRITE for latest browser-use)
+browser_agent/requirements.txt     ← browser-use==0.1.40 (NEEDS UPDATE)
+browser_agent/Dockerfile           ← Docker config for Render
+app/api/match/[id]/auto-apply/route.ts ← Orchestration API (mostly solid)
+app/api/match/[id]/apply-callback/route.ts ← Callback endpoint (solid)
+app/(app)/jobs/[id]/AutoApplyButton.tsx ← UI (solid, minor polish needed)
+app/(app)/apply-profile/           ← Apply profile form (solid)
+lib/pdf-resume.ts                  ← PDF generator (solid)
+```
+
+---
+
+## ⭐ EXTENSION AUTO-LOGIN & AUTOFILL — Handoff (Session 22)
+
+> **⚠️ THIS IS A HANDOFF SECTION.** If you're reading this in a new chat, you're picking up where Session 22 left off. Read this entire section, then check the **Next steps** at the bottom. All code is on `main` (commit `bdf6d93`).
+
+### What was built
+
+Replaced the old shared `APP_PASSWORD` auth with **per-user auto-login via Supabase session**. Each user who is logged into hyred.in gets a user-specific 90-day JWT automatically — no shared password, no extra login step.
+
+### Architecture (auth flow)
+
+```
+Extension popup opens
+         │
+         ▼
+  Sends 'session' message to background.js (via chrome.runtime.sendMessage)
+  ── Why through background.js? ──
+  MV3 service workers with <all_urls> permission make credentialed cross-origin
+  requests WITHOUT CORS restrictions. A direct fetch() from the popup would hit
+  CORS on the session cookie (credentialed + chrome-extension:// origin).
+         │
+         ▼
+  background.js → fetch('https://hyred.in/api/extension/session',
+                     { credentials: 'include' })
+         │
+         ├── Cookies are auto-sent (user's Supabase session for hyred.in)
+         │
+         ▼
+  Server reads Supabase session cookie → gets user → gets profile →
+  signs a 90-day JWT with { scope: 'extension', profile_id: <user's id> }
+         │
+         ▼
+  Response { token, profile } sent back to popup
+         │
+         ▼
+  Popup stores { jr_url, jr_token } in chrome.storage.local → shows connected
+  All future API calls use this JWT, scoped to the user's profile_id
+```
+
+**Fallback:** If the user is NOT logged into hyred.in, the popup shows the old `APP_PASSWORD` setup form (unchanged).
+
+### Files changed
+
+| File | Action | What |
+|---|---|---|
+| `lib/extension/auth.ts` | **Rewritten** | `signExtensionToken(profileId?)` accepts optional `profileId`, embeds it in JWT payload. `verifyExtensionToken` returns `ExtJwtPayload|null` instead of boolean. `isExtAuthed` returns `ExtJwtPayload|null`. Legacy tokens (no `profile_id`) still work. |
+| `app/api/extension/session/route.ts` | **NEW** | `GET /api/extension/session` — reads Supabase session cookie → gets authed user → gets their profile → signs user-scoped JWT → returns `{ token, profile }`. Uses `createServerSupabase()` (cookie-based auth). |
+| `app/api/extension/profile/route.ts` | **Updated** | Uses `profile_id` from JWT to fetch the correct user's profile. Falls back to first-profile for legacy tokens (no `profile_id` in JWT). |
+| `app/api/extension/match-by-url/route.ts` | **Updated** | Scopes match lookup to `profile_id` from JWT. Falls back to first-profile for legacy tokens. |
+| `app/api/extension/answer/route.ts` | **Updated** | Scopes screening Q&A to `profile_id` from JWT. Falls back to first-profile for legacy tokens. |
+| `app/api/extension/apply/route.ts` | **Updated** | Scopes apply action to `profile_id` from JWT. Falls back to first-profile for legacy tokens. |
+| `extension/background.js` | **Updated** | New `session` message handler: `callSession(url)` fetches the session endpoint with `credentials: 'include'` (bypasses CORS). |
+| `extension/popup.js` | **Updated** | `tryAutoConnect()` sends `'session'` message to background.js instead of direct fetch. Falls back to setup form on failure. Added `sendBg()` helper. |
+
+### What was tested
+
+| Component | Status | Detail |
+|---|---|---|
+| TypeScript compilation | ✅ Passed | `npx tsc --noEmit` clean |
+| Code review | ✅ Approved | CORS fix through background.js is correct |
+| Commit & push | ✅ Pushed | `git push origin main` (commit `bdf6d93`) |
+| Vercel deploy | 🟡 Auto-deployed | Deploy started after push to main; verify at hyred.in |
+| Extension loaded in Chrome | ⬜ Not tested | User needs to load unpacked from `extension/` folder |
+| Auto-connect with session | ⬜ Not tested | Requires user to be logged into hyred.in in Chrome |
+| Autofill on real job page | ⬜ Not tested | User was on a broken GlobalLogic URL (redirected to contact page) |
+
+### Deferred / known issues
+
+| Issue | Detail | Fix needed |
+|---|---|---|---|
+| **CORS on extension endpoints** | The `corsResponse()` helper returns `Access-Control-Allow-Origin: *` which doesn't work with `credentials: 'include'`. Currently bypassed by routing through `background.js`. If the extension ever needs direct `fetch()` calls to the API, CORS headers must be updated. | Add explicit origin handling or keep routing through background.js. |
+| **Extension not auto-injected on all sites** | Content script runs on `<all_urls>` but the FAB (floating autofill button) only mounts if it detects an ATS form pattern. On unrecognised portals, the user must click the extension icon → "Autofill this page". | Improve ATS detection heuristics, or add a "force" mode. |
+| **No resume upload from extension** | The extension can fill text fields but can't upload a file from the popup. The resume PDF from Hyred's storage is used instead. | Add file upload capability or use URL-based resume links. |
+| **APP_PASSWORD still exists in code** | `lib/auth.ts` still exports `comparePasswords()` and `getAppPassword()`. The legacy auth endpoint `/api/extension/auth` is still active. Safe to keep until full migration. | Can deprecate once session auth is proven in production. |
+| **No way to disconnect and reconnect as another user in popup** | The popup shows "Connected" but doesn't expose a simple "Connect as different user" flow. The user has to click Disconnect → enter setup form. | Add a "Switch account" button. |
+
+### Next steps (to pick up from here)
+
+1. **Load the extension in Chrome** — go to `chrome://extensions` → Developer mode → Load unpacked → select the `extension/` folder. Pin it to the toolbar.
+2. **Log into hyred.in** in Chrome (if not already).
+3. **Open a real job apply URL** — use a known working Lever page: `https://jobs.lever.co/getwingapp/f6c44f7d-2606-4e18-a886-8e96e59ed2f2`
+4. **Click the extension icon** — it should show "Connected to hyred.in" with your name.
+5. **Click "Autofill this page"** — check the Console (F12) for `[JobRadar]` logs.
+6. **Fix any autofill issues** — the extension fills fields by regex matching on common field labels. Some platforms may need additional field patterns added to `content.js`.
+7. **Add resume upload capability** — the extension currently relies on Hyred's stored resume PDF.
+
+---
+
 ## Key Architecture Decisions
 
 ### 1. AI-First Job Search (not keyword regex)

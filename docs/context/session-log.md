@@ -2,6 +2,261 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 23 — Extension Auth Flow Overhaul: Auth Tab Flow + Cookie Fallback + Popup Redesign (June 15, 2026)
+
+A debugging session focused on getting the Chrome extension popup to auto-connect when the user is logged into hyred.in. The popup kept falling back to the APP_PASSWORD setup form. Built a multi-pronged auto-connect pipeline and a proper Connect-to-Hyred button flow.
+
+### (a) Problem: auto-connect silently fails → shows APP_PASSWORD form
+
+When the user opens the extension popup, `tryAutoConnect()` runs:
+1. Check for stored JWT → verify it
+2. If no stored token → `sendBg('getCookieToken')` → background.js tries:
+   - **Strategy A:** Find open hyred.in tab → inject MAIN-world script → read `localStorage` for `sb-{ref}-auth-token` → extract `access_token` → exchange via `/api/extension/exchange`
+   - **Strategy B:** Read Supabase session cookies via `chrome.cookies.getAll({ domain: 'hyred.in' })` → parse URL-encoded JSON → extract `access_token` → exchange
+3. If both fail → show APP_PASSWORD setup form
+
+Both strategies were failing for the user, so auto-connect always fell through to the setup form.
+
+### (b) What was built
+
+#### New: `app/auth/extension/route.ts` — Server-side auth page
+
+A route handler that:
+- Checks the Supabase session from cookies via `createServerSupabase()`
+- If authenticated: generates a 90-day extension JWT via `signExtensionToken(profile.id)`
+- Returns an HTML page that writes the JWT to `localStorage.hyred_extension_token`
+- Shows "✅ Connected!" UI
+- If not authenticated: shows "Please log in" with a link to `/login?next=/auth/extension`
+- `dynamic = 'force-dynamic'` to prevent caching
+
+Uses `JSON.stringify(token)` to safely embed the token in the `<script>` tag (avoids injection). The localStorage write is wrapped in try/catch.
+
+#### Updated: `extension/background.js`
+
+Added:
+- **`extractTokenFromCookies()`** — new fallback function that uses `chrome.cookies.getAll({ domain: 'hyred.in' })` to read the Supabase session cookie (`sb-{ref}-auth-token`), decodes the URL-encoded JSON value, and extracts the `access_token`. No open tab needed.
+- **`connectExtension()`** — new handler for the auth tab flow:
+  1. Opens `https://hyred.in/auth/extension` in a new tab
+  2. Registers `chrome.tabs.onUpdated` listener for that tab
+  3. On `status === 'complete'`, waits 500ms for page JS, then injects MAIN-world script to read `localStorage.hyred_extension_token`
+  4. If found: saves `{ jr_url: DEFAULT_URL, jr_token }` to `chrome.storage.local`, closes the tab, resolves with the token
+  5. 30-second timeout
+- Updated `getCookieToken` handler to try tab localStorage → cookie fallback → exchange
+
+#### Updated: `extension/popup.js` + `extension/popup.html` + `extension/popup.css`
+
+Redesigned the popup flow:
+- On auto-connect failure, shows a **"Connect to Hyred"** button (primary flow) instead of the APP_PASSWORD form
+- Clicking it calls `initiateConnect()` which fire-and-forgets `sendBg('connectExtension')` to background.js, then polls `chrome.storage.local` every 2s for 30s for the token
+- Once the token appears, calls `refreshConnected()` to fetch the profile and show connected state
+- Small "Use app password instead" link at the bottom shows the old setup form
+- "Back" button on setup form returns to the connect-intro page
+- **Critical fix:** `sendBg('connectExtension')` is fire-and-forget (not awaited) so the popup stays responsive during the 30s tab flow
+- Error messages properly cleared when navigating between views
+- Timeout aligned: both background (30s) and popup (30s = 15 × 2s)
+
+### (c) New auto-connect pipeline (tried in order)
+
+1. **Stored JWT** — verify existing token
+2. **Tab localStorage** — inject MAIN-world script into open hyred.in tab, read Supabase session from localStorage
+3. **Cookie extraction** — read Supabase session cookie via `chrome.cookies` API
+4. **Connect button** — user clicks → opens auth tab → server checks session → writes JWT to localStorage → extension reads it
+5. **APP_PASSWORD form** — last resort fallback
+
+### (d) Files changed
+
+| File | Action | What |
+|---|---|---|
+| `app/auth/extension/route.ts` | **NEW** | Server-side auth page — checks session, signs JWT, writes to localStorage |
+| `extension/background.js` | **Updated** | Added `extractTokenFromCookies()`, `connectExtension()` handler, updated `getCookieToken()` |
+| `extension/popup.js` | **Rewritten** | "Connect to Hyred" primary flow, polling, fire-and-forget bg message |
+| `extension/popup.html` | **Updated** | New `#connect-intro` section, `#setup` starts hidden |
+| `extension/popup.css` | **Updated** | New styles for `.status-msg`, `.alt-row`, `.btn-link` |
+| `docs/context/session-log.md` | **Updated** | This entry |
+
+### (e) What was NOT tested
+
+The Connect button flow was never tested end-to-end. After the user reloaded the extension, it was still showing the APP_PASSWORD form (auto-connect strategies 1-3 all failed). The Connect button was added but not yet clicked/tested.
+
+### (f) Deferred / known issues
+
+| Issue | Detail |
+|---|---|
+| **Auto-connect still fails** | Both tab-localStorage and cookie strategies silently fail for the user. Root cause unclear — may be `@supabase/ssr` v0.10.3 cookie format not matching expected pattern, or the cookies simply don't exist yet |
+| **Connect button not tested** | Never clicked the "Connect to Hyred" button to test the auth tab flow |
+| **Auth page not deployed** | `app/auth/extension/route.ts` is on the filesystem but hasn't been committed/pushed/deployed to hyred.in yet |
+| **`chrome.cookies.getAll` domain matching** | The function uses `{ domain: 'hyred.in' }` — this might not match `.hyred.in` (with dot prefix) correctly in all Chrome versions |
+| **No profile in connectExtension response** | The `connectExtension` handler returns `{ ok: true, data: { token } }` without the profile. The popup fetches profile separately via `refreshConnected()` → `fetchJson(/api/extension/profile)`. This works but adds an extra API call |
+| **No localhost support** | The auth tab flow hardcodes `DEFAULT_URL = 'https://hyred.in'`. Developers running locally can't use auto-connect |
+
+### (g) Research findings (how other extensions handle auth)
+
+Research on Simplify Jobs, Copilot, and other job autofill extensions revealed the standard pattern:
+- **Cookie-based sharing** via `host_permissions` — the extension's background service worker makes credentialed API requests to the platform's backend, and the browser automatically attaches session cookies
+- **OAuth 2.0** via Chrome Identity API for third-party services
+- Most extensions do NOT use localStorage injection or manual cookie parsing
+- The standard pattern is: open auth tab → user is already logged in → server generates token → extension reads it
+
+### Next steps (for the next session)
+
+1. **Commit and push all changes** — `app/auth/extension/route.ts`, `extension/background.js`, `extension/popup.js`, `extension/popup.html`, `extension/popup.css`, `docs/context/session-log.md`
+2. **Deploy to Vercel** — push to main → auto-deploy to verify `/auth/extension` page works
+3. **Reload extension** — go to `chrome://extensions` and refresh Hyred Autofill
+4. **Test the Connect button** — click "Connect to Hyred" and see if the auth tab flow works
+5. **If still failing** — check what `chrome.cookies.getAll({ domain: 'hyred.in' })` actually returns (use `chrome://settings/cookies` or DevTools on the background page)
+6. **If cookies are empty** — check if `@supabase/ssr` v0.10.3 is actually storing sessions in cookies or only in localStorage
+
+
+## Session 22 — AI Auto-Apply Strategic Plan & Architecture (June 15, 2026)
+
+A strategy session focused on defining an AI-first, agent-driven auto-apply feature. No code changes — all planning and documentation.
+
+### (a) Context: what already exists
+
+The auto-apply pipeline was built in Sessions 3-4 (PRs #12-#13, #14-#22) but has **never actually worked end-to-end** due to two blockers:
+
+| Blocker | Detail |
+|---|---|
+| **Render 512MB can't run Chromium** | Agent starts and silently crashes on real page loads. Needs $7/mo upgrade or alternative hosting. |
+| **Callback 401** | `INGEST_SECRET` env var not synced between Vercel and Render, so agent can't report back results. |
+
+The existing code is intact:
+- `browser_agent/main.py` — FastAPI service using `browser-use==0.1.40` (ancient), Groq/OpenAI LLM, headless Chromium via explicit `BrowserConfig`
+- `app/api/match/[id]/auto-apply/route.ts` — Orchestrates: generate ATS resume → upload PDF → generate cover letter → call Python agent → stream live logs
+- `app/api/match/[id]/apply-callback/route.ts` — Agent callback on completion, updates match status
+- `AutoApplyButton.tsx` — Terminal-style log panel with SSE streaming
+- `/apply-profile` — Comprehensive form with 50+ fields (name, phone, email, essay answers, etc.)
+- `apply_profiles` table, `auto_apply_*` columns on `matches`
+
+### (b) Realization: AI-First, not scripted
+
+The user correctly argued that hardcoded scripts per platform (Workday vs Greenhouse vs Lever) are the wrong approach. An AI agent with **vision + LLM** can handle ALL ATS platforms — it *sees* the form, understands what it's asking for, and fills it. One agent, all 500 Workday configs. The existing `browser-use` stack already takes this approach, but is pinned at v0.1.40 (ancient) and the agent prompt needs upgrading.
+
+### (c) Research findings (web, June 2026)
+
+**browser-use current state:**
+- Current version well past v0.1.40 — now has cloud-native architecture, native profile syncing, session persistence, 2FA/TOTP handling, `@sandbox` decorators for production scaling
+- Supports `Browser.from_system_chrome()` and `cloud_profile_id` for persistent authenticated sessions
+- Has anti-bot protection, built-in proxy rotation for cloud browsers
+- Can handle complex ATS via vision + ARIA tree processing
+
+**Top ATS platforms (apply-flow complexity):**
+
+| Platform | Complexity | AI-Agent Friendly? | Notes |
+|---|---|---|---|
+| **BambooHR** | Simple | ✅ Easiest | SMB-focused, simple forms, no login walls |
+| **Lever** | Simple-Moderate | ✅ Most API-friendly | Has documented "Apply to a posting" API endpoint |
+| **Greenhouse** | Moderate | ✅ Good | Well-documented REST API, structured forms |
+| **iCIMS** | Moderate-Complex | ⚠️ Moderate | High flexibility → bloated forms if not managed |
+| **Workday** | Most Complex | ❌ Hardest | Requires profile creation, complex DOM, iFrames, anti-bot |
+| **SuccessFactors** | Complex | ❌ Hard | Enterprise-locked, complex architecture |
+| **Taleo** | Complex | ❌ Hardest | Legacy, being replaced, outdated UI |
+
+### (d) The plan: 4-phase rollout
+
+**Phase 1 — Get the agent working on simple platforms** (first session)
+- Upgrade `browser-use` from v0.1.40 to latest
+- Solve the hosting problem: either upgrade Render to $7/mo or switch to a cloud browser service (Browserbase free tier, or self-hosted)
+- Fix the callback 401 (sync `INGEST_SECRET` between Vercel and Render, or better: rename it to `APPLY_CALLBACK_SECRET` for clarity)
+- Test on a simple BambooHR or direct career-portal apply page (no login needed)
+- Keep the existing human-in-the-loop: agent pauses before submit, user reviews
+
+**Phase 2 — Session persistence & login management**
+- Store persistent Chrome profiles per user (via `Browser.from_system_chrome()` or `cloud_profile_id`)
+- On first use, user logs into a platform (Workday, Greenhouse, etc.) through the agent → session saved
+- Next apply: load saved session → logged in automatically
+- Handle 2FA via TOTP secrets stored in user's apply profile
+- No account creation flow yet — user provides their existing accounts
+
+**Phase 3 — Complex platforms & edge cases**
+- Workday/SuccessFactors/Taleo: agent navigates complex multi-step forms, handles iframes
+- CAPTCHA handling: pause and notify user, let them solve it, agent continues
+- Multi-page applications (screeners, assessments)
+- Resume upload handling across all platforms
+
+**Phase 4 — Account creation & scale**
+- Agent detects "Create Account" vs "Sign In" — fills registration forms from apply profile
+- Stops at email verification / CAPTCHA for user to complete
+- Scales to multiple simultaneous users via queue + dedicated browser workers
+- Monitoring dashboard: success rates, failure reasons, platform breakdowns
+
+Full detailed plan added to `CONTEXT.md` → `## ⭐ ACTIVE INITIATIVE — AI Auto-Apply`. This is the new active focus.
+
+### Files changed this session
+- `CONTEXT.md` — added new ACTIVE INITIATIVE section with full auto-apply plan
+- `docs/context/session-log.md` — this entry
+- `AGENTS.md` — added index row for auto-apply section
+
+## Session 21 — Ingest Debugging, Wall Budget RCA, and Complete Revert (June 15, 2026)
+
+A debugging session focused on fixing manual scans that timed out after Session 20's wall-budget change. The chron ran fine on GitHub Actions (15-min timeout) but manual scans on Vercel Hobby (60s max) were falsely marked as "Timed out" with 0 scored.
+
+### (a) Diagnostic endpoint & evidence-based RCA
+
+**Problem:** Manual scans timed out with 0 scored while the cron (GitHub Actions, 15-min timeout) worked fine. Created a diagnostic endpoint at `/api/debug/last-ingest` that exposes real-time phase progress (fetched / embedded / scored / matches) + bottleneck analysis + last 5 scans with formatted errors.
+
+**Evidence from the diagnostic:**
+- Commit `0c8b361` introduced `INGEST_WALL_BUDGET_MS = 50000` (50s) to prevent Vercel Hobby hard-kill (Session 20 fix). But with a 50s budget, fetch alone took 120-150s, so the scoring loop's budget check fired immediately — 0 scored every time.
+- Previous scans showed `embedded=300, scored=0` with bottleneck: "Scoring phase: jobs had embeddings but 0 were scored (pre-filter dropped all, or scoring failed)"
+- Stale detection at 12 min (`INGEST_STALE_MS`) fired while scans were still running, falsely marking them as failed
+- 3-second `SCORE_BATCH_DELAY_MS` was wasting ~36s per scan (optimized for Cerebras' 5 RPM, but current providers bluesminds/gemini/groq handle 30-50+ RPM)
+- Admin backup/restore (Session 20) had wiped the DB, so all jobs needed re-embedding — slowing down every scan further
+
+### (b) Attempted fixes (before full revert)
+
+| Fix | Before | After | Rationale |
+|---|---|---|---|
+| `EMBED_PER_RUN` | 50 | 300 | Embed more jobs per scan |
+| `EMBED_CONCURRENCY` | 6 | 15 | Faster parallel embedding |
+| `EMBED_TIMEOUT_MS` | none | 180s | Don't let embed phase eat all runtime |
+| `SCORE_BATCH_DELAY_MS` | 3,000ms | 500ms | Primary provider handles higher RPM — saves ~30s per scan |
+| `INGEST_STALE_MS` | 12 min | 20 min | Don't falsely mark running scans as failed |
+| `maxDuration` | 300s | ~~900s~~ **reverted** | Vercel Hobby caps at 300s — build error |
+
+### (c) Full revert to yesterday's working state
+
+User requested a complete revert to yesterday's code. Files were restored from commit `d438f63^` (Session 19):
+- `lib/ingest.ts` — `INGEST_WALL_BUDGET_MS=260s`, `EMBED_PER_RUN=50`, `EMBED_CONCURRENCY=6`, `SCORE_BATCH_DELAY_MS=3s`
+- `lib/ingest-runs.ts` — `INGEST_STALE_MS=12 min`
+- `app/api/ingest/route.ts` — `maxDuration=300`
+- `app/api/debug/last-ingest/route.ts` — **deleted**
+
+**Bug in the revert:** The checkout restored `INGEST_WALL_BUDGET_MS = 50000` (50s) instead of the original `260000` (260s). The 50s budget caused scoring to break immediately on the next manual scan (0 scored in 166s). Fixed in a follow-up commit restoring `260000` — and the scan worked immediately.
+
+**Lesson:** When reverting files with `git checkout`, always verify the actual constants in the restored file before committing. The commit pointed to by `d438f63^` already had the 50s budget (Session 20 had landed earlier).
+
+### (d) Cancelled scan feature — already existed
+
+User requested a "stop/cancel a running scan" feature. Investigation showed this was already fully implemented:
+- `POST /api/ingest/cancel` — sets `status='cancelled'` on the active ingest run
+- `lib/ingest-runs.ts` — `isRunCancelled()` checks DB status
+- `lib/ingest.ts` — cancellation checks before embed and scoring stages, plus every 3 batches during scoring
+- `RunIngestButton.tsx` — Cancel button with confirmation popup visible when scan is running
+- Built in PRs #109, #114, #115 (previous sessions)
+
+### (e) SEO verification — PR #143 complete
+
+User asked to verify the SEO implementation from PR #143. All pages are live on `main`:
+
+| Page | URL | Status |
+|---|---|---|
+| Public job board | `/explore` | ✅ SSR with search, source filters (24/job grid), pagination, CollectionPage schema |
+| Job detail | `/explore/[id]` | ✅ JobPosting structured data (schema.org), `generateMetadata`, ensureFullDescription, canonical URLs |
+| ATS landing page | `/free-tools/ats-score-checker` | ✅ WebApplication schema, features, steps, testimonials, CTAs, OpenGraph + Twitter cards |
+| Sitemap | `/sitemap.xml` | ✅ Dynamic, up to 5000 job URLs + 7 static pages |
+| Robots | `/robots.txt` | ✅ Allows `/explore`, `/free-tools`, `/login`, `/privacy`, `/terms`, `/contact`; disallows `/admin`, `/stats`, `/import`, `/onboarding`, `/apply-profile`, `/api/` |
+| Middleware | `middleware.ts` | ✅ `/explore` and `/free-tools` in `PUBLIC_PATHS` (no auth required) |
+
+**SEO implementation is solid:** proper Metadata exports with keywords, OG tags, Twitter cards, canonical URLs, JSON-LD structured data, and clear crawl directives.
+
+### Files changed this session
+
+- `app/api/debug/last-ingest/route.ts` (created → deleted)
+- `lib/ingest.ts` (restored to 260s budget via revert + fix commit)
+- `lib/ingest-runs.ts` (restored to 12-min stale)
+- `app/api/ingest/route.ts` (restored to 300 maxDuration)
+- `docs/context/session-log.md` (this entry)
+
 ## Session 20 — Global HTML Skill-boundary Fix & Admin Database Controls (June 15, 2026)
 
 A focused session resolving a critical HTML regex boundary mismatch in skill analysis, and equipping the Admin Dashboard with full database backup, deletion, and restoration tools.

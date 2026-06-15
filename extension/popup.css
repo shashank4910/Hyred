@@ -164,6 +164,33 @@ input:focus {
   color: #ff8080;
 }
 
+.status-msg {
+  min-height: 20px;
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #8a94a3;
+  text-align: center;
+}
+
+.alt-row {
+  margin-top: 14px;
+  text-align: center;
+}
+
+.btn-link {
+  background: transparent;
+  border: none;
+  color: #8a94a3;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.btn-link:hover {
+  color: #7cffb2;
+}
+
 .foot {
   padding: 8px 14px;
   border-top: 1px solid #252b33;
