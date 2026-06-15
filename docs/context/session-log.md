@@ -2,6 +2,33 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 20 — Global HTML Skill-boundary Fix & Admin Database Controls (June 15, 2026)
+
+A focused session resolving a critical HTML regex boundary mismatch in skill analysis, and equipping the Admin Dashboard with full database backup, deletion, and restoration tools.
+
+### (a) Global skills-matching and HTML boundary bugfix
+**Problem:** The `scoreJob` and `cleanSkills` checks processed the raw HTML job description stored in the DB (which contains tags like `<li>JMeter</li>`). Because `isSkillPresentInJd` used a regex word-boundary test, HTML tag markers like `<` and `>` interfered with word boundary assertions (`\b`), causing matches to fail. Additionally, `cleanSkills` was re-verifying `missingSkills` from the LLM against the JD via `isSkillPresentInJd`. If a skill was correctly identified by the LLM as missing, but failed the regex check on raw HTML, it was dropped. This led to required skills not showing up on the UI.
+
+**Fix:**
+1. Stripped HTML from the job description text via `sanitizeJobDescriptionForAI` before performing any skill checks in `lib/gemini.ts` and scripts.
+2. Modified `cleanSkills()` to only run the JD presence filter on `matchedSkills` (verifying they actually exist in the text). `missingSkills` returned from the LLM are authoritative, so we only clean their format and do not re-verify them.
+3. Updated `DashboardMatchResults.tsx` card enrichment logic to prevent overwriting LLM-computed missing skills with client-derived values.
+4. Redesigned the missing required skills pills in `MatchSkillPills.tsx` to display as Red X chips instead of gray dashed pills, providing a clear CTA for the user.
+
+**Files changed:** `lib/gemini.ts`, `app/(app)/_components/DashboardMatchResults.tsx`, `app/(app)/_components/MatchSkillPills.tsx`.
+
+### (b) Database lifecycle backup and restore controls
+**Why:** The user needed a way to delete all existing matches and jobs to test scan adjustments and skill matching fixes, with the ability to restore historical data at any time.
+
+**Fix:**
+1. Created a privileged API controller `app/api/admin/jobs-control/route.ts` using the service role client. Supported actions include:
+   - `backup_delete`: Fetches active matches and jobs, saves them to `admin_settings` as a JSON under key `system_backup`, then wipes all rows from active tables.
+   - `restore`: Retrieves the backup from `admin_settings` and performs chunked upserts (size 100) to populate jobs (preserving references) and matches.
+   - `delete_only` and `delete_backup` for auxiliary actions.
+2. Built a responsive `JobsControlPanel.tsx` UI card on the Admin Dashboard displaying current active vs. backup counts, last backup timestamps, and actions to trigger backup/delete/restore operations with browser-native confirmations.
+
+**Files changed/created:** `app/api/admin/jobs-control/route.ts` (new), `app/(app)/admin/JobsControlPanel.tsx` (new), `app/(app)/admin/AdminDashboard.tsx` (modified).
+
 ## Session 19 — Seen/Unseen card indicators + Hallucinated-skills guardrail + Sort/filter fixes (June 14, 2026)
 
 A focused bug-fix and UX polish session. Three independent improvements shipped.
