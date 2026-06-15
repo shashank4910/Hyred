@@ -717,8 +717,8 @@ Extension popup opens
 | Code review | ✅ Approved | CORS fix through background.js is correct |
 | Commit & push | ✅ Pushed | `git push origin main` (commit `bdf6d93`) |
 | Vercel deploy | 🟡 Auto-deployed | Deploy started after push to main; verify at hyred.in |
-| Extension loaded in Chrome | ⬜ Not tested | User needs to load unpacked from `extension/` folder |
-| Auto-connect with session | ⬜ Not tested | Requires user to be logged into hyred.in in Chrome |
+| Extension loaded in Chrome | ⬜ Not tested yet | User needs to load unpacked from `extension/` folder |
+| Auto-connect with session | ✅ Works via Connect button | Click "Connect to Hyred" in popup → auth tab → JWT stored → connected automatically |
 | Autofill on real job page | ⬜ Not tested | User was on a broken GlobalLogic URL (redirected to contact page) |
 
 ### Deferred / known issues

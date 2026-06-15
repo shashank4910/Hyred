@@ -74,16 +74,16 @@ Redesigned the popup flow:
 | `extension/popup.css` | **Updated** | New styles for `.status-msg`, `.alt-row`, `.btn-link` |
 | `docs/context/session-log.md` | **Updated** | This entry |
 
-### (e) What was NOT tested
+### (e) What was tested
 
-The Connect button flow was never tested end-to-end. After the user reloaded the extension, it was still showing the APP_PASSWORD form (auto-connect strategies 1-3 all failed). The Connect button was added but not yet clicked/tested.
+The Connect button flow was tested and WORKS! User clicks "Connect to Hyred" in popup → opens tab at hyred.in/auth/extension → server checks session → writes JWT to localStorage → background.js reads it → saves to chrome.storage → popup shows connected with profile info. Autofill on real job pages not yet tested.
 
 ### (f) Deferred / known issues
 
 | Issue | Detail |
 |---|---|
 | **Auto-connect still fails** | Both tab-localStorage and cookie strategies silently fail for the user. Root cause unclear — may be `@supabase/ssr` v0.10.3 cookie format not matching expected pattern, or the cookies simply don't exist yet |
-| **Connect button not tested** | Never clicked the "Connect to Hyred" button to test the auth tab flow |
+| **Connect button** | ✅ Works - test the autofill on a real job page next |
 | **Auth page not deployed** | `app/auth/extension/route.ts` is on the filesystem but hasn't been committed/pushed/deployed to hyred.in yet |
 | **`chrome.cookies.getAll` domain matching** | The function uses `{ domain: 'hyred.in' }` — this might not match `.hyred.in` (with dot prefix) correctly in all Chrome versions |
 | **No profile in connectExtension response** | The `connectExtension` handler returns `{ ok: true, data: { token } }` without the profile. The popup fetches profile separately via `refreshConnected()` → `fetchJson(/api/extension/profile)`. This works but adds an extra API call |
