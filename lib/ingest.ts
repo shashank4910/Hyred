@@ -661,21 +661,16 @@ async function upsertJobs(rawJobs: RawJob[]): Promise<string[]> {
   if (!rawJobs.length) return [];
   const sb = supabaseAdmin();
 
-  // Add fetched_at timestamp to all jobs being upserted
-  const now = new Date().toISOString();
-  const jobsWithTimestamp = rawJobs.map(job => ({
-    ...job,
-    fetched_at: now
-  }));
-
   const ids: string[] = [];
-  for (let i = 0; i < jobsWithTimestamp.length; i += 100) {
-    const chunk = jobsWithTimestamp.slice(i, i + 100);
+  for (let i = 0; i < rawJobs.length; i += 100) {
+    const chunk = rawJobs.slice(i, i + 100);
     const { data, error } = await sb
       .from('jobs')
       .upsert(chunk, {
         onConflict: 'source,source_id',
-        // Update on conflict to refresh fetched_at and other fields
+        // Update on conflict to return IDs and refresh metadata, but
+        // since fetched_at is omitted from chunk, the DB default now()
+        // only applies to new inserts, preserving original fetched_at for duplicates.
         ignoreDuplicates: false,
       })
       .select('id');

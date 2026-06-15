@@ -29,6 +29,17 @@ A focused session resolving a critical HTML regex boundary mismatch in skill ana
 
 **Files changed/created:** `app/api/admin/jobs-control/route.ts` (new), `app/(app)/admin/JobsControlPanel.tsx` (new), `app/(app)/admin/AdminDashboard.tsx` (modified).
 
+### (c) Vercel timeout & "today's date" discovery reset fix
+**Problem:** 
+1. The manual scan timed out because Vercel hard-killed the `/api/ingest` route after 60s (Hobby tier limit), leaving the run in an unfinished `'running'` state in the database.
+2. In a previous commit, `ignoreDuplicates: false` was set alongside adding `fetched_at: now` to the payload in `upsertJobs` to return duplicate IDs on conflict. However, this caused all duplicate jobs to get their `fetched_at` timestamp overwritten with `now` on every scan. As a result, the user faced the "today's date" issue where every job card on the dashboard showed a discovery time of "today" (scan time), destroying historical discovery dates and breaking the "Newest First" sort.
+
+**Fix:**
+1. Defaulted `INGEST_WALL_BUDGET_MS` to `50000` (50s) in `lib/ingest.ts` so the pipeline cleanly commits current progress and finalizes the run before Vercel kills it.
+2. Omitted `fetched_at` from the upsert payload in `upsertJobs`. Now, PostgreSQL's `default now()` value is used for new inserts, while updating existing duplicate records on conflict updates metadata but preserves their original `fetched_at` discovery timestamp.
+
+**Files changed:** `lib/ingest.ts`.
+
 ## Session 19 — Seen/Unseen card indicators + Hallucinated-skills guardrail + Sort/filter fixes (June 14, 2026)
 
 A focused bug-fix and UX polish session. Three independent improvements shipped.

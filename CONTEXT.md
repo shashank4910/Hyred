@@ -491,7 +491,7 @@ lib/gemini.ts              ← AI: chat() with Bluesminds→Gemini→Cerebras→
 lib/llm-keys.ts            ← (Session 16 + later) Multi-key LLM rotation + PROVIDER_DEFAULTS (cerebras/groq/openai/gemini/mistral/sambanova/bluesminds). Bluesminds: `{ baseUrl: 'https://api.bluesminds.com/v1', model: 'gpt-4o' }`. Gets: getNextAvailableKey, recordUsage, daily reset, getRecentLlmActivity (live log), getAllLlmKeys, addLlmKey, updateLlmKey, deleteLlmKey, getLlmUsageSummary. Synthetic `env:{provider}` key IDs let env-var fallbacks appear in the admin activity panel.
 lib/jd-fetcher.ts          ← Fetches full JDs from source URLs; exports stripHtml + containsHtml + sanitizeJobDescriptionForAI; ensureFullDescription self-heals HTML in stored rows
 lib/search-profile.ts      ← AI SearchProfile generation + title classification + AI relevance filter
-lib/ingest.ts              ← Main ingest pipeline (10 steps). SCORE_CONCURRENCY=5 + 3s SCORE_BATCH_DELAY_MS to respect free-tier RPM.
+lib/ingest.ts              ← Main ingest pipeline (10 steps). INGEST_WALL_BUDGET_MS=50s (session 20) to prevent Vercel Hobby timeouts. SCORE_CONCURRENCY=5 + 3s SCORE_BATCH_DELAY_MS.
 lib/ingest-runs.ts         ← Ingest run progress/finalize/stale cleanup (Stats + scan lifecycle)
 lib/profile-insights.ts    ← Resume-change helpers: strip cached search_profile, refresh preferences.roles
 lib/current-user.ts        ← getCurrentProfile(), isCurrentUserAdmin(), orphan purge on re-signup
@@ -505,10 +505,8 @@ lib/matcher.ts             ← Cosine similarity + embedding text builder
 
 app/(app)/jobs/[id]/        ← Job detail page + actions + AutoApplyButton + BackToMatches.tsx (router.back, no skeleton)
 app/(app)/apply-profile/    ← Application profile form (memory store for auto-apply)
-app/(app)/jobs/[id]/        ← Job detail page + actions + AutoApplyButton + BackToMatches.tsx (router.back, no skeleton)
-app/(app)/apply-profile/    ← Application profile form (memory store for auto-apply)
 app/(app)/_components/      ← AppShell (sidebar), MatchCard, MatchScoreRing, StatusFilter, DashboardInsights, HeaderSearch, RunIngestButton, MatchList (paginated, infinite-scroll, sessionStorage snapshot for back-nav)
-app/(app)/admin/            ← Admin Center: AdminDashboard + LlmKeysPanel.tsx (LLM keys + live usage bars)
+app/(app)/admin/            ← Admin Center: AdminDashboard + LlmKeysPanel.tsx (LLM keys + live usage bars), JobsControlPanel.tsx (backup/delete/restore database UI)
 app/_components/            ← AppToaster, LegalConsentFields, LegalDocumentLayout
 tailwind.config.ts          ← Luminous design tokens (Stitch)
 app/globals.css             ← .teal-gradient, .btn-*, .card, .input
@@ -524,6 +522,7 @@ app/api/coverletter/        ← Cover letter generation
 app/api/ingest/             ← Manual ingest trigger
 app/api/matches/            ← (Session 16) Paginated match list (page=1..N, page size 20, all filters, Cache-Control SWR)
 app/api/admin/llm-keys/     ← (Session 16) GET/POST list + add LLM keys; PATCH/DELETE [id] toggle/update/remove
+app/api/admin/jobs-control/ ← (Session 20) GET counts, POST database lifecycle actions (backup_delete, restore, delete_only, get_debug_logs)
 
 next.config.mjs            ← experimental.staleTimes.dynamic=30 (Session 16) — Router Cache reuses dashboard for 30s so back-nav skips the server + skeleton
 
@@ -570,7 +569,7 @@ supabase/migrations/0009_llm_keys.sql ← (Session 16) llm_keys + llm_usage_log 
 | min_score hides everything | User set preferences.min_score=75. Dashboard filtered at >=75. All scored jobs were 50-69. | Dashboard defaults to 50, independent of user preference |
 | Exhausted candidate pool | "seen" set was all-time. After a few runs, all candidates already scored → 0 new. | Only exclude last 24h from scoring |
 | LLM over-corrects on prompts | Made prompt strict about not including resume items → LLM stopped including JD items that were also in resume | Use worked examples; explicitly say "co-occurrence is irrelevant" |
-| `ignoreDuplicates: false` on upsert | Re-fetched jobs got their `fetched_at` reset, pushing them to top and displacing new jobs | Use `ignoreDuplicates: true` |
+| `ignoreDuplicates: false` on upsert | Re-fetched jobs got their `fetched_at` reset, pushing them to top and displacing new jobs | Omit `fetched_at` from the upsert payload (so it default-sets to `now()` on insert, but remains untouched on conflict updates) and keep `ignoreDuplicates: false` so that duplicate IDs are still returned and counts remain accurate. |
 | `status='viewed'` makes jobs vanish | Job detail page sets `status='viewed'`, but `'viewed'` is not in `STATUS_ORDER`. The job disappears from every tab. | Fix: add `viewed_at timestamptz` column, stop changing status on open, just stamp `viewed_at`. Reset existing `viewed` rows back to `new`. |
 | Adzuna `posted_at` is unreliable | `created` field reflects when Adzuna indexed the job, not when the company posted it | Show exact date in tooltip; trust Remotive/RemoteOK more than Adzuna for freshness |
 | Pushing to a closed/merged PR's branch | Two important commits sat dangling on a closed branch for two test cycles; Render kept deploying old main; user got frustrated | Always check PR state with `github_list_pull_requests` BEFORE pushing. If closed/merged, branch off latest main and open a NEW PR. |
@@ -607,6 +606,9 @@ supabase/migrations/0009_llm_keys.sql ← (Session 16) llm_keys + llm_usage_log 
 | **Bluesminds provider added as primary — full provider chain restructured** (June 2026) | Bluesminds (`DeepSeek-V4-Flash` → `gpt-4o`) added to the LLM fallback chain. `LLM_PRIMARY` default changed from `groq` to `bluesminds`. The provider chain is now dynamically built from `PROVIDER_DEFAULTS` keys, so any new provider added to `lib/llm-keys.ts` is auto-included. Order: Bluesminds (paid primary) → Gemini (free, env-var) → Cerebras (free) → Groq (free) → OpenAI (paid, last resort). Two model-name fixes were required (`DeepSeek-V4-Flash` case-sensitive, then switched to `gpt-4o` for speed). | **Provider chain is now dynamic and configurable via `LLM_PRIMARY` env var. `buildProviderChain()` iterates `PROVIDER_ORDER` (primary first, then rest), grabs ALL DB keys per provider (round-robin with rotation index), and only falls back to env vars when a provider has ZERO DB keys (fixes the bypass bug where disabled DB keys still fell through to the env). Env-var fallback calls now get synthetic `keyId: 'env:{provider}'` so they log to `llm_usage_log` and appear in the Live Key Activity panel.** |
 | **LLM hallucinated skills shown as matched/missing (session 19, PR #137)** | `scoreJob` and `matchSkills` returned skill names not physically present in the JD (e.g., `"C++"` on a Python-only role). The LLM infers related concepts from training data — the output was verbatim-trusted and stored, so phantom skills showed as green chips on the dashboard card and job detail page. | Added `isSkillPresentInJd(skill, jdText, jobTitle)` (exported from `lib/gemini.ts`) — case-insensitive whole-word regex that handles special chars (C++, .NET) and trailing plural 's'. Both `scoreJob` and `matchSkills` now filter matched/missing arrays through this function before returning. Run `scripts/clean-hallucinated-skills.ts` once to clean historical DB records. **Never trust LLM skill output verbatim; always validate against the JD text.** |
 | **Seen/Unseen card visual UX (session 19, PR #137)** | After clicking a job and going back, every card looked identical — users had no cue which matches were fresh vs already viewed. | Derive `isViewed = status !== 'new'` client-side in `MatchCard.tsx`. Unseen cards: 4px primary left border, elevated shadow, bold title, `New` pill. Seen cards: transparent border, `bg-surface-container-low/40`, `opacity-75` (hover restores 100%), muted title. No new DB columns or API calls required. |
+| **Vercel Hobby Serverless timeouts hard-kill scans (session 20)** | Vercel Hobby/Free tier limits serverless execution to 60s. If the fetch/embed/score pipeline exceeds 60s, Vercel hard-kills it. The `ingest_runs` status remains stuck at `'running'` with 0 counters, showing a massive false duration (e.g., `1947s`) once the stale cleanup runs. | Default `INGEST_WALL_BUDGET_MS` to `50000` (50s) in `lib/ingest.ts` so the loop checks the wall clock, halts scoring/embedding early, and calls `finalizeRun()` to cleanly commit the current progress and exit before the hard kill. |
+| **HTML tags in job descriptions corrupt skills-matching (session 20)** | `isSkillPresentInJd` word-boundary checks (`\b`) were matching raw HTML description strings (e.g. `<li>JMeter</li>`). Because of this, HTML tags interfered with boundary checks, causing valid matches to fail or missing skills to be incorrectly dropped during cleanup. | Strip HTML tags via `sanitizeJobDescriptionForAI` before performing regex skill matching in `lib/gemini.ts`. Modify `cleanSkills()` to only run the JD presence filter on `matchedSkills` (LLM-returned `missingSkills` are authoritative and should not be re-verified). |
+| **`ignoreDuplicates: true` hides duplicate job counts (session 20)** | Setting `ignoreDuplicates: true` on `upsertJobs` caused Supabase to ignore conflicts, returning only newly inserted job IDs. This made it look like only a couple of jobs were fetched on scans, even when the scraping fetched hundreds. | Set `ignoreDuplicates: false` to return all IDs. To prevent overwriting the original discovery time (the "today's date" issue where every job shows the scan date), omit `fetched_at` from the upsert payload so the database default `now()` only fires on brand new inserts. |
 
 ---
 
@@ -723,6 +725,8 @@ When a feature seems broken:
 - New "pitfalls" or rules learned
 - Changes to the file map
 - **Keep the `AGENTS.md` Index in sync** when you add/rename a `##` section here, and append new dated session logs to `docs/context/session-log.md` (not here).
+
+**Last updated:** June 15, 2026 (session 20 — **Global HTML Skill-boundary Fix & Admin Database Controls**). Added default 50s wall-clock timeout budget to `lib/ingest.ts` to prevent Vercel Hobby serverless timeouts; changed `ignoreDuplicates` to `false` and omitted `fetched_at` from payload in `upsertJobs` to preserve original discovery dates ("today's date" issue) while returning full scan counts. Implemented `app/api/admin/jobs-control/route.ts` API and `JobsControlPanel.tsx` UI on Admin Dashboard for backup, delete, and restore database lifecycle operations.
 
 **Last updated:** June 14, 2026 (session 19 — **Seen/Unseen card indicators** + **Hallucinated-skills guardrail** + **Sort/filter fixes**. `MatchCard.tsx`: `isViewed = status !== 'new'` drives read-email-style styling — 4px primary border + bold title + `New` pill for unseen; muted opacity + transparent border for seen. `lib/gemini.ts`: new exported `isSkillPresentInJd(skill, jdText, jobTitle)` (whole-word regex, handles C++/.NET plurals), applied as a post-filter on `scoreJob` matched/missing and `matchSkills` matched/missing/jdRequirements — eliminates LLM hallucinated skill chips. `scripts/clean-hallucinated-skills.ts`: one-time DB cleanup script. PR **#137**.)
 
