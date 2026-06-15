@@ -4,10 +4,11 @@ import { getCurrentProfile } from '@/lib/current-user';
 import type { SourceName } from '@/lib/sources';
 
 export const runtime = 'nodejs';
-// Match GitHub Actions cron timeout (timeout-minutes: 15) so manual scans
-// have the same time budget. The function calls patchIngestRun() periodically
-// to save progress, so even if killed, work is not lost.
-export const maxDuration = 900;
+// Vercel Hobby caps maxDuration at 300 (Pro at 900). The function calls
+// patchIngestRun() periodically to save progress, so even if killed,
+// work is not lost. Override INGEST_WALL_BUDGET_MS in lib/ingest.ts
+// if you need a different internal budget.
+export const maxDuration = 300;
 
 /**
  * Manual or cron-triggered ingest.
