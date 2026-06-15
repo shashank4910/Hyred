@@ -24,7 +24,7 @@ export async function GET() {
     .from('ingest_runs')
     .select('*')
     .eq('profile_id', profile.id)
-    .order('created_at', { ascending: false })
+    .order('started_at', { ascending: false })
     .limit(5);
 
   if (error) {
@@ -38,7 +38,7 @@ export async function GET() {
     .select('*')
     .eq('profile_id', profile.id)
     .eq('status', 'running')
-    .order('created_at', { ascending: false })
+    .order('started_at', { ascending: false })
     .limit(1)
     .maybeSingle();
 
@@ -57,7 +57,7 @@ export async function GET() {
       scored: number | null;
       matches_created: number | null;
       errors: unknown;
-      created_at: string;
+      /* started_at used as creation timestamp */
     };
 
     return {
