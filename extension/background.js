@@ -38,21 +38,51 @@ async function api(path, init = {}) {
 
 const DEFAULT_URL = 'https://hyred.in';
 
-// Try to auto-connect via Supabase session cookie.
-// This is an internal handler (not triggered by content script) called from
-// the popup. The background service worker has no CORS restrictions, so we
-// can use `credentials: 'include'` safely here.
-async function callSession(url) {
-  const baseUrl = url || DEFAULT_URL;
+// Read the Supabase auth token from hyred.in cookies via chrome.cookies API.
+// Extensions with the "cookies" permission CAN read HttpOnly cookies for their
+// host_permissions domains. This is the ONLY reliable way for an extension to
+// access cross-origin session cookies (cookies are SameSite=Lax and can't be
+// sent via fetch with credentials).
+async function getCookieToken() {
   try {
-    const res = await fetch(`${baseUrl}/api/extension/session`, {
-      credentials: 'include',
-    });
-    if (!res.ok) return { ok: false, status: res.status };
-    const data = await res.json();
-    return { ok: true, data };
+    // Find all cookies for hyred.in that look like Supabase auth cookies.
+    // Supabase stores the session as: sb-{project-ref}-auth-token
+    const cookies = await chrome.cookies.getAll({ domain: 'hyred.in' });
+    const authCookie = cookies.find(c => c.name.startsWith('sb-') && c.name.endsWith('-auth-token'));
+    if (!authCookie?.value) return null;
+
+    // The cookie value is a base64-encoded JSON array:
+    // ["access_token", "refresh_token", "user", ...]
+    // or may be URL-encoded. Try parsing it.
+    let raw = authCookie.value;
+    // URL-decode if needed
+    if (raw.includes('%')) raw = decodeURIComponent(raw);
+    const parsed = JSON.parse(raw);
+    const accessToken = Array.isArray(parsed) ? parsed[0] : null;
+    return accessToken || null;
   } catch (e) {
-    return { ok: false, error: String(e?.message ?? e) };
+    console.warn('[Hyred] getCookieToken failed:', e);
+    return null;
+  }
+}
+
+// Exchange a Supabase access_token for an extension JWT.
+// This is more reliable than the session endpoint because we pass the auth
+// token directly (not via cookies) — no CORS, no cookie restrictions.
+async function exchangeToken(accessToken) {
+  try {
+    const res = await fetch(`${DEFAULT_URL}/api/extension/exchange`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ access_token: accessToken }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data.token) return null;
+    return data;
+  } catch (e) {
+    console.warn('[Hyred] exchangeToken failed:', e);
+    return null;
   }
 }
 
@@ -64,8 +94,18 @@ const handlers = {
     return { connected: !!r.ok, url: jr_url };
   },
 
-  async session({ url }) {
-    return callSession(url);
+  // Try to auto-connect by reading the Supabase session cookie directly
+  // via chrome.cookies API, then exchanging it for an extension JWT.
+  async getCookieToken() {
+    const accessToken = await getCookieToken();
+    if (!accessToken) return { ok: false, error: 'no cookie found' };
+    const result = await exchangeToken(accessToken);
+    if (!result) return { ok: false, error: 'exchange failed' };
+    // Save to storage so subsequent calls use the stored token
+    await new Promise((resolve) =>
+      chrome.storage.local.set({ jr_url: DEFAULT_URL, jr_token: result.token }, resolve),
+    );
+    return { ok: true, data: { token: result.token, profile: result.profile } };
   },
 
   async profile() {

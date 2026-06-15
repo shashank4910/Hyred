@@ -121,18 +121,20 @@ async function tryAutoConnect() {
     await clearStored();
   }
 
-  // Try to get a new token via Supabase session cookie.
-  // Route through background.js to avoid CORS restrictions
-  // (service workers can make cross-origin credentialed requests).
-  const baseUrl = jr_url || 'https://hyred.in';
-  const bg = await sendBg('session', { url: baseUrl });
+  // Try to auto-connect by reading the Supabase session cookie directly
+  // via chrome.cookies API (the ONLY reliable way for extensions to access
+  // cross-origin cookies). The background.js handler reads the cookie,
+  // extracts the access_token, exchanges it for an extension JWT, and
+  // stores the result — all in one call.
+  const bg = await sendBg('getCookieToken');
   if (bg.ok && bg.data?.token) {
-    await setStored({ jr_url: baseUrl, jr_token: bg.data.token });
-    showConnected(baseUrl, bg.data.profile || null);
+    // Token was already saved by background.js; just show connected
+    const { jr_url } = await getStored();
+    showConnected(jr_url || 'https://hyred.in', bg.data.profile || null);
     return;
   }
 
-  // No session — show the old setup form
+  // No session found — show the old setup form (APP_PASSWORD fallback)
   showSetup();
 }
 

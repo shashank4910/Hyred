@@ -3,7 +3,7 @@
   "name": "Hyred Autofill",
   "version": "0.1.1",
   "description": "AI-powered job application autofill, cover letter injection, and screening Q&A. Pairs with your Hyred app.",
-  "permissions": ["storage", "activeTab", "scripting", "tabs"],
+  "permissions": ["storage", "activeTab", "scripting", "tabs", "cookies"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js",
