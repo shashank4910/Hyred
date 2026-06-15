@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { LlmKeysPanel } from './LlmKeysPanel';
 import { LlmActivityPanel } from './LlmActivityPanel';
+import { JobsControlPanel } from './JobsControlPanel';
 
 type UsageSummary = {
   bySource: Record<string, { total: number; success: number; rateLimited: number; errors: number }>;
@@ -161,6 +162,9 @@ export function AdminDashboard() {
 
       {/* === LIVE LLM KEY ACTIVITY (which key answered each call, in real time) === */}
       <LlmActivityPanel />
+
+      {/* === JOBS & MATCHES LIFECYCLE CONTROL === */}
+      <JobsControlPanel />
 
 
       {/* === SECTION 1: Job Source Usage Overview === */}

@@ -25,7 +25,11 @@
  *   npm run backfill:skills -- --profile shashank@example.com
  *   npm run backfill:skills -- --dry-run
  */
-import 'dotenv/config';
+import * as path from 'path';
+import * as dotenv from 'dotenv';
+// Try .env.local first (Next.js convention), then fall back to .env
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 import { supabaseAdmin } from '../lib/supabase/server';
 import { isSkillPresentInJd } from '../lib/gemini';
 import { sanitizeJobDescriptionForAI } from '../lib/jd-fetcher';
