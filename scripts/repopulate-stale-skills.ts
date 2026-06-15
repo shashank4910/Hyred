@@ -1,86 +1,201 @@
+/**
+ * Backfill matched_skills for all matches in the DB.
+ *
+ * This script fixes the two root-cause bugs found in June 2026:
+ *   1. isSkillPresentInJd was called on raw HTML JD text — HTML tags broke word-boundary
+ *      matching, causing skills like "JMeter" inside <li>JMeter</li> to not match.
+ *   2. The dashboard enrichment was computing missingSkills as "resume skills not in JD"
+ *      which is the OPPOSITE of the correct definition ("JD skills not in resume").
+ *
+ * What this script does:
+ *   - Recomputes matched_skills from profile.insights.top_skills × JD (HTML stripped).
+ *   - Does NOT touch missing_skills — the LLM computed those at ingest time and they
+ *     are correct (skills the JD requires that the candidate's resume lacks).
+ *   - Only updates rows where matched_skills changed.
+ *
+ * Flags:
+ *   --delete   Instead of backfilling, DELETE all matches for every profile
+ *              so you can run a clean scan to test the fixed pipeline end-to-end.
+ *   --profile  Only process matches for this profile email (default: all profiles).
+ *   --dry-run  Log what would change but don't write to DB.
+ *
+ * Usage:
+ *   npm run backfill:skills               # fix matched_skills for all profiles
+ *   npm run backfill:skills -- --delete   # wipe all matches (triggers fresh scan)
+ *   npm run backfill:skills -- --profile shashank@example.com
+ *   npm run backfill:skills -- --dry-run
+ */
 import 'dotenv/config';
 import { supabaseAdmin } from '../lib/supabase/server';
 import { isSkillPresentInJd } from '../lib/gemini';
+import { sanitizeJobDescriptionForAI } from '../lib/jd-fetcher';
+
+// ---------- CLI args ----------
+const args = process.argv.slice(2);
+const DELETE_MODE = args.includes('--delete');
+const DRY_RUN = args.includes('--dry-run');
+const profileEmailArg = (() => {
+  const idx = args.indexOf('--profile');
+  return idx !== -1 ? args[idx + 1] : null;
+})();
 
 async function main() {
-  console.log('[backfill] Starting local skill repopulation...');
   const sb = supabaseAdmin();
 
-  // Fetch all matches along with their jobs and profiles
-  const { data: matches, error } = await sb
-    .from('matches')
-    .select(`
-      id,
-      matched_skills,
-      missing_skills,
-      profile_id,
-      profile:profiles (
-        id,
-        insights
-      ),
-      job:jobs (
-        title,
-        description
-      )
-    `);
+  // ── DELETE MODE ────────────────────────────────────────────────────────────
+  if (DELETE_MODE) {
+    console.log('\n🗑  DELETE MODE — wiping all matches so you can run a fresh scan.\n');
 
-  if (error) {
-    console.error('[backfill] Failed to fetch matches:', error.message);
-    process.exit(1);
-  }
+    let matchQuery = sb.from('matches').select('id, profile_id, profile:profiles(email)');
 
-  if (!matches || matches.length === 0) {
-    console.log('[backfill] No matches found in database.');
+    if (profileEmailArg) {
+      console.log(`  Filtering to profile: ${profileEmailArg}`);
+      const { data: profile } = await sb
+        .from('profiles')
+        .select('id')
+        .eq('email', profileEmailArg)
+        .maybeSingle();
+      if (!profile) {
+        console.error(`  ✗ No profile found for email: ${profileEmailArg}`);
+        process.exit(1);
+      }
+      const { data: deleted, error } = await sb
+        .from('matches')
+        .delete()
+        .eq('profile_id', profile.id)
+        .select('id');
+      if (error) {
+        console.error('  ✗ Delete failed:', error.message);
+        process.exit(1);
+      }
+      console.log(`  ✓ Deleted ${deleted?.length ?? 0} matches for ${profileEmailArg}`);
+    } else {
+      const { data: deleted, error } = await sb
+        .from('matches')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000') // delete all rows
+        .select('id');
+      if (error) {
+        console.error('  ✗ Delete failed:', error.message);
+        process.exit(1);
+      }
+      console.log(`  ✓ Deleted ${deleted?.length ?? 0} matches across all profiles`);
+    }
+
+    console.log('\n  Now go to the dashboard and click "Run scan" to rebuild with the fixed pipeline.\n');
     return;
   }
 
-  console.log(`[backfill] Found ${matches.length} matches to analyze.`);
+  // ── BACKFILL MODE ──────────────────────────────────────────────────────────
+  console.log('\n🔧 BACKFILL MODE — recomputing matched_skills with fixed HTML-aware logic.\n');
+  if (DRY_RUN) console.log('  [DRY RUN] No DB writes will happen.\n');
+
+  // Build query
+  let query = sb.from('matches').select(`
+    id,
+    matched_skills,
+    missing_skills,
+    profile_id,
+    profile:profiles (
+      id,
+      email,
+      insights
+    ),
+    job:jobs (
+      id,
+      title,
+      description
+    )
+  `);
+
+  if (profileEmailArg) {
+    const { data: profile } = await sb
+      .from('profiles')
+      .select('id')
+      .eq('email', profileEmailArg)
+      .maybeSingle();
+    if (!profile) {
+      console.error(`  ✗ No profile found for email: ${profileEmailArg}`);
+      process.exit(1);
+    }
+    query = query.eq('profile_id', profile.id);
+    console.log(`  Scoped to profile: ${profileEmailArg}`);
+  }
+
+  const { data: matches, error } = await query;
+  if (error) {
+    console.error('  ✗ Failed to fetch matches:', error.message);
+    process.exit(1);
+  }
+  if (!matches || matches.length === 0) {
+    console.log('  No matches found.');
+    return;
+  }
+
+  console.log(`  Found ${matches.length} matches to analyse.\n`);
 
   let updatedCount = 0;
+  let skippedCount = 0;
+
   for (const m of matches) {
-    const job = m.job as unknown as { title: string; description: string | null };
-    const profile = m.profile as unknown as { id: string; insights: any };
-    if (!job || !profile) continue;
+    const job = m.job as unknown as { id: string; title: string; description: string | null } | null;
+    const profile = m.profile as unknown as { id: string; email: string; insights: any } | null;
+    if (!job || !profile) { skippedCount++; continue; }
 
-    // Get candidate's top skills from profile insights
-    const candidateSkills = profile.insights?.top_skills as string[] | undefined;
-    if (!candidateSkills || !Array.isArray(candidateSkills)) {
-      continue;
-    }
+    const topSkills: string[] = Array.isArray(profile.insights?.top_skills)
+      ? profile.insights.top_skills
+      : [];
 
-    // Check which candidate skills are present in the JD using the new improved logic
-    const matchedSkills = candidateSkills.filter((s: string) =>
-      isSkillPresentInJd(s, job.description, job.title)
-    );
+    if (topSkills.length === 0) { skippedCount++; continue; }
 
-    // If the list changed (e.g. was empty but now has matches), update the database
-    const currentMatched = m.matched_skills ?? [];
-    const diff = currentMatched.length !== matchedSkills.length ||
-      currentMatched.some((s: string, idx: number) => s !== matchedSkills[idx]);
+    // Strip HTML from JD before matching — this is the core fix.
+    const jdPlain = sanitizeJobDescriptionForAI(job.description);
 
-    if (diff) {
-      console.log(`\n[backfill] Updating Match ID: ${m.id} | Job: "${job.title}"`);
-      console.log(`  - Matched Skills: [${currentMatched.join(', ')}] -> [${matchedSkills.join(', ')}]`);
+    // matched_skills = candidate's top_skills that appear in the JD (green ✓)
+    const recomputedMatched = topSkills
+      .filter((s) => isSkillPresentInJd(s, jdPlain, job.title))
+      .slice(0, 5);
 
+    // missing_skills: do NOT recompute here — the LLM computed this at ingest time.
+    // It means "skills in JD required but absent from resume". Trust the LLM.
+    // (New scans will use the fixed cleanMissingSkills which also doesn't re-filter.)
+
+    const currentMatched: string[] = (m.matched_skills as string[] | null) ?? [];
+
+    const hasChanged =
+      currentMatched.length !== recomputedMatched.length ||
+      currentMatched.some((s, i) => s !== recomputedMatched[i]);
+
+    if (!hasChanged) { skippedCount++; continue; }
+
+    const profile_email = profile.email ?? profile.id;
+    console.log(`  Match ${m.id} | "${job.title}" | ${profile_email}`);
+    console.log(`    matched_skills: [${currentMatched.join(', ') || '(empty)'}] → [${recomputedMatched.join(', ') || '(empty)'}]`);
+
+    if (!DRY_RUN) {
       const { error: updateErr } = await sb
         .from('matches')
-        .update({
-          matched_skills: matchedSkills
-        })
+        .update({ matched_skills: recomputedMatched })
         .eq('id', m.id);
 
       if (updateErr) {
-        console.error(`  [ERROR] Failed to update match ${m.id}:`, updateErr.message);
+        console.error(`    ✗ Update failed: ${updateErr.message}`);
       } else {
         updatedCount++;
       }
+    } else {
+      updatedCount++;
     }
   }
 
-  console.log(`\n[backfill] Done. Repopulated ${updatedCount} matches with corrected skills.`);
+  console.log(`\n  ✓ Done.`);
+  console.log(`    Updated : ${updatedCount}`);
+  console.log(`    Skipped : ${skippedCount} (no change or missing data)`);
+  if (DRY_RUN) console.log(`    [DRY RUN] No writes performed.`);
+  console.log();
 }
 
 main().catch((err) => {
-  console.error('[backfill] Fatal error:', err);
+  console.error('[backfill] Fatal:', err);
   process.exit(1);
 });
