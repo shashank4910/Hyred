@@ -44,9 +44,12 @@ const TOP_COMPANY_CAP = 12;
 const EMBED_PER_RUN = 50;
 const EMBED_CONCURRENCY = 6;
 const SCORE_CONCURRENCY = 5; // Matches free-tier RPM (one call per key per batch cycle)
-/** Vercel `/api/ingest` maxDuration is 300s on Pro but 60s max on Free/Hobby tier.
- * Default to 50s so the scan can gracefully save progress and exit before Vercel hard-kills it. */
-const INGEST_WALL_BUDGET_MS = parseInt(process.env.INGEST_WALL_BUDGET_MS ?? '50000', 10);
+/** Vercel `/api/ingest` maxDuration is 300s on Pro (set in route.ts).
+ * Baseline fetch+embed takes ~160-175s (1226+ jobs, 50 embeds).
+ * Scoring adds ~30-40s on top (57 candidates at 5 concurrency with 3s batch delay).
+ * Budget 160s so the scoring loop has ~70-100s, sufficient for all candidates.
+ * Override via INGEST_WALL_BUDGET_MS env var if needed. */
+const INGEST_WALL_BUDGET_MS = parseInt(process.env.INGEST_WALL_BUDGET_MS ?? '160000', 10);
 /** Delay between scoring batches to respect RPM limits across providers. */
 const SCORE_BATCH_DELAY_MS = 3_000; // 3 seconds between batches → ~20 RPM effective
 
