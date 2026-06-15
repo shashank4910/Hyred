@@ -44,12 +44,20 @@ const TOP_COMPANY_CAP = 12;
 const EMBED_PER_RUN = 50;
 const EMBED_CONCURRENCY = 6;
 const SCORE_CONCURRENCY = 5; // Matches free-tier RPM (one call per key per batch cycle)
-/** Vercel `/api/ingest` maxDuration is 300s on Pro (set in route.ts).
- * Baseline fetch+embed takes ~165-175s (1300+ jobs fetched, 50 embedded).
- * Scoring 57 candidates at 5 concurrency + 3s batch delay takes ~55-70s.
- * Total estimated with scoring: ~230-245s. Budget 240s so scoring completes.
+/** ROOT CAUSE FIX: match the cron's proven 480s budget (set in
+ * .github/workflows/ingest.yml). The manual scan had NO explicit env var
+ * on Vercel, so it relied on the code default — which was originally 50s,
+ * then 160s, then 260s. When the jobs table was emptied, fetch+embed for
+ * 1244 new jobs took ~165-175s alone, leaving 0s of budget for scoring.
+ * The cron always worked because the workflow explicitly sets 480s.
+ *
+ * Vercel Pro maxDuration is 300s (app/api/ingest/route.ts), so the function
+ * is hard-capped at 300s regardless. 480s > 300s means this budget never
+ * fires on Vercel — scoring runs until maxDuration, and closeStaleIngestRuns()
+ * cleans up if the function is killed mid-run. In other environments (local
+ * dev, custom deployments), 480s is a generous safety net.
  * Override via INGEST_WALL_BUDGET_MS env var if needed. */
-const INGEST_WALL_BUDGET_MS = parseInt(process.env.INGEST_WALL_BUDGET_MS ?? '260000', 10);
+const INGEST_WALL_BUDGET_MS = parseInt(process.env.INGEST_WALL_BUDGET_MS ?? '480000', 10);
 /** Delay between scoring batches to respect RPM limits across providers. */
 const SCORE_BATCH_DELAY_MS = 3_000; // 3 seconds between batches → ~20 RPM effective
 
