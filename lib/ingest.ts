@@ -44,9 +44,11 @@ const TOP_COMPANY_CAP = 12;
 const EMBED_PER_RUN = 50;
 const EMBED_CONCURRENCY = 6;
 const SCORE_CONCURRENCY = 5; // Matches free-tier RPM (one call per key per batch cycle)
-/** Vercel `/api/ingest` maxDuration is 300s on Pro but 60s max on Free/Hobby tier.
- * Default to 50s so the scan can gracefully save progress and exit before Vercel hard-kills it. */
-const INGEST_WALL_BUDGET_MS = parseInt(process.env.INGEST_WALL_BUDGET_MS ?? '50000', 10);
+/** Wall-clock budget for the entire scan pipeline. Set high enough so scoring
+ * completes within Vercel's maxDuration (300s on Hobby, 900s on Pro). The budget
+ * check fires only in the scoring loop — if exceeded, remaining jobs are left for
+ * the next scan. Override via INGEST_WALL_BUDGET_MS env var. */
+const INGEST_WALL_BUDGET_MS = parseInt(process.env.INGEST_WALL_BUDGET_MS ?? '260000', 10);
 /** Delay between scoring batches to respect RPM limits across providers. */
 const SCORE_BATCH_DELAY_MS = 3_000; // 3 seconds between batches → ~20 RPM effective
 
