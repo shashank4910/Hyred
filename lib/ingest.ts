@@ -367,7 +367,10 @@ export async function runIngest(opts?: {
 
     const embedJobs = needEmbed ?? [];
     for (let i = 0; i < embedJobs.length; i += EMBED_CONCURRENCY) {
-      if (Date.now() - startedAt > INGEST_WALL_BUDGET_MS) break;
+      // NOTE: No wall-budget check here — embedding is essential for new jobs
+      // to be eligible as scoring candidates. The 50s budget applies to scoring
+      // only (checked in the scoring loop below). If the function times out at
+      // Vercel's 60s limit, closeStaleIngestRuns() cleans up on the next load.
       if (embedAborted) break;
       const batch = embedJobs.slice(i, i + EMBED_CONCURRENCY);
       const ok = await Promise.all(batch.map((j) => embedOne(j)));
