@@ -56,6 +56,26 @@ function escape(s) {
     .replace(/"/g, '&quot;');
 }
 
+// Refresh connected state: re-fetch profile and show connected UI.
+// Used by: recheck button, and after successful setup form submission.
+async function refreshConnected() {
+  const { jr_url, jr_token } = await getStored();
+  if (!jr_url || !jr_token) {
+    showSetup();
+    return;
+  }
+  const prof = await fetchJson(`${jr_url}/api/extension/profile`, {
+    headers: { authorization: `Bearer ${jr_token}` },
+  });
+  if (prof.ok) {
+    showConnected(jr_url, prof.data.profile);
+  } else {
+    // Token expired — try auto-connect or show setup
+    await clearStored();
+    await tryAutoConnect();
+  }
+}
+
 async function fetchJson(url, opts) {
   const res = await fetch(url, opts);
   let data = {};

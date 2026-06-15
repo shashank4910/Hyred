@@ -14,6 +14,7 @@ export async function OPTIONS() {
  * connection status without fetching profile data on every popup open.
  */
 export async function GET(req: NextRequest) {
-  const ok = await isExtAuthed(req);
-  return corsResponse({ ok }, { status: ok ? 200 : 401 });
+  const auth = await isExtAuthed(req);
+  const isValid = auth !== null;
+  return corsResponse({ ok: isValid, profile_id: auth?.profile_id ?? null }, { status: isValid ? 200 : 401 });
 }
