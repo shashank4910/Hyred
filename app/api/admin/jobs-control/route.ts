@@ -72,10 +72,33 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { action } = body as { action: 'backup_delete' | 'restore' | 'delete_only' | 'delete_backup' };
+    const { action } = body as { action: 'backup_delete' | 'restore' | 'delete_only' | 'delete_backup' | 'get_debug_logs' };
 
-    if (!action || !['backup_delete', 'restore', 'delete_only', 'delete_backup'].includes(action)) {
+    if (!action || !['backup_delete', 'restore', 'delete_only', 'delete_backup', 'get_debug_logs'].includes(action)) {
       return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+    }
+
+    if (action === 'get_debug_logs') {
+      const { data: runs } = await sb
+        .from('ingest_runs')
+        .select('*')
+        .order('started_at', { ascending: false })
+        .limit(10);
+
+      const { count: missingEmbedCount } = await sb
+        .from('jobs')
+        .select('*', { count: 'exact', head: true })
+        .is('embedding', null);
+
+      const { data: profiles } = await sb
+        .from('profiles')
+        .select('id, email, resume_text, insights');
+
+      return NextResponse.json({
+        runs,
+        missingEmbedCount: missingEmbedCount ?? 0,
+        profiles,
+      });
     }
 
     if (action === 'backup_delete') {
