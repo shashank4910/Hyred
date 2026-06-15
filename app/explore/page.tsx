@@ -50,6 +50,34 @@ type JobRow = {
   tags: string[] | null;
 };
 
+function cleanExploreTitle(raw: string): string {
+  let t = raw.trim();
+  // Split on pipes and find the segment most likely to be a job title
+  const parts = t.split('|').map(s => s.trim()).filter(Boolean);
+  if (parts.length > 1) {
+    // Heuristic: prefer segments with role keywords (engineer, developer, etc.)
+    const roleRe = /\b(engineer|developer|tester|analyst|architect|designer|manager|lead|specialist|scientist|consultant|director|head|chief|sdet|sre|administrator|coordinator|technician)\b/i;
+    const withRole = parts.filter(p => roleRe.test(p));
+    if (withRole.length >= 1) t = withRole[0];
+    else t = parts[0];
+  }
+  // Strip URLs
+  t = t.replace(/https?:\/\/[^\s]+/gi, '').trim();
+  t = t.replace(/www\.[^\s]+/gi, '').trim();
+  // Strip hiring/recruitment tail keywords
+  t = t.replace(/\s*\b(we['']?re hiring|hiring|openings?|open position|job|opportunity|is hiring|looking for|need(?:ed)?|wanted|join us|apply now|remote|full.?time|part.?time|contract|permanent|onsite|hybrid)\b.*$/i, '').trim();
+  // Strip " - company" suffix only — avoid stripping commas (some real titles use them like "Software Engineer, Infrastructure")
+  t = t.replace(/\s+-\s+.*$/, '').trim();
+  // Strip parenthetical location/department noise
+  t = t.replace(/\s*\([^)]*\b(?:location|office|department|team|division|pune|bangalore|mumbai|gurgaon|noida|hyderabad|chennai|delhi|usa|uk|india|remote|wfh|hybrid)\b[^)]*\)/gi, ' ').trim();
+  // Clean up double spaces
+  t = t.replace(/\s{2,}/g, ' ').trim();
+  // Fallback if we stripped too much
+  if (t.length < 3) return raw.trim();
+  if (t.length > 80) t = t.slice(0, 77) + '...';
+  return t;
+}
+
 function relativeTime(dateStr: string | null): string {
   if (!dateStr) return '';
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -211,7 +239,7 @@ export default async function ExplorePage({
               >
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <h2 className="font-semibold text-gray-900 group-hover:text-[#006a65] transition line-clamp-2">
-                    {job.title}
+                    {cleanExploreTitle(job.title)}
                   </h2>
                   <ArrowRight className="w-4 h-4 text-gray-300 group-hover:text-[#006a65] shrink-0 mt-1 transition" />
                 </div>

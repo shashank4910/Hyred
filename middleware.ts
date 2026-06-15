@@ -11,7 +11,7 @@ import { createServerClient } from '@supabase/ssr';
  *   /login, /auth/* (OAuth callback), /api/extension/* (own Bearer auth),
  *   /api/ingest (cron uses INGEST_SECRET), Next internals + static assets.
  */
-const PUBLIC_PATHS = ['/login', '/auth', '/privacy', '/terms', '/contact', '/api/extension', '/api/ingest', '/free-tools', '/explore', '/sitemap.xml', '/robots.txt'];
+const PUBLIC_PATHS = ['/login', '/auth', '/privacy', '/terms', '/contact', '/api/extension', '/api/ingest', '/api/ats-checker', '/free-tools', '/explore', '/sitemap.xml', '/robots.txt'];
 
 function isPublic(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'));
