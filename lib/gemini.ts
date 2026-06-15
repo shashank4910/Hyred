@@ -758,19 +758,36 @@ matchedSkills/missingSkills RULES:
       }
     }
 
-    const cleanSkills = (arr: unknown): string[] => {
+    // Strip HTML once so skill lookups work on plain text, not raw markup.
+    const sanitizedJd = sanitizeJobDescriptionForAI(args.jobDescription);
+
+    // cleanMatchedSkills: only keep skills the LLM found that also appear in the JD text.
+    // This guards against the LLM hallucinating matched skills.
+    const cleanMatchedSkills = (arr: unknown): string[] => {
       if (!Array.isArray(arr)) return [];
       return arr
         .map((s) => String(s).trim())
         .filter((s) => s.length > 0 && s.length <= 40)
-        .filter((s) => isSkillPresentInJd(s, args.jobDescription, args.jobTitle))
+        .filter((s) => isSkillPresentInJd(s, sanitizedJd, args.jobTitle))
         .slice(0, 5);
     };
+
+    // cleanMissingSkills: the LLM already determined these skills are required by the JD
+    // but absent from the resume — trust that judgment, just clean the format.
+    // Do NOT re-filter through isSkillPresentInJd (that check is for matched skills only).
+    const cleanMissingSkills = (arr: unknown): string[] => {
+      if (!Array.isArray(arr)) return [];
+      return arr
+        .map((s) => String(s).trim())
+        .filter((s) => s.length > 0 && s.length <= 40)
+        .slice(0, 5);
+    };
+
     return {
       score,
       reason,
-      matchedSkills: cleanSkills(parsed.matchedSkills),
-      missingSkills: cleanSkills(parsed.missingSkills),
+      matchedSkills: cleanMatchedSkills(parsed.matchedSkills),
+      missingSkills: cleanMissingSkills(parsed.missingSkills),
     };
   } catch {
     return { score: 0, reason: 'Failed to parse model response', matchedSkills: [], missingSkills: [] };
@@ -2180,8 +2197,11 @@ export function isSkillPresentInJd(skill: string, jdText: string | null, jobTitl
   if (!skill) return false;
   const normalizedSkill = skill.trim().toLowerCase();
   if (!normalizedSkill) return false;
-  
-  const textToCheck = `${jobTitle ?? ''}\n${jdText ?? ''}`.toLowerCase();
+
+  // Strip HTML tags so angle-bracket characters don't break word-boundary checks.
+  // e.g. "<li>JMeter</li>" must match "jmeter" cleanly.
+  const stripHtml = (s: string) => s.replace(/<[^>]*>/g, ' ').replace(/&[a-z]+;/gi, ' ');
+  const textToCheck = `${jobTitle ?? ''}\n${stripHtml(jdText ?? '')}`.toLowerCase();
   if (!textToCheck) return false;
 
   // Helper function for strict whole-word check of a specific string

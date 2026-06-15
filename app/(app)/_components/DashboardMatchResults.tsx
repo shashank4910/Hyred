@@ -100,8 +100,13 @@ export async function DashboardMatchResults({
     );
   }
 
+  // Strip HTML from JD text before any skill matching (raw DB descriptions contain HTML tags).
+  const stripHtml = (s: string) => s.replace(/<[^>]*>/g, ' ').replace(/&[a-z]+;/gi, ' ');
+
   // For cards missing matched_skills, derive them from profile top_skills × JD.
-  // Keep it fast: only compute for cards where matched_skills is null/empty.
+  // ONLY compute for cards where matched_skills is null/empty (pre-backfill rows).
+  // NEVER overwrite missing_skills with wrong data — DB missing_skills from LLM is authoritative
+  // (it means "skills in JD but absent from resume"). If DB is also null, leave empty rather than guess.
   const enriched = (matches ?? []).map((m) => {
     const raw = m as unknown as {
       matched_skills: string[] | null;
@@ -109,15 +114,14 @@ export async function DashboardMatchResults({
       job: { title: string; description: string | null };
     };
     let matchedSkills = raw.matched_skills ?? [];
-    let missingSkills = raw.missing_skills ?? [];
+    const missingSkills = raw.missing_skills ?? []; // always use DB value — LLM computed this correctly
 
     if (matchedSkills.length === 0 && topSkills.length > 0) {
-      const jd = raw.job?.description ?? '';
+      // Compute matched: profile skills that appear in the JD text (HTML stripped).
+      const jdPlain = stripHtml(raw.job?.description ?? '');
       const title = raw.job?.title ?? '';
-      matchedSkills = topSkills.filter((s) => isSkillPresentInJd(s, jd, title));
-      missingSkills = topSkills
-        .filter((s) => !matchedSkills.includes(s))
-        .slice(0, 5);
+      matchedSkills = topSkills.filter((s) => isSkillPresentInJd(s, jdPlain, title));
+      // Do NOT touch missingSkills — the DB value is what the LLM computed at ingest time.
     }
 
     return {
@@ -139,6 +143,7 @@ export async function DashboardMatchResults({
       },
     };
   });
+
 
   return (
     <MatchList

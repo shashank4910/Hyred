@@ -1,6 +1,6 @@
 'use client';
 
-import { Check, Sparkles, MinusCircle } from 'lucide-react';
+import { Check, Sparkles, XCircle } from 'lucide-react';
 
 export function MatchSkillPills({
   matchedSkills = [],
@@ -44,9 +44,9 @@ export function MatchSkillPills({
       {missingSkills.slice(0, 3).map((s) => (
         <span
           key={`x-${s}`}
-          className="inline-flex items-center gap-1 rounded-full border border-dashed border-outline-variant/60 bg-surface-container px-3 py-1 text-[11px] font-medium text-on-surface-variant/60"
+          className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-3 py-1 text-[11px] font-medium text-red-600"
         >
-          <MinusCircle className="h-3 w-3 text-on-surface-variant/40" />
+          <XCircle className="h-3 w-3 text-red-400" />
           {s}
         </span>
       ))}
