@@ -36,12 +36,36 @@ async function api(path, init = {}) {
   return { ok: res.ok, status: res.status, data };
 }
 
+const DEFAULT_URL = 'https://hyred.in';
+
+// Try to auto-connect via Supabase session cookie.
+// This is an internal handler (not triggered by content script) called from
+// the popup. The background service worker has no CORS restrictions, so we
+// can use `credentials: 'include'` safely here.
+async function callSession(url) {
+  const baseUrl = url || DEFAULT_URL;
+  try {
+    const res = await fetch(`${baseUrl}/api/extension/session`, {
+      credentials: 'include',
+    });
+    if (!res.ok) return { ok: false, status: res.status };
+    const data = await res.json();
+    return { ok: true, data };
+  } catch (e) {
+    return { ok: false, error: String(e?.message ?? e) };
+  }
+}
+
 const handlers = {
   async ping() {
     const { jr_url, jr_token } = await getCreds();
     if (!jr_url || !jr_token) return { connected: false };
     const r = await api('/api/extension/verify');
     return { connected: !!r.ok, url: jr_url };
+  },
+
+  async session({ url }) {
+    return callSession(url);
   },
 
   async profile() {

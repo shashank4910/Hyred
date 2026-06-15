@@ -67,29 +67,56 @@ async function fetchJson(url, opts) {
   return { ok: res.ok, status: res.status, data };
 }
 
-async function refreshConnected() {
+// Send a message to the background service worker and await a response.
+const sendBg = (type, payload) =>
+  new Promise((resolve) => {
+    try {
+      chrome.runtime.sendMessage({ type, payload }, (res) =>
+        resolve(res ?? { ok: false, error: 'no response' }),
+      );
+    } catch (e) {
+      resolve({ ok: false, error: String(e?.message ?? e) });
+    }
+  });
+
+// Try to auto-connect via Supabase session cookie (primary auth for multi-user).
+// The call goes through the background service worker to avoid CORS issues.
+// Falls back to APP_PASSWORD setup if the user isn't logged into hyred.in.
+async function tryAutoConnect() {
   const { jr_url, jr_token } = await getStored();
-  if (!jr_url || !jr_token) {
-    showSetup();
-    return;
-  }
-  // Verify token + load profile in one go.
-  const verify = await fetchJson(`${jr_url}/api/extension/verify`, {
-    headers: { authorization: `Bearer ${jr_token}` },
-  });
-  if (!verify.ok) {
+
+  // If we already have a stored token, verify it first
+  if (jr_url && jr_token) {
+    const verify = await fetchJson(`${jr_url}/api/extension/verify`, {
+      headers: { authorization: `Bearer ${jr_token}` },
+    });
+    if (verify.ok) {
+      const prof = await fetchJson(`${jr_url}/api/extension/profile`, {
+        headers: { authorization: `Bearer ${jr_token}` },
+      });
+      showConnected(jr_url, prof.ok ? prof.data.profile : null);
+      return;
+    }
+    // Token expired — try session refresh below
     await clearStored();
-    showSetup();
-    $('#error').textContent = 'Session expired — please reconnect.';
+  }
+
+  // Try to get a new token via Supabase session cookie.
+  // Route through background.js to avoid CORS restrictions
+  // (service workers can make cross-origin credentialed requests).
+  const baseUrl = jr_url || 'https://hyred.in';
+  const bg = await sendBg('session', { url: baseUrl });
+  if (bg.ok && bg.data?.token) {
+    await setStored({ jr_url: baseUrl, jr_token: bg.data.token });
+    showConnected(baseUrl, bg.data.profile || null);
     return;
   }
-  const prof = await fetchJson(`${jr_url}/api/extension/profile`, {
-    headers: { authorization: `Bearer ${jr_token}` },
-  });
-  showConnected(jr_url, prof.ok ? prof.data.profile : null);
+
+  // No session — show the old setup form
+  showSetup();
 }
 
-document.addEventListener('DOMContentLoaded', refreshConnected);
+document.addEventListener('DOMContentLoaded', tryAutoConnect);
 
 $('#setup-form').addEventListener('submit', async (e) => {
   e.preventDefault();

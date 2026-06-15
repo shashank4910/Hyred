@@ -25,7 +25,8 @@ export async function OPTIONS() {
  *   "Why this company?"
  */
 export async function POST(req: NextRequest) {
-  if (!(await isExtAuthed(req))) {
+  const auth = await isExtAuthed(req);
+  if (!auth) {
     return corsResponse({ error: 'unauthorized' }, { status: 401 });
   }
 
@@ -47,12 +48,13 @@ export async function POST(req: NextRequest) {
   const maxWords = Math.max(20, Math.min(body.max_words ?? 120, 400));
 
   const sb = supabaseAdmin();
-  const { data: profile } = await sb
-    .from('profiles')
-    .select('full_name, resume_text')
-    .order('created_at')
-    .limit(1)
-    .maybeSingle();
+  let query = sb.from('profiles').select('full_name, resume_text');
+  if (auth.profile_id) {
+    query = query.eq('id', auth.profile_id);
+  } else {
+    query = query.order('created_at').limit(1);
+  }
+  const { data: profile } = await query.maybeSingle();
   if (!profile?.resume_text) {
     return corsResponse({ error: 'no resume on file' }, { status: 400 });
   }
@@ -63,11 +65,14 @@ export async function POST(req: NextRequest) {
   let jobDescription = body.page_text?.trim() ?? '';
 
   if (body.match_id) {
-    const { data: match } = await sb
+    let matchQuery = sb
       .from('matches')
       .select(`job:jobs(title, company, description)`)
-      .eq('id', body.match_id)
-      .maybeSingle();
+      .eq('id', body.match_id);
+    if (auth.profile_id) {
+      matchQuery = matchQuery.eq('profile_id', auth.profile_id);
+    }
+    const { data: match } = await matchQuery.maybeSingle();
     if (match) {
       const job = match.job as unknown as {
         title: string;

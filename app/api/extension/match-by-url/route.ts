@@ -13,12 +13,14 @@ export async function OPTIONS() {
  * GET /api/extension/match-by-url?url=<encoded>
  * Find a JobRadar match for the given posting URL (so the extension can
  * inject the existing AI cover letter and auto-update status).
+ * Scoped to the authenticated user's profile.
  *
  * Strategy: prefix-match the URL up to the query string. Many ATS career
  * pages include tracking params we don't want to dedupe on.
  */
 export async function GET(req: NextRequest) {
-  if (!(await isExtAuthed(req))) {
+  const auth = await isExtAuthed(req);
+  if (!auth) {
     return corsResponse({ error: 'unauthorized' }, { status: 401 });
   }
   const url = new URL(req.url).searchParams.get('url');
@@ -29,14 +31,21 @@ export async function GET(req: NextRequest) {
   const canonical = url.split(/[?#]/)[0];
 
   const sb = supabaseAdmin();
-  // Try exact match first, then prefix match.
-  const { data: match } = await sb
+
+  // Build query, scoped to user's profile if available
+  let query = sb
     .from('matches')
     .select(
       `id, llm_score, reason, status, cover_letter,
        job:jobs!inner(id, title, company, url, description)`,
     )
-    .ilike('job.url', `${canonical}%`)
+    .ilike('job.url', `${canonical}%`);
+
+  if (auth.profile_id) {
+    query = query.eq('profile_id', auth.profile_id);
+  }
+
+  const { data: match } = await query
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
