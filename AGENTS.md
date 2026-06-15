@@ -51,6 +51,7 @@ How to open one section cheaply: `grep -n "<heading text>" CONTEXT.md` to get th
 | Stats / ingest run UX (user-scoped metrics, stuck `running`) | `CONTEXT.md` → Known Pitfalls (Stats global pool, ingest finalize rows) + `lib/ingest-runs.ts` | Stats page, scan history, `runIngest` |
 | Admin-only job sources (data lake) | `CONTEXT.md` → Known Pitfalls (source visibility row) | `MatchFilters`, Stats by-source, `MatchCard` badges |
 | Delete user / re-signup data reset | `CONTEXT.md` → Known Pitfalls (0006/0008 FK rows) + migration **0008** | auth delete, orphan profiles |
+| **Public SEO pages + free tools** | `CONTEXT.md` → `## Public SEO Pages & Free Tools (PR #143)` | editing /explore, /free-tools, sitemap, robots.txt, or adding new public pages |
 | Kiro-specific steering | `.kiro/steering/jobradar-context.md` | Kiro auto-loads it |
 | Past session history | `docs/context/session-log.md` (newest first) | Tier 3 only |
 

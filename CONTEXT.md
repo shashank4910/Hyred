@@ -524,6 +524,12 @@ app/api/matches/            ← (Session 16) Paginated match list (page=1..N, pa
 app/api/admin/llm-keys/     ← (Session 16) GET/POST list + add LLM keys; PATCH/DELETE [id] toggle/update/remove
 app/api/admin/jobs-control/ ← (Session 20) GET counts, POST database lifecycle actions (backup_delete, restore, delete_only, get_debug_logs)
 
+app/explore/                ← (PR #143) Public SEO job listing page — search, source filters, pagination, no auth required
+app/explore/[id]/           ← (PR #143) Public job detail page — JobPosting structured data (schema.org) for Google rich results
+app/free-tools/ats-score-checker/ ← (PR #143) Public ATS resume score landing page — WebApplication schema, testimonials, no auth required
+app/sitemap.ts              ← (PR #143) Auto-generates sitemap with up to 5000 job URLs
+app/robots.ts               ← (PR #143) Allows crawlers on /explore + /free-tools, blocks /admin /api
+
 next.config.mjs            ← experimental.staleTimes.dynamic=30 (Session 16) — Router Cache reuses dashboard for 30s so back-nav skips the server + skeleton
 
 browser_agent/main.py       ← Python FastAPI auto-apply agent (browser-use + Gemini)
@@ -623,6 +629,41 @@ supabase/migrations/0009_llm_keys.sql ← (Session 16) llm_keys + llm_usage_log 
 | OpenAI usage tracking in-app | **Not yet** — only job-source logs in `api_request_logs`; token metering = Phase 3 `usage` table |
 
 ---
+
+---
+
+## Public SEO Pages & Free Tools (PR #143)
+
+> Added June 15, 2026. Makes the site discoverable by Google and attracts organic traffic.
+
+### What was built
+
+| Page | URL | Purpose |
+|---|---|---|
+| Job listing | `/explore` | Public job board with search, source filters, pagination. No auth. |
+| Job detail | `/explore/[id]` | Individual job page with `JobPosting` schema.org structured data for Google rich results. |
+| ATS landing | `/free-tools/ats-score-checker` | Standalone free ATS resume scoring tool. Marketing page + interactive widget. No auth. |
+| Sitemap | `/sitemap.xml` | Auto-generated with up to 5000 job URLs + static pages. |
+| Robots | `/robots.txt` | Allows crawlers on `/explore` + `/free-tools`, blocks `/admin`, `/api`. |
+
+### Files
+
+| File | Role |
+|---|---|
+| `app/explore/page.tsx` | Job listing page — SSR, dynamic, fetches from `jobs` table |
+| `app/explore/[id]/page.tsx` | Job detail page — SSR, `generateMetadata` for SEO, JobPosting schema |
+| `app/free-tools/ats-score-checker/page.tsx` | ATS landing page — SSR marketing page with WebApplication schema |
+| `app/free-tools/ats-score-checker/AtsCheckerWidget.tsx` | Client component — drag-drop upload, JD paste, instant scoring |
+| `app/sitemap.ts` | Dynamic sitemap generator (Next.js App Router convention) |
+| `app/robots.ts` | Robots.txt generator (Next.js App Router convention) |
+| `middleware.ts` | Added `/explore` and `/free-tools` to `PUBLIC_PATHS` (no auth required) |
+
+### SEO strategy
+
+- **Public job pages** rank for long-tail searches like "remote performance engineer jobs India"
+- **ATS tool landing page** attracts backlinks from career blogs, LinkedIn shares, and social media
+- **Schema.org structured data** enables Google rich results (job cards, application links)
+- **Sitemap** ensures Google discovers all job pages quickly
 
 ---
 
