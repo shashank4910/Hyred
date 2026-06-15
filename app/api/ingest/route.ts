@@ -4,7 +4,10 @@ import { getCurrentProfile } from '@/lib/current-user';
 import type { SourceName } from '@/lib/sources';
 
 export const runtime = 'nodejs';
-export const maxDuration = 300;
+// Match GitHub Actions cron timeout (timeout-minutes: 15) so manual scans
+// have the same time budget. The function calls patchIngestRun() periodically
+// to save progress, so even if killed, work is not lost.
+export const maxDuration = 900;
 
 /**
  * Manual or cron-triggered ingest.

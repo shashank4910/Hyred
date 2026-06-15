@@ -2,8 +2,12 @@ import type { supabaseAdmin } from './supabase/server';
 
 type AdminClient = ReturnType<typeof supabaseAdmin>;
 
-/** Runs older than this with status=running are treated as abandoned (server timeout). */
-export const INGEST_STALE_MS = 12 * 60 * 1000;
+/** Runs older than this with status=running are treated as abandoned (server timeout).
+ * Set to 20 min (was 12 min) because the pipeline takes ~15 min for a full
+ * scan (1,300 jobs fetched, 300 embedded, ~57 scored). The cron uses GitHub
+ * Actions with timeout-minutes: 15. Manual scans hit Vercel maxDuration: 900
+ * (15 min), so 20 min is a safe threshold for detecting truly abandoned runs. */
+export const INGEST_STALE_MS = 20 * 60 * 1000;
 
 type RunPatch = {
   fetched?: number;
