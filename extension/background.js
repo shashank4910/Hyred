@@ -38,37 +38,49 @@ async function api(path, init = {}) {
 
 const DEFAULT_URL = 'https://hyred.in';
 
-// Read the Supabase auth token from hyred.in cookies via chrome.cookies API.
-// Extensions with the "cookies" permission CAN read HttpOnly cookies for their
-// host_permissions domains. This is the ONLY reliable way for an extension to
-// access cross-origin session cookies (cookies are SameSite=Lax and can't be
-// sent via fetch with credentials).
-async function getCookieToken() {
+// Try to extract the Supabase access_token from localStorage by injecting a
+// script into a hyred.in tab with MAIN world access.
+// The content script runs in an ISOLATED world and can't read the page's
+// localStorage directly. But we can use chrome.scripting.executeScript with
+// world: 'MAIN' to execute code in the page's own context.
+// This requires a hyred.in tab to be open in the browser.
+async function extractTokenFromTab() {
   try {
-    // Find all cookies for hyred.in that look like Supabase auth cookies.
-    // Supabase stores the session as: sb-{project-ref}-auth-token
-    const cookies = await chrome.cookies.getAll({ domain: 'hyred.in' });
-    const authCookie = cookies.find(c => c.name.startsWith('sb-') && c.name.endsWith('-auth-token'));
-    if (!authCookie?.value) return null;
-
-    // The cookie value is a base64-encoded JSON array:
-    // ["access_token", "refresh_token", "user", ...]
-    // or may be URL-encoded. Try parsing it.
-    let raw = authCookie.value;
-    // URL-decode if needed
-    if (raw.includes('%')) raw = decodeURIComponent(raw);
-    const parsed = JSON.parse(raw);
-    const accessToken = Array.isArray(parsed) ? parsed[0] : null;
-    return accessToken || null;
+    // Find any open hyred.in tab
+    const tabs = await chrome.tabs.query({ url: ['*://hyred.in/*', '*://*.hyred.in/*'] });
+    if (!tabs.length) {
+      console.warn('[Hyred] No hyred.in tab found');
+      return null;
+    }
+    const tab = tabs[0];
+    // Execute a script in the MAIN world (page's own JS context) to read
+    // the Supabase auth token from localStorage.
+    // Supabase stores the session under key: sb-{project-ref}-auth-token
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      world: 'MAIN',
+      func: () => {
+        try {
+          const key = Object.keys(localStorage).find(
+            k => k.startsWith('sb-') && k.endsWith('-auth-token'),
+          );
+          if (!key) return null;
+          const data = JSON.parse(localStorage[key]);
+          return data?.access_token || null;
+        } catch {
+          return null;
+        }
+      },
+    });
+    return results?.[0]?.result || null;
   } catch (e) {
-    console.warn('[Hyred] getCookieToken failed:', e);
+    console.warn('[Hyred] extractTokenFromTab failed:', e);
     return null;
   }
 }
 
 // Exchange a Supabase access_token for an extension JWT.
-// This is more reliable than the session endpoint because we pass the auth
-// token directly (not via cookies) — no CORS, no cookie restrictions.
+// The access_token is passed directly in the request body (no cookies needed).
 async function exchangeToken(accessToken) {
   try {
     const res = await fetch(`${DEFAULT_URL}/api/extension/exchange`, {
@@ -94,11 +106,12 @@ const handlers = {
     return { connected: !!r.ok, url: jr_url };
   },
 
-  // Try to auto-connect by reading the Supabase session cookie directly
-  // via chrome.cookies API, then exchanging it for an extension JWT.
+  // Auto-connect by reading the Supabase access_token from the page's
+  // localStorage (via MAIN-world script injection into an open hyred.in tab).
+  // Then exchange it for an extension JWT.
   async getCookieToken() {
-    const accessToken = await getCookieToken();
-    if (!accessToken) return { ok: false, error: 'no cookie found' };
+    const accessToken = await extractTokenFromTab();
+    if (!accessToken) return { ok: false, error: 'no token found in hyred.in tab' };
     const result = await exchangeToken(accessToken);
     if (!result) return { ok: false, error: 'exchange failed' };
     // Save to storage so subsequent calls use the stored token
