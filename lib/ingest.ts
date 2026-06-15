@@ -65,8 +65,12 @@ const SCORE_CONCURRENCY = 5; // Matches free-tier RPM (one call per key per batc
  * dev, custom deployments), 480s is a generous safety net.
  * Override via INGEST_WALL_BUDGET_MS env var if needed. */
 const INGEST_WALL_BUDGET_MS = parseInt(process.env.INGEST_WALL_BUDGET_MS ?? '480000', 10);
-/** Delay between scoring batches to respect RPM limits across providers. */
-const SCORE_BATCH_DELAY_MS = 3_000; // 3 seconds between batches → ~20 RPM effective
+/** Delay between scoring batches to spread LLM calls across keys.
+ * Was 3s (for Cerebras 5 RPM free-tier keys). Now your primary provider
+ * (bluesminds/gemini/groq) handles higher RPM, so 500ms is enough to
+ * avoid thundering-herd on rate limiters. Override via SCORE_BATCH_DELAY_MS. */
+const _batchDelay = parseInt(process.env.SCORE_BATCH_DELAY_MS ?? '500', 10);
+const SCORE_BATCH_DELAY_MS = isNaN(_batchDelay) ? 500 : _batchDelay;
 
 /**
  * Maximum age (in days) for a job to be ingested. Any job whose posted_at
