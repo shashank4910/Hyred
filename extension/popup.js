@@ -236,14 +236,36 @@ async function fetchJson(url, opts) {
 }
 
 // Send a message to the background service worker and await a response.
-const sendBg = (type, payload) =>
+// Always reads chrome.runtime.lastError (otherwise Chrome logs an "Unchecked
+// runtime.lastError: Could not establish connection" warning) and retries once
+// when the MV3 worker was briefly asleep / the channel closed mid-flight.
+const sendBg = (type, payload, _retried) =>
   new Promise((resolve) => {
+    let settled = false;
+    const done = (v) => {
+      if (settled) return;
+      settled = true;
+      resolve(v);
+    };
     try {
-      chrome.runtime.sendMessage({ type, payload }, (res) =>
-        resolve(res ?? { ok: false, error: 'no response' }),
-      );
+      chrome.runtime.sendMessage({ type, payload }, (res) => {
+        const err = chrome.runtime.lastError;
+        if (err) {
+          const transient =
+            /Receiving end does not exist|message channel closed|message port closed/i.test(
+              err.message || '',
+            );
+          if (transient && !_retried) {
+            setTimeout(() => done(sendBg(type, payload, true)), 150);
+            return;
+          }
+          done({ ok: false, error: err.message || 'no response' });
+          return;
+        }
+        done(res ?? { ok: false, error: 'no response' });
+      });
     } catch (e) {
-      resolve({ ok: false, error: String(e?.message ?? e) });
+      done({ ok: false, error: String(e?.message ?? e) });
     }
   });
 
@@ -254,8 +276,10 @@ const sendBg = (type, payload) =>
 async function tryAutoConnect() {
   const { jr_url, jr_token } = await getStored();
 
-  // Strategy 1: stored token → verify via background
+  // Strategy 1: stored token → show connected optimistically (instant), then
+  // verify in the background. Only revert if verification actually fails.
   if (jr_url && jr_token) {
+    showConnected(jr_url, lastProfile);
     const verify = await sendBg('ping');
     if (verify.connected) {
       const prof = await sendBg('profile');
@@ -318,6 +342,15 @@ async function initiateConnect() {
 
 document.addEventListener('DOMContentLoaded', tryAutoConnect);
 
+// If the background saves a token while the popup is still open (e.g. the auth
+// tab finished after the user reopened the popup), reflect it live.
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local') return;
+  if (changes.jr_token && changes.jr_token.newValue) {
+    refreshConnected();
+  }
+});
+
 document.querySelectorAll('.tab').forEach((tab) => {
   tab.addEventListener('click', () => showTab(tab.dataset.tab));
 });
@@ -379,11 +412,12 @@ $('#btn-autofill-tab').addEventListener('click', async () => {
     if (!tab?.id || !tab.url || !/^https?:/i.test(tab.url)) {
       throw new Error('Open a job application page (https) first.');
     }
-    // Make sure the content script is injected (no-op if already loaded).
+    // Make sure the engine + content script are injected (no-op if already
+    // loaded). autofill-engine.js MUST load first — content.js depends on it.
     try {
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        files: ['content.js'],
+        files: ['autofill-engine.js', 'content.js'],
       });
     } catch (e) {
       throw new Error(

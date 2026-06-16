@@ -24,14 +24,33 @@
   // -------------------------------------------------------------------
   // Send a message to the background and await the response.
   // -------------------------------------------------------------------
-  const send = (type, payload) =>
+  const send = (type, payload, _retried) =>
     new Promise((resolve) => {
+      let settled = false;
+      const done = (v) => {
+        if (settled) return;
+        settled = true;
+        resolve(v);
+      };
       try {
-        chrome.runtime.sendMessage({ type, payload }, (res) =>
-          resolve(res ?? { ok: false, error: 'no response' }),
-        );
+        chrome.runtime.sendMessage({ type, payload }, (res) => {
+          const err = chrome.runtime.lastError;
+          if (err) {
+            const transient =
+              /Receiving end does not exist|message channel closed|message port closed/i.test(
+                err.message || '',
+              );
+            if (transient && !_retried) {
+              setTimeout(() => done(send(type, payload, true)), 150);
+              return;
+            }
+            done({ ok: false, error: err.message || 'no response' });
+            return;
+          }
+          done(res ?? { ok: false, error: 'no response' });
+        });
       } catch (e) {
-        resolve({ ok: false, error: String(e?.message ?? e) });
+        done({ ok: false, error: String(e?.message ?? e) });
       }
     });
 
@@ -357,7 +376,7 @@
     return best;
   }
 
-  function matchCustomQa(sig, customQa) {
+  function looksLikeQuestionTextarea(el) {
     if (el.tagName !== 'TEXTAREA' && !el.isContentEditable) return false;
     const sig = fieldSignature(el);
     if (/resume|cover[_\s]?letter|additional[_\s]?info|paste|upload/.test(sig))
