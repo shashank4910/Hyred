@@ -66,23 +66,26 @@ function escape(s) {
     .replace(/"/g, '&quot;');
 }
 
-// Refresh connected state: re-fetch profile and show connected UI.
-// Used by: recheck button, and after successful setup form submission.
+// Refresh connected state via background (avoids popup CORS edge cases).
 async function refreshConnected() {
   const { jr_url, jr_token } = await getStored();
   if (!jr_url || !jr_token) {
     showConnectIntro();
     return;
   }
-  const prof = await fetchJson(`${jr_url}/api/extension/profile`, {
-    headers: { authorization: `Bearer ${jr_token}` },
-  });
-  if (prof.ok) {
-    showConnected(jr_url, prof.data.profile);
-  } else {
-    // Token expired — clear and try auto-connect
+
+  const verify = await sendBg('ping');
+  if (!verify.connected) {
     await clearStored();
     await tryAutoConnect();
+    return;
+  }
+
+  const prof = await sendBg('profile');
+  if (prof.ok) {
+    showConnected(jr_url, prof.profile);
+  } else {
+    showConnected(jr_url, null);
   }
 }
 
@@ -116,19 +119,14 @@ const sendBg = (type, payload) =>
 async function tryAutoConnect() {
   const { jr_url, jr_token } = await getStored();
 
-  // Strategy 1: stored token → verify it
+  // Strategy 1: stored token → verify via background
   if (jr_url && jr_token) {
-    const verify = await fetchJson(`${jr_url}/api/extension/verify`, {
-      headers: { authorization: `Bearer ${jr_token}` },
-    });
-    if (verify.ok) {
-      const prof = await fetchJson(`${jr_url}/api/extension/profile`, {
-        headers: { authorization: `Bearer ${jr_token}` },
-      });
-      showConnected(jr_url, prof.ok ? prof.data.profile : null);
+    const verify = await sendBg('ping');
+    if (verify.connected) {
+      const prof = await sendBg('profile');
+      showConnected(jr_url, prof.ok ? prof.profile : null);
       return;
     }
-    // Token expired — clear and try other strategies
     await clearStored();
   }
 
@@ -151,37 +149,32 @@ async function initiateConnect() {
   const statusEl = $('#connect-status');
   const btn = $('#btn-connect-extension');
   btn.disabled = true;
-  btn.textContent = 'Opening Hyred...';
-  statusEl.textContent = 'Opening a new tab to connect your account...';
+  btn.textContent = 'Connecting…';
+  statusEl.textContent = 'Opening Hyred — sign in if prompted…';
 
-  // Fire-and-forget: tell background to open the auth tab and extract the token.
-  // We DON'T await the response — the background saves the token to storage
-  // when done, and we poll for it here. This keeps the popup responsive.
-  sendBg('connectExtension');
+  const bg = await sendBg('connectExtension');
 
-  // Poll for the token to appear in storage (background.js saves it)
-  statusEl.textContent = 'Waiting for connection...';
-  let attempts = 0;
-  const maxAttempts = 15; // 15 * 2s = 30s — matches background timeout
-  const poll = setInterval(async () => {
-    attempts++;
-    const { jr_token } = await getStored();
-    if (jr_token) {
-      clearInterval(poll);
-      btn.disabled = false;
-      btn.textContent = 'Connect to Hyred';
-      await refreshConnected();
-      return;
-    }
-    if (attempts >= maxAttempts) {
-      clearInterval(poll);
-      btn.disabled = false;
-      btn.textContent = 'Connect to Hyred';
-      statusEl.textContent = 'Timed out. Make sure you are logged into Hyred and try again.';
-      // Also clear any stale "connected" background state
-      await clearStored();
-    }
-  }, 2000);
+  btn.disabled = false;
+  btn.textContent = 'Connect to Hyred';
+
+  if (bg.ok && bg.data?.token) {
+    statusEl.textContent = '';
+    await refreshConnected();
+    return;
+  }
+
+  // Token may have been saved even if the message response was lost (popup closed).
+  const { jr_token } = await getStored();
+  if (jr_token) {
+    statusEl.textContent = '';
+    await refreshConnected();
+    return;
+  }
+
+  statusEl.textContent =
+    bg.error === 'auth timeout or no token found'
+      ? 'Not connected. Log into Hyred in the tab that opened, then try again.'
+      : bg.error || 'Connection failed. Try again or use app password.';
 }
 
 // -------------------------------------------------------------------

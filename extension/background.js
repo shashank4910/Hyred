@@ -38,6 +38,21 @@ async function api(path, init = {}) {
 
 const DEFAULT_URL = 'https://hyred.in';
 
+// Decode URL-safe base64 (base64url) to a UTF-8 string. Returns null on failure.
+// @supabase/ssr encodes session cookies as "base64-<base64url>".
+function base64UrlDecodeToString(b64url) {
+  try {
+    let s = String(b64url).replace(/-/g, '+').replace(/_/g, '/');
+    const pad = s.length % 4;
+    if (pad) s += '='.repeat(4 - pad);
+    const bin = atob(s);
+    const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+    return new TextDecoder('utf-8').decode(bytes);
+  } catch {
+    return null;
+  }
+}
+
 // Try to extract the Supabase access_token from localStorage by injecting a
 // script into a hyred.in tab with MAIN world access.
 // The content script runs in an ISOLATED world and can't read the page's
@@ -47,7 +62,9 @@ const DEFAULT_URL = 'https://hyred.in';
 async function extractTokenFromTab() {
   try {
     // Find any open hyred.in tab
-    const tabs = await chrome.tabs.query({ url: ['*://hyred.in/*', '*://*.hyred.in/*'] });
+    const tabs = await chrome.tabs.query({
+      url: ['*://hyred.in/*', '*://*.hyred.in/*', '*://www.hyred.in/*'],
+    });
     if (!tabs.length) {
       console.warn('[Hyred] No hyred.in tab found');
       return null;
@@ -61,6 +78,13 @@ async function extractTokenFromTab() {
       world: 'MAIN',
       func: () => {
         try {
+          // Try to get Supabase session from localStorage
+          const stored = localStorage.getItem('sb-*-auth-token');
+          if (stored) {
+            const session = JSON.parse(decodeURIComponent(stored));
+            return session?.access_token || null;
+          }
+          // Fallback to old method
           const key = Object.keys(localStorage).find(
             k => k.startsWith('sb-') && k.endsWith('-auth-token'),
           );
@@ -86,15 +110,18 @@ async function extractTokenFromTab() {
 // Value: JSON-encoded session object (URL-encoded).
 async function extractTokenFromCookies() {
   try {
-    // Get ALL cookies for the hyred.in domain (no open tab needed)
-    const allCookies = await chrome.cookies.getAll({ domain: 'hyred.in' });
-    if (!allCookies || !allCookies.length) {
+    const allCookies = [
+      ...(await chrome.cookies.getAll({ domain: 'hyred.in' })),
+      ...(await chrome.cookies.getAll({ domain: '.hyred.in' })),
+      ...(await chrome.cookies.getAll({ domain: 'www.hyred.in' })),
+    ];
+    if (!allCookies.length) {
       console.warn('[Hyred] No cookies found for hyred.in');
       return null;
     }
 
-    // Find the main Supabase auth cookie (sb-{ref}-auth-token)
-    // and any chunked parts (sb-{ref}-auth-token.0, .1, etc.)
+    // Supabase (@supabase/ssr) auth cookie: sb-{ref}-auth-token, optionally
+    // chunked as sb-{ref}-auth-token.0, .1, ... when the session is large.
     const authCookies = allCookies.filter(
       (c) => c.name.startsWith('sb-') && c.name.includes('auth-token'),
     );
@@ -103,33 +130,68 @@ async function extractTokenFromCookies() {
       return null;
     }
 
-    // Find the base cookie (no numeric suffix) — this has the full session
-    const base = authCookies.find((c) => /^sb-.+-auth-token$/.test(c.name));
-    if (!base || !base.value) {
+    // Reassemble: prefer the un-suffixed base cookie; otherwise concat chunks
+    // (.0, .1, ...) in numeric order.
+    let raw = '';
+    const base = authCookies.find((c) => /-auth-token$/.test(c.name));
+    if (base && base.value) {
+      raw = base.value;
+    } else {
+      const chunks = authCookies
+        .filter((c) => /-auth-token\.\d+$/.test(c.name))
+        .sort((a, b) => {
+          const ai = parseInt(a.name.split('.').pop(), 10);
+          const bi = parseInt(b.name.split('.').pop(), 10);
+          return ai - bi;
+        })
+        .map((c) => c.value);
+      raw = chunks.join('');
+    }
+
+    if (!raw) {
       console.warn('[Hyred] Supabase auth cookie has no value');
       return null;
     }
 
-    // The cookie value is URL-encoded JSON
+    // Value may be URL-encoded, and newer @supabase/ssr prefixes with "base64-"
+    // using URL-safe base64 (chars - and _), which plain atob() can't decode.
+    let decoded = raw;
+    try {
+      decoded = decodeURIComponent(raw);
+    } catch {
+      /* not url-encoded */
+    }
+
+    if (decoded.startsWith('base64-')) {
+      decoded = base64UrlDecodeToString(decoded.slice('base64-'.length));
+      if (decoded === null) {
+        console.warn('[Hyred] base64url cookie decode failed');
+        return null;
+      }
+    }
+
     let session;
     try {
-      session = JSON.parse(decodeURIComponent(base.value));
+      session = JSON.parse(decoded);
     } catch {
-      // Maybe it's not URL-encoded
       try {
-        session = JSON.parse(base.value);
+        session = JSON.parse(raw);
       } catch {
         console.warn('[Hyred] Could not parse auth cookie value');
         return null;
       }
     }
 
-    if (!session || !session.access_token) {
+    const accessToken =
+      session?.access_token ||
+      (Array.isArray(session) ? session[0]?.access_token : null);
+
+    if (!accessToken) {
       console.warn('[Hyred] No access_token in session cookie');
       return null;
     }
 
-    return session.access_token;
+    return accessToken;
   } catch (e) {
     console.warn('[Hyred] extractTokenFromCookies failed:', e);
     return null;
@@ -155,12 +217,63 @@ async function exchangeToken(accessToken) {
   }
 }
 
+// Read Supabase session from cookies → exchange for an extension JWT → save.
+// Standalone (not a handler method) so it can be reused without `this`.
+async function connectViaCookies() {
+  let accessToken = await extractTokenFromTab();
+  if (!accessToken) accessToken = await extractTokenFromCookies();
+  if (!accessToken) return { ok: false, error: 'no auth session found' };
+
+  const result = await exchangeToken(accessToken);
+  if (!result) return { ok: false, error: 'exchange failed' };
+
+  await new Promise((resolve) =>
+    chrome.storage.local.set(
+      { jr_url: DEFAULT_URL, jr_token: result.token },
+      resolve,
+    ),
+  );
+  return { ok: true, data: { token: result.token, profile: result.profile } };
+}
+
+// Verify a token via the server (background fetch bypasses CORS).
+async function verifyToken(token, base) {
+  try {
+    const res = await fetch(`${base}/api/extension/verify`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    return { ok: res.ok, status: res.status };
+  } catch (e) {
+    return { ok: false, status: 0, error: String(e?.message ?? e) };
+  }
+}
+
 const handlers = {
+  // Handshake entry point — called by the hyred.in content script (connect.js)
+  // with a freshly-signed extension JWT it picked up from the web app. We
+  // verify before saving so a stale/invalid token never overwrites a good one.
+  async storeToken({ token } = {}) {
+    if (!token) return { ok: false, error: 'no token' };
+    const base = DEFAULT_URL; // canonical; verify works regardless of www
+    const v = await verifyToken(token, base);
+    if (!v.ok) {
+      console.warn('[Hyred] storeToken: token failed verify', v.status, v.error || '');
+      return { ok: false, status: v.status, error: 'token failed verification' };
+    }
+    await new Promise((resolve) =>
+      chrome.storage.local.set({ jr_url: base, jr_token: token }, resolve),
+    );
+    console.log('[Hyred] storeToken: saved verified token from handshake');
+    return { ok: true };
+  },
+
   async ping() {
     const { jr_url, jr_token } = await getCreds();
-    if (!jr_url || !jr_token) return { connected: false };
+    console.log('[JobRadar BG] ping — jr_url:', jr_url, 'jr_token:', jr_token ? jr_token.slice(0, 30) + '...' : 'MISSING');
+    if (!jr_url || !jr_token) return { connected: false, reason: 'no credentials in storage' };
     const r = await api('/api/extension/verify');
-    return { connected: !!r.ok, url: jr_url };
+    console.log('[JobRadar BG] verify result:', JSON.stringify(r));
+    return { connected: !!r.ok, url: jr_url, verifyStatus: r.status, verifyError: r.data?.error };
   },
 
   // Auto-connect by reading the Supabase access_token.
@@ -169,90 +282,54 @@ const handlers = {
   //   2. Read the Supabase session cookie directly via chrome.cookies API
   // Then exchange the access_token for an extension JWT.
   async getCookieToken() {
-    // Strategy 1: localStorage from an open hyred.in tab
-    let accessToken = await extractTokenFromTab();
-
-    // Strategy 2: fallback to cookies (no open tab needed)
-    if (!accessToken) {
-      accessToken = await extractTokenFromCookies();
-    }
-
-    if (!accessToken) return { ok: false, error: 'no auth session found' };
-    const result = await exchangeToken(accessToken);
-    if (!result) return { ok: false, error: 'exchange failed' };
-    // Save to storage so subsequent calls use the stored token
-    await new Promise((resolve) =>
-      chrome.storage.local.set({ jr_url: DEFAULT_URL, jr_token: result.token }, resolve),
-    );
-    return { ok: true, data: { token: result.token, profile: result.profile } };
+    return connectViaCookies();
   },
 
-  // Open the auth tab flow: navigates user to hyred.in/auth/extension,
-  // waits for the page to write the JWT to localStorage, then reads it
-  // via MAIN-world script injection and saves it to chrome.storage.
-  // Returns { ok: true, data: { token, profile } } on success.
+  // Primary connect flow — runs entirely in the background (survives the popup
+  // closing). Strategy:
+  //   1. Best-effort silent cookie exchange (works if already logged in AND the
+  //      cookie format parses — kept as a fast path, never blocks the flow).
+  //   2. Open the /auth/extension tab. The hyred.in content-script handshake
+  //      (connect.js + connect-main.js) picks up the freshly-signed token the
+  //      page emits and calls storeToken here. We just poll storage for it.
   async connectExtension() {
+    // 1. Fast path: silent cookie exchange.
+    const direct = await connectViaCookies();
+    if (direct.ok) {
+      console.log('[Hyred] connectExtension: connected via cookies');
+      return direct;
+    }
+
+    // 2. Open the auth tab — the handshake does the rest.
     const authUrl = `${DEFAULT_URL}/auth/extension`;
+    let tab;
+    try {
+      tab = await chrome.tabs.create({ url: authUrl, active: true });
+    } catch (e) {
+      return { ok: false, error: `could not open auth tab: ${e?.message ?? e}` };
+    }
 
-    // Open a new tab to the auth page
-    const tab = await chrome.tabs.create({ url: authUrl, active: true });
-
-    // Wait for the tab to finish loading, then try to extract the token
-    const token = await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        cleanup();
-        resolve(null); // timeout — user might not be logged in
-      }, 30000); // 30s timeout
-
-      const listener = async (tabId, changeInfo) => {
-        if (tabId !== tab.id) return;
-        if (changeInfo.status !== 'complete') return;
-
-        // Wait a moment for the page's JS to write to localStorage
-        await new Promise((r) => setTimeout(r, 500));
-
+    // 3. Poll chrome.storage for the token the handshake saves.
+    const deadline = Date.now() + 60000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 1000));
+      const { jr_token } = await getCreds();
+      if (jr_token) {
         try {
-          const results = await chrome.scripting.executeScript({
-            target: { tabId: tab.id },
-            world: 'MAIN',
-            func: () => {
-              try {
-                return localStorage.getItem('hyred_extension_token') || null;
-              } catch {
-                return null;
-              }
-            },
-          });
-          const val = results?.[0]?.result;
-          if (val) {
-            cleanup();
-            resolve(val);
-          }
-          // If no token yet, keep waiting (page might still be loading JS)
-        } catch (e) {
-          // Can't inject into this page — keep waiting
+          await chrome.tabs.remove(tab.id);
+        } catch {
+          /* tab may already be closed */
         }
-      };
+        console.log('[Hyred] connectExtension: token saved via handshake');
+        return { ok: true, data: { token: jr_token } };
+      }
+    }
 
-      const cleanup = () => {
-        clearTimeout(timeout);
-        chrome.tabs.onUpdated.removeListener(listener);
-      };
-
-      chrome.tabs.onUpdated.addListener(listener);
-    });
-
-    if (!token) return { ok: false, error: 'auth timeout or no token found' };
-
-    // Save token to storage
-    await new Promise((resolve) =>
-      chrome.storage.local.set({ jr_url: DEFAULT_URL, jr_token: token }, resolve),
-    );
-
-    // Close the auth tab
-    try { chrome.tabs.remove(tab.id); } catch { /* tab may already be closed */ }
-
-    return { ok: true, data: { token } };
+    console.warn('[Hyred] connectExtension: handshake timeout');
+    return {
+      ok: false,
+      error: 'auth timeout — sign in on the Hyred tab, then click Connect again',
+    };
   },
 
   async profile() {
