@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Hyred Autofill",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "description": "AI-powered job application autofill, cover letter injection, and screening Q&A. Pairs with your Hyred app.",
   "permissions": ["storage", "activeTab", "scripting", "tabs", "cookies"],
   "host_permissions": ["<all_urls>"],

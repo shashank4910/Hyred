@@ -59,12 +59,21 @@ export async function GET(req: NextRequest) {
     const token = await signExtensionToken(profile.id);
 
     // Build the autofill-shaped profile for the popup
-    const autofillProfile = buildAutofillProfile({
-      email: profile.email,
-      full_name: profile.full_name,
-      resume_text: profile.resume_text,
-      insights: (profile.insights as ResumeInsights | null) ?? null,
-    });
+    const { data: apply } = await supabase
+      .from('apply_profiles')
+      .select('*')
+      .eq('profile_id', profile.id)
+      .maybeSingle();
+
+    const autofillProfile = buildAutofillProfile(
+      {
+        email: profile.email,
+        full_name: profile.full_name,
+        resume_text: profile.resume_text,
+        insights: (profile.insights as ResumeInsights | null) ?? null,
+      },
+      apply,
+    );
 
     return corsResponse({
       ok: true,

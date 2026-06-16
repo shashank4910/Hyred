@@ -9,7 +9,7 @@
   <body>
     <header class="brand">
       <span class="logo">H</span>
-      <span class="name">Hyred Autofill</span>
+      <span class="name">Hyred Copilot</span>
     </header>
 
     <!-- Connected state -->
@@ -18,30 +18,54 @@
         <span class="dot"></span>
         Connected to <span id="connected-host">…</span>
       </div>
+
+      <nav class="tabs" role="tablist">
+        <button class="tab active" data-tab="autofill" type="button">Autofill</button>
+        <button class="tab" data-tab="profile" type="button">Profile</button>
+        <button class="tab" data-tab="insights" type="button">Insights</button>
+      </nav>
+
+      <div id="panel-autofill" class="tab-panel">
+        <div id="match-card" class="match-card hidden"></div>
+        <p class="section-label">What to fill</p>
+        <div class="checks">
+          <label class="check"><input type="checkbox" id="opt-resume" checked /> Resume upload</label>
+          <label class="check"><input type="checkbox" id="opt-cover" checked /> Cover letter</label>
+          <label class="check"><input type="checkbox" id="opt-common" checked /> Common fields</label>
+          <label class="check"><input type="checkbox" id="opt-ai" checked /> AI screening Q&amp;A</label>
+        </div>
+        <button id="btn-autofill-tab" class="btn-primary" type="button" style="margin-top:10px">
+          Autofill this page
+        </button>
+        <p id="autofill-error" class="error"></p>
+      </div>
+
+      <div id="panel-profile" class="tab-panel hidden">
+        <p class="section-label">Copy from your Hyred profile</p>
+        <div id="profile-copy" class="profile-copy"></div>
+      </div>
+
+      <div id="panel-insights" class="tab-panel hidden">
+        <div id="insights-body" class="insights-body">
+          <p class="muted">Open a job application page to see match score and missing keywords.</p>
+        </div>
+      </div>
+
       <div id="profile-summary" class="profile-summary"></div>
-      <button id="btn-autofill-tab" class="btn-primary" type="button" style="margin-top:10px">
-        Autofill this page
-      </button>
-      <p id="autofill-error" class="error"></p>
       <div class="row">
-        <button id="btn-recheck" class="btn-ghost" type="button">
-          Refresh profile
-        </button>
-        <button id="btn-disconnect" class="btn-ghost danger" type="button">
-          Disconnect
-        </button>
+        <button id="btn-recheck" class="btn-ghost" type="button">Refresh</button>
+        <button id="btn-disconnect" class="btn-ghost danger" type="button">Disconnect</button>
       </div>
       <div class="hint">
-        On most ATS pages, a floating <strong>Hyred</strong> button
-        appears bottom-right automatically. If it doesn't, use the
-        <strong>Autofill this page</strong> button above.
+        Floating <strong>JR Autofill</strong> on supported ATS pages. Complete
+        <strong>Settings → Application Profile</strong> on Hyred for best results.
       </div>
     </section>
 
-    <!-- Connect state (primary auto-connect flow) -->
+    <!-- Connect state -->
     <section id="connect-intro">
       <p class="lead">
-        Link your Hyred account to start autofilling job applications.
+        Link your Hyred account — autofill applications like Simplify Copilot.
       </p>
       <button id="btn-connect-extension" class="btn-primary" type="button">
         Connect to Hyred
@@ -54,45 +78,29 @@
       </div>
     </section>
 
-    <!-- Setup state (fallback APP_PASSWORD flow) -->
+    <!-- Setup state -->
     <section id="setup" class="hidden">
       <button id="btn-back-connect" class="btn-link" type="button" style="margin-bottom:10px">
         &larr; Back
       </button>
       <p class="lead">
-        Connect this extension to your Hyred deployment. Takes 10 seconds.
+        Connect this extension to your Hyred deployment.
       </p>
       <form id="setup-form">
         <label>
           <span>Hyred URL</span>
-          <input
-            id="url"
-            type="url"
-            placeholder="https://hyred.in"
-            required
-          />
+          <input id="url" type="url" placeholder="https://www.hyred.in" required />
         </label>
         <label>
           <span>App password</span>
-          <input
-            id="password"
-            type="password"
-            placeholder="The APP_PASSWORD you set in Vercel"
-            required
-            minlength="6"
-          />
+          <input id="password" type="password" placeholder="APP_PASSWORD from Vercel" required minlength="6" />
         </label>
-        <button id="btn-connect" class="btn-primary" type="submit">
-          Connect
-        </button>
+        <button id="btn-connect" class="btn-primary" type="submit">Connect</button>
         <p id="error" class="error"></p>
       </form>
     </section>
 
-    <footer class="foot">
-      v<span id="ver"></span>
-    </footer>
-
+    <footer class="foot">v<span id="ver"></span></footer>
     <script src="popup.js"></script>
   </body>
 </html>
