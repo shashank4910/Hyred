@@ -165,12 +165,6 @@
     [/weakness/i, 'answer_weaknesses'],
   ];
 
-  const BOOL_RADIO_RULES = [
-    [/sponsor|visa|immigration|require.*sponsorship/i, 'require_sponsorship'],
-    [/authorized.*work|legally.*work|eligible.*work|work\s*authorization/i, 'authorized_to_work'],
-    [/relocate|relocation|willing.*relocat/i, 'willing_to_relocate'],
-  ];
-
   // -------------------------------------------------------------------
   // Rich label extraction (Simplify / FormPilot style priority chain).
   // -------------------------------------------------------------------
@@ -363,41 +357,7 @@
     return best;
   }
 
-  function fillBooleanRadios(profile, filledSet) {
-    const radios = collectFillableElements().filter((el) => el.type === 'radio');
-    const groups = new Map();
-    radios.forEach((r) => {
-      if (!r.name) return;
-      if (!groups.has(r.name)) groups.set(r.name, []);
-      groups.get(r.name).push(r);
-    });
-    let n = 0;
-    for (const group of groups.values()) {
-      const sig = group.map((r) => fieldSignature(r)).join(' ');
-      for (const [re, path] of BOOL_RADIO_RULES) {
-        if (!re.test(sig)) continue;
-        const raw = get(profile, path);
-        if (raw == null) break;
-        const wantYes = !!raw;
-        const pick = group.find((r) => {
-          const lbl = labelForControl(r).toLowerCase();
-          return wantYes
-            ? /^(yes|true|authorized|eligible)\b/.test(lbl) || lbl === 'y'
-            : /^(no|false)\b/.test(lbl) || lbl === 'n';
-        });
-        if (pick && !pick.checked && !filledSet.has(pick)) {
-          pick.click();
-          filledSet.add(pick);
-          n++;
-          log('radio:', path, '=', wantYes ? 'Yes' : 'No');
-        }
-        break;
-      }
-    }
-    return n;
-  }
-
-  function looksLikeQuestionTextarea(el) {
+  function matchCustomQa(sig, customQa) {
     if (el.tagName !== 'TEXTAREA' && !el.isContentEditable) return false;
     const sig = fieldSignature(el);
     if (/resume|cover[_\s]?letter|additional[_\s]?info|paste|upload/.test(sig))
@@ -449,83 +409,6 @@
     return !!input.value?.trim();
   }
 
-  function fillLeverSelect(select, value) {
-    if (!select || select.tagName !== 'SELECT' || !value) return false;
-    const want = String(value).toLowerCase();
-    for (const opt of select.options) {
-      const ot = (opt.textContent || '').toLowerCase().trim();
-      if (ot === want || ot.includes(want) || want.includes(ot)) {
-        select.value = opt.value;
-        select.dispatchEvent(new Event('change', { bubbles: true }));
-        return true;
-      }
-    }
-    return false;
-  }
-
-  function fillLeverQuestionBlock(block, profile, match, filledSet) {
-    const label =
-      block.querySelector('label, .application-label, .text, h4')?.textContent || '';
-    const sig = label.toLowerCase();
-    if (!sig) return 0;
-    let n = 0;
-
-    const pickValue = () => {
-      let val = matchCustomQa(sig, profile.custom_qa);
-      if (!val && /current.*company|organization|employer|\borg\b/i.test(sig))
-        val = profile.latest_company;
-      if (!val && /university|college|school/i.test(sig))
-        val = profile.education?.[0]?.school;
-      if (!val && /degree|major|field of study/i.test(sig))
-        val = profile.education?.[0]?.degree || profile.education?.[0]?.field;
-      if (!val && /job title|current title|position/i.test(sig))
-        val = profile.current_title;
-      if (!val && /years?.*experience|yoe/i.test(sig))
-        val = profile.years_experience;
-      if (!val && /linkedin/i.test(sig)) val = profile.links?.linkedin;
-      if (!val && /github/i.test(sig)) val = profile.links?.github;
-      if (!val && /portfolio|website/i.test(sig)) val = profile.links?.portfolio;
-      return val;
-    };
-
-    const input = block.querySelector('input:not([type="hidden"]), textarea, select');
-    if (input && isVisible(input) && isEmpty(input) && !filledSet.has(input)) {
-      const val = pickValue();
-      if (val) {
-        if (input.tagName === 'SELECT') {
-          if (!fillLeverSelect(input, val)) return n;
-        } else {
-          setNativeValue(input, val);
-        }
-        filledSet.add(input);
-        n++;
-        log('lever:custom', sig.slice(0, 50));
-      }
-    }
-
-    const radios = [...block.querySelectorAll('input[type="radio"]')].filter(isVisible);
-    if (radios.length && !radios.some((r) => r.checked)) {
-      for (const [re, path] of BOOL_RADIO_RULES) {
-        if (!re.test(sig)) continue;
-        const boolVal = get(profile, path);
-        if (typeof boolVal !== 'boolean') break;
-        const want = boolVal ? 'yes' : 'no';
-        const hit = radios.find((r) => {
-          const t = (r.labels?.[0]?.textContent || r.value || '').toLowerCase();
-          return t.includes(want);
-        });
-        if (hit) {
-          hit.click();
-          filledSet.add(hit);
-          n++;
-          log('lever:radio', path, '=', want);
-        }
-        break;
-      }
-    }
-    return n;
-  }
-
   function fillEssayFromProfile(profile, filledSet) {
     const essays = [
       [/about\s*yourself/i, 'answer_about_yourself'],
@@ -561,13 +444,9 @@
     );
   }
 
-  async function fillLeverByName(profile, match, filledSet) {
+  async function fillLeverUrls(profile, filledSet) {
     if (detectAts() !== 'lever') return 0;
     const pairs = [
-      ['name', profile.full_name],
-      ['email', profile.email],
-      ['phone', profile.phone],
-      ['org', profile.latest_company],
       ['urls[LinkedIn]', profile.links?.linkedin],
       ['urls[GitHub]', profile.links?.github],
       ['urls[Github]', profile.links?.github],
@@ -581,16 +460,11 @@
       if (!value) continue;
       const el = queryByName(name);
       if (!el || !isVisible(el) || !isEmpty(el) || filledSet.has(el)) continue;
-      if (el.tagName === 'SELECT') {
-        if (!setSelectValue(el, value)) continue;
-      } else {
-        setNativeValue(el, value);
-      }
+      setNativeValue(el, value);
       filledSet.add(el);
       n++;
-      log('lever:', name, '=', String(value).slice(0, 40));
+      log('lever:url', name);
     }
-
     document.querySelectorAll('input[name^="urls["]').forEach((el) => {
       if (!isVisible(el) || !isEmpty(el) || filledSet.has(el)) return;
       const nm = (el.name || '').toLowerCase();
@@ -603,67 +477,86 @@
         setNativeValue(el, value);
         filledSet.add(el);
         n++;
-        log('lever:urls', el.name);
       }
     });
-
-    const locVal = profile.location?.full || profile.location?.city;
-    const locEl = queryByName('location');
-    if (locEl && locVal && isEmpty(locEl) && !filledSet.has(locEl)) {
-      if (await fillLeverTypeahead(locEl, locVal)) {
-        filledSet.add(locEl);
-        n++;
-        log('lever:location typeahead');
-      }
-    }
-
-    const school = profile.education?.[0]?.school;
-    const uniInput =
-      document.querySelector('.application-university input') ||
-      document.querySelector('input.application-university');
-    if (uniInput && school && isEmpty(uniInput) && !filledSet.has(uniInput)) {
-      if (await fillLeverTypeahead(uniInput, school)) {
-        filledSet.add(uniInput);
-        n++;
-        log('lever:university typeahead');
-      }
-    }
-
-    const extra = match?.cover_letter || profile.summary;
-    const comments = queryByName('comments');
-    if (comments && extra && isEmpty(comments) && !filledSet.has(comments)) {
-      setNativeValue(comments, extra);
-      filledSet.add(comments);
-      n++;
-      log('lever:comments');
-    }
-
-    document
-      .querySelectorAll(
-        '.application-question, .application-field, [data-qa="application-field"], .application-additional',
-      )
-      .forEach((block) => {
-        n += fillLeverQuestionBlock(block, profile, match, filledSet);
-      });
     return n;
   }
 
-  function indexEmptyFields(filledSet) {
-    const items = [];
-    let id = 0;
-    for (const el of collectFillableElements()) {
-      if (!isVisible(el) || el.type === 'file' || el.type === 'hidden') continue;
-      if (!isEmpty(el) || filledSet.has(el)) continue;
-      const label = labelForControl(el);
-      if (!label || label.length < 2) continue;
-      items.push({
-        id: id++,
-        el,
-        label: label.slice(0, 300),
-        type: el.type || el.tagName.toLowerCase(),
-      });
+  /** Simplify-style: classify labels → profile values → fill plan. */
+  async function executeFillPlan(profile, filledSet) {
+    const engine = window.HyredAutofillEngine;
+    if (!engine) {
+      log('autofill-engine.js missing — reload extension');
+      return 0;
     }
-    return items;
+    const plan = engine.buildFillPlan({
+      profile,
+      labelForControl,
+      fieldSignature,
+      collectFillableElements,
+      isVisible,
+      isEmpty,
+      detectAts,
+      queryByName,
+    });
+    let n = 0;
+    for (const instr of plan) {
+      if (instr.kind === 'radio') {
+        const pick = engine.pickRadio(instr.radios, instr.fieldId, instr.value);
+        if (pick && !pick.checked && !filledSet.has(pick)) {
+          pick.click();
+          filledSet.add(pick);
+          n++;
+          log('engine:radio', instr.fieldId, '=', instr.value);
+        }
+        continue;
+      }
+      const el = instr.el;
+      if (!el || !isVisible(el) || !isEmpty(el) || filledSet.has(el)) continue;
+      if (instr.kind === 'typeahead') {
+        if (await fillLeverTypeahead(el, instr.value)) {
+          filledSet.add(el);
+          n++;
+          log('engine:typeahead', instr.fieldId);
+        }
+      } else if (el.tagName === 'SELECT') {
+        if (setSelectValue(el, instr.value)) {
+          filledSet.add(el);
+          n++;
+          log('engine:select', instr.fieldId);
+        }
+      } else {
+        setNativeValue(el, instr.value);
+        filledSet.add(el);
+        n++;
+        log('engine:text', instr.fieldId, instr.blockLabel?.slice(0, 50));
+      }
+    }
+    return n;
+  }
+
+  async function fillAllFields(profile, match) {
+    const filledSet = new Set();
+    let total = 0;
+    for (let pass = 0; pass < 3; pass++) {
+      total += await fillLeverUrls(profile, filledSet);
+      total += await executeFillPlan(profile, filledSet);
+      total += fillKnownFields(profile, filledSet);
+      total += fillEssayFromProfile(profile, filledSet);
+      if (pass < 2) await sleep(450);
+    }
+    total += await fillViaSemanticMap(profile, match, filledSet);
+    if (detectAts() === 'lever') {
+      const remaining = indexEmptyFields(filledSet);
+      if (remaining.length) {
+        log(
+          'lever:still empty',
+          remaining.map((r) => r.label.slice(0, 60)).join(' | '),
+        );
+      }
+    }
+    log('fillAllFields: filled', filledSet.size, 'elements in', total, 'operations');
+    return filledSet.size;
   }
 
   async function fillViaSemanticMap(profile, match, filledSet) {
@@ -724,28 +617,22 @@
     return n;
   }
 
-  async function fillAllFields(profile, match) {
-    const filledSet = new Set();
-    let total = 0;
-    for (let pass = 0; pass < 3; pass++) {
-      total += await fillLeverByName(profile, match, filledSet);
-      total += fillKnownFields(profile, filledSet);
-      total += fillBooleanRadios(profile, filledSet);
-      total += fillEssayFromProfile(profile, filledSet);
-      if (pass < 2) await sleep(450);
+  function indexEmptyFields(filledSet) {
+    const items = [];
+    let id = 0;
+    for (const el of collectFillableElements()) {
+      if (!isVisible(el) || el.type === 'file' || el.type === 'hidden') continue;
+      if (!isEmpty(el) || filledSet.has(el)) continue;
+      const label = labelForControl(el);
+      if (!label || label.length < 2) continue;
+      items.push({
+        id: id++,
+        el,
+        label: label.slice(0, 300),
+        type: el.type || el.tagName.toLowerCase(),
+      });
     }
-    total += await fillViaSemanticMap(profile, match, filledSet);
-    if (detectAts() === 'lever') {
-      const remaining = indexEmptyFields(filledSet);
-      if (remaining.length) {
-        log(
-          'lever:still empty',
-          remaining.map((r) => r.label.slice(0, 60)).join(' | '),
-        );
-      }
-    }
-    log('fillAllFields: filled', filledSet.size, 'elements in', total, 'operations');
-    return filledSet.size;
+    return items;
   }
 
   // -------------------------------------------------------------------
