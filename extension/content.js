@@ -168,6 +168,11 @@
       el.id,
       el.placeholder,
       el.getAttribute('aria-label'),
+      el.getAttribute('data-testid'),
+      el.getAttribute('data-automation-id'),
+      el.getAttribute('data-qa'),
+      el.getAttribute('autocomplete'),
+      el.getAttribute('type'),
       labelText,
     ]
       .filter(Boolean)
@@ -215,8 +220,9 @@
   // -------------------------------------------------------------------
   function fillKnownFields(profile) {
     const inputs = document.querySelectorAll(
-      'input[type="text"], input[type="email"], input[type="tel"], input[type="url"], input:not([type]), textarea',
+      'input[type="text"], input[type="email"], input[type="tel"], input[type="url"], input[type="number"], input:not([type]), textarea, select',
     );
+    log('fillKnownFields: found', inputs.length, 'fields on page');
     let n = 0;
     inputs.forEach((el) => {
       if (!isVisible(el) || el.disabled || el.readOnly) return;
@@ -229,11 +235,15 @@
           if (v != null && String(v).trim() !== '') {
             setNativeValue(el, String(v));
             n++;
+            log('fill:', path, '=', String(v).slice(0, 40), '| sig:', sig.slice(0, 60));
+          } else {
+            log('skip:', path, '= empty/undefined | sig:', sig.slice(0, 60));
           }
           break;
         }
       }
     });
+    log('fillKnownFields: filled', n, 'of', inputs.length);
     return n;
   }
 
@@ -320,12 +330,15 @@
     toast('Filling form...', 'ok', 2000);
 
     try {
+      log('=== AUTOFILL START ===');
       const ping = await send('ping');
+      log('ping result:', JSON.stringify(ping));
       if (!ping?.connected) {
+        log('NOT CONNECTED — token missing or invalid. ping:', JSON.stringify(ping));
         toast(
-          'Not connected. Open the Hyred extension popup and sign in.',
+          'Not connected. Click the extension popup → Connect to Hyred first.',
           'warn',
-          6000,
+          8000,
         );
         return;
       }
@@ -334,6 +347,9 @@
         send('profile'),
         send('matchByUrl', { url: location.href }),
       ]);
+
+      log('profile result:', JSON.stringify(profileRes?.ok), 'error:', profileRes?.error);
+      log('match result:', JSON.stringify(matchRes?.ok), 'match:', !!matchRes?.match);
 
       if (!profileRes?.ok) {
         toast(
@@ -345,6 +361,9 @@
       }
       const profile = profileRes.profile;
       const match = matchRes?.match ?? null;
+
+      log('profile keys:', Object.keys(profile || {}));
+      log('profile:', JSON.stringify(profile, null, 2).slice(0, 500));
 
       const filled = fillKnownFields(profile);
 
@@ -367,7 +386,7 @@
         filled || coverInjected || answered ? 'ok' : 'warn',
         5500,
       );
-      log('autofill complete', { filled, coverInjected, answered, match });
+      log('=== AUTOFILL END === filled:', filled, 'cover:', coverInjected, 'answered:', answered);
     } catch (e) {
       toast(`Autofill failed: ${e?.message ?? e}`, 'err', 6000);
       log('autofill error', e);

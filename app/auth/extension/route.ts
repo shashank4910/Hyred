@@ -7,11 +7,13 @@
  *   1. User clicks "Connect to Hyred" in the extension popup
  *   2. Popup opens this page in a new tab
  *   3. Server reads Supabase session cookies → checks if user is logged in
- *   4. If authenticated: generates an extension JWT, renders an HTML page
- *      that writes the JWT to localStorage under `hyred_extension_token`
- *   5. Extension background.js injects a MAIN-world script into this tab
- *      to read the token, saves it to chrome.storage, and closes the tab
- *   6. Popup updates to "Connected" state
+ *   4. If authenticated: generates an extension JWT, renders an HTML page that
+ *      (a) writes the JWT to localStorage, (b) sets it on a #hyred-ext-token
+ *      DOM hook, and (c) broadcasts it via window.postMessage
+ *   5. The extension content scripts on hyred.in (connect-main.js in the MAIN
+ *      world + connect.js in the isolated world) pick up the token and relay it
+ *      to background.js, which verifies + saves it to chrome.storage
+ *   6. Popup polls storage → "Connected" state
  *
  * If not authenticated: shows a "Please log in" message with a link.
  */
@@ -25,9 +27,9 @@ export async function GET() {
   let html: string;
 
   try {
-    // Check Supabase session from cookies
+    // Try to get Supabase session from cookies first
     const supabase = await createServerSupabase();
-    const {
+    let {
       data: { user },
       error: userError,
     } = await supabase.auth.getUser();
@@ -138,13 +140,42 @@ export async function GET() {
     <h1>Connected!</h1>
     <p>Your extension is now linked to your Hyred account.<br />You can close this tab and go back to the extension popup.</p>
   </div>
+  <div id="hyred-ext-token" hidden></div>
   <script>
     (function() {
+      var token = ${JSON.stringify(token)};
+      // Persist for the MAIN-world content-script reader (works even if this
+      // tab was opened directly).
       try {
-        localStorage.setItem('hyred_extension_token', ${JSON.stringify(token)});
+        localStorage.setItem('hyred_extension_token', token);
       } catch(e) {
         console.warn('[Hyred] Failed to write token to localStorage:', e);
       }
+      // DOM hook the isolated content script can read directly.
+      try {
+        var el = document.getElementById('hyred-ext-token');
+        if (el) el.setAttribute('data-token', token);
+      } catch(e) {}
+      // Broadcast to the extension content script (the handshake).
+      function emit() {
+        try {
+          window.postMessage(
+            { source: 'hyred-extension', kind: 'ext-token', token: token },
+            window.location.origin,
+          );
+        } catch(e) {}
+      }
+      emit();
+      var n = 0;
+      var iv = setInterval(function() {
+        n += 1;
+        emit();
+        if (n > 20) clearInterval(iv);
+      }, 500);
+      // Hint for extension background polling (idempotent).
+      try {
+        document.title = 'hyred-ext-connected';
+      } catch(e) {}
     })();
   </script>
 </body>
