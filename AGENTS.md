@@ -65,7 +65,7 @@ How to open one section cheaply: `grep -n "<heading text>" CONTEXT.md` to get th
 
 1. **Token discipline:** follow the Read Protocol. Don't bulk-read `CONTEXT.md`.
 2. **Verify before pushing:** run `npm run typecheck` (and `npm run build` for app changes). Must be clean.
-3. **Git workflow:** new branch → PR → **merge when CI is green** (squash + delete branch). **Always merge** after the user approves the PR or says yes — do not leave it open waiting for a second confirmation. **Never** push follow-up commits to a merged/closed PR's branch — branch off latest `main` and open a NEW PR. After merging, verify the change is live via `https://raw.githubusercontent.com/shashank4910/JobRadar/main/<path>` (local git cache can be stale in sandboxes).
+3. **Git workflow:** new branch → PR → **always merge when CI is green** (squash + delete branch). Treat merge as part of completing **every** fix or update — do not leave work unshipped on an open PR. Merge without waiting for a second "please merge" unless CI is failing or the user explicitly says not to. **Never** push follow-up commits to a merged/closed PR's branch — branch off latest `main` and open a NEW PR. After merging, verify the change is live via `https://raw.githubusercontent.com/shashank4910/JobRadar/main/<path>` (local git cache can be stale in sandboxes).
 4. **Evidence-based debugging:** read actual logs/errors first; don't guess-and-check.
 5. **AI providers:** Groq primary + OpenAI fallback via `LLM_PRIMARY`. **Never reintroduce `gemini-2.0-flash`** (deprecated → 429). Embeddings are OpenAI-only.
 6. **Multi-user:** resolve the user with `getCurrentProfile()` (`lib/current-user.ts`); scope every user-data query by `profile_id`. Never use the old "first profile" pattern.
