@@ -11,12 +11,13 @@ async function getCreds() {
 
 async function api(path, init = {}) {
   const { jr_url, jr_token } = await getCreds();
-  if (!jr_url || !jr_token) {
+  const base = canonicalBase(jr_url);
+  if (!jr_token) {
     return { ok: false, status: 0, error: 'not_connected' };
   }
   let res;
   try {
-    res = await fetch(`${jr_url}${path}`, {
+    res = await fetch(`${base}${path}`, {
       ...init,
       headers: {
         'content-type': 'application/json',
@@ -36,7 +37,23 @@ async function api(path, init = {}) {
   return { ok: res.ok, status: res.status, data };
 }
 
-const DEFAULT_URL = 'https://hyred.in';
+// Canonical API origin — must be www. Apex hyred.in 307-redirects to www.hyred.in;
+// fetch() drops the Authorization header on that cross-origin redirect, so verify
+// always returned 401 and the token was never saved.
+const DEFAULT_URL = 'https://www.hyred.in';
+
+function canonicalBase(url) {
+  if (!url) return DEFAULT_URL;
+  try {
+    const u = new URL(url);
+    if (u.hostname === 'hyred.in' || u.hostname === 'www.hyred.in') {
+      return DEFAULT_URL;
+    }
+    return `${u.protocol}//${u.host}`;
+  } catch {
+    return DEFAULT_URL;
+  }
+}
 
 // Decode URL-safe base64 (base64url) to a UTF-8 string. Returns null on failure.
 // @supabase/ssr encodes session cookies as "base64-<base64url>".
@@ -236,10 +253,37 @@ async function connectViaCookies() {
   return { ok: true, data: { token: result.token, profile: result.profile } };
 }
 
+// Deterministically read the extension JWT the /auth/extension page writes to
+// localStorage, from a SPECIFIC tab we control. world:'MAIN' runs in the page's
+// own JS context (where localStorage lives). This does not depend on content
+// scripts firing or on any server-side postMessage/DOM hook being deployed.
+async function readTokenFromTab(tabId) {
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      func: () => {
+        try {
+          const el = document.getElementById('hyred-ext-token');
+          const dom = el && el.getAttribute('data-token');
+          if (dom) return dom;
+          return localStorage.getItem('hyred_extension_token');
+        } catch {
+          return null;
+        }
+      },
+    });
+    return results?.[0]?.result || null;
+  } catch (e) {
+    console.warn('[Hyred] readTokenFromTab failed:', e?.message ?? e);
+    return null;
+  }
+}
+
 // Verify a token via the server (background fetch bypasses CORS).
 async function verifyToken(token, base) {
   try {
-    const res = await fetch(`${base}/api/extension/verify`, {
+    const res = await fetch(`${canonicalBase(base)}/api/extension/verify`, {
       headers: { authorization: `Bearer ${token}` },
     });
     return { ok: res.ok, status: res.status };
@@ -254,7 +298,7 @@ const handlers = {
   // verify before saving so a stale/invalid token never overwrites a good one.
   async storeToken({ token } = {}) {
     if (!token) return { ok: false, error: 'no token' };
-    const base = DEFAULT_URL; // canonical; verify works regardless of www
+    const base = DEFAULT_URL;
     const v = await verifyToken(token, base);
     if (!v.ok) {
       console.warn('[Hyred] storeToken: token failed verify', v.status, v.error || '');
@@ -286,12 +330,12 @@ const handlers = {
   },
 
   // Primary connect flow — runs entirely in the background (survives the popup
-  // closing). Strategy:
-  //   1. Best-effort silent cookie exchange (works if already logged in AND the
-  //      cookie format parses — kept as a fast path, never blocks the flow).
-  //   2. Open the /auth/extension tab. The hyred.in content-script handshake
-  //      (connect.js + connect-main.js) picks up the freshly-signed token the
-  //      page emits and calls storeToken here. We just poll storage for it.
+  // closing). Deterministic, does not rely on content scripts or unshipped
+  // server changes:
+  //   1. Best-effort silent cookie exchange (fast path, never blocks).
+  //   2. Open the /auth/extension tab we control, then directly read the JWT it
+  //      writes to localStorage from THAT exact tab via executeScript. Verify +
+  //      save + close the tab.
   async connectExtension() {
     // 1. Fast path: silent cookie exchange.
     const direct = await connectViaCookies();
@@ -300,7 +344,7 @@ const handlers = {
       return direct;
     }
 
-    // 2. Open the auth tab — the handshake does the rest.
+    // 2. Open the auth tab.
     const authUrl = `${DEFAULT_URL}/auth/extension`;
     let tab;
     try {
@@ -309,27 +353,56 @@ const handlers = {
       return { ok: false, error: `could not open auth tab: ${e?.message ?? e}` };
     }
 
-    // 3. Poll chrome.storage for the token the handshake saves.
+    // 3. Poll the tab's localStorage for the token (set once the page renders
+    //    the "Connected!" state). The user may need to log in first.
     const deadline = Date.now() + 60000;
+    let token = null;
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 1000));
-      const { jr_token } = await getCreds();
-      if (jr_token) {
-        try {
-          await chrome.tabs.remove(tab.id);
-        } catch {
-          /* tab may already be closed */
-        }
-        console.log('[Hyred] connectExtension: token saved via handshake');
-        return { ok: true, data: { token: jr_token } };
+      // Stop if the user closed the tab.
+      let tabAlive = true;
+      try {
+        await chrome.tabs.get(tab.id);
+      } catch {
+        tabAlive = false;
       }
+      if (!tabAlive) {
+        console.warn('[Hyred] connectExtension: auth tab closed by user');
+        break;
+      }
+      token = await readTokenFromTab(tab.id);
+      if (token) break;
     }
 
-    console.warn('[Hyred] connectExtension: handshake timeout');
-    return {
-      ok: false,
-      error: 'auth timeout — sign in on the Hyred tab, then click Connect again',
-    };
+    if (!token) {
+      console.warn('[Hyred] connectExtension: no token found before timeout');
+      return {
+        ok: false,
+        error: 'auth timeout — sign in on the Hyred tab, then click Connect again',
+      };
+    }
+
+    // 4. Verify before saving so a stale/invalid token never sticks.
+    const v = await verifyToken(token, DEFAULT_URL);
+    if (!v.ok) {
+      console.warn('[Hyred] connectExtension: token failed verify', v.status, v.error || '');
+      return {
+        ok: false,
+        status: v.status,
+        error: `token failed verification (HTTP ${v.status || 'network'})`,
+      };
+    }
+
+    await new Promise((resolve) =>
+      chrome.storage.local.set({ jr_url: DEFAULT_URL, jr_token: token }, resolve),
+    );
+    try {
+      await chrome.tabs.remove(tab.id);
+    } catch {
+      /* tab may already be closed */
+    }
+    console.log('[Hyred] connectExtension: token verified + saved');
+    return { ok: true, data: { token } };
   },
 
   async profile() {
@@ -353,6 +426,28 @@ const handlers = {
     });
     if (!r.ok) return { ok: false, error: r.data?.error ?? `HTTP ${r.status}` };
     return { ok: true, answer: r.data.answer };
+  },
+
+  async fetchResume({ match_id } = {}) {
+    const q = match_id
+      ? `?match_id=${encodeURIComponent(match_id)}`
+      : '';
+    const r = await api(`/api/extension/resume${q}`);
+    if (!r.ok) return { ok: false, error: r.data?.error ?? `HTTP ${r.status}` };
+    return {
+      ok: true,
+      filename: r.data.filename,
+      content_type: r.data.content_type,
+      data_base64: r.data.data_base64,
+    };
+  },
+
+  async saveQa({ question, answer }) {
+    const r = await api('/api/extension/save-qa', {
+      method: 'POST',
+      body: JSON.stringify({ question, answer }),
+    });
+    return { ok: !!r.ok, error: r.ok ? undefined : r.data?.error };
   },
 
   async markApplied({ match_id }) {

@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
   let query = sb
     .from('matches')
     .select(
-      `id, llm_score, reason, status, cover_letter,
+      `id, llm_score, reason, status, cover_letter, matched_skills, missing_skills, tailored_resume_url,
        job:jobs!inner(id, title, company, url, description)`,
     )
     .ilike('job.url', `${canonical}%`);
@@ -70,6 +70,9 @@ export async function GET(req: NextRequest) {
       reason: match.reason,
       status: match.status,
       cover_letter: match.cover_letter,
+      matched_skills: match.matched_skills ?? [],
+      missing_skills: match.missing_skills ?? [],
+      tailored_resume_url: match.tailored_resume_url ?? null,
       job: {
         id: job.id,
         title: job.title,

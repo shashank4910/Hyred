@@ -36,12 +36,20 @@ export async function GET(req: NextRequest) {
     if (!row) {
       return corsResponse({ error: 'no profile' }, { status: 404 });
     }
-    const profile = buildAutofillProfile({
-      email: row.email,
-      full_name: row.full_name,
-      resume_text: row.resume_text,
-      insights: (row.insights as ResumeInsights | null) ?? null,
-    });
+    const { data: apply } = await sb
+      .from('apply_profiles')
+      .select('*')
+      .eq('profile_id', auth.profile_id)
+      .maybeSingle();
+    const profile = buildAutofillProfile(
+      {
+        email: row.email,
+        full_name: row.full_name,
+        resume_text: row.resume_text,
+        insights: (row.insights as ResumeInsights | null) ?? null,
+      },
+      apply,
+    );
     return corsResponse({ ok: true, profile });
   }
 
