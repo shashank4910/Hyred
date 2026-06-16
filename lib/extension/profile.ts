@@ -1,4 +1,9 @@
 import type { ResumeInsights } from '../types';
+import {
+  extractResumeStructure,
+  type EducationEntry,
+  type WorkEntry,
+} from './resume-structure';
 
 export type CustomQa = { question: string; answer: string };
 
@@ -19,6 +24,9 @@ export type AutofillProfile = {
   skills?: string[];
   summary?: string;
   current_title?: string;
+  latest_company?: string;
+  work_history?: WorkEntry[];
+  education?: EducationEntry[];
   zip_code?: string;
   total_ctc?: string;
   expected_ctc?: string;
@@ -176,6 +184,9 @@ export function buildAutofillProfile(
   );
   const name = splitName(fullName ?? null);
   const location = buildLocation(apply, insightsLoc);
+  const resumeStruct = row.resume_text
+    ? extractResumeStructure(row.resume_text)
+    : { work_history: [], education: [] };
 
   return {
     first_name: name.first_name,
@@ -193,7 +204,14 @@ export function buildAutofillProfile(
     years_experience: pick(apply?.years_experience, row.insights?.years_experience),
     skills: row.insights?.top_skills ?? [],
     summary: row.insights?.summary,
-    current_title: pick(apply?.current_title) ?? undefined,
+    current_title: pick(
+      apply?.current_title,
+      resumeStruct.parsed_title,
+      resumeStruct.work_history[0]?.title,
+    ),
+    latest_company: resumeStruct.latest_company,
+    work_history: resumeStruct.work_history,
+    education: resumeStruct.education,
     zip_code: pick(apply?.zip_code, location?.zip),
     total_ctc: pick(apply?.total_ctc) ?? undefined,
     expected_ctc: pick(apply?.expected_ctc) ?? undefined,

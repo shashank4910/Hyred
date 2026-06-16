@@ -141,6 +141,7 @@
     [/location|current\s*location/i, 'location.full'],
 
     [/job[_\s-]*title|current[_\s-]*title|position\b/i, 'current_title'],
+    [/\borg\b|current[_\s-]*company|employer/i, 'latest_company'],
     [/years?[_\s-]*of[_\s-]*experience|yoe\b|experience\s*years/i, 'years_experience'],
     [/current[_\s-]*(ctc|salary)|present[_\s-]*salary/i, 'total_ctc'],
     [/expected[_\s-]*(ctc|salary)|desired[_\s-]*salary|salary[_\s-]*expect/i, 'expected_ctc'],
@@ -151,6 +152,8 @@
     [/relocat/i, 'relocation_cities'],
 
     [/gender\b/i, 'gender'],
+    [/university|college|school/i, 'education.0.school'],
+    [/degree|major|field of study/i, 'education.0.degree'],
     [/veteran/i, 'veteran_status'],
     [/disabilit/i, 'disability_status'],
     [/ethnic|race\b/i, 'ethnicity'],
@@ -409,8 +412,118 @@
       const sig = fieldSignature(c);
       if (/cover[_\s]?letter|motivation|why[_\s]?(this|us|interested)/.test(sig))
         return c;
+      if (c.name === 'comments' && /additional|comments/i.test(sig)) return c;
     }
     return null;
+  }
+
+  async function fillLeverTypeahead(input, value) {
+    if (!input || !value) return false;
+    const str = String(value).trim();
+    setNativeValue(input, str);
+    await sleep(450);
+    const selectors = [
+      '.tt-suggestion',
+      '.tt-menu .tt-selectable',
+      '.dropdown-menu .dropdown-item',
+      '.dropdown-menu li',
+      '[role="listbox"] [role="option"]',
+      '.application-dropdown li',
+      '.menu-content li',
+    ];
+    const want = str.toLowerCase();
+    for (const sel of selectors) {
+      const opts = [...document.querySelectorAll(sel)].filter(isVisible);
+      if (!opts.length) continue;
+      const hit =
+        opts.find((o) => o.textContent.toLowerCase().includes(want)) ||
+        opts.find((o) => want.includes(o.textContent.toLowerCase().trim().slice(0, 40))) ||
+        opts[0];
+      if (hit) {
+        hit.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+        hit.click();
+        await sleep(250);
+        return true;
+      }
+    }
+    return !!input.value?.trim();
+  }
+
+  function fillLeverSelect(select, value) {
+    if (!select || select.tagName !== 'SELECT' || !value) return false;
+    const want = String(value).toLowerCase();
+    for (const opt of select.options) {
+      const ot = (opt.textContent || '').toLowerCase().trim();
+      if (ot === want || ot.includes(want) || want.includes(ot)) {
+        select.value = opt.value;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function fillLeverQuestionBlock(block, profile, match, filledSet) {
+    const label =
+      block.querySelector('label, .application-label, .text, h4')?.textContent || '';
+    const sig = label.toLowerCase();
+    if (!sig) return 0;
+    let n = 0;
+
+    const pickValue = () => {
+      let val = matchCustomQa(sig, profile.custom_qa);
+      if (!val && /current.*company|organization|employer|\borg\b/i.test(sig))
+        val = profile.latest_company;
+      if (!val && /university|college|school/i.test(sig))
+        val = profile.education?.[0]?.school;
+      if (!val && /degree|major|field of study/i.test(sig))
+        val = profile.education?.[0]?.degree || profile.education?.[0]?.field;
+      if (!val && /job title|current title|position/i.test(sig))
+        val = profile.current_title;
+      if (!val && /years?.*experience|yoe/i.test(sig))
+        val = profile.years_experience;
+      if (!val && /linkedin/i.test(sig)) val = profile.links?.linkedin;
+      if (!val && /github/i.test(sig)) val = profile.links?.github;
+      if (!val && /portfolio|website/i.test(sig)) val = profile.links?.portfolio;
+      return val;
+    };
+
+    const input = block.querySelector('input:not([type="hidden"]), textarea, select');
+    if (input && isVisible(input) && isEmpty(input) && !filledSet.has(input)) {
+      const val = pickValue();
+      if (val) {
+        if (input.tagName === 'SELECT') {
+          if (!fillLeverSelect(input, val)) return n;
+        } else {
+          setNativeValue(input, val);
+        }
+        filledSet.add(input);
+        n++;
+        log('lever:custom', sig.slice(0, 50));
+      }
+    }
+
+    const radios = [...block.querySelectorAll('input[type="radio"]')].filter(isVisible);
+    if (radios.length && !radios.some((r) => r.checked)) {
+      for (const [re, path] of BOOL_RADIO_RULES) {
+        if (!re.test(sig)) continue;
+        const boolVal = get(profile, path);
+        if (typeof boolVal !== 'boolean') break;
+        const want = boolVal ? 'yes' : 'no';
+        const hit = radios.find((r) => {
+          const t = (r.labels?.[0]?.textContent || r.value || '').toLowerCase();
+          return t.includes(want);
+        });
+        if (hit) {
+          hit.click();
+          filledSet.add(hit);
+          n++;
+          log('lever:radio', path, '=', want);
+        }
+        break;
+      }
+    }
+    return n;
   }
 
   function fillEssayFromProfile(profile, filledSet) {
@@ -437,6 +550,143 @@
         }
         break;
       }
+    }
+    return n;
+  }
+
+  function queryByName(name) {
+    const esc = name.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    return document.querySelector(
+      `input[name="${esc}"], textarea[name="${esc}"], select[name="${esc}"]`,
+    );
+  }
+
+  async function fillLeverByName(profile, match, filledSet) {
+    if (detectAts() !== 'lever') return 0;
+    const pairs = [
+      ['name', profile.full_name],
+      ['email', profile.email],
+      ['phone', profile.phone],
+      ['org', profile.latest_company],
+      ['urls[LinkedIn]', profile.links?.linkedin],
+      ['urls[GitHub]', profile.links?.github],
+      ['urls[Github]', profile.links?.github],
+      ['urls[Portfolio]', profile.links?.portfolio],
+      ['urls[Website]', profile.links?.portfolio],
+      ['urls[Twitter]', profile.links?.twitter],
+      ['urls[X]', profile.links?.twitter],
+    ];
+    let n = 0;
+    for (const [name, value] of pairs) {
+      if (!value) continue;
+      const el = queryByName(name);
+      if (!el || !isVisible(el) || !isEmpty(el) || filledSet.has(el)) continue;
+      if (el.tagName === 'SELECT') {
+        if (!setSelectValue(el, value)) continue;
+      } else {
+        setNativeValue(el, value);
+      }
+      filledSet.add(el);
+      n++;
+      log('lever:', name, '=', String(value).slice(0, 40));
+    }
+
+    document.querySelectorAll('input[name^="urls["]').forEach((el) => {
+      if (!isVisible(el) || !isEmpty(el) || filledSet.has(el)) return;
+      const nm = (el.name || '').toLowerCase();
+      let value = null;
+      if (/linkedin/.test(nm)) value = profile.links?.linkedin;
+      else if (/github/.test(nm)) value = profile.links?.github;
+      else if (/portfolio|website|personal/.test(nm)) value = profile.links?.portfolio;
+      else if (/twitter|x\]/.test(nm)) value = profile.links?.twitter;
+      if (value) {
+        setNativeValue(el, value);
+        filledSet.add(el);
+        n++;
+        log('lever:urls', el.name);
+      }
+    });
+
+    const locVal = profile.location?.full || profile.location?.city;
+    const locEl = queryByName('location');
+    if (locEl && locVal && isEmpty(locEl) && !filledSet.has(locEl)) {
+      if (await fillLeverTypeahead(locEl, locVal)) {
+        filledSet.add(locEl);
+        n++;
+        log('lever:location typeahead');
+      }
+    }
+
+    const school = profile.education?.[0]?.school;
+    const uniInput =
+      document.querySelector('.application-university input') ||
+      document.querySelector('input.application-university');
+    if (uniInput && school && isEmpty(uniInput) && !filledSet.has(uniInput)) {
+      if (await fillLeverTypeahead(uniInput, school)) {
+        filledSet.add(uniInput);
+        n++;
+        log('lever:university typeahead');
+      }
+    }
+
+    const extra = match?.cover_letter || profile.summary;
+    const comments = queryByName('comments');
+    if (comments && extra && isEmpty(comments) && !filledSet.has(comments)) {
+      setNativeValue(comments, extra);
+      filledSet.add(comments);
+      n++;
+      log('lever:comments');
+    }
+
+    document
+      .querySelectorAll(
+        '.application-question, .application-field, [data-qa="application-field"], .application-additional',
+      )
+      .forEach((block) => {
+        n += fillLeverQuestionBlock(block, profile, match, filledSet);
+      });
+    return n;
+  }
+
+  function indexEmptyFields(filledSet) {
+    const items = [];
+    let id = 0;
+    for (const el of collectFillableElements()) {
+      if (!isVisible(el) || el.type === 'file' || el.type === 'hidden') continue;
+      if (!isEmpty(el) || filledSet.has(el)) continue;
+      const label = labelForControl(el);
+      if (!label || label.length < 2) continue;
+      items.push({
+        id: id++,
+        el,
+        label: label.slice(0, 300),
+        type: el.type || el.tagName.toLowerCase(),
+      });
+    }
+    return items;
+  }
+
+  async function fillViaSemanticMap(profile, match, filledSet) {
+    const indexed = indexEmptyFields(filledSet);
+    if (!indexed.length) return 0;
+    const res = await send('mapFields', {
+      fields: indexed.map(({ id, label, type }) => ({ id, label, type })),
+      profile,
+      job_title: match?.job?.title,
+      company: match?.job?.company,
+    });
+    if (!res?.ok || !Array.isArray(res.mappings)) {
+      log('mapFields skipped:', res?.error);
+      return 0;
+    }
+    let n = 0;
+    for (const m of res.mappings) {
+      const item = indexed.find((x) => x.id === m.id);
+      if (!item?.el || !m.value) continue;
+      setNativeValue(item.el, m.value);
+      filledSet.add(item.el);
+      n++;
+      log('semantic:', item.label.slice(0, 50));
     }
     return n;
   }
@@ -474,14 +724,25 @@
     return n;
   }
 
-  async function fillAllFields(profile) {
+  async function fillAllFields(profile, match) {
     const filledSet = new Set();
     let total = 0;
     for (let pass = 0; pass < 3; pass++) {
+      total += await fillLeverByName(profile, match, filledSet);
       total += fillKnownFields(profile, filledSet);
       total += fillBooleanRadios(profile, filledSet);
       total += fillEssayFromProfile(profile, filledSet);
       if (pass < 2) await sleep(450);
+    }
+    total += await fillViaSemanticMap(profile, match, filledSet);
+    if (detectAts() === 'lever') {
+      const remaining = indexEmptyFields(filledSet);
+      if (remaining.length) {
+        log(
+          'lever:still empty',
+          remaining.map((r) => r.label.slice(0, 60)).join(' | '),
+        );
+      }
     }
     log('fillAllFields: filled', filledSet.size, 'elements in', total, 'operations');
     return filledSet.size;
@@ -670,14 +931,28 @@
       const match = matchRes?.match ?? null;
 
       log('profile keys:', Object.keys(profile || {}));
-      log('profile:', JSON.stringify(profile, null, 2).slice(0, 500));
+      log(
+        'profile struct:',
+        'work=',
+        profile.work_history?.length ?? 0,
+        'edu=',
+        profile.education?.length ?? 0,
+        'company=',
+        profile.latest_company,
+      );
+
+      const ats = detectAts();
+      let resumeUploaded = false;
+      if (options.resume && ats === 'lever') {
+        resumeUploaded = await uploadResume(match?.id);
+        if (resumeUploaded) await sleep(1200);
+      }
 
       const filled = options.commonFields
-        ? await fillAllFields(profile)
+        ? await fillAllFields(profile, match)
         : 0;
 
-      let resumeUploaded = false;
-      if (options.resume) {
+      if (options.resume && ats !== 'lever') {
         resumeUploaded = await uploadResume(match?.id);
       }
 

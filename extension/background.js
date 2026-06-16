@@ -428,6 +428,15 @@ const handlers = {
     return { ok: true, answer: r.data.answer };
   },
 
+  async mapFields({ fields, profile, job_title, company }) {
+    const r = await api('/api/extension/map-fields', {
+      method: 'POST',
+      body: JSON.stringify({ fields, profile, job_title, company }),
+    });
+    if (!r.ok) return { ok: false, error: r.data?.error ?? `HTTP ${r.status}` };
+    return { ok: true, mappings: r.data.mappings ?? [] };
+  },
+
   async fetchResume({ match_id } = {}) {
     const q = match_id
       ? `?match_id=${encodeURIComponent(match_id)}`

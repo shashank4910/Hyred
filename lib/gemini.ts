@@ -2330,4 +2330,59 @@ Draft the message now:`;
     throw err;
   }
 }
+
+/** Semantic ATS field mapping (Simplify-style) for extension autofill gaps. */
+export async function mapAutofillFormFields(args: {
+  fields: { id: number; label: string; type: string }[];
+  profile: import('./extension/profile').AutofillProfile;
+  jobTitle?: string;
+  company?: string;
+}): Promise<{ id: number; value: string }[]> {
+  if (!args.fields.length) return [];
+
+  const prompt = `You map job application form fields to candidate data.
+
+JOB: ${args.jobTitle || 'unknown'} at ${args.company || 'unknown'}
+
+CANDIDATE PROFILE (JSON):
+${JSON.stringify(args.profile, null, 2).slice(0, 12000)}
+
+EMPTY FORM FIELDS (fill only when confident):
+${args.fields.map((f) => `${f.id}. [${f.type}] ${f.label}`).join('\n')}
+
+Return strict JSON: { "mappings": [ { "id": <number>, "value": "<string>" } ] }
+Rules:
+- Use work_history[0] for current company/title/org fields.
+- Use education[0] for university/degree/major fields.
+- Use custom_qa when the label matches a saved question.
+- For yes/no fields, answer Yes or No only.
+- Skip fields you cannot fill confidently.
+- Max 120 words per textarea.
+- Output JSON only.`;
+
+  const text = await chat(
+    'You map ATS form fields to candidate profile JSON. Output JSON only.',
+    prompt,
+    0.1,
+    true,
+    'mapAutofillFormFields',
+  );
+
+  try {
+    const parsed = JSON.parse(text) as {
+      mappings?: { id: number; value: string }[];
+    };
+    if (!Array.isArray(parsed.mappings)) return [];
+    return parsed.mappings
+      .filter(
+        (m) =>
+          typeof m.id === 'number' &&
+          typeof m.value === 'string' &&
+          m.value.trim().length > 0,
+      )
+      .slice(0, 25);
+  } catch {
+    return [];
+  }
+}
 
