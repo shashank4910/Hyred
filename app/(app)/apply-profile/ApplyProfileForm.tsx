@@ -139,7 +139,7 @@ export function ApplyProfileForm() {
             <input className="input" value={f('current_title')} onChange={e => set('current_title', e.target.value)} placeholder="e.g. Senior Software Engineer" />
           </Field>
           <Field label="Total Years of Experience">
-            <input className="input" type="number" min={0} max={50} value={f('years_experience')} onChange={e => set('years_experience', e.target.value)} placeholder="e.g. 5" />
+            <input className="input" type="number" min={0} max={50} step={0.1} value={f('years_experience')} onChange={e => set('years_experience', e.target.value)} placeholder="e.g. 7.7" />
           </Field>
           <Field label="Current CTC (e.g. 18 LPA)">
             <input className="input" value={f('total_ctc')} onChange={e => set('total_ctc', e.target.value)} placeholder="e.g. 18 LPA" />
