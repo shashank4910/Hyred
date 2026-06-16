@@ -28,6 +28,13 @@ const SECTION_HEADERS =
 const DATE_RANGE_RE =
   /(\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{4}|\b\d{1,2}\/\d{4}|\b\d{4})\s*[-–—to]+\s*(\b(?:present|current|now)\b|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{4}|\b\d{4})/i;
 
+const TITLE_RE =
+  /\b(senior|junior|lead|staff|principal|engineer|developer|manager|analyst|architect|consultant|specialist|director|tester|qa|sde|performance)\b/i;
+
+function looksLikeJobTitle(s: string): boolean {
+  return TITLE_RE.test(s);
+}
+
 function isSectionLine(line: string): boolean {
   const t = line.trim();
   if (t.length < 3 || t.length > 60) return false;
@@ -64,10 +71,21 @@ function parseWorkBlock(lines: string[]): WorkEntry | null {
     entry.title = atSplit[0].trim();
     entry.company = atSplit[1].trim();
   } else if (dashSplit.length >= 2) {
-    entry.company = dashSplit[0].trim();
-    entry.title = dashSplit.slice(1).join(' - ').trim();
+    const a = dashSplit[0].trim();
+    const b = dashSplit.slice(1).join(' - ').trim();
+    if (looksLikeJobTitle(a) && !looksLikeJobTitle(b)) {
+      entry.title = a;
+      entry.company = b;
+    } else if (!looksLikeJobTitle(a) && looksLikeJobTitle(b)) {
+      entry.company = a;
+      entry.title = b;
+    } else {
+      entry.company = a;
+      entry.title = b;
+    }
   } else {
-    entry.title = head;
+    entry.title = looksLikeJobTitle(head) ? head : undefined;
+    entry.company = !looksLikeJobTitle(head) ? head : undefined;
   }
   let i = 1;
   if (lines[1] && DATE_RANGE_RE.test(lines[1])) {
@@ -160,9 +178,14 @@ export function extractResumeStructure(resumeText: string | null): ResumeStructu
   const header = parseResumePlainText(resumeText);
   const work_history = parseWorkHistory(resumeText);
   const education = parseEducation(resumeText);
+  const first = work_history[0];
+  let latest_company = first?.company;
+  if (latest_company && looksLikeJobTitle(latest_company) && first?.title && !looksLikeJobTitle(first.title)) {
+    latest_company = first.title;
+  }
   return {
     parsed_title: header.title ?? undefined,
-    latest_company: work_history[0]?.company,
+    latest_company,
     work_history,
     education,
   };
