@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { getCurrentProfile } from '@/lib/current-user';
+import {
+  parseYearsExperience,
+  sanitizeApplyProfilePayload,
+} from '@/lib/apply-profile';
 
 export const runtime = 'nodejs';
 
@@ -48,20 +52,22 @@ export async function POST(req: NextRequest) {
     ...rest
   } = body as Record<string, unknown>;
 
+  const payload = sanitizeApplyProfilePayload(rest);
+
   const { error } = await sb
     .from('apply_profiles')
     .upsert(
-      { ...rest, profile_id: profile.id, updated_at: new Date().toISOString() },
+      { ...payload, profile_id: profile.id, updated_at: new Date().toISOString() },
       { onConflict: 'profile_id' },
     );
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const years = Number(rest.years_experience);
-  if (Number.isFinite(years) && years > 0) {
+  const years = parseYearsExperience(payload.years_experience);
+  if (years != null && years > 0) {
     const mergedInsights = {
       ...(profile.insights ?? {}),
-      years_experience: Math.round(years * 10) / 10,
+      years_experience: years,
     };
     await sb
       .from('profiles')
