@@ -650,6 +650,112 @@
     return null;
   }
 
+  // Type into a Workday input WITHOUT firing blur (blur closes the prompt
+  // before we can click an option). Dispatches the event sequence Workday's
+  // React multiselect listens to.
+  function typeWorkday(input, term) {
+    try {
+      input.focus({ preventScroll: true });
+    } catch {
+      /* ignore */
+    }
+    const desc = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      'value',
+    );
+    if (desc?.set) desc.set.call(input, term);
+    else input.value = term;
+    const key = term.slice(-1) || 'a';
+    input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key }));
+    input.dispatchEvent(new InputEvent('input', { bubbles: true, data: term }));
+    input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key }));
+  }
+
+  // Workday multiSelect (chip-style): a text input that filters a prompt list.
+  // Type a candidate, wait for options, click the best match. fallbackFirst
+  // picks the first real option when no candidate matches (for required fields
+  // like "How did you hear about us" where any source is acceptable).
+  async function setWorkdayMultiSelect(input, candidates, fallbackFirst) {
+    const sel =
+      'ul[role="listbox"] li[role="option"], [role="listbox"] [role="option"], [data-automation-id="promptOption"]';
+    const getOpts = () =>
+      [...document.querySelectorAll(sel)].filter(
+        (o) => isVisible(o) && (o.textContent || '').trim().length > 1,
+      );
+    const tryTerm = async (term, requireMatch) => {
+      typeWorkday(input, term);
+      let options = [];
+      for (let i = 0; i < 8; i++) {
+        await sleep(180);
+        options = getOpts();
+        if (options.length) break;
+      }
+      if (!options.length) return false;
+      const t = (o) => (o.textContent || '').toLowerCase().trim();
+      const lc = String(term).toLowerCase().trim();
+      const hit =
+        (lc && options.find((o) => t(o) === lc)) ||
+        (lc && options.find((o) => t(o).includes(lc))) ||
+        (requireMatch ? null : options[0]);
+      if (!hit) return false;
+      hit.click();
+      await sleep(220);
+      return true;
+    };
+    for (const term of candidates) {
+      if (!term) continue;
+      if (await tryTerm(String(term), true)) return true;
+      typeWorkday(input, '');
+      await sleep(120);
+    }
+    if (fallbackFirst) return tryTerm('', false);
+    return false;
+  }
+
+  async function fillWorkdayMultiSelects(profile, filledSet) {
+    let n = 0;
+    const inputs = [
+      ...document.querySelectorAll(
+        'input[data-automation-id="multiselectInputContainer"]',
+      ),
+    ].filter(isVisible);
+    for (const input of inputs) {
+      if (filledSet.has(input)) continue;
+      const container =
+        input.closest('[data-automation-id="multiSelectContainer"]') ||
+        input.closest('[data-automation-id*="multiselect" i]') ||
+        input.parentElement;
+      // Skip if a value chip is already selected.
+      if (
+        container?.querySelector(
+          '[data-automation-id="selectedItem"], [class*="selectedItem"]',
+        )
+      )
+        continue;
+      const lbl = labelForControl(input).toLowerCase();
+      let ok = false;
+      let kind = '';
+      if (/how did you hear|hear about|source--source|referral/.test(lbl)) {
+        kind = 'source';
+        ok = await setWorkdayMultiSelect(
+          input,
+          ['linkedin', 'job board', 'indeed', 'company website', 'glassdoor', 'other'],
+          true,
+        );
+      } else if (/phone code|country phone|countryphonecode/.test(lbl)) {
+        kind = 'phoneCode';
+        const country = profile.location?.country || profile.work_auth_country;
+        if (country) ok = await setWorkdayMultiSelect(input, [country], false);
+      }
+      if (ok) {
+        filledSet.add(input);
+        n++;
+        log('workday:multiselect', kind);
+      }
+    }
+    return n;
+  }
+
   async function fillWorkday(profile, filledSet) {
     if (detectAts() !== 'workday') return 0;
     let n = 0;
@@ -725,8 +831,12 @@
       }
     }
 
-    // 3. "How did you hear about us?" — required dropdown with no exact profile
-    // value. Pick a sensible source (same as Simplify) so it doesn't block.
+    // 3. multiSelect widgets (chip-style text inputs): "How did you hear about
+    // us?" (pick a sensible source) and "Country Phone Code" (match country).
+    n += await fillWorkdayMultiSelects(profile, filledSet);
+
+    // 3b. Fallback: some Workday tenants render "How did you hear" as a
+    // button→listbox dropdown rather than a multiSelect.
     const srcTrigger = wdDropdownTrigger([
       'source',
       'how did you hear',
