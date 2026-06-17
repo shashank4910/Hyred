@@ -709,6 +709,157 @@
     }
   }
 
+  function skillToken(s) {
+    return String(s || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '');
+  }
+
+  function pickSkillOption(opts, skill) {
+    const want = skillToken(skill);
+    if (!want) return null;
+    let best = null;
+    let bestScore = 0;
+    for (const o of opts) {
+      const t = skillToken(o.textContent);
+      if (!t) continue;
+      if (t === want) return o;
+      if (t.includes(want) || want.includes(t)) {
+        const score = Math.min(t.length, want.length);
+        if (score > bestScore) {
+          bestScore = score;
+          best = o;
+        }
+      }
+    }
+    return best;
+  }
+
+  function countSkillChips(root) {
+    if (!root) return 0;
+    let n = 0;
+    for (const el of root.querySelectorAll(
+      '[data-automation-id="selectedItem"], [data-automation-id="tag"], [data-automation-id="selectedItemList"] li',
+    )) {
+      const t = (el.textContent || '').replace(/\s+/g, ' ').trim();
+      if (t.length > 1 && !/^search$/i.test(t)) n++;
+    }
+    return n;
+  }
+
+  // Options scoped to the open Workday prompt popup (not the whole-page taxonomy).
+  function msOptionsForInput(_input) {
+    const containers = [
+      ...document.querySelectorAll('[data-automation-id="activeListContainer"]'),
+      ...document.querySelectorAll('[data-automation-id="wd-ActiveList"]'),
+      ...document.querySelectorAll('[role="listbox"]'),
+    ].filter(isVisible);
+    const out = [];
+    const seen = new Set();
+    for (const c of containers) {
+      for (const el of c.querySelectorAll(
+        '[data-automation-id="promptLeafNode"], [data-automation-id="promptOption"], li[role="option"], [role="option"]',
+      )) {
+        if (!el || seen.has(el) || !isVisible(el)) continue;
+        const t = (el.textContent || '').replace(/\s+/g, ' ').trim();
+        if (t.length < 2 || /^search results/i.test(t)) continue;
+        seen.add(el);
+        out.push(el);
+      }
+    }
+    return out;
+  }
+
+  async function addWorkdaySkill(input, skill) {
+    const root = workdayMsFieldRoot(input);
+    const before = countSkillChips(root);
+    const sk = String(skill).trim();
+    if (!sk) return false;
+
+    try {
+      input.scrollIntoView({ block: 'center', behavior: 'instant' });
+    } catch {
+      /* ignore */
+    }
+    await sleep(150);
+
+    const icon = findWorkdayPromptIcon(input);
+    if (icon) {
+      icon.click();
+      await sleep(220);
+    }
+    try {
+      input.focus({ preventScroll: true });
+    } catch {
+      /* ignore */
+    }
+    typeWorkday(input, sk);
+    await sleep(400);
+
+    let opts = msOptionsForInput(input);
+    if (!opts.length) {
+      await sleep(300);
+      opts = msOptionsForInput(input);
+    }
+    log(
+      'workday:skill',
+      sk,
+      'scopedOpts=',
+      opts.length,
+      opts
+        .slice(0, 3)
+        .map((o) => (o.textContent || '').trim().slice(0, 28))
+        .join(' | '),
+    );
+
+    let hit = pickSkillOption(opts, sk);
+    if (!hit && opts.length) {
+      hit =
+        opts.find((o) => {
+          const t = (o.textContent || '').trim();
+          return t.length > 1 && !/^\+\s|expand|collapse|folder/i.test(t);
+        }) || opts[0];
+    }
+
+    const clickLeaf = async (option) => {
+      const leaf =
+        option.matches('[data-automation-id="promptLeafNode"], [data-automation-id="promptOption"]')
+          ? option
+          : option.querySelector(
+              '[data-automation-id="promptLeafNode"], [data-automation-id="promptOption"]',
+            ) || option;
+      try {
+        leaf.scrollIntoView({ block: 'center' });
+      } catch {
+        /* ignore */
+      }
+      leaf.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      leaf.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+      leaf.click();
+      await sleep(320);
+    };
+
+    if (hit) await clickLeaf(hit);
+
+    if (countSkillChips(root) <= before) {
+      pressWorkdayKey(input, 'ArrowDown');
+      await sleep(120);
+      pressWorkdayEnter(input);
+      await sleep(350);
+    }
+    if (countSkillChips(root) <= before) {
+      pressWorkdayEnter(input);
+      await sleep(300);
+    }
+
+    typeWorkday(input, '');
+    await sleep(150);
+    const after = countSkillChips(root);
+    const ok = after > before;
+    log('workday:skill', sk, ok ? 'committed' : 'failed', 'chips', before, '->', after);
+    return ok;
+  }
+
   function pickMsOption(opts, cands, preferExact) {
     const norm = (o) => (o.textContent || '').replace(/\s+/g, ' ').trim();
     const normLc = (o) => norm(o).toLowerCase();
@@ -979,7 +1130,7 @@
     const input = inputs[0];
     const root = workdayMsFieldRoot(input);
     const chipTexts = () =>
-      [...(root?.querySelectorAll('[data-automation-id="selectedItem"]') || [])].map(
+      [...(root?.querySelectorAll('[data-automation-id="selectedItem"], [data-automation-id="tag"]') || [])].map(
         (c) => (c.textContent || '').toLowerCase().trim(),
       );
     let n = 0;
@@ -989,12 +1140,9 @@
       const skLc = sk.toLowerCase();
       if (chipTexts().some((c) => c && (c === skLc || c.includes(skLc) || skLc.includes(c))))
         continue;
-      const ok = await setWorkdayMultiSelect(input, [sk], false, false);
-      if (ok) {
-        n++;
-        log('workday:skill', sk);
-      }
-      await sleep(350);
+      const ok = await addWorkdaySkill(input, sk);
+      if (ok) n++;
+      await sleep(400);
     }
     return n;
   }
