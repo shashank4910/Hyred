@@ -843,17 +843,67 @@
       if (pass < 2) await sleep(450);
     }
     total += await fillViaSemanticMap(profile, match, filledSet);
-    if (ats === 'lever' || ats === 'workday') {
+    if (ats === 'workday') {
+      dumpWorkdayUnfilled(filledSet);
+    } else if (ats === 'lever') {
       const remaining = indexEmptyFields(filledSet);
       if (remaining.length) {
         log(
-          `${ats}:still empty`,
+          'lever:still empty',
           remaining.map((r) => r.label.slice(0, 60)).join(' | '),
         );
       }
     }
     log('fillAllFields: filled', filledSet.size, 'elements in', total, 'operations');
     return filledSet.size;
+  }
+
+  // Diagnostic: list every still-empty / unanswered Workday control with a rich
+  // signature so missed fields can be mapped precisely. One console block to
+  // copy-paste — far more useful than a HAR (fills are DOM-based, not network).
+  function dumpWorkdayUnfilled(filledSet) {
+    const rows = [];
+    const seen = new Set();
+    const push = (el, kind) => {
+      if (!el || seen.has(el)) return;
+      seen.add(el);
+      const aidOwn = el.getAttribute('data-automation-id') || '';
+      const aidAnc =
+        el.closest('[data-automation-id]')?.getAttribute('data-automation-id') || '';
+      const label = labelForControl(el).slice(0, 60).replace(/\s+/g, ' ');
+      rows.push(
+        `${kind} <${el.tagName.toLowerCase()}${el.type ? ' type=' + el.type : ''}> aid="${aidOwn || aidAnc}" role="${el.getAttribute('role') || ''}" label="${label}"`,
+      );
+    };
+
+    // Required containers Workday marks with an asterisk that have no value yet.
+    document
+      .querySelectorAll('input, textarea, select')
+      .forEach((el) => {
+        if (!isVisible(el) || filledSet.has(el)) return;
+        if (el.type === 'hidden' || el.type === 'file') return;
+        const empty =
+          el.type === 'radio' || el.type === 'checkbox'
+            ? !el.closest('[role="radiogroup"], fieldset')?.querySelector(':checked') && !el.checked
+            : isEmpty(el);
+        if (empty) push(el, el.type === 'radio' ? 'RADIO' : 'TEXT');
+      });
+    // Custom dropdown triggers still showing a placeholder.
+    document
+      .querySelectorAll(
+        'button[aria-haspopup="listbox"], [role="combobox"], [data-automation-id][aria-haspopup="listbox"]',
+      )
+      .forEach((el) => {
+        if (!isVisible(el) || filledSet.has(el)) return;
+        const t = (el.textContent || '').toLowerCase().trim();
+        if (!t || /select one|search|^choose|^\s*$/.test(t)) push(el, 'DROPDOWN');
+      });
+
+    if (rows.length) {
+      log('workday:UNFILLED (' + rows.length + ') ↓\n' + rows.join('\n'));
+    } else {
+      log('workday:UNFILLED none — all detected fields filled');
+    }
   }
 
   async function fillViaSemanticMap(profile, match, filledSet) {
