@@ -53,6 +53,7 @@ How to open one section cheaply: `grep -n "<heading text>" CONTEXT.md` to get th
 | Delete user / re-signup data reset | `CONTEXT.md` → Known Pitfalls (0006/0008 FK rows) + migration **0008** | auth delete, orphan profiles |
 | **Public SEO pages + free tools** | `CONTEXT.md` → `## Public SEO Pages & Free Tools (PR #143)` | editing /explore, /free-tools, sitemap, robots.txt, or adding new public pages |
 | **Extension auto-login & autofill** | `CONTEXT.md` → `## ⭐ EXTENSION AUTO-LOGIN & AUTOFILL — Handoff (Sessions 22-23)` | extension auth, popup, content script, autofill |
+| **Extension Workday Page 1 autofill** | `CONTEXT.md` → `### Workday autofill — Page 1 "My Information" (extension v0.8.9+)` | Workday multiSelect, promptIcon, LinkedIn source, `dumpWorkdayUnfilled` |
 | **AI Auto-Apply Plan** (NEW) | `CONTEXT.md` → `## ⭐ ACTIVE INITIATIVE — AI Auto-Apply` | building / shipping the auto-apply agent |
 | Kiro-specific steering | `.kiro/steering/jobradar-context.md` | Kiro auto-loads it |
 | Past session history | `docs/context/session-log.md` (newest first) | Tier 3 only |
