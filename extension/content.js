@@ -566,10 +566,8 @@
     return d;
   }
 
-  // Open a Workday dropdown trigger and click the option matching `value`.
-  async function setWorkdayDropdown(trigger, value) {
-    if (!trigger || value == null || String(value).trim() === '') return false;
-    const want = String(value).toLowerCase().trim();
+  // Open a Workday dropdown trigger and return its visible options.
+  async function openWorkdayOptions(trigger) {
     trigger.click();
     let options = [];
     for (let i = 0; i < 8; i++) {
@@ -581,6 +579,14 @@
       ].filter(isVisible);
       if (options.length) break;
     }
+    return options;
+  }
+
+  // Open a Workday dropdown and click the option matching `value`.
+  async function setWorkdayDropdown(trigger, value) {
+    if (!trigger || value == null || String(value).trim() === '') return false;
+    const want = String(value).toLowerCase().trim();
+    const options = await openWorkdayOptions(trigger);
     if (!options.length) return false;
     const text = (o) => (o.textContent || '').toLowerCase().trim();
     const hit =
@@ -589,6 +595,34 @@
       options.find((o) => want.includes(text(o)) && text(o).length > 1);
     if (!hit) {
       trigger.click(); // close
+      return false;
+    }
+    hit.click();
+    await sleep(220);
+    return true;
+  }
+
+  // Open a Workday dropdown and pick the first option matching the preference
+  // list (in order); fall back to the first real (non-placeholder) option so a
+  // required dropdown never blocks the user. Used for "How did you hear about
+  // us" where we have no exact profile value.
+  async function setWorkdayDropdownByPrefs(trigger, prefs) {
+    if (!trigger) return false;
+    const options = await openWorkdayOptions(trigger);
+    if (!options.length) return false;
+    const text = (o) => (o.textContent || '').toLowerCase().trim();
+    let hit = null;
+    for (const p of prefs) {
+      hit = options.find((o) => text(o).includes(p));
+      if (hit) break;
+    }
+    if (!hit) {
+      hit = options.find(
+        (o) => text(o).length > 1 && !/select one|search|^choose/.test(text(o)),
+      );
+    }
+    if (!hit) {
+      trigger.click();
       return false;
     }
     hit.click();
@@ -688,6 +722,109 @@
         filledSet.add(trigger);
         n++;
         log('workday:dropdown', idParts[0], '=', String(value).slice(0, 30));
+      }
+    }
+
+    // 3. "How did you hear about us?" — required dropdown with no exact profile
+    // value. Pick a sensible source (same as Simplify) so it doesn't block.
+    const srcTrigger = wdDropdownTrigger([
+      'source',
+      'how did you hear',
+      'hear about',
+      'referral',
+    ]);
+    if (srcTrigger && !filledSet.has(srcTrigger)) {
+      const cur = (srcTrigger.textContent || '').toLowerCase().trim();
+      if (!cur || /select one|search|^\s*$/.test(cur)) {
+        const ok = await setWorkdayDropdownByPrefs(srcTrigger, [
+          'linkedin',
+          'job board',
+          'indeed',
+          'company website',
+          'company site',
+          'other',
+        ]);
+        if (ok) {
+          filledSet.add(srcTrigger);
+          n++;
+          log('workday:source picked');
+        }
+      }
+    }
+
+    // 4. Yes/No screening radios with safe defaults (Simplify-style).
+    n += fillWorkdayScreeningRadios(profile, filledSet);
+    return n;
+  }
+
+  // Answer Workday Yes/No screening radios using heuristics + profile values.
+  function fillWorkdayScreeningRadios(profile, filledSet) {
+    let n = 0;
+    const radios = [...document.querySelectorAll('input[type="radio"]')].filter(
+      (r) => isVisible(r) && !r.disabled,
+    );
+    const groups = new Map();
+    for (const r of radios) {
+      const key =
+        r.name ||
+        r
+          .closest('[role="radiogroup"], fieldset, [data-automation-id]')
+          ?.getAttribute('data-automation-id') ||
+        '';
+      if (!key) continue;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(r);
+    }
+    for (const opts of groups.values()) {
+      if (opts.some((o) => o.checked) || opts.some((o) => filledSet.has(o)))
+        continue;
+      const container = opts[0].closest(
+        '[role="radiogroup"], fieldset, [data-automation-id]',
+      );
+      const q = (
+        (container ? labelForControl(container) : '') ||
+        opts.map((o) => labelForControl(o)).join(' ')
+      ).toLowerCase();
+      let want = null;
+      if (/sponsor/.test(q)) {
+        want = profile.require_sponsorship ? 'yes' : 'no';
+      } else if (
+        /authoriz|legally (?:able|entitled) to work|right to work|eligible to work|legally permitted/.test(
+          q,
+        )
+      ) {
+        want = profile.authorized_to_work === false ? 'no' : 'yes';
+      } else if (
+        /ever been employed|previously (?:employed|worked)|currently employed|former(?:ly)? employ|worked (?:at|for|on assignment)|intern or contract|relative|family member|related to|conflict of interest|been convicted|criminal/.test(
+          q,
+        )
+      ) {
+        want = 'no';
+      }
+      if (!want) continue;
+      const optText = (o) => {
+        const aria = o.getAttribute('aria-label');
+        if (aria) return aria.trim().toLowerCase();
+        if (o.id) {
+          const l = document.querySelector(`label[for="${CSS.escape(o.id)}"]`);
+          if (l?.textContent) return l.textContent.trim().toLowerCase();
+        }
+        const cl = o.closest('label');
+        if (cl?.textContent) return cl.textContent.trim().toLowerCase();
+        const sib = o.nextElementSibling;
+        if (sib && /^label$/i.test(sib.tagName) && sib.textContent)
+          return sib.textContent.trim().toLowerCase();
+        return (o.value || '').trim().toLowerCase();
+      };
+      const opt =
+        opts.find((o) => optText(o) === want) ||
+        opts.find((o) => optText(o).startsWith(want));
+      if (opt && !opt.checked) {
+        opt.click();
+        filledSet.add(opt);
+        opts.forEach((o) => filledSet.add(o));
+        n++;
+        log('workday:radio', want, '<=', q.slice(0, 50));
       }
     }
     return n;
