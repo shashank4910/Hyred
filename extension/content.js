@@ -951,6 +951,91 @@
     });
   }
 
+  function isWorkdayExperienceStep() {
+    if (detectAts() !== 'workday') return false;
+    if (document.querySelector('input[data-automation-id="file-upload-input-ref"]'))
+      return true;
+    if (document.querySelector('[data-automation-id*="skills" i]')) return true;
+    const hay = document.body.innerText.slice(0, 10000).toLowerCase();
+    return (
+      /my experience/.test(hay) &&
+      (/type to add skills|resume\s*\/\s*cv|social network|upload a file/i.test(hay) ||
+        /websites/.test(hay))
+    );
+  }
+
+  async function fillWorkdaySkills(profile, filledSet) {
+    const skills = (profile.skills || []).filter(Boolean).slice(0, 20);
+    if (!skills.length) return 0;
+    const inputs = findWorkdayMultiSelectInputs().filter((inp) =>
+      /skill|type to add/i.test(
+        `${wdAncestorAids(inp)} ${labelForControl(inp)}`.toLowerCase(),
+      ),
+    );
+    if (!inputs.length) {
+      log('workday:skills no input found');
+      return 0;
+    }
+    const input = inputs[0];
+    const root = workdayMsFieldRoot(input);
+    const chipTexts = () =>
+      [...(root?.querySelectorAll('[data-automation-id="selectedItem"]') || [])].map(
+        (c) => (c.textContent || '').toLowerCase().trim(),
+      );
+    let n = 0;
+    for (const skill of skills) {
+      const sk = String(skill).trim();
+      if (!sk) continue;
+      const skLc = sk.toLowerCase();
+      if (chipTexts().some((c) => c && (c === skLc || c.includes(skLc) || skLc.includes(c))))
+        continue;
+      const ok = await setWorkdayMultiSelect(input, [sk], false, false);
+      if (ok) {
+        n++;
+        log('workday:skill', sk);
+      }
+      await sleep(350);
+    }
+    return n;
+  }
+
+  function fillWorkdaySocialUrls(profile, filledSet) {
+    let n = 0;
+    const pairs = [
+      [/linkedin|social[\s_-]*network/i, profile.links?.linkedin],
+      [/github/i, profile.links?.github],
+      [/portfolio|personal[\s_-]*site|website/i, profile.links?.portfolio],
+    ];
+    for (const node of document.querySelectorAll('[data-automation-id]')) {
+      const aid = (node.getAttribute('data-automation-id') || '').toLowerCase();
+      const label = labelForControl(node).toLowerCase();
+      const hay = `${aid} ${label}`;
+      let el = null;
+      if (node.matches('input, textarea')) el = node;
+      else el = node.querySelector('input:not([type=file]):not([type=hidden]), textarea');
+      if (!el || !isVisible(el) || el.disabled || el.readOnly) continue;
+      if (!isEmpty(el) || filledSet.has(el)) continue;
+      for (const [re, val] of pairs) {
+        if (!val || !re.test(hay)) continue;
+        setNativeValue(el, val);
+        filledSet.add(el);
+        n++;
+        log('workday:url', aid || label.slice(0, 30), '=', String(val).slice(0, 50));
+        break;
+      }
+    }
+    return n;
+  }
+
+  async function fillWorkdayExperiencePage(profile, filledSet) {
+    if (!isWorkdayExperienceStep()) return 0;
+    log('workday:experience page (My Experience)');
+    let n = 0;
+    n += await fillWorkdaySkills(profile, filledSet);
+    n += fillWorkdaySocialUrls(profile, filledSet);
+    return n;
+  }
+
   // Hard rule: "How did you hear about us?" → always LinkedIn.
   async function fillWorkdaySourceLinkedIn(input, filledSet) {
     log('workday:source rule → LinkedIn');
@@ -1113,6 +1198,9 @@
 
     // 4. Yes/No screening radios with safe defaults (Simplify-style).
     n += fillWorkdayScreeningRadios(profile, filledSet);
+
+    // 5. Page 2 "My Experience" — skills, LinkedIn/GitHub URLs.
+    n += await fillWorkdayExperiencePage(profile, filledSet);
     return n;
   }
 
@@ -1345,6 +1433,10 @@
   // Resume file upload (Simplify-style — inject PDF into <input type="file">).
   // -------------------------------------------------------------------
   function findResumeFileInput() {
+    const wd = document.querySelector(
+      'input[data-automation-id="file-upload-input-ref"], input[data-automation-id*="file-upload" i][type="file"]',
+    );
+    if (wd) return wd;
     const inputs = [...document.querySelectorAll('input[type="file"]')];
     for (const inp of inputs) {
       if (!isVisible(inp)) continue;
@@ -1549,13 +1641,16 @@
       if (options.resume && ats === 'lever') {
         resumeUploaded = await uploadResume(match?.id);
         if (resumeUploaded) await sleep(1200);
+      } else if (options.resume && ats === 'workday' && isWorkdayExperienceStep()) {
+        resumeUploaded = await uploadResume(match?.id);
+        if (resumeUploaded) await sleep(1500);
       }
 
       const filled = options.commonFields
         ? await fillAllFields(profile, match)
         : 0;
 
-      if (options.resume && ats !== 'lever') {
+      if (options.resume && !resumeUploaded) {
         resumeUploaded = await uploadResume(match?.id);
       }
 
