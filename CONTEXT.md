@@ -804,6 +804,17 @@ Workday is React-controlled and **does not** use standard `name`/`label` heurist
 
 Reload extension after every update; hard-refresh Workday tab (`Ctrl+Shift+R`) to avoid `Extension context invalidated`.
 
+#### Page 2 "My Experience" (extension v0.9.0+)
+
+| Field | How |
+|---|---|
+| **Skills** | multiSelect "Type to Add Skills" — each `profile.skills[]` chip via `fillWorkdaySkills` (same promptIcon flow as Page 1) |
+| **Resume/CV** | Hidden `input[data-automation-id="file-upload-input-ref"]` — PDF from Hyred storage via `uploadResume` (DataTransfer) |
+| **LinkedIn / GitHub URL** | `fillWorkdaySocialUrls` — automation-id / label match on social-network fields |
+| Work history rows | **Not yet** — Workday "Add" work-experience modals need a separate adapter (Simplify often uses saved answers or manual profile copy) |
+
+**Hyred vs Simplify:** Simplify records your answers per site and offers a copy-paste Profile panel. Hyred builds a **structured autofill profile** from resume + Application Profile and uses **ATS-specific DOM adapters** (Workday `promptIcon`, chip verify, wrapper ids) plus LLM `mapFields` fallback — fully automated where adapters exist, no per-field recording step.
+
 ---
 
 ## Key Architecture Decisions
