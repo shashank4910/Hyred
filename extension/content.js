@@ -638,17 +638,31 @@
       ['phone-number', phone],
       ['email', profile.email],
     ];
-    for (const el of document.querySelectorAll(
-      'input[data-automation-id], textarea[data-automation-id]',
-    )) {
-      const aid = (el.getAttribute('data-automation-id') || '').toLowerCase();
+    // Workday puts data-automation-id on EITHER the <input> itself OR a wrapper
+    // <div>, so scan every automation-id node and resolve the fillable input.
+    const aidNodes = [...document.querySelectorAll('[data-automation-id]')];
+    const allInputs = document.querySelectorAll('input, textarea, select');
+    log(
+      'workday:scan',
+      'aidNodes=', aidNodes.length,
+      'inputs=', allInputs.length,
+      'host=', location.hostname,
+    );
+    for (const node of aidNodes) {
+      const aid = (node.getAttribute('data-automation-id') || '').toLowerCase();
       if (!aid || aid.includes('beecatcher')) continue; // honeypot — leave empty
-      if (el.type === 'radio' || el.type === 'checkbox' || el.type === 'file') continue;
-      if (!isVisible(el) || el.disabled || el.readOnly) continue;
-      if (!isEmpty(el) || filledSet.has(el)) continue;
       const hit = textMap.find(([k]) => aid.includes(k));
       const val = hit?.[1];
       if (!val || String(val).trim() === '') continue;
+      // Resolve the actual fillable control (node itself or nested input).
+      let el = null;
+      const tag = node.tagName.toLowerCase();
+      if (tag === 'input' || tag === 'textarea') el = node;
+      else el = node.querySelector('input, textarea');
+      if (!el) continue;
+      if (el.type === 'radio' || el.type === 'checkbox' || el.type === 'file') continue;
+      if (!isVisible(el) || el.disabled || el.readOnly) continue;
+      if (!isEmpty(el) || filledSet.has(el)) continue;
       setNativeValue(el, val);
       filledSet.add(el);
       n++;
