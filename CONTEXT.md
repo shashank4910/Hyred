@@ -741,6 +741,69 @@ Extension popup opens
 6. **Fix any autofill issues** — the extension fills fields by regex matching on common field labels. Some platforms may need additional field patterns added to `content.js`.
 7. **Add resume upload capability** — the extension currently relies on Hyred's stored resume PDF.
 
+### Workday autofill — Page 1 "My Information" (extension v0.8.9+)
+
+> **Status (Jun 2026):** Verified on Cohesity `*.myworkdayjobs.com` — Page 1 ("My Information") fills fully. Page 2+ not yet covered.
+
+Workday is React-controlled and **does not** use standard `name`/`label` heuristics. It needs a dedicated adapter in `extension/content.js` (`fillWorkday`, `fillWorkdayMultiSelects`, etc.), inspired by Simplify/Jotofiller patterns (scroll into view → open prompt → type → confirm selection).
+
+#### What fills on Page 1
+
+| Field | How |
+|---|---|
+| Given / Family name (+ local names) | `data-automation-id` on wrapper → nested `input` (`formField-legalName--firstName`, etc.) |
+| City, Postal Code, Phone number | Same text-map pass on `formField-*` automation ids |
+| Country (dropdown) | `button` → `ul[role="listbox"]` → click matching `li[role="option"]` |
+| Phone device type | Dropdown → **Mobile** |
+| **How did you hear about us?** * | **multiSelect prompt** → type **LinkedIn** → pick exact **LinkedIn** row → confirm chip (`selectedItem`) |
+| Country phone code * | multiSelect / `searchBox` input → match profile country (e.g. India → India (+91)) |
+| Previously employed at company? * | Yes/No radio → safe default **No** |
+| Email | Pre-filled by Workday account (read-only) |
+
+**Not filled (expected):** Address Line 1 (no street in Application Profile), Phone Extension, "I have a preferred name" checkbox (optional).
+
+#### How it works (fill order in `fillWorkday`)
+
+1. **multiSelect prompts first** (`fillWorkdayMultiSelects`) — scroll + click `promptIcon` (☰), not the bare input.
+2. **Text fields** — scan every `[data-automation-id]` node; resolve nested `input`/`textarea` (automation id is often on the **wrapper div**, not the input).
+3. **Button dropdowns** — `setWorkdayDropdown`: click trigger → wait for listbox → click option by text.
+4. **Screening radios** — `fillWorkdayScreeningRadios`: heuristics + profile (`require_sponsorship`, `authorized_to_work`).
+5. **Generic engine** — `autofill-engine.js` `buildFillPlan` + `fillKnownFields` + LLM `mapFields` fallback.
+6. **Diagnostics** — `dumpWorkdayUnfilled()` logs remaining controls with `aid`, `role`, `label` (copy-paste for mapping gaps).
+
+#### Critical Workday DOM gotchas (learned the hard way)
+
+| Gotcha | Fix |
+|---|---|
+| `data-automation-id="multiselectInputContainer"` is on a **wrapper**, not the `<input>` | `findWorkdayMultiSelectInputs()` queries `wrapper input`, also `searchBox` and `formField-*source*` / `*countryPhoneCode*` |
+| Prompt opens via **`promptIcon`**, not typing alone | `openWorkdayPrompt()` → `scrollIntoView` + click `data-automation-id="promptIcon"` |
+| Typed search text ≠ committed value | `workdayMultiSelectFilled()` checks **`selectedItem` chip only** — never `input.value` |
+| LinkedIn has sub-variants in results | `pickMsOption(..., preferExact)` → exact **LinkedIn**, not "LinkedIn (Ad Posting)" |
+| Selection confirm | `confirmMsOption()` → click `promptLeafNode` / `promptOption`, then **ArrowDown + Enter** fallback |
+| False "already filled" after source attempt | Scope chip check to `formField` root via `workdayMsFieldRoot()` |
+
+#### Key files
+
+| File | Role |
+|---|---|
+| `extension/content.js` | `fillWorkday`, `findWorkdayMultiSelectInputs`, `setWorkdayMultiSelect`, `fillWorkdaySourceLinkedIn`, `fillWorkdayScreeningRadios`, `dumpWorkdayUnfilled` |
+| `extension/autofill-engine.js` | Generic field catalog + `buildFillPlan` (runs after Workday pass) |
+| `extension/background.js` | Optimistic `ping()` (stored token = connected unless 401/403) |
+| `lib/extension/profile.ts` | `buildAutofillProfile` — Application Profile + resume structure |
+
+#### Debug console (page context, not `background.js`)
+
+```
+[JobRadar] content script loaded v0.8.9 on cohesity.wd5.myworkdayjobs.com …
+[JobRadar] workday:ms scan found 2 multiselect inputs
+[JobRadar] workday:source rule → LinkedIn
+[JobRadar] workday:ms confirm ok → LinkedIn
+[JobRadar] workday:multiselect source linkedin
+[JobRadar] workday:UNFILLED (3) ↓   ← optional fields only when Page 1 is complete
+```
+
+Reload extension after every update; hard-refresh Workday tab (`Ctrl+Shift+R`) to avoid `Extension context invalidated`.
+
 ---
 
 ## Key Architecture Decisions

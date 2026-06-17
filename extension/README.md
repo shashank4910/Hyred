@@ -35,7 +35,20 @@ You should see "Connected to ..." with your name + email.
 
 ## Supported sites
 
-**Auto-detected:** Greenhouse, Lever, Ashby, Workable, Workday, iCIMS, BambooHR, SmartRecruiters, Recruitee, TeamTailor, Jobvite, Taleo, Naukri, LinkedIn, Wellfound, Indeed, plus generic fallback for any site that has fields named like a job application.
+**Auto-detected:** Greenhouse, Lever, Ashby, Workable, **Workday** (`*.myworkdayjobs.com`), iCIMS, BambooHR, SmartRecruiters, Recruitee, TeamTailor, Jobvite, Taleo, Naukri, LinkedIn, Wellfound, Indeed, plus generic fallback.
+
+### Workday (Page 1 — v0.8.9+)
+
+Dedicated adapter in `content.js` — not regex-only. Verified on Cohesity careers.
+
+1. **Text fields** — `data-automation-id` on wrapper divs (`formField-legalName--firstName`, city, postal, phone).
+2. **Dropdowns** — click trigger → `ul[role="listbox"]` → option by text (Country, Phone device type).
+3. **multiSelect prompts** (hardest) — scroll + click `promptIcon` → type filter → pick option → confirm **`selectedItem` chip**:
+   - **How did you hear about us?** → always **LinkedIn** (exact match, not sub-variants).
+   - **Country phone code** → profile country (e.g. India (+91)).
+4. **Screening radios** — e.g. "previously employed" → **No** (safe default).
+
+Full architecture + debug logs: `CONTEXT.md` → `### Workday autofill — Page 1 "My Information"`.
 
 **Field detection** uses a layered strategy:
 1. Match field name/id/placeholder/aria-label/label-text against a regex rule table (covers ~95% of standard fields).
@@ -55,11 +68,14 @@ You should see "Connected to ..." with your name + email.
 | "Not connected" toast | Open the popup, click Refresh, or re-enter password. |
 | "Session expired" | The JWT lives 90 days. Just reconnect in the popup. |
 | Wrong field filled | The first-empty-field-only rule prevents overwrites; clear the field and click Autofill again. |
-| LinkedIn doesn't fill | LinkedIn's apply form is custom; many fields are detected, but EEO and screening Qs may need manual input. |
+| Workday source field empty | Ensure extension **v0.8.9+**. Console (page context): `workday:ms confirm ok → LinkedIn`. Chip must appear, not just search text. |
+| `workday:ms scan found 0` | Reload extension; `multiselectInputContainer` is on wrapper — fixed in v0.8.8+. |
+| Console shows only `[JobRadar BG]` | DevTools context must be **top** / the Workday page, not `background.js`. |
 
 ## Roadmap
 
 - [ ] Resume PDF upload via DataTransfer API
-- [ ] Per-site selector overrides for Workday's quirky multi-step forms
+- [x] Workday Page 1 multiSelect (`promptIcon`, LinkedIn source, chip verify) — v0.8.9
+- [ ] Workday Page 2+ (Experience, Application Questions, Voluntary Disclosures)
 - [ ] Cache screening Q&A per match so you don't re-pay for re-applies
 - [ ] Publish to Chrome Web Store ($5 fee, 3 day review)
