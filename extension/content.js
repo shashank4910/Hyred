@@ -554,10 +554,137 @@
     return n;
   }
 
+  // -------------------------------------------------------------------
+  // Workday adapter. Workday is React-controlled and ignores name/label
+  // heuristics — fields key off data-automation-id, and dropdowns are custom
+  // button→listbox widgets (not <select>). This mirrors how modern fillers
+  // (Jotofiller, job_app_filler) handle Workday.
+  // -------------------------------------------------------------------
+  function wdLocalPhone(phone) {
+    let d = String(phone || '').replace(/[^\d]/g, '').replace(/^0+/, '');
+    if (d.length > 10) d = d.slice(-10); // strip country code
+    return d;
+  }
+
+  // Open a Workday dropdown trigger and click the option matching `value`.
+  async function setWorkdayDropdown(trigger, value) {
+    if (!trigger || value == null || String(value).trim() === '') return false;
+    const want = String(value).toLowerCase().trim();
+    trigger.click();
+    let options = [];
+    for (let i = 0; i < 8; i++) {
+      await sleep(180);
+      options = [
+        ...document.querySelectorAll(
+          'ul[role="listbox"] li[role="option"], [role="listbox"] [role="option"], div[data-automation-id="promptOption"], li[data-automation-id="promptOption"]',
+        ),
+      ].filter(isVisible);
+      if (options.length) break;
+    }
+    if (!options.length) return false;
+    const text = (o) => (o.textContent || '').toLowerCase().trim();
+    const hit =
+      options.find((o) => text(o) === want) ||
+      options.find((o) => text(o).includes(want)) ||
+      options.find((o) => want.includes(text(o)) && text(o).length > 1);
+    if (!hit) {
+      trigger.click(); // close
+      return false;
+    }
+    hit.click();
+    await sleep(220);
+    return true;
+  }
+
+  function wdDropdownTrigger(idParts) {
+    const sels = [
+      'button[data-automation-id]',
+      '[data-automation-id] button',
+      'div[data-automation-id][aria-haspopup="listbox"]',
+      'button[aria-haspopup="listbox"]',
+      '[role="combobox"]',
+    ];
+    const nodes = [...document.querySelectorAll(sels.join(','))];
+    for (const node of nodes) {
+      const own = (node.getAttribute('data-automation-id') || '').toLowerCase();
+      const parent =
+        node.closest('[data-automation-id]')?.getAttribute('data-automation-id')?.toLowerCase() || '';
+      const label = labelForControl(node).toLowerCase();
+      const hay = `${own} ${parent} ${label}`;
+      if (idParts.some((p) => hay.includes(p)) && isVisible(node)) return node;
+    }
+    return null;
+  }
+
+  async function fillWorkday(profile, filledSet) {
+    if (detectAts() !== 'workday') return 0;
+    let n = 0;
+    const zip = profile.zip_code || profile.location?.zip;
+    const phone = wdLocalPhone(profile.phone);
+
+    // 1. Text inputs keyed by data-automation-id (substring match, lowercased).
+    const textMap = [
+      ['legalnamesection_firstname', profile.first_name],
+      ['firstname', profile.first_name],
+      ['givenname', profile.first_name],
+      ['legalnamesection_lastname', profile.last_name],
+      ['lastname', profile.last_name],
+      ['familyname', profile.last_name],
+      ['addresssection_city', profile.location?.city],
+      ['city', profile.location?.city],
+      ['addresssection_postalcode', zip],
+      ['postalcode', zip],
+      ['phonenumber', phone],
+      ['phone-number', phone],
+      ['email', profile.email],
+    ];
+    for (const el of document.querySelectorAll(
+      'input[data-automation-id], textarea[data-automation-id]',
+    )) {
+      const aid = (el.getAttribute('data-automation-id') || '').toLowerCase();
+      if (!aid || aid.includes('beecatcher')) continue; // honeypot — leave empty
+      if (el.type === 'radio' || el.type === 'checkbox' || el.type === 'file') continue;
+      if (!isVisible(el) || el.disabled || el.readOnly) continue;
+      if (!isEmpty(el) || filledSet.has(el)) continue;
+      const hit = textMap.find(([k]) => aid.includes(k));
+      const val = hit?.[1];
+      if (!val || String(val).trim() === '') continue;
+      setNativeValue(el, val);
+      filledSet.add(el);
+      n++;
+      log('workday:text', aid, '=', String(val).slice(0, 30));
+    }
+
+    // 2. Custom dropdowns (button → listbox → option).
+    const dropdowns = [
+      [['country', 'countrydropdown', 'countryregion'], profile.location?.country || profile.work_auth_country],
+      [['phone-device-type', 'phonedevicetype', 'phonetype'], 'Mobile'],
+      [['country-phone-code', 'countryphonecode', 'phonecode'], profile.location?.country || profile.work_auth_country],
+      [['addresssection_countryregion', 'state', 'region'], profile.location?.region],
+    ];
+    for (const [idParts, value] of dropdowns) {
+      if (value == null || String(value).trim() === '') continue;
+      const trigger = wdDropdownTrigger(idParts);
+      if (!trigger || filledSet.has(trigger)) continue;
+      // Skip if this widget already shows a chosen value.
+      const cur = (trigger.textContent || '').toLowerCase();
+      if (cur && !/select one|search|^\s*$/.test(cur) && cur.includes(String(value).toLowerCase())) continue;
+      const ok = await setWorkdayDropdown(trigger, value);
+      if (ok) {
+        filledSet.add(trigger);
+        n++;
+        log('workday:dropdown', idParts[0], '=', String(value).slice(0, 30));
+      }
+    }
+    return n;
+  }
+
   async function fillAllFields(profile, match) {
     const filledSet = new Set();
     let total = 0;
+    const ats = detectAts();
     for (let pass = 0; pass < 3; pass++) {
+      if (ats === 'workday') total += await fillWorkday(profile, filledSet);
       total += await fillLeverUrls(profile, filledSet);
       total += await executeFillPlan(profile, filledSet);
       total += fillKnownFields(profile, filledSet);
@@ -565,11 +692,11 @@
       if (pass < 2) await sleep(450);
     }
     total += await fillViaSemanticMap(profile, match, filledSet);
-    if (detectAts() === 'lever') {
+    if (ats === 'lever' || ats === 'workday') {
       const remaining = indexEmptyFields(filledSet);
       if (remaining.length) {
         log(
-          'lever:still empty',
+          `${ats}:still empty`,
           remaining.map((r) => r.label.slice(0, 60)).join(' | '),
         );
       }
