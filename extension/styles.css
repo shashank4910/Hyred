@@ -38,6 +38,151 @@
   color: #0b0d10;
 }
 
+/* Simplify-style Copilot card — auto-appears when a form is detected. */
+#jobradar-card {
+  position: fixed;
+  z-index: 2147483600;
+  right: 18px;
+  bottom: 18px;
+  width: 268px;
+  padding: 14px;
+  background: #14181d;
+  border: 1px solid #252b33;
+  border-radius: 14px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+  font: 500 13px/1.4 -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+  color: #e6ebf2;
+  opacity: 0;
+  transform: translateY(10px) scale(0.98);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+#jobradar-card.jr-show {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+#jobradar-card .jr-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+#jobradar-card .jr-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 13.5px;
+}
+#jobradar-card .jr-logo {
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  background: #7cffb2;
+  color: #0b0d10;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 800;
+}
+#jobradar-card .jr-x {
+  background: transparent;
+  border: none;
+  color: #8b95a3;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  border-radius: 6px;
+}
+#jobradar-card .jr-x:hover {
+  color: #e6ebf2;
+  background: rgba(255, 255, 255, 0.06);
+}
+#jobradar-card .jr-card-status {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  margin-bottom: 10px;
+}
+#jobradar-card .jr-card-status.jr-ok {
+  color: #7cffb2;
+  background: rgba(124, 255, 178, 0.1);
+}
+#jobradar-card .jr-card-status.jr-warn {
+  color: #ffc440;
+  background: rgba(255, 196, 64, 0.1);
+}
+#jobradar-card .jr-card-match {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+#jobradar-card .jr-match-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #e6ebf2;
+}
+#jobradar-card .jr-match-score {
+  font-size: 11px;
+  color: #7cffb2;
+}
+#jobradar-card .jr-card-opts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 10px;
+  margin-bottom: 12px;
+}
+#jobradar-card .jr-card-opts label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #c2cad6;
+  cursor: pointer;
+}
+#jobradar-card .jr-card-opts input {
+  accent-color: #7cffb2;
+  width: 14px;
+  height: 14px;
+}
+#jobradar-card .jr-fill-btn {
+  width: 100%;
+  padding: 10px;
+  background: #7cffb2;
+  color: #0b0d10;
+  border: none;
+  border-radius: 10px;
+  font: 700 13px/1 -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.15s;
+}
+#jobradar-card .jr-fill-btn:hover {
+  transform: translateY(-1px);
+}
+#jobradar-card .jr-fill-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+#jobradar-card .jr-card-hint {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #8b95a3;
+}
+#jobradar-card .jr-card-hint:empty {
+  display: none;
+}
+#jobradar-card .jr-hidden {
+  display: none;
+}
+
 #jobradar-toast {
   position: fixed;
   z-index: 2147483601;

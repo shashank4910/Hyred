@@ -792,15 +792,25 @@
   };
 
   let busy = false;
+  function setCardBusy(on) {
+    const btn = document.getElementById('jobradar-card')?.querySelector('.jr-fill-btn');
+    if (btn) {
+      btn.disabled = on;
+      btn.textContent = on ? 'Filling…' : 'Autofill this form';
+    }
+    const fab = document.getElementById('jobradar-fab');
+    if (fab) {
+      fab.setAttribute('aria-disabled', on ? 'true' : 'false');
+      const lbl = fab.querySelector('.jr-label');
+      if (lbl) lbl.textContent = on ? 'Working…' : 'Autofill';
+    }
+  }
+
   async function runAutofill(opts = {}) {
     const options = { ...DEFAULT_OPTS, ...opts };
     if (busy) return;
     busy = true;
-    const fab = document.getElementById('jobradar-fab');
-    if (fab) {
-      fab.setAttribute('aria-disabled', 'true');
-      fab.querySelector('.jr-label').textContent = 'Working…';
-    }
+    setCardBusy(true);
     toast('Filling form...', 'ok', 2000);
 
     try {
@@ -909,27 +919,119 @@
       log('autofill error', e);
     } finally {
       busy = false;
-      if (fab) {
-        fab.removeAttribute('aria-disabled');
-        fab.querySelector('.jr-label').textContent = 'Autofill';
-      }
+      setCardBusy(false);
     }
   }
 
   // -------------------------------------------------------------------
-  // Mount the floating action button.
+  // Collapsed pill — small launcher shown after the card is dismissed.
   // -------------------------------------------------------------------
   function mountFab() {
     if (document.getElementById('jobradar-fab')) return;
     const fab = document.createElement('button');
     fab.id = 'jobradar-fab';
     fab.type = 'button';
-          fab.title = 'Autofill with Hyred';
+    fab.title = 'Autofill with Hyred';
     fab.innerHTML =
-      '<span class="jr-logo">JR</span><span class="jr-label">Autofill</span>';
-    fab.addEventListener('click', () => runAutofill());
+      '<span class="jr-logo">H</span><span class="jr-label">Autofill</span>';
+    fab.addEventListener('click', () => {
+      fab.remove();
+      cardDismissed = false;
+      mountCard();
+    });
     document.body.appendChild(fab);
-    log('FAB mounted');
+    log('FAB pill mounted');
+  }
+
+  // -------------------------------------------------------------------
+  // Simplify-style Copilot card — auto-appears when a form is detected.
+  // -------------------------------------------------------------------
+  let cardDismissed = false;
+
+  function optsFromCard() {
+    const card = document.getElementById('jobradar-card');
+    const read = (k, def) => {
+      const el = card?.querySelector(`input[data-opt="${k}"]`);
+      return el ? el.checked : def;
+    };
+    return {
+      resume: read('resume', true),
+      coverLetter: read('coverLetter', true),
+      commonFields: read('commonFields', true),
+      aiQuestions: read('aiQuestions', true),
+    };
+  }
+
+  function mountCard() {
+    if (cardDismissed || document.getElementById('jobradar-card')) return;
+    const card = document.createElement('div');
+    card.id = 'jobradar-card';
+    card.innerHTML = `
+      <div class="jr-card-head">
+        <span class="jr-brand"><span class="jr-logo">H</span>Hyred Copilot</span>
+        <button class="jr-x" type="button" title="Hide">&times;</button>
+      </div>
+      <div class="jr-card-status jr-detecting">Application form detected</div>
+      <div class="jr-card-match jr-hidden"></div>
+      <div class="jr-card-opts">
+        <label><input type="checkbox" data-opt="resume" checked /> Resume</label>
+        <label><input type="checkbox" data-opt="coverLetter" checked /> Cover letter</label>
+        <label><input type="checkbox" data-opt="commonFields" checked /> Fields</label>
+        <label><input type="checkbox" data-opt="aiQuestions" checked /> AI answers</label>
+      </div>
+      <button class="jr-fill-btn" type="button">Autofill this form</button>
+      <div class="jr-card-hint"></div>
+    `;
+    document.body.appendChild(card);
+
+    card.querySelector('.jr-x').addEventListener('click', () => {
+      card.remove();
+      cardDismissed = true;
+      mountFab();
+    });
+    const fillBtn = card.querySelector('.jr-fill-btn');
+    fillBtn.addEventListener('click', () => runAutofill(optsFromCard()));
+
+    requestAnimationFrame(() => card.classList.add('jr-show'));
+    log('Copilot card mounted');
+    refreshCardState();
+  }
+
+  async function refreshCardState() {
+    const card = document.getElementById('jobradar-card');
+    if (!card) return;
+    const statusEl = card.querySelector('.jr-card-status');
+    const matchEl = card.querySelector('.jr-card-match');
+    const hintEl = card.querySelector('.jr-card-hint');
+    const fillBtn = card.querySelector('.jr-fill-btn');
+
+    const ping = await send('ping');
+    if (!ping?.connected) {
+      statusEl.textContent = 'Not connected';
+      statusEl.className = 'jr-card-status jr-warn';
+      hintEl.textContent = 'Open the Hyred extension icon and click Connect.';
+      fillBtn.disabled = true;
+      fillBtn.textContent = 'Connect Hyred first';
+      return;
+    }
+
+    statusEl.textContent = 'Ready to autofill';
+    statusEl.className = 'jr-card-status jr-ok';
+    fillBtn.disabled = false;
+    fillBtn.textContent = 'Autofill this form';
+
+    const res = await send('matchByUrl', { url: location.href });
+    const match = res?.ok ? res.match : null;
+    if (match?.job) {
+      matchEl.classList.remove('jr-hidden');
+      const score = match.score != null ? `${match.score}% match` : '';
+      matchEl.innerHTML = `<span class="jr-match-title"></span><span class="jr-match-score"></span>`;
+      matchEl.querySelector('.jr-match-title').textContent =
+        `${match.job.title}${match.job.company ? ' · ' + match.job.company : ''}`;
+      matchEl.querySelector('.jr-match-score').textContent = score;
+    } else {
+      matchEl.classList.add('jr-hidden');
+    }
   }
 
   // -------------------------------------------------------------------
@@ -937,7 +1039,6 @@
   // -------------------------------------------------------------------
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg?.type === 'TRIGGER_AUTOFILL') {
-      mountFab();
       runAutofill(msg.payload?.options || {});
       sendResponse({ ok: true });
     }
@@ -945,12 +1046,15 @@
   });
 
   // -------------------------------------------------------------------
-  // Auto-mount: known ATS host OR a page that looks like an app form.
+  // Auto-detect: known ATS host OR a page that looks like an app form.
+  // Pops the Copilot card up automatically (once) the moment a form appears.
   // -------------------------------------------------------------------
   function maybeMount() {
+    if (cardDismissed) return;
+    if (document.getElementById('jobradar-card')) return;
     const ats = detectAts();
     if (ats !== 'generic' || looksLikeApplicationForm()) {
-      mountFab();
+      mountCard();
     }
   }
 
