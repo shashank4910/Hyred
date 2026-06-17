@@ -671,8 +671,47 @@
     input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key }));
   }
 
+  function wdAncestorAids(el) {
+    const aids = [];
+    let n = el;
+    for (let i = 0; i < 8 && n; i++, n = n.parentElement) {
+      const aid = n.getAttribute?.('data-automation-id');
+      if (aid) aids.push(aid.toLowerCase());
+    }
+    return aids.join(' ');
+  }
+
+  function workdayMultiSelectFilled(container, input) {
+    for (const chip of container?.querySelectorAll(
+      '[data-automation-id="selectedItem"]',
+    ) || []) {
+      const t = (chip.textContent || '').replace(/\s+/g, ' ').trim();
+      if (t.length > 1) return true;
+    }
+    const v = (input?.value || '').trim();
+    return v.length > 1 && !/^search$/i.test(v);
+  }
+
+  function findWorkdayPromptIcon(input) {
+    const roots = [
+      input.closest('[data-automation-id^="formField"]'),
+      input.closest('[data-automation-id*="multiSelect" i]'),
+      input.parentElement,
+      input.parentElement?.parentElement,
+    ].filter(Boolean);
+    for (const root of roots) {
+      const icon = root.querySelector('[data-automation-id="promptIcon"]');
+      if (icon) return icon;
+    }
+    return null;
+  }
+
   const MS_OPT_SEL =
-    'ul[role="listbox"] li[role="option"], [role="listbox"] [role="option"], [data-automation-id="promptOption"], div[data-automation-id="promptLeafNode"], li[data-automation-id="promptOption"]';
+    '[data-automation-id="activeListContainer"] [role="option"],' +
+    '[data-automation-id="activeListContainer"] li,' +
+    'ul[role="listbox"] li[role="option"], [role="listbox"] [role="option"],' +
+    '[data-automation-id="promptOption"], [data-automation-id="menuItem"],' +
+    'div[data-automation-id="promptLeafNode"], li[data-automation-id="promptOption"]';
 
   function msOptions() {
     return [...document.querySelectorAll(MS_OPT_SEL)].filter(
@@ -690,34 +729,53 @@
     return opts;
   }
 
-  // Open a Workday prompt control: scroll into view (Workday lazy-renders /
-  // needs the field visible — this is the "live scroll" Simplify does), then
-  // click to open the menu.
-  async function openWorkdayPrompt(el) {
-    try {
-      el.scrollIntoView({ block: 'center', behavior: 'instant' });
-    } catch {
+  // Open a Workday prompt: scroll into view, click the promptIcon (☰) first —
+  // Workday prompts do NOT open reliably from the text input alone.
+  async function openWorkdayPrompt(input) {
+    const icon = findWorkdayPromptIcon(input);
+    const targets = [icon, input].filter(Boolean);
+    for (const el of targets) {
       try {
-        el.scrollIntoView();
+        el.scrollIntoView({ block: 'center', behavior: 'instant' });
+      } catch {
+        try {
+          el.scrollIntoView();
+        } catch {
+          /* ignore */
+        }
+      }
+      await sleep(180);
+      try {
+        el.focus({ preventScroll: true });
       } catch {
         /* ignore */
       }
+      el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+      el.click();
+      await sleep(220);
+      if (msOptions().length) return true;
     }
-    await sleep(150);
-    try {
-      el.focus({ preventScroll: true });
-    } catch {
-      /* ignore */
-    }
-    el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-    el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-    el.click();
+    return false;
   }
 
-  // Workday multiSelect (chip-style): a text input that opens a prompt list on
-  // click and filters as you type. Strategy: scroll+click to open, match an
-  // option; if not present, type each candidate to filter; finally fall back to
-  // the first real option for required fields with no exact value.
+  function pressWorkdayEnter(input) {
+    for (const type of ['keydown', 'keypress', 'keyup']) {
+      input.dispatchEvent(
+        new KeyboardEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          key: 'Enter',
+          code: 'Enter',
+          keyCode: 13,
+          which: 13,
+        }),
+      );
+    }
+  }
+
+  // Workday multiSelect / prompt: scroll+click promptIcon, type to filter,
+  // click matching option (or Enter). fallbackFirst picks first real option.
   async function setWorkdayMultiSelect(input, candidates, fallbackFirst) {
     const t = (o) => (o.textContent || '').toLowerCase().trim();
     const clickOpt = async (o) => {
@@ -726,52 +784,78 @@
       } catch {
         /* ignore */
       }
+      o.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      o.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
       o.click();
-      await sleep(280);
+      await sleep(300);
     };
     const pick = (opts, cands) => {
       for (const c of cands) {
         const lc = String(c).toLowerCase().trim();
         if (!lc) continue;
         const hit =
-          opts.find((o) => t(o) === lc) || opts.find((o) => t(o).includes(lc));
+          opts.find((o) => t(o) === lc) ||
+          opts.find((o) => t(o).includes(lc)) ||
+          opts.find((o) => lc.includes(t(o)) && t(o).length > 2);
         if (hit) return hit;
       }
       return null;
     };
 
-    await openWorkdayPrompt(input);
+    const opened = await openWorkdayPrompt(input);
     let options = await waitMsOptions();
-    log('workday:ms open optionsFound=', options.length);
+    log('workday:ms open opened=', opened, 'optionsFound=', options.length);
 
     let hit = pick(options, candidates);
 
-    if (!hit) {
-      for (const c of candidates) {
-        if (!c) continue;
-        typeWorkday(input, String(c));
-        options = await waitMsOptions();
-        hit = pick(options, [c]);
-        log('workday:ms type', String(c), 'optionsFound=', options.length);
-        if (hit) break;
-        typeWorkday(input, '');
-        await sleep(150);
-      }
+    for (const c of candidates) {
+      if (hit) break;
+      if (!c) continue;
+      typeWorkday(input, String(c));
+      await sleep(200);
+      options = await waitMsOptions();
+      hit = pick(options, [c]);
+      log('workday:ms type', String(c), 'optionsFound=', options.length);
+      if (hit) break;
+      pressWorkdayEnter(input);
+      await sleep(200);
+      options = await waitMsOptions();
+      hit = pick(options, [c]);
+      if (hit) break;
+      typeWorkday(input, '');
+      await sleep(120);
     }
 
     if (!hit && fallbackFirst) {
-      typeWorkday(input, '');
       await openWorkdayPrompt(input);
       options = await waitMsOptions();
-      hit = options.find((o) => t(o).length > 1);
+      hit = options.find((o) => {
+        const tx = t(o);
+        return tx.length > 1 && !/select one|^search$|^choose/.test(tx);
+      });
     }
 
     if (!hit) {
-      log('workday:ms no option matched');
+      log('workday:ms no option matched for', candidates[0]);
       return false;
     }
     await clickOpt(hit);
     return true;
+  }
+
+  // Hard rule: "How did you hear about us?" → always LinkedIn.
+  async function fillWorkdaySourceLinkedIn(input, filledSet) {
+    log('workday:source rule → LinkedIn');
+    const ok = await setWorkdayMultiSelect(
+      input,
+      ['linkedin', 'linked in', 'linked-in'],
+      true,
+    );
+    if (ok) {
+      filledSet.add(input);
+      log('workday:multiselect source linkedin');
+    }
+    return ok ? 1 : 0;
   }
 
   async function fillWorkdayMultiSelects(profile, filledSet) {
@@ -781,38 +865,37 @@
         'input[data-automation-id="multiselectInputContainer"]',
       ),
     ].filter(isVisible);
+    log('workday:ms scan found', inputs.length, 'multiselect inputs');
     for (const input of inputs) {
-      if (filledSet.has(input)) continue;
+      if (filledSet.has(input)) {
+        log('workday:ms skip already in filledSet');
+        continue;
+      }
       const container =
         input.closest('[data-automation-id="multiSelectContainer"]') ||
-        input.closest('[data-automation-id*="multiselect" i]') ||
+        input.closest('[data-automation-id^="formField"]') ||
         input.parentElement;
-      // Skip if a value chip is already selected.
-      if (
-        container?.querySelector(
-          '[data-automation-id="selectedItem"], [class*="selectedItem"]',
-        )
-      )
+      if (workdayMultiSelectFilled(container, input)) {
+        log('workday:ms skip already has value', wdAncestorAids(input).slice(0, 60));
         continue;
-      const lbl = labelForControl(input).toLowerCase();
-      let ok = false;
-      let kind = '';
-      if (/how did you hear|hear about|source--source|referral/.test(lbl)) {
-        kind = 'source';
-        ok = await setWorkdayMultiSelect(
-          input,
-          ['linkedin', 'job board', 'indeed', 'company website', 'glassdoor', 'other'],
-          true,
-        );
-      } else if (/phone code|country phone|countryphonecode/.test(lbl)) {
-        kind = 'phoneCode';
-        const country = profile.location?.country || profile.work_auth_country;
-        if (country) ok = await setWorkdayMultiSelect(input, [country], false);
       }
-      if (ok) {
-        filledSet.add(input);
-        n++;
-        log('workday:multiselect', kind);
+      const sig = `${wdAncestorAids(input)} ${labelForControl(input)}`.toLowerCase();
+      log('workday:ms try', sig.slice(0, 80));
+
+      if (/source--source|how did you hear|hear about us|referral source/.test(sig)) {
+        n += await fillWorkdaySourceLinkedIn(input, filledSet);
+      } else if (/countryphonecode|phoneNumber--countryPhoneCode|country phone code/.test(sig)) {
+        const country = profile.location?.country || profile.work_auth_country;
+        if (!country) {
+          log('workday:ms phoneCode skip — no country in profile');
+          continue;
+        }
+        const ok = await setWorkdayMultiSelect(input, [country, `${country} (+`], false);
+        if (ok) {
+          filledSet.add(input);
+          n++;
+          log('workday:multiselect phoneCode');
+        }
       }
     }
     return n;
@@ -823,6 +906,10 @@
     let n = 0;
     const zip = profile.zip_code || profile.location?.zip;
     const phone = wdLocalPhone(profile.phone);
+
+    // 0. multiSelect prompts FIRST (scroll+click promptIcon) — "How did you
+    // hear" (hard rule: LinkedIn) and "Country Phone Code".
+    n += await fillWorkdayMultiSelects(profile, filledSet);
 
     // 1. Text inputs keyed by data-automation-id (substring match, lowercased).
     const textMap = [
@@ -892,10 +979,6 @@
         log('workday:dropdown', idParts[0], '=', String(value).slice(0, 30));
       }
     }
-
-    // 3. multiSelect widgets (chip-style text inputs): "How did you hear about
-    // us?" (pick a sensible source) and "Country Phone Code" (match country).
-    n += await fillWorkdayMultiSelects(profile, filledSet);
 
     // 3b. Fallback: some Workday tenants render "How did you hear" as a
     // button→listbox dropdown rather than a multiSelect.
