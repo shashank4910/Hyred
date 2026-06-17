@@ -843,6 +843,52 @@
     return true;
   }
 
+  // Workday puts data-automation-id="multiselectInputContainer" on a WRAPPER
+  // div; the actual <input> has no automation-id. Querying
+  // input[data-automation-id="multiselectInputContainer"] always returns 0.
+  function findWorkdayMultiSelectInputs() {
+    const out = [];
+    const seen = new Set();
+    const add = (input) => {
+      if (!input || seen.has(input) || input.type === 'hidden' || input.type === 'file')
+        return;
+      seen.add(input);
+      out.push(input);
+    };
+
+    for (const wrap of document.querySelectorAll(
+      '[data-automation-id="multiselectInputContainer"]',
+    )) {
+      const inp =
+        wrap.tagName === 'INPUT'
+          ? wrap
+          : wrap.querySelector('input[type="text"], input:not([type])');
+      if (inp) add(inp);
+    }
+
+    for (const field of document.querySelectorAll(
+      '[data-automation-id*="source--source" i], [data-automation-id*="countryPhoneCode" i], [data-automation-id*="countryphonecode" i]',
+    )) {
+      const inp = field.querySelector('input[type="text"], input:not([type])');
+      if (inp) add(inp);
+    }
+
+    return out.filter((el) => {
+      const cs = window.getComputedStyle(el);
+      if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+      const rect = el.getBoundingClientRect();
+      if (rect.width > 0 || rect.height > 0) return true;
+      const wrap = el.closest(
+        '[data-automation-id="multiselectInputContainer"], [data-automation-id^="formField"]',
+      );
+      if (wrap) {
+        const wr = wrap.getBoundingClientRect();
+        return wr.width > 0 && wr.height > 0;
+      }
+      return isVisible(el);
+    });
+  }
+
   // Hard rule: "How did you hear about us?" → always LinkedIn.
   async function fillWorkdaySourceLinkedIn(input, filledSet) {
     log('workday:source rule → LinkedIn');
@@ -860,11 +906,7 @@
 
   async function fillWorkdayMultiSelects(profile, filledSet) {
     let n = 0;
-    const inputs = [
-      ...document.querySelectorAll(
-        'input[data-automation-id="multiselectInputContainer"]',
-      ),
-    ].filter(isVisible);
+    const inputs = findWorkdayMultiSelectInputs();
     log('workday:ms scan found', inputs.length, 'multiselect inputs');
     for (const input of inputs) {
       if (filledSet.has(input)) {
