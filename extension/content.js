@@ -671,45 +671,107 @@
     input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key }));
   }
 
-  // Workday multiSelect (chip-style): a text input that filters a prompt list.
-  // Type a candidate, wait for options, click the best match. fallbackFirst
-  // picks the first real option when no candidate matches (for required fields
-  // like "How did you hear about us" where any source is acceptable).
-  async function setWorkdayMultiSelect(input, candidates, fallbackFirst) {
-    const sel =
-      'ul[role="listbox"] li[role="option"], [role="listbox"] [role="option"], [data-automation-id="promptOption"]';
-    const getOpts = () =>
-      [...document.querySelectorAll(sel)].filter(
-        (o) => isVisible(o) && (o.textContent || '').trim().length > 1,
-      );
-    const tryTerm = async (term, requireMatch) => {
-      typeWorkday(input, term);
-      let options = [];
-      for (let i = 0; i < 8; i++) {
-        await sleep(180);
-        options = getOpts();
-        if (options.length) break;
-      }
-      if (!options.length) return false;
-      const t = (o) => (o.textContent || '').toLowerCase().trim();
-      const lc = String(term).toLowerCase().trim();
-      const hit =
-        (lc && options.find((o) => t(o) === lc)) ||
-        (lc && options.find((o) => t(o).includes(lc))) ||
-        (requireMatch ? null : options[0]);
-      if (!hit) return false;
-      hit.click();
-      await sleep(220);
-      return true;
-    };
-    for (const term of candidates) {
-      if (!term) continue;
-      if (await tryTerm(String(term), true)) return true;
-      typeWorkday(input, '');
-      await sleep(120);
+  const MS_OPT_SEL =
+    'ul[role="listbox"] li[role="option"], [role="listbox"] [role="option"], [data-automation-id="promptOption"], div[data-automation-id="promptLeafNode"], li[data-automation-id="promptOption"]';
+
+  function msOptions() {
+    return [...document.querySelectorAll(MS_OPT_SEL)].filter(
+      (o) => isVisible(o) && (o.textContent || '').trim().length > 0,
+    );
+  }
+
+  async function waitMsOptions() {
+    let opts = [];
+    for (let i = 0; i < 10; i++) {
+      await sleep(150);
+      opts = msOptions();
+      if (opts.length) break;
     }
-    if (fallbackFirst) return tryTerm('', false);
-    return false;
+    return opts;
+  }
+
+  // Open a Workday prompt control: scroll into view (Workday lazy-renders /
+  // needs the field visible — this is the "live scroll" Simplify does), then
+  // click to open the menu.
+  async function openWorkdayPrompt(el) {
+    try {
+      el.scrollIntoView({ block: 'center', behavior: 'instant' });
+    } catch {
+      try {
+        el.scrollIntoView();
+      } catch {
+        /* ignore */
+      }
+    }
+    await sleep(150);
+    try {
+      el.focus({ preventScroll: true });
+    } catch {
+      /* ignore */
+    }
+    el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    el.click();
+  }
+
+  // Workday multiSelect (chip-style): a text input that opens a prompt list on
+  // click and filters as you type. Strategy: scroll+click to open, match an
+  // option; if not present, type each candidate to filter; finally fall back to
+  // the first real option for required fields with no exact value.
+  async function setWorkdayMultiSelect(input, candidates, fallbackFirst) {
+    const t = (o) => (o.textContent || '').toLowerCase().trim();
+    const clickOpt = async (o) => {
+      try {
+        o.scrollIntoView({ block: 'center' });
+      } catch {
+        /* ignore */
+      }
+      o.click();
+      await sleep(280);
+    };
+    const pick = (opts, cands) => {
+      for (const c of cands) {
+        const lc = String(c).toLowerCase().trim();
+        if (!lc) continue;
+        const hit =
+          opts.find((o) => t(o) === lc) || opts.find((o) => t(o).includes(lc));
+        if (hit) return hit;
+      }
+      return null;
+    };
+
+    await openWorkdayPrompt(input);
+    let options = await waitMsOptions();
+    log('workday:ms open optionsFound=', options.length);
+
+    let hit = pick(options, candidates);
+
+    if (!hit) {
+      for (const c of candidates) {
+        if (!c) continue;
+        typeWorkday(input, String(c));
+        options = await waitMsOptions();
+        hit = pick(options, [c]);
+        log('workday:ms type', String(c), 'optionsFound=', options.length);
+        if (hit) break;
+        typeWorkday(input, '');
+        await sleep(150);
+      }
+    }
+
+    if (!hit && fallbackFirst) {
+      typeWorkday(input, '');
+      await openWorkdayPrompt(input);
+      options = await waitMsOptions();
+      hit = options.find((o) => t(o).length > 1);
+    }
+
+    if (!hit) {
+      log('workday:ms no option matched');
+      return false;
+    }
+    await clickOpt(hit);
+    return true;
   }
 
   async function fillWorkdayMultiSelects(profile, filledSet) {
@@ -1496,7 +1558,8 @@
     }
   }
 
-  log('content script loaded on', HOST, location.pathname);
+  const EXT_VERSION = chrome.runtime?.getManifest?.().version || '?';
+  log('content script loaded v' + EXT_VERSION, 'on', HOST, location.pathname);
   maybeMount();
   const obs = new MutationObserver(() => maybeMount());
   obs.observe(document.body, { childList: true, subtree: true });
