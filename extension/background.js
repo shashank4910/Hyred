@@ -15,18 +15,27 @@ async function api(path, init = {}) {
   if (!jr_token) {
     return { ok: false, status: 0, error: 'not_connected' };
   }
+  const headers = {
+    'content-type': 'application/json',
+    authorization: `Bearer ${jr_token}`,
+    ...(init.headers || {}),
+  };
   let res;
-  try {
-    res = await fetch(`${base}${path}`, {
-      ...init,
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${jr_token}`,
-        ...(init.headers || {}),
-      },
-    });
-  } catch (e) {
-    return { ok: false, status: 0, error: String(e?.message ?? e) };
+  let lastErr;
+  // Retry once on a transient network failure — the MV3 service worker often
+  // drops its very first fetch right after waking from sleep.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      res = await fetch(`${base}${path}`, { ...init, headers });
+      lastErr = null;
+      break;
+    } catch (e) {
+      lastErr = String(e?.message ?? e);
+      if (attempt === 0) await new Promise((r) => setTimeout(r, 250));
+    }
+  }
+  if (!res) {
+    return { ok: false, status: 0, error: lastErr || 'network_error' };
   }
   let data = {};
   try {
@@ -317,7 +326,27 @@ const handlers = {
     if (!jr_url || !jr_token) return { connected: false, reason: 'no credentials in storage' };
     const r = await api('/api/extension/verify');
     console.log('[JobRadar BG] verify result:', JSON.stringify(r));
-    return { connected: !!r.ok, url: jr_url, verifyStatus: r.status, verifyError: r.data?.error };
+    // Optimistic connectivity: a stored token means connected. Only flip to
+    // "not connected" when verify EXPLICITLY rejects the token (401/403).
+    // Transient network errors (status 0) or server errors (5xx) must not make
+    // a valid, connected user look disconnected.
+    if (r.ok) return { connected: true, url: jr_url, verifyStatus: r.status };
+    if (r.status === 401 || r.status === 403) {
+      return {
+        connected: false,
+        url: jr_url,
+        verifyStatus: r.status,
+        verifyError: r.data?.error,
+        reason: 'token rejected',
+      };
+    }
+    return {
+      connected: true,
+      url: jr_url,
+      optimistic: true,
+      verifyStatus: r.status,
+      verifyError: r.error || r.data?.error,
+    };
   },
 
   // Auto-connect by reading the Supabase access_token.
