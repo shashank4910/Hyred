@@ -681,15 +681,83 @@
     return aids.join(' ');
   }
 
+  function workdayMsFieldRoot(input) {
+    return (
+      input.closest('[data-automation-id^="formField"]') ||
+      input.closest('[data-automation-id*="multiSelect" i]') ||
+      input.parentElement
+    );
+  }
+
   function workdayMultiSelectFilled(container, input) {
-    for (const chip of container?.querySelectorAll(
+    const root = workdayMsFieldRoot(input) || container;
+    for (const chip of root?.querySelectorAll(
       '[data-automation-id="selectedItem"]',
     ) || []) {
       const t = (chip.textContent || '').replace(/\s+/g, ' ').trim();
-      if (t.length > 1) return true;
+      if (t.length > 1 && !/^search$/i.test(t)) return true;
     }
-    const v = (input?.value || '').trim();
-    return v.length > 1 && !/^search$/i.test(v);
+    // Typed filter text alone is NOT a committed value.
+    return false;
+  }
+
+  function pressWorkdayKey(input, key) {
+    for (const type of ['keydown', 'keypress', 'keyup']) {
+      input.dispatchEvent(
+        new KeyboardEvent(type, { bubbles: true, cancelable: true, key, code: key }),
+      );
+    }
+  }
+
+  function pickMsOption(opts, cands, preferExact) {
+    const norm = (o) => (o.textContent || '').replace(/\s+/g, ' ').trim();
+    const normLc = (o) => norm(o).toLowerCase();
+    if (preferExact) {
+      const exact = opts.find((o) => /^linkedin$/i.test(norm(o)));
+      if (exact) return exact;
+      const linked = opts
+        .filter((o) => /^linkedin/i.test(norm(o)))
+        .sort((a, b) => norm(a).length - norm(b).length);
+      if (linked.length) return linked[0];
+    }
+    for (const c of cands) {
+      const lc = String(c).toLowerCase().trim();
+      if (!lc) continue;
+      const hit =
+        opts.find((o) => normLc(o) === lc) ||
+        opts.find((o) => normLc(o).includes(lc));
+      if (hit) return hit;
+    }
+    return null;
+  }
+
+  async function confirmMsOption(input, option, root) {
+    const clickables = [
+      option.querySelector('[data-automation-id="promptLeafNode"]'),
+      option.querySelector('[data-automation-id="promptOption"]'),
+      option.querySelector('[role="option"]'),
+      option,
+    ].filter(Boolean);
+    for (const el of clickables) {
+      try {
+        el.scrollIntoView({ block: 'center' });
+      } catch {
+        /* ignore */
+      }
+      el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+      el.click();
+      await sleep(280);
+      if (workdayMultiSelectFilled(root, input)) return true;
+    }
+    pressWorkdayKey(input, 'ArrowDown');
+    await sleep(120);
+    pressWorkdayEnter(input);
+    await sleep(320);
+    if (workdayMultiSelectFilled(root, input)) return true;
+    pressWorkdayEnter(input);
+    await sleep(320);
+    return workdayMultiSelectFilled(root, input);
   }
 
   function findWorkdayPromptIcon(input) {
@@ -714,9 +782,13 @@
     'div[data-automation-id="promptLeafNode"], li[data-automation-id="promptOption"]';
 
   function msOptions() {
-    return [...document.querySelectorAll(MS_OPT_SEL)].filter(
-      (o) => isVisible(o) && (o.textContent || '').trim().length > 0,
-    );
+    return [...document.querySelectorAll(MS_OPT_SEL)].filter((o) => {
+      if (!isVisible(o)) return false;
+      const t = (o.textContent || '').replace(/\s+/g, ' ').trim();
+      if (t.length < 2) return false;
+      if (/^search results\s*\(/i.test(t)) return false;
+      return true;
+    });
   }
 
   async function waitMsOptions() {
@@ -775,53 +847,34 @@
   }
 
   // Workday multiSelect / prompt: scroll+click promptIcon, type to filter,
-  // click matching option (or Enter). fallbackFirst picks first real option.
-  async function setWorkdayMultiSelect(input, candidates, fallbackFirst) {
+  // click matching option (or Enter). Returns true only when a value chip appears.
+  async function setWorkdayMultiSelect(input, candidates, fallbackFirst, preferExact) {
+    const root = workdayMsFieldRoot(input);
     const t = (o) => (o.textContent || '').toLowerCase().trim();
-    const clickOpt = async (o) => {
-      try {
-        o.scrollIntoView({ block: 'center' });
-      } catch {
-        /* ignore */
-      }
-      o.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-      o.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-      o.click();
-      await sleep(300);
-    };
-    const pick = (opts, cands) => {
-      for (const c of cands) {
-        const lc = String(c).toLowerCase().trim();
-        if (!lc) continue;
-        const hit =
-          opts.find((o) => t(o) === lc) ||
-          opts.find((o) => t(o).includes(lc)) ||
-          opts.find((o) => lc.includes(t(o)) && t(o).length > 2);
-        if (hit) return hit;
-      }
-      return null;
-    };
 
     const opened = await openWorkdayPrompt(input);
     let options = await waitMsOptions();
     log('workday:ms open opened=', opened, 'optionsFound=', options.length);
 
-    let hit = pick(options, candidates);
+    let hit = pickMsOption(options, candidates, preferExact);
 
     for (const c of candidates) {
       if (hit) break;
       if (!c) continue;
       typeWorkday(input, String(c));
-      await sleep(200);
+      await sleep(250);
       options = await waitMsOptions();
-      hit = pick(options, [c]);
+      hit = pickMsOption(options, [c], preferExact);
       log('workday:ms type', String(c), 'optionsFound=', options.length);
       if (hit) break;
+      pressWorkdayKey(input, 'ArrowDown');
+      await sleep(120);
       pressWorkdayEnter(input);
-      await sleep(200);
-      options = await waitMsOptions();
-      hit = pick(options, [c]);
-      if (hit) break;
+      await sleep(280);
+      if (workdayMultiSelectFilled(root, input)) {
+        log('workday:ms confirmed via Enter after type', c);
+        return true;
+      }
       typeWorkday(input, '');
       await sleep(120);
     }
@@ -831,7 +884,7 @@
       options = await waitMsOptions();
       hit = options.find((o) => {
         const tx = t(o);
-        return tx.length > 1 && !/select one|^search$|^choose/.test(tx);
+        return tx.length > 1 && !/select one|^search$|^choose|search results/.test(tx);
       });
     }
 
@@ -839,8 +892,9 @@
       log('workday:ms no option matched for', candidates[0]);
       return false;
     }
-    await clickOpt(hit);
-    return true;
+    const ok = await confirmMsOption(input, hit, root);
+    log('workday:ms confirm', ok ? 'ok' : 'failed', '→', (hit.textContent || '').trim().slice(0, 40));
+    return ok;
   }
 
   // Workday puts data-automation-id="multiselectInputContainer" on a WRAPPER
@@ -873,6 +927,14 @@
       if (inp) add(inp);
     }
 
+    for (const box of document.querySelectorAll('[data-automation-id="searchBox"]')) {
+      const inp =
+        box.tagName === 'INPUT'
+          ? box
+          : box.querySelector('input[type="text"], input:not([type])');
+      if (inp) add(inp);
+    }
+
     return out.filter((el) => {
       const cs = window.getComputedStyle(el);
       if (cs.display === 'none' || cs.visibility === 'hidden') return false;
@@ -894,12 +956,15 @@
     log('workday:source rule → LinkedIn');
     const ok = await setWorkdayMultiSelect(
       input,
-      ['linkedin', 'linked in', 'linked-in'],
+      ['LinkedIn', 'linkedin'],
+      false,
       true,
     );
     if (ok) {
       filledSet.add(input);
       log('workday:multiselect source linkedin');
+    } else {
+      log('workday:source failed — chip not committed');
     }
     return ok ? 1 : 0;
   }
@@ -913,12 +978,9 @@
         log('workday:ms skip already in filledSet');
         continue;
       }
-      const container =
-        input.closest('[data-automation-id="multiSelectContainer"]') ||
-        input.closest('[data-automation-id^="formField"]') ||
-        input.parentElement;
+      const container = workdayMsFieldRoot(input);
       if (workdayMultiSelectFilled(container, input)) {
-        log('workday:ms skip already has value', wdAncestorAids(input).slice(0, 60));
+        log('workday:ms skip already has chip', wdAncestorAids(input).slice(0, 60));
         continue;
       }
       const sig = `${wdAncestorAids(input)} ${labelForControl(input)}`.toLowerCase();
