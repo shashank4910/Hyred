@@ -4201,7 +4201,7 @@
     return inputs[0] || null;
   }
 
-  async function uploadResume(matchId) {
+  async function uploadResume(matchId, resumeVariant = 'default') {
     let input = findResumeFileInput();
     if (!input) {
       log('uploadResume: no file input found');
@@ -4211,9 +4211,14 @@
       log('uploadResume: input already has a file');
       return false;
     }
-    const res = await send('fetchResume', { match_id: matchId });
+    const variant =
+      resumeVariant === 'tailored' && matchId ? 'tailored' : 'default';
+    const res = await send('fetchResume', {
+      match_id: matchId || undefined,
+      variant,
+    });
     if (!res?.ok || !res.data_base64) {
-      log('uploadResume failed:', res?.error);
+      log('uploadResume failed:', res?.error, 'variant=', variant);
       return false;
     }
     try {
@@ -4245,7 +4250,7 @@
       if (zone) {
         zone.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true }));
       }
-      log('uploadResume: attached', file.name);
+      log('uploadResume: attached', file.name, 'variant=', variant);
       fillUi.onField(input, 'Resume');
       return true;
     } catch (e) {
@@ -4338,7 +4343,24 @@
     coverLetter: true,
     commonFields: true,
     aiQuestions: true,
+    resumeVariant: 'default',
   };
+
+  async function resolveResumeVariant(match, options) {
+    if (options.resumeVariant === 'tailored' || options.resumeVariant === 'default') {
+      return options.resumeVariant;
+    }
+    if (!match?.id) return 'default';
+    if (!match.has_tailored_resume) return 'default';
+    const choice = await send('getResumeChoice', {
+      match_id: match.id,
+      has_tailored_resume: match.has_tailored_resume,
+    });
+    if (choice?.ok && (choice.variant === 'tailored' || choice.variant === 'default')) {
+      return choice.variant;
+    }
+    return 'tailored';
+  }
 
   let busy = false;
   function setCardBusy(on) {
@@ -4452,6 +4474,8 @@
       }
       const profile = profileRes.profile;
       const match = matchRes?.match ?? null;
+      const resumeVariant = await resolveResumeVariant(match, options);
+      log('resume variant:', resumeVariant, 'has_tailored=', !!match?.has_tailored_resume);
 
       const ps = profile?.profile_structure;
       if (IS_TOP_FRAME && ps && isWorkdayExperienceStep()) {
@@ -4499,7 +4523,7 @@
       if (options.resume) {
         const fileInput = findResumeFileInput();
         if (fileInput && !fileInput.files?.length) {
-          resumeUploaded = await uploadResume(match?.id);
+          resumeUploaded = await uploadResume(match?.id, resumeVariant);
           if (resumeUploaded) await sleep(1200);
         }
       }
@@ -4507,7 +4531,7 @@
       filled = options.commonFields ? await fillAllFields(profile, match) : 0;
 
       if (options.resume && !resumeUploaded && findResumeFileInput() && !findResumeFileInput().files?.length) {
-        resumeUploaded = await uploadResume(match?.id);
+        resumeUploaded = await uploadResume(match?.id, resumeVariant);
       }
 
       if (options.coverLetter && match?.cover_letter) {
@@ -4531,7 +4555,13 @@
         if (options.commonFields && filled) {
           parts.push(`Filled ${filled} field${filled === 1 ? '' : 's'}`);
         }
-        if (resumeUploaded) parts.push('resume uploaded');
+        if (resumeUploaded) {
+          parts.push(
+            resumeVariant === 'tailored'
+              ? 'optimized resume uploaded'
+              : 'default resume uploaded',
+          );
+        }
         if (coverInjected) parts.push('cover letter injected');
         if (answered) parts.push(`${answered} screening Q answered`);
         if (!parts.length && emptyFields === 0) {
@@ -4625,11 +4655,18 @@
       const el = card?.querySelector(`input[data-opt="${k}"]`);
       return el ? el.checked : def;
     };
+    const tailored = card?.querySelector('input[name="jr-resume-variant"][value="tailored"]');
+    const defaultR = card?.querySelector('input[name="jr-resume-variant"][value="default"]');
+    let resumeVariant = 'default';
+    if (tailored?.checked) resumeVariant = 'tailored';
+    else if (defaultR?.checked) resumeVariant = 'default';
     return {
       resume: read('resume', true),
       coverLetter: read('coverLetter', true),
       commonFields: read('commonFields', true),
       aiQuestions: read('aiQuestions', true),
+      resumeVariant,
+      matchId: card?.dataset.matchId || null,
     };
   }
 
@@ -4645,6 +4682,19 @@
       </div>
       <div class="jr-card-status jr-detecting">Application form detected</div>
       <div class="jr-card-match jr-hidden"></div>
+      <div class="jr-resume-picker jr-hidden">
+        <div class="jr-resume-label">Resume for this application</div>
+        <label class="jr-resume-opt">
+          <input type="radio" name="jr-resume-variant" value="tailored" />
+          <span class="jr-resume-opt-text"><strong>Optimized for this job</strong> <em>Recommended</em></span>
+          <button type="button" class="jr-resume-preview" data-preview="tailored">Preview</button>
+        </label>
+        <label class="jr-resume-opt">
+          <input type="radio" name="jr-resume-variant" value="default" />
+          <span class="jr-resume-opt-text"><strong>Default resume</strong></span>
+          <button type="button" class="jr-resume-preview" data-preview="default">Preview</button>
+        </label>
+      </div>
       <div class="jr-card-opts">
         <label><input type="checkbox" data-opt="resume" checked /> Resume</label>
         <label><input type="checkbox" data-opt="coverLetter" checked /> Cover letter</label>
@@ -4667,6 +4717,29 @@
       card.remove();
       cardDismissed = true;
       mountFab();
+    });
+    card.querySelector('.jr-resume-picker')?.addEventListener('change', (e) => {
+      if (e.target?.name !== 'jr-resume-variant') return;
+      const matchId = card.dataset.matchId;
+      if (!matchId) return;
+      send('setResumeChoice', {
+        match_id: matchId,
+        variant: e.target.value === 'tailored' ? 'tailored' : 'default',
+      });
+    });
+    card.querySelector('.jr-resume-picker')?.addEventListener('click', (e) => {
+      const btn = e.target?.closest?.('.jr-resume-preview');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const matchId = card.dataset.matchId;
+      const variant = btn.dataset.preview || 'default';
+      send('previewResume', {
+        match_id: matchId,
+        variant,
+        preview_url:
+          variant === 'tailored' ? card.dataset.previewUrl || null : null,
+      });
     });
     const fillBtn = card.querySelector('.jr-fill-btn');
     fillBtn.addEventListener('click', () => {
@@ -4715,6 +4788,7 @@
 
     const res = await send('matchByUrl', { url: location.href });
     const match = res?.ok ? res.match : null;
+    const resumePicker = card.querySelector('.jr-resume-picker');
     if (match?.job) {
       matchEl.classList.remove('jr-hidden');
       const score = match.score != null ? `${match.score}% match` : '';
@@ -4722,8 +4796,28 @@
       matchEl.querySelector('.jr-match-title').textContent =
         `${match.job.title}${match.job.company ? ' · ' + match.job.company : ''}`;
       matchEl.querySelector('.jr-match-score').textContent = score;
+      card.dataset.matchId = match.id || '';
+      card.dataset.previewUrl = match.tailored_resume_url || '';
+      if (match.has_tailored_resume && resumePicker) {
+        resumePicker.classList.remove('jr-hidden');
+        const choice = await send('getResumeChoice', {
+          match_id: match.id,
+          has_tailored_resume: match.has_tailored_resume,
+        });
+        const variant =
+          choice?.ok && choice.variant === 'default' ? 'default' : 'tailored';
+        const t = resumePicker.querySelector('input[value="tailored"]');
+        const d = resumePicker.querySelector('input[value="default"]');
+        if (t) t.checked = variant === 'tailored';
+        if (d) d.checked = variant === 'default';
+      } else if (resumePicker) {
+        resumePicker.classList.add('jr-hidden');
+      }
     } else {
       matchEl.classList.add('jr-hidden');
+      card.dataset.matchId = '';
+      card.dataset.previewUrl = '';
+      resumePicker?.classList.add('jr-hidden');
     }
   }
 

@@ -247,21 +247,83 @@ input:focus {
   width: auto;
 }
 .match-card {
-  padding: 10px;
   margin-bottom: 10px;
+  padding: 10px;
   background: #14181d;
   border: 1px solid #252b33;
   border-radius: 8px;
 }
 .match-title {
-  font-weight: 700;
+  font-weight: 600;
   font-size: 13px;
 }
 .match-sub {
-  margin-top: 4px;
   font-size: 11px;
   color: #8a94a3;
+  margin-top: 2px;
 }
+
+.resume-picker {
+  margin-bottom: 12px;
+  padding: 10px;
+  background: rgba(124, 255, 178, 0.06);
+  border: 1px solid rgba(124, 255, 178, 0.22);
+  border-radius: 8px;
+}
+.resume-picker.hidden {
+  display: none;
+}
+.resume-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid #252b33;
+  background: #0f1216;
+  cursor: pointer;
+}
+.resume-opt:has(input:checked) {
+  border-color: rgba(124, 255, 178, 0.45);
+  background: rgba(124, 255, 178, 0.08);
+}
+.resume-opt input {
+  width: auto;
+  flex-shrink: 0;
+}
+.resume-opt-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.resume-opt-title {
+  font-size: 12px;
+  font-weight: 600;
+}
+.resume-opt-badge {
+  font-size: 10px;
+  color: #7cffb2;
+  font-weight: 600;
+}
+.btn-preview {
+  flex-shrink: 0;
+  padding: 4px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 4px;
+  border: 1px solid #3a424d;
+  background: #14181d;
+  color: #b8c0cc;
+  cursor: pointer;
+}
+.btn-preview:hover {
+  border-color: #7cffb266;
+  color: #7cffb2;
+}
+
 .profile-copy {
   max-height: 220px;
   overflow: auto;

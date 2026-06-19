@@ -133,6 +133,65 @@
   font-size: 11px;
   color: #7cffb2;
 }
+#jobradar-card .jr-resume-picker {
+  margin-bottom: 10px;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(124, 255, 178, 0.08);
+  border: 1px solid rgba(124, 255, 178, 0.22);
+}
+#jobradar-card .jr-resume-picker.jr-hidden {
+  display: none;
+}
+#jobradar-card .jr-resume-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #8a94a3;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+#jobradar-card .jr-resume-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid #2a313a;
+  background: rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+}
+#jobradar-card .jr-resume-opt:has(input:checked) {
+  border-color: rgba(124, 255, 178, 0.45);
+}
+#jobradar-card .jr-resume-opt input {
+  accent-color: #7cffb2;
+}
+#jobradar-card .jr-resume-opt-text {
+  flex: 1;
+  font-size: 12px;
+  color: #e6ebf2;
+}
+#jobradar-card .jr-resume-opt-text em {
+  font-style: normal;
+  color: #7cffb2;
+  font-size: 10px;
+  margin-left: 4px;
+}
+#jobradar-card .jr-resume-preview {
+  padding: 3px 8px;
+  font-size: 10px;
+  border-radius: 4px;
+  border: 1px solid #3a424d;
+  background: #14181d;
+  color: #b8c0cc;
+  cursor: pointer;
+}
+#jobradar-card .jr-resume-preview:hover {
+  color: #7cffb2;
+  border-color: #7cffb266;
+}
 #jobradar-card .jr-card-opts {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -181,6 +240,107 @@
 }
 #jobradar-card .jr-hidden {
   display: none;
+}
+
+#jobradar-card.jr-busy {
+  border-color: rgba(124, 255, 178, 0.45);
+  box-shadow:
+    0 14px 40px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(124, 255, 178, 0.2),
+    0 0 24px rgba(124, 255, 178, 0.12);
+  animation: jobradar-card-pulse 1.6s ease-in-out infinite;
+}
+#jobradar-card .jr-card-opts.jr-disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+#jobradar-card.jr-busy .jr-fill-progress {
+  border-color: rgba(124, 255, 178, 0.35);
+}
+#jobradar-card.jr-busy .jr-fill-btn {
+  opacity: 0.85;
+  cursor: wait;
+}
+
+@keyframes jobradar-card-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 14px 40px rgba(0, 0, 0, 0.5),
+      0 0 0 1px rgba(124, 255, 178, 0.2),
+      0 0 18px rgba(124, 255, 178, 0.1);
+  }
+  50% {
+    box-shadow:
+      0 14px 40px rgba(0, 0, 0, 0.5),
+      0 0 0 1px rgba(124, 255, 178, 0.35),
+      0 0 28px rgba(124, 255, 178, 0.22);
+  }
+}
+
+#jobradar-card .jr-fill-progress {
+  margin-bottom: 10px;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(124, 255, 178, 0.06);
+  border: 1px solid rgba(124, 255, 178, 0.15);
+}
+#jobradar-card .jr-fill-progress.jr-done {
+  border-color: rgba(124, 255, 178, 0.45);
+}
+#jobradar-card .jr-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+#jobradar-card .jr-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(124, 255, 178, 0.25);
+  border-top-color: #7cffb2;
+  border-radius: 50%;
+  flex-shrink: 0;
+  animation: jobradar-spin 0.75s linear infinite;
+}
+#jobradar-card .jr-fill-progress.jr-done .jr-spinner {
+  animation: none;
+  border-color: #7cffb2;
+  border-top-color: #7cffb2;
+  background: rgba(124, 255, 178, 0.2);
+}
+#jobradar-card .jr-progress-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: #c2cad6;
+  line-height: 1.35;
+}
+#jobradar-card .jr-progress-track {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+#jobradar-card .jr-progress-fill {
+  display: block;
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #7cffb2, #5ce0a0);
+  transition: width 0.35s ease;
+}
+
+@keyframes jobradar-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.jobradar-fill-flash {
+  outline: 2px solid #7cffb2 !important;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(124, 255, 178, 0.15) !important;
+  transition: outline 0.2s ease, box-shadow 0.2s ease;
 }
 
 #jobradar-toast {

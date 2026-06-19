@@ -12,9 +12,9 @@ export async function OPTIONS() {
 }
 
 /**
- * GET /api/extension/resume?match_id=<optional>
+ * GET /api/extension/resume?match_id=<optional>&variant=default|tailored|auto
  * Returns the user's resume PDF as base64 for extension file-upload injection.
- * Uses tailored resume text when match_id is provided.
+ * variant=tailored requires optimized text on the match; default ignores it.
  */
 export async function GET(req: NextRequest) {
   const auth = await isExtAuthed(req);
@@ -22,7 +22,13 @@ export async function GET(req: NextRequest) {
     return corsResponse({ error: 'unauthorized' }, { status: 401 });
   }
 
-  const matchId = new URL(req.url).searchParams.get('match_id');
+  const params = new URL(req.url).searchParams;
+  const matchId = params.get('match_id');
+  const rawVariant = params.get('variant') || 'auto';
+  const variant =
+    rawVariant === 'default' || rawVariant === 'tailored' || rawVariant === 'auto'
+      ? rawVariant
+      : 'auto';
 
   try {
     const sb = supabaseAdmin();
@@ -30,6 +36,7 @@ export async function GET(req: NextRequest) {
       sb,
       auth.profile_id,
       matchId,
+      variant,
     );
     if (!built) {
       return corsResponse(
@@ -43,6 +50,7 @@ export async function GET(req: NextRequest) {
       filename: built.filename,
       content_type: 'application/pdf',
       data_base64: built.buffer.toString('base64'),
+      variant_used: built.variant_used,
     });
   } catch (e) {
     return corsResponse(

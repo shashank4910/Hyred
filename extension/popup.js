@@ -43,6 +43,8 @@ function showSetup() {
   $('#error').textContent = '';
 }
 let lastProfile = null;
+let currentMatch = null;
+let resumeVariant = 'default';
 
 function showTab(name) {
   document.querySelectorAll('.tab').forEach((t) => {
@@ -239,6 +241,57 @@ function renderProfileCopy(profile) {
   renderStructuredProfile(profile);
 }
 
+function getSelectedResumeVariant() {
+  const picked = document.querySelector('input[name="resume-variant"]:checked');
+  return picked?.value === 'tailored' ? 'tailored' : 'default';
+}
+
+async function renderResumePicker(match) {
+  const picker = $('#resume-picker');
+  if (!picker) return;
+  currentMatch = match;
+  if (!match?.id || !match.has_tailored_resume) {
+    picker.classList.add('hidden');
+    resumeVariant = 'default';
+    return;
+  }
+  picker.classList.remove('hidden');
+  const choice = await sendBg('getResumeChoice', {
+    match_id: match.id,
+    has_tailored_resume: match.has_tailored_resume,
+  });
+  resumeVariant =
+    choice.ok && choice.variant === 'tailored' ? 'tailored' : 'default';
+  const tailoredRadio = picker.querySelector('input[value="tailored"]');
+  const defaultRadio = picker.querySelector('input[value="default"]');
+  if (tailoredRadio) tailoredRadio.checked = resumeVariant === 'tailored';
+  if (defaultRadio) defaultRadio.checked = resumeVariant === 'default';
+}
+
+async function saveResumeChoice() {
+  if (!currentMatch?.id) return;
+  resumeVariant = getSelectedResumeVariant();
+  await sendBg('setResumeChoice', {
+    match_id: currentMatch.id,
+    variant: resumeVariant,
+  });
+}
+
+async function previewResumeVariant(variant) {
+  if (!currentMatch?.id) return;
+  const errEl = $('#autofill-error');
+  if (errEl) errEl.textContent = '';
+  const res = await sendBg('previewResume', {
+    match_id: currentMatch.id,
+    variant,
+    preview_url:
+      variant === 'tailored' ? currentMatch.tailored_resume_url : null,
+  });
+  if (!res.ok && errEl) {
+    errEl.textContent = res.error || 'Could not open preview';
+  }
+}
+
 function renderMatchCard(match) {
   const card = $('#match-card');
   if (!card) return;
@@ -293,6 +346,7 @@ async function loadTabContext() {
   const res = await sendBg('matchByUrl', { url: tab.url });
   const match = res.ok ? res.match : null;
   renderMatchCard(match);
+  await renderResumePicker(match);
   renderInsights(match);
 }
 
@@ -491,6 +545,17 @@ document.querySelectorAll('.tab').forEach((tab) => {
   tab.addEventListener('click', () => showTab(tab.dataset.tab));
 });
 
+$('#resume-picker')?.addEventListener('change', (e) => {
+  if (e.target?.name === 'resume-variant') saveResumeChoice();
+});
+$('#resume-picker')?.addEventListener('click', (e) => {
+  const btn = e.target?.closest?.('.btn-preview');
+  if (!btn) return;
+  e.preventDefault();
+  e.stopPropagation();
+  previewResumeVariant(btn.dataset.preview || 'default');
+});
+
 // Primary connect button
 $('#btn-connect-extension').addEventListener('click', initiateConnect);
 
@@ -673,7 +738,12 @@ $('#btn-autofill-tab').addEventListener('click', async () => {
       coverLetter: $('#opt-cover')?.checked !== false,
       commonFields: $('#opt-common')?.checked !== false,
       aiQuestions: $('#opt-ai')?.checked !== false,
+      resumeVariant: currentMatch?.has_tailored_resume
+        ? getSelectedResumeVariant()
+        : 'default',
+      matchId: currentMatch?.id || null,
     };
+    await saveResumeChoice();
     const res = await sendBg('fanOutAutofill', { tabId: tab.id, options });
     if (!res?.ok) {
       throw new Error(res?.error || 'Autofill failed');

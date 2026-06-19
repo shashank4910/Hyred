@@ -14,11 +14,14 @@ function safeFilename(name: string | null | undefined, suffix = 'resume') {
  * Build a PDF resume buffer for the extension upload flow.
  * Prefers tailored resume text for a match when matchId is provided.
  */
+export type ExtensionResumeVariant = 'default' | 'tailored' | 'auto';
+
 export async function buildExtensionResumePdf(
   sb: SupabaseClient,
   profileId: string,
   matchId?: string | null,
-): Promise<{ buffer: Buffer; filename: string } | null> {
+  variant: ExtensionResumeVariant = 'auto',
+): Promise<{ buffer: Buffer; filename: string; variant_used: 'default' | 'tailored' } | null> {
   const { data: profile } = await sb
     .from('profiles')
     .select('full_name, resume_text')
@@ -29,8 +32,9 @@ export async function buildExtensionResumePdf(
 
   let resumeText = profile.resume_text;
   let filename = safeFilename(profile.full_name);
+  let variantUsed: 'default' | 'tailored' = 'default';
 
-  if (matchId) {
+  if (matchId && variant !== 'default') {
     const { data: match } = await sb
       .from('matches')
       .select(
@@ -44,17 +48,24 @@ export async function buildExtensionResumePdf(
     if (match) {
       const tailored = (match as { tailored_resume_text?: string | null })
         .tailored_resume_text;
-      if (tailored) resumeText = tailored;
-      const job = match.job as unknown as {
-        title?: string;
-        company?: string | null;
-      };
-      const label = [job?.company, job?.title].filter(Boolean).join('-');
-      if (label) filename = safeFilename(label);
+      if (tailored && (variant === 'tailored' || variant === 'auto')) {
+        resumeText = tailored;
+        variantUsed = 'tailored';
+        const job = match.job as unknown as {
+          title?: string;
+          company?: string | null;
+        };
+        const label = [job?.company, job?.title].filter(Boolean).join('-');
+        if (label) filename = safeFilename(label);
+      } else if (variant === 'tailored') {
+        return null;
+      }
+    } else if (variant === 'tailored') {
+      return null;
     }
   }
 
   const pdfDoc = generateBeautifulPdf(resumeText);
   const pdfArrayBuffer = pdfDoc.output('arraybuffer');
-  return { buffer: Buffer.from(pdfArrayBuffer), filename };
+  return { buffer: Buffer.from(pdfArrayBuffer), filename, variant_used: variantUsed };
 }

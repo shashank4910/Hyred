@@ -38,7 +38,7 @@ export default async function JobMatchPage({
   const { data: match } = await sb
     .from('matches')
     .select(
-      `id, llm_score, similarity, reason, status, bookmarked, matched_skills, missing_skills, cover_letter, notes, applied_at,
+      `id, llm_score, similarity, reason, status, bookmarked, matched_skills, missing_skills, cover_letter, notes, applied_at, tailored_resume_text, tailored_resume_url,
        profile:profiles(insights),
        job:jobs(id, title, company, location, remote, url, source, salary, description, posted_at, fetched_at, tags)`,
     )
@@ -179,6 +179,12 @@ export default async function JobMatchPage({
         coverLetter={match.cover_letter}
         notes={match.notes}
         applyUrl={job.url}
+        hasTailoredResume={
+          !!(
+            (match as unknown as { tailored_resume_text?: string | null }).tailored_resume_text ||
+            (match as unknown as { tailored_resume_url?: string | null }).tailored_resume_url
+          )
+        }
       />
 
       {/* Referral Radar */}

@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
   let query = sb
     .from('matches')
     .select(
-      `id, llm_score, reason, status, cover_letter, matched_skills, missing_skills, tailored_resume_url,
+      `id, llm_score, reason, status, cover_letter, matched_skills, missing_skills, tailored_resume_url, tailored_resume_text,
        job:jobs!inner(id, title, company, url, description)`,
     )
     .ilike('job.url', `${canonical}%`);
@@ -62,6 +62,11 @@ export async function GET(req: NextRequest) {
     description: string | null;
   };
 
+  const hasTailored = !!(
+    (match as { tailored_resume_text?: string | null }).tailored_resume_text ||
+    match.tailored_resume_url
+  );
+
   return corsResponse({
     ok: true,
     match: {
@@ -73,6 +78,7 @@ export async function GET(req: NextRequest) {
       matched_skills: match.matched_skills ?? [],
       missing_skills: match.missing_skills ?? [],
       tailored_resume_url: match.tailored_resume_url ?? null,
+      has_tailored_resume: hasTailored,
       job: {
         id: job.id,
         title: job.title,
