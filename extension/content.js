@@ -1692,6 +1692,78 @@
     return false;
   }
 
+  function matchNoticePeriod(optionText, profileValue) {
+    const opt = String(optionText || '').toLowerCase();
+    const val = String(profileValue || '').toLowerCase();
+    if (/immediate|0 day|no notice|same day|instant/.test(val)) {
+      return /immediate|0 day|no notice|same day|instant|available now/.test(opt);
+    }
+    const valDays = parseInt(val.match(/\d+/)?.[0] || '', 10);
+    if (!valDays) return opt.includes(val);
+    const nums = (opt.match(/\d+/g) || []).map(Number);
+    if (nums.length >= 2) return valDays >= nums[0] && valDays <= nums[1];
+    if (nums.length === 1) return Math.abs(valDays - nums[0]) <= 15 || valDays <= nums[0];
+    return opt.includes(val);
+  }
+
+  function noticePeriodDropdownPrefs(raw) {
+    const val = String(raw || '30 days').toLowerCase().trim();
+    const prefs = [];
+    if (/immediate|0 day|no notice|same day|instant/.test(val)) {
+      return ['immediate', '0 days', 'no notice', 'available immediately', 'same day'];
+    }
+    const days = parseInt(val.match(/\d+/)?.[0] || '30', 10);
+    prefs.push(`${days} days`, `${days} day`, String(days));
+    if (days === 30) prefs.push('1 month', 'thirty', '30 calendar');
+    if (days === 15) prefs.push('2 weeks', 'fifteen', '15 calendar');
+    if (days === 45) prefs.push('45 days', 'forty-five');
+    if (days === 60) prefs.push('2 month', '60 days', 'sixty');
+    if (days === 90) prefs.push('3 month', '90 days', 'ninety');
+    if (days <= 15) prefs.push('0-15', '15 days or less', 'within 15', 'less than 15');
+    if (days <= 30) prefs.push('15-30', '15 to 30', 'within 30', 'less than 30');
+    if (days <= 45) prefs.push('30-45', 'within 45');
+    if (days <= 60) prefs.push('45-60', 'within 60', '2 months');
+    if (days <= 90) prefs.push('60-90', 'within 90', '3 months');
+    return [...new Set(prefs)];
+  }
+
+  async function setWorkdayDropdownNoticePeriod(trigger, profileValue) {
+    if (!trigger) return false;
+    const value = String(profileValue || '30 days').trim();
+    const options = await openWorkdayOptions(trigger);
+    if (!options.length) return false;
+    let hit = options.find((o) => matchNoticePeriod(o.textContent, value));
+    if (!hit) {
+      for (const p of noticePeriodDropdownPrefs(value)) {
+        hit = options.find((o) => optionMatchesPref(o.textContent, p));
+        if (hit) break;
+      }
+    }
+    if (!hit) {
+      trigger.click();
+      return false;
+    }
+    try {
+      hit.scrollIntoView({ block: 'center' });
+    } catch {
+      /* ignore */
+    }
+    hit.click();
+    await sleep(220);
+    return true;
+  }
+
+  async function applyWorkdayScreeningDropdown(trigger, resolved) {
+    if (!trigger || !resolved) return false;
+    if (resolved.kind === 'notice_period') {
+      return setWorkdayDropdownNoticePeriod(trigger, resolved.value);
+    }
+    const { prefs, strict } = resolved;
+    return strict
+      ? setWorkdayDropdownStrict(trigger, prefs)
+      : setWorkdayDropdownByPrefs(trigger, prefs);
+  }
+
   // Open a Workday dropdown and click the option matching `value`.
   async function setWorkdayDropdown(trigger, value) {
     if (!trigger || value == null || String(value).trim() === '') return false;
@@ -3154,7 +3226,7 @@
       return false;
     const hay = document.body.innerText.slice(0, 12000).toLowerCase();
     if (!/application questions/.test(hay)) return false;
-    return /require sponsorship|visa sponsorship|authorized to work|legally authorized|work authorization|permit type|current employer|close personal|non-?compete|interviewed.*(?:last|earlier|before)|been employed|accreditation|certification/.test(
+    return /require sponsorship|visa sponsorship|authorized to work|legally authorized|work authorization|permit type|current employer|notice period|relocat|close personal|non-?compete|interviewed.*(?:last|earlier|before)|been employed|accreditation|certification/.test(
       hay,
     );
   }
@@ -3247,6 +3319,27 @@
         prefs: ['no', 'does not apply', "doesn't apply", 'not applicable', 'none'],
         strict: true,
       };
+    }
+    if (
+      /notice period|current notice|how much notice|days.*notice|notice with your employer|joining period|availability to join/.test(
+        q,
+      )
+    ) {
+      const value = profile.notice_period || '30 days';
+      return {
+        kind: 'notice_period',
+        value,
+        prefs: noticePeriodDropdownPrefs(value),
+        strict: false,
+      };
+    }
+    if (
+      /relocat|comfortable relocating|comfortable.*(?:moving|relocat)|willing to move|move to.*(?:job )?location|relocating to|open to relocat/.test(
+        q,
+      )
+    ) {
+      const yes = profile.willing_to_relocate !== false;
+      return { prefs: yes ? ['yes'] : ['no'], strict: true };
     }
     return null;
   }
@@ -3363,14 +3456,11 @@
       const resolved = workdayScreeningPrefsForQuestion(q, profile);
       if (!resolved) continue;
 
-      const { prefs, strict } = resolved;
-      const ok = strict
-        ? await setWorkdayDropdownStrict(trigger, prefs)
-        : await setWorkdayDropdownByPrefs(trigger, prefs);
+      const ok = await applyWorkdayScreeningDropdown(trigger, resolved);
       if (ok) {
         filledSet.add(trigger);
         n++;
-        log('workday:appq-dd', prefs[0], '<=', q.slice(0, 55));
+        log('workday:appq-dd', resolved.kind === 'notice_period' ? resolved.value : resolved.prefs[0], '<=', q.slice(0, 55));
       } else {
         log('workday:appq-dd failed', q.slice(0, 55));
       }
@@ -3389,10 +3479,9 @@
         permit,
       ],
       [
-        /current location|where are you (?:currently )?located|your location|city.*located/i,
+        /current location|where are you (?:currently )?situated|where are you (?:currently )?located|your location|city.*located/i,
         profile.location?.city || profile.location?.region,
       ],
-      [/notice period/i, profile.notice_period],
     ];
     for (const [re, val] of pairs) {
       if (val && re.test(q)) return String(val).trim();
@@ -3484,13 +3573,15 @@
       const q = (item.question || item.label).toLowerCase();
       const resolved = workdayScreeningPrefsForQuestion(q, profile);
       if (!resolved) return false;
-      const { prefs, strict } = resolved;
-      const ok = strict
-        ? await setWorkdayDropdownStrict(item.el, prefs)
-        : await setWorkdayDropdownByPrefs(item.el, prefs);
+      const ok = await applyWorkdayScreeningDropdown(item.el, resolved);
       if (!ok) return false;
       filledSet.add(item.el);
-      log('workday:appq-dd', prefs[0], '<=', q.slice(0, 55));
+      log(
+        'workday:appq-dd',
+        resolved.kind === 'notice_period' ? resolved.value : resolved.prefs[0],
+        '<=',
+        q.slice(0, 55),
+      );
       return true;
     }
 
