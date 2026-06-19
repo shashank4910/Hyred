@@ -28,13 +28,13 @@
     { id: 'linkedin', kind: 'text', patterns: [/linked[\s_-]?in/i] },
     { id: 'github', kind: 'text', patterns: [/github/i] },
     { id: 'portfolio', kind: 'text', patterns: [/portfolio|personal\s*site|website/i] },
-    { id: 'years_experience', kind: 'text', patterns: [/years?.*experience/i, /\byoe\b/i] },
+    { id: 'years_experience', kind: 'choice', patterns: [/\btotal\s+experience\b/i, /\brelevant\s+experience\b/i, /\byears?\s+of\s+experience\b/i, /\bexperience\s*\(\s*years?\s*\)/i, /\byoe\b/i, /\btotal\s+years?\s+of\b/i] },
     { id: 'university', kind: 'typeahead', patterns: [/university|college|school/i] },
     { id: 'degree', kind: 'text', patterns: [/degree|major|field of study/i] },
     { id: 'sponsorship', kind: 'yesno', patterns: [/sponsor|visa|require.*sponsorship/i] },
     { id: 'authorized_work', kind: 'yesno', patterns: [/authorized.*work|legally.*work|work\s*authorization/i] },
     { id: 'relocate', kind: 'yesno', patterns: [/willing.*relocat/i, /open.*relocat/i] },
-    { id: 'gender', kind: 'text', patterns: [/gender\b/i] },
+    { id: 'gender', kind: 'choice', patterns: [/gender\b/i] },
     { id: 'summary', kind: 'text', patterns: [/professional\s*summary/i, /^summary\b/i] },
   ];
 
@@ -141,6 +141,15 @@
   function classifyField(signature) {
     const sig = String(signature || '').toLowerCase();
     if (!sig) return null;
+    if (
+      /workexperience|datesection(?:month|day|year)|startdate|enddate|firstyearattended|lastyearattended|roleDescription|currentlyworkhere|jobtitle|companyname|formfield-skills/.test(
+        sig,
+      )
+    ) {
+      return null;
+    }
+    if (/facebook/.test(sig) && /willing|share/.test(sig)) return null;
+    if (/linked/.test(sig) && /willing|share|profile with us/i.test(sig)) return null;
     for (const entry of FIELD_CATALOG) {
       for (const re of entry.patterns) {
         if (re.test(sig)) return entry;
@@ -208,6 +217,22 @@
     return best;
   }
 
+  function isDropdownControl(el) {
+    if (!el || el.nodeType !== 1) return false;
+    if (el.tagName === 'SELECT') return true;
+    const role = el.getAttribute('role');
+    if (role === 'combobox' || role === 'listbox') return true;
+    return el.getAttribute('aria-haspopup') === 'listbox';
+  }
+
+  function instructionKind(field, el) {
+    if (field.kind === 'typeahead' && !isDropdownControl(el)) return 'typeahead';
+    if (field.kind === 'choice' || field.kind === 'yesno' || isDropdownControl(el)) {
+      return 'dropdown';
+    }
+    return 'text';
+  }
+
   /**
    * Build fill instructions from DOM + profile.
    * Returns [{ kind, fieldId, value, el?, radios?, blockLabel? }]
@@ -248,7 +273,7 @@
         );
         if (!input || !isVisible(input) || !isEmpty(input)) return;
         add({
-          kind: field.kind === 'typeahead' ? 'typeahead' : 'text',
+          kind: instructionKind(field, input),
           fieldId: field.id,
           value,
           el: input,
@@ -258,19 +283,37 @@
 
     // Generic scan for any remaining empty controls.
     for (const el of ctx.collectFillableElements()) {
-      if (!isVisible(el) || el.type === 'file' || el.type === 'hidden') continue;
-      if (!isEmpty(el) || seen.has(el)) continue;
+      if (!ctx.isVisible?.(el) || el.type === 'file' || el.type === 'hidden') continue;
+      if (!ctx.isEmpty?.(el) || seen.has(el)) continue;
 
       if (el.type === 'radio') continue; // handled via groups below
 
       const sig = ctx.fieldSignature(el);
-      const field = classifyField(sig);
+      let field = classifyField(sig);
+      if (!field) {
+        const vendorKey = String(sig).replace(/[^a-z0-9]/g, '');
+        const vendorMap = {
+          firstname: 'first_name',
+          givenname: 'first_name',
+          lastname: 'last_name',
+          familyname: 'last_name',
+          email: 'email',
+          phone: 'phone',
+          phonenumber: 'phone',
+          city: 'location',
+          postalcode: 'location',
+          zipcode: 'location',
+          linkedin: 'linkedin',
+        };
+        const vendorId = Object.keys(vendorMap).find((k) => vendorKey.includes(k));
+        if (vendorId) field = FIELD_CATALOG.find((f) => f.id === vendorMap[vendorId]);
+      }
       if (!field) continue;
       const value = getValueForField(field.id, profile);
       if (value == null || String(value).trim() === '') continue;
 
       add({
-        kind: field.kind === 'typeahead' ? 'typeahead' : 'text',
+        kind: instructionKind(field, el),
         fieldId: field.id,
         value,
         el,

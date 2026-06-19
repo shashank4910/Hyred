@@ -487,20 +487,37 @@ const handlers = {
   },
 
   async resolveMatch({ url, title, company, code }) {
-    if (url || title || code || company) {
-      const byUrl = await handlers.matchByUrl({ url, title, company, code });
-      if (byUrl.ok && byUrl.match) {
-        return { ok: true, match: byUrl.match, via: 'url' };
-      }
-    }
     const handoffRes = await handlers.getApplyHandoff();
     const handoff = handoffRes.handoff;
+
+    // Explicit Apply/Optimize handoff beats fuzzy page hints — hints can match a
+    // different row (same IRC, duplicate ingest) without tailored_resume_text.
     if (handoff?.matchId) {
       const byId = await handlers.matchById({ match_id: handoff.matchId });
       if (byId.ok && byId.match) {
-        return { ok: true, match: byId.match, via: 'handoff' };
+        const match = { ...byId.match };
+        if (handoff.hasTailoredResume && !match.has_tailored_resume) {
+          match.has_tailored_resume = true;
+        }
+        return { ok: true, match, via: 'handoff' };
       }
     }
+
+    if (url || title || code || company) {
+      const byUrl = await handlers.matchByUrl({ url, title, company, code });
+      if (byUrl.ok && byUrl.match) {
+        const match = { ...byUrl.match };
+        if (
+          handoff?.matchId === match.id &&
+          handoff.hasTailoredResume &&
+          !match.has_tailored_resume
+        ) {
+          match.has_tailored_resume = true;
+        }
+        return { ok: true, match, via: 'url' };
+      }
+    }
+
     return { ok: true, match: null };
   },
 

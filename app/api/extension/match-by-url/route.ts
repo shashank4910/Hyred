@@ -77,6 +77,17 @@ export async function GET(req: NextRequest) {
 
   let match: Record<string, unknown> | null = null;
 
+  function pickBestHintMatch(
+    rows: Record<string, unknown>[] | null | undefined,
+  ): Record<string, unknown> | null {
+    if (!rows?.length) return null;
+    const withTailored = rows.find((row) => {
+      const r = row as { tailored_resume_text?: string | null; tailored_resume_url?: string | null };
+      return !!(r.tailored_resume_text?.trim() || r.tailored_resume_url);
+    });
+    return (withTailored ?? rows[0]) as Record<string, unknown>;
+  }
+
   if (url) {
     // Strip query/fragment to get the canonical URL prefix.
     const canonical = url.split(/[?#]/)[0].replace(/\/+$/, '');
@@ -118,12 +129,11 @@ export async function GET(req: NextRequest) {
 
   // 4) Requisition / IRC code in title or stored URL (generic career sites).
   if (!match && codeHint && auth.profile_id) {
-    const { data: codeMatch } = await baseQuery()
+    const { data: codeRows } = await baseQuery()
       .or(`job.title.ilike.%${codeHint}%,job.url.ilike.%${codeHint}%`)
       .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    match = codeMatch;
+      .limit(5);
+    match = pickBestHintMatch(codeRows ?? []);
   }
 
   // 5) Fuzzy title match from page heading (company career pages).
@@ -134,11 +144,10 @@ export async function GET(req: NextRequest) {
       if (companyHint) {
         q = q.ilike('job.company', `%${companyHint}%`);
       }
-      const { data: titleMatch } = await q
+      const { data: titleRows } = await q
         .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      match = titleMatch;
+        .limit(5);
+      match = pickBestHintMatch(titleRows ?? []);
     }
   }
 
