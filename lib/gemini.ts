@@ -966,7 +966,8 @@ Return strict JSON:
 }
 
 Rules:
-- work_history: newest job first, up to 8 roles. Include ALL jobs you can find.
+- work_history: newest job first, up to 8 roles. Include ALL employers you can find.
+- ONE row per employer company. If the same company appears for multiple client projects, merge into a single entry: span from earliest start to latest end, use the most senior title, and combine summaries with client/project labels (e.g. "Family Dollar (Sep 2020 – Dec 2021): ... Warner Bros (Oct 2018 – Aug 2020): ...").
 - Each job MUST have separate "title" (job role) and "company" (employer). NEVER put dates in title or company.
 - "start" and "end" are date fields only (e.g. "Sep 2024", "Present") — not title/company.
 - summary: synthesize from bullets; max 600 chars per job.
