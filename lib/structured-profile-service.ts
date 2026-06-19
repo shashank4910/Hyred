@@ -32,9 +32,15 @@ export async function extractStructuredFromResume(
   }
   try {
     const ai = await extractStructuredApplicationProfile(resumeText);
+    const rawCount = Array.isArray(ai.work_history) ? ai.work_history.length : 0;
     const work_history = normalizeWorkHistory(ai.work_history);
     const education = normalizeEducationHistory(ai.education);
     const warnings = [...(ai.warnings ?? [])];
+    if (rawCount > work_history.length) {
+      warnings.push(
+        `Merged ${rawCount - work_history.length} duplicate employer row(s) — same company, multiple client projects combined.`,
+      );
+    }
     if (!work_history.length) {
       warnings.push('AI found no jobs — check resume format or try again.');
     }

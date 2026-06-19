@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildStructureStatus,
+  mergeSameCompanyWorkHistory,
   normalizeWorkHistory,
   resolveWorkHistory,
 } from '@/lib/extension/structured-profile';
@@ -96,5 +97,51 @@ describe('structured-profile', () => {
     ]);
     expect(work).toHaveLength(1);
     expect(work[0]?.company).toBe('Ok Corp');
+  });
+
+  it('mergeSameCompanyWorkHistory combines multiple client projects at one employer', () => {
+    const merged = mergeSameCompanyWorkHistory([
+      {
+        company: 'IRIS Software, Noida',
+        title: 'Senior Performance Engineer',
+        start: 'Sep 2024',
+        end: 'Present',
+        summary: 'Client: Charles Schwab. Load testing migration.',
+      },
+      {
+        company: 'Coforge Ltd, Noida',
+        title: 'Performance Test Analyst',
+        start: 'Aug 2023',
+        end: 'Sep 2024',
+        summary: 'Client: Tokio Marine. JMeter scripts.',
+      },
+      {
+        company: 'Cognizant Technology Solutions, Bangalore/Pune',
+        title: 'Performance Tester',
+        start: 'Sep 2020',
+        end: 'Dec 2021',
+        summary: 'Client: Family Dollar Stores. Load tests for retail platform.',
+      },
+      {
+        company: 'Cognizant Technology Solutions, Bangalore',
+        title: 'Performance Tester',
+        start: 'Oct 2018',
+        end: 'Aug 2020',
+        summary: 'Client: Warner Bros. HP LoadRunner scripts.',
+      },
+    ]);
+    expect(merged).toHaveLength(3);
+    expect(merged.map((j) => j.company)).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/IRIS/i),
+        expect.stringMatching(/Coforge/i),
+        expect.stringMatching(/Cognizant/i),
+      ]),
+    );
+    const cognizant = merged.find((j) => /cognizant/i.test(j.company || ''));
+    expect(cognizant?.start).toMatch(/Oct 2018/i);
+    expect(cognizant?.end).toMatch(/Dec 2021/i);
+    expect(cognizant?.summary).toMatch(/Family Dollar/i);
+    expect(cognizant?.summary).toMatch(/Warner Bros/i);
   });
 });
