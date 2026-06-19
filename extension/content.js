@@ -434,6 +434,8 @@
 
     [/job[_\s-]*title|current[_\s-]*title|position\b/i, 'current_title'],
     [/\borg\b|current[_\s-]*company|employer/i, 'latest_company'],
+    [/\btotal[\s_-]*experience\b/i, 'years_experience'],
+    [/\brelevant[\s_-]*experience\b/i, 'years_experience'],
     [/years?[_\s-]*of[_\s-]*experience|yoe\b|experience\s*years/i, 'years_experience'],
     [/current[_\s-]*(ctc|salary)|present[_\s-]*salary/i, 'total_ctc'],
     [/expected[_\s-]*(ctc|salary)|desired[_\s-]*salary|salary[_\s-]*expect/i, 'expected_ctc'],
@@ -548,6 +550,9 @@
       '[class*="pcs-apply"]',
       '#pcs-form',
       '[id*="apply-form"]',
+      '[id*="application-form"]',
+      '[class*="apply-now"]',
+      'section[class*="apply"]',
       'main [class*="application"]',
     ];
     for (const sel of selectors) {
@@ -562,6 +567,26 @@
       );
     }
     return document.querySelector('form') || document.body;
+  }
+
+  function pageMatchHints() {
+    const titleEl = document.querySelector(
+      'h1, [class*="job-title"], [class*="jobTitle"], [data-ph-at-id*="title"]',
+    );
+    const h1 = titleEl?.textContent?.trim() || '';
+    const title = h1 || (document.title || '').trim();
+    const code =
+      title.match(/\bIRC\d+\b/i)?.[0] ||
+      location.pathname.match(/\bIRC\d+\b/i)?.[0] ||
+      location.href.match(/\bIRC\d+\b/i)?.[0] ||
+      '';
+    let company = '';
+    const host = location.hostname.replace(/^www\./, '');
+    if (!/linkedin|indeed|lever|workday|greenhouse|ashby|myworkday|glassdoor|naukri/i.test(host)) {
+      const parts = host.split('.');
+      if (parts.length >= 2) company = parts[parts.length - 2];
+    }
+    return { title, company, code };
   }
 
   function isAutofillExcluded(el) {
@@ -798,6 +823,50 @@
     el.dispatchEvent(new Event('change', { bubbles: true }));
     el.dispatchEvent(new Event('blur', { bubbles: true }));
     return true;
+  }
+
+  function setSelectNoticePeriod(el, profileValue) {
+    if (!el || el.tagName !== 'SELECT') return false;
+    let best = null;
+    let bestScore = 0;
+    for (const opt of el.options) {
+      const score = scoreNoticePeriodOption(opt.textContent, profileValue);
+      if (score > bestScore) {
+        bestScore = score;
+        best = opt;
+      }
+    }
+    if (best && bestScore >= 50) {
+      el.value = best.value;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      el.dispatchEvent(new Event('blur', { bubbles: true }));
+      return true;
+    }
+    for (const pref of noticePeriodDropdownPrefs(profileValue)) {
+      if (setSelectValue(el, pref)) return true;
+    }
+    return false;
+  }
+
+  function experienceDropdownPrefs(years) {
+    const y = parseInt(String(years).match(/\d+/)?.[0] || '', 10);
+    if (!Number.isFinite(y)) return [];
+    const prefs = [`${y} years`, `${y} year`, `${y}+`, String(y)];
+    if (y <= 1) prefs.push('0-1', '0 to 1', 'less than 1', 'fresher', 'entry');
+    if (y >= 1 && y <= 3) prefs.push('1-3', '1 to 3', '1-2', '2-3');
+    if (y >= 3 && y <= 5) prefs.push('3-5', '3 to 5', '3-4', '4-5');
+    if (y >= 5 && y <= 8) prefs.push('5-8', '5 to 8', '5-10', '6-8');
+    if (y >= 8) prefs.push('8+', '8 years', '10+', 'more than 8', '8-10');
+    return [...new Set(prefs)];
+  }
+
+  function setSelectExperienceYears(el, years) {
+    if (!el || el.tagName !== 'SELECT') return false;
+    for (const pref of experienceDropdownPrefs(years)) {
+      if (setSelectValue(el, pref)) return true;
+    }
+    return false;
   }
 
   function isVisible(el) {
@@ -1299,6 +1368,34 @@
     if (/sponsor|visa/.test(sig)) {
       return genericPrefValue(profile, 'sponsorship');
     }
+    if (/notice[\s_-]*period|joining[\s_-]*period|availability|when can you join/i.test(sig)) {
+      return noticePeriodDropdownPrefs(profile.notice_period || '30 days');
+    }
+    if (/total[\s_-]*experience|overall[\s_-]*experience/i.test(sig) && !/relevant/i.test(sig)) {
+      return experienceDropdownPrefs(profile.years_experience);
+    }
+    if (/relevant[\s_-]*experience/i.test(sig)) {
+      return experienceDropdownPrefs(profile.years_experience);
+    }
+    if (/current[\s_-]*ctc|present[\s_-]*salary|current[\s_-]*salary/i.test(sig)) {
+      return profile.total_ctc ? [String(profile.total_ctc)] : [];
+    }
+    if (/expected[\s_-]*ctc|expected[\s_-]*salary|desired[\s_-]*salary/i.test(sig)) {
+      return profile.expected_ctc ? [String(profile.expected_ctc)] : [];
+    }
+    if (
+      /current[\s_-]*location|^location\b/i.test(sig) &&
+      !/search|gllocation|global|navbar|header|searchjob|locationinput|pin.?code|postal|zip/i.test(
+        sig,
+      )
+    ) {
+      const loc =
+        profile.location?.city ||
+        profile.location?.region ||
+        profile.location?.full ||
+        profile.location?.country;
+      if (loc) return [String(loc).toLowerCase()];
+    }
     if (
       /relative|family member|conflict of interest|currently employed|previously employed|ever been employed|worked for/.test(
         sig,
@@ -1474,10 +1571,16 @@
       if (!prefs.length) continue;
       let ok = false;
       if (el.tagName === 'SELECT') {
-        for (const pref of prefs) {
-          if (setSelectValue(el, pref)) {
-            ok = true;
-            break;
+        if (/notice[\s_-]*period|joining|availability/i.test(sig)) {
+          ok = setSelectNoticePeriod(el, profile.notice_period || '30 days');
+        } else if (/experience/i.test(sig)) {
+          ok = setSelectExperienceYears(el, profile.years_experience);
+        } else {
+          for (const pref of prefs) {
+            if (setSelectValue(el, pref)) {
+              ok = true;
+              break;
+            }
           }
         }
       } else if (el.getAttribute('role') === 'combobox') {
@@ -1503,7 +1606,23 @@
       const sig = fieldSignature(trigger);
       const prefs = genericChoicePrefs(sig, profile);
       if (!prefs.length) continue;
-      const ok = await setGenericDropdownByPrefs(trigger, prefs);
+      let ok = false;
+      if (trigger.tagName === 'SELECT') {
+        if (/notice[\s_-]*period|joining|availability/i.test(sig)) {
+          ok = setSelectNoticePeriod(trigger, profile.notice_period || '30 days');
+        } else if (/experience/i.test(sig)) {
+          ok = setSelectExperienceYears(trigger, profile.years_experience);
+        } else {
+          for (const pref of prefs) {
+            if (setSelectValue(trigger, pref)) {
+              ok = true;
+              break;
+            }
+          }
+        }
+      } else {
+        ok = await setGenericDropdownByPrefs(trigger, prefs);
+      }
       if (ok) {
         filledSet.add(trigger);
         n++;
@@ -4179,6 +4298,9 @@
       isVisible,
       isEmpty,
       setFieldValue,
+      setSelectValue,
+      setSelectNoticePeriod,
+      setSelectExperienceYears,
       setWorkdayDropdown,
       setGenericDropdownByPrefs,
       fillLeverTypeahead,
@@ -4475,7 +4597,16 @@
       if (value != null && String(value).trim() !== '') {
         if (!shouldAcceptValue(el, sig, value)) continue;
         if (el.tagName === 'SELECT') {
-          if (!(await setGenericDropdownByPrefs(el, [value]) || setSelectValue(el, value))) continue;
+          let filled = false;
+          if (path === 'notice_period') {
+            filled = setSelectNoticePeriod(el, value);
+          } else if (path === 'years_experience') {
+            filled = setSelectExperienceYears(el, value);
+          } else {
+            filled =
+              (await setGenericDropdownByPrefs(el, [value])) || setSelectValue(el, value);
+          }
+          if (!filled) continue;
         } else {
           await setFieldValue(el, value, path || sig.slice(0, 40));
         }
@@ -4822,7 +4953,7 @@
 
       const [profileRes, matchRes] = await Promise.all([
         send('profile'),
-        send('resolveMatch', { url: location.href }),
+        send('resolveMatch', { url: location.href, ...pageMatchHints() }),
       ]);
 
       log('profile result:', JSON.stringify(profileRes?.ok), 'error:', profileRes?.error);
@@ -5160,7 +5291,7 @@
     fillBtn.disabled = false;
     fillBtn.textContent = 'Autofill this form';
 
-    const res = await send('resolveMatch', { url: location.href });
+    const res = await send('resolveMatch', { url: location.href, ...pageMatchHints() });
     const match = res?.ok ? res.match : null;
     const resumePicker = card.querySelector('.jr-resume-picker');
     const resumeHint = card.querySelector('.jr-resume-hint');
