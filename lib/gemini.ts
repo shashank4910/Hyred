@@ -906,6 +906,96 @@ Rules:
   }
 }
 
+export type StructuredApplicationProfile = {
+  work_history: Array<{
+    company?: string;
+    title?: string;
+    location?: string;
+    start?: string;
+    end?: string;
+    summary?: string;
+    confidence?: 'high' | 'low';
+  }>;
+  education: Array<{
+    school?: string;
+    degree?: string;
+    field?: string;
+    start?: string;
+    end?: string;
+    confidence?: 'high' | 'low';
+  }>;
+  warnings: string[];
+};
+
+/**
+ * AI extraction of work experience + education for extension / autofill profile.
+ * One call — structured like Simplify Copilot's application profile.
+ */
+export async function extractStructuredApplicationProfile(
+  resume: string,
+): Promise<StructuredApplicationProfile> {
+  const userPrompt = `Read this resume and extract work experience and education for job application autofill.
+
+RESUME:
+${resume.slice(0, 12000)}
+
+Return strict JSON:
+{
+  "work_history": [
+    {
+      "company": "Employer name only",
+      "title": "Job title",
+      "location": "City, State/Region, Country if known",
+      "start": "Month YYYY or YYYY (e.g. Sep 2024)",
+      "end": "Present or Month YYYY",
+      "summary": "2-4 sentence role description from resume bullets (third person, no I/me)",
+      "confidence": "high" | "low"
+    }
+  ],
+  "education": [
+    {
+      "school": "University name",
+      "degree": "Degree type (e.g. Bachelor's)",
+      "field": "Field of study (e.g. Computer Science) — NOT city name",
+      "start": "YYYY if known",
+      "end": "YYYY graduation",
+      "confidence": "high" | "low"
+    }
+  ],
+  "warnings": ["optional strings for ambiguous dates, missing locations, etc."]
+}
+
+Rules:
+- work_history: newest job first, up to 8 roles. Include ALL jobs you can find.
+- Each job MUST have separate "title" (job role) and "company" (employer). NEVER put dates in title or company.
+- "start" and "end" are date fields only (e.g. "Sep 2024", "Present") — not title/company.
+- summary: synthesize from bullets; max 600 chars per job.
+- location: separate from company — do not put city only in field of study.
+- Use null-omission: omit unknown fields rather than guessing.
+- confidence low if dates or employer unclear.
+- warnings: note anything the candidate should verify.`;
+
+  const text = await chat(
+    'You extract resume work history and education into strict JSON. Output JSON only.',
+    userPrompt,
+    0.15,
+    true,
+    'extractStructuredApplicationProfile',
+  );
+  try {
+    const parsed = JSON.parse(text);
+    return {
+      work_history: Array.isArray(parsed.work_history) ? parsed.work_history : [],
+      education: Array.isArray(parsed.education) ? parsed.education : [],
+      warnings: Array.isArray(parsed.warnings)
+        ? parsed.warnings.map(String).slice(0, 8)
+        : [],
+    };
+  } catch {
+    return { work_history: [], education: [], warnings: ['AI JSON parse failed'] };
+  }
+}
+
 /**
  * Compare a JD against a resume. Returns matched and missing skills.
  */
@@ -2345,17 +2435,22 @@ export async function mapAutofillFormFields(args: {
 JOB: ${args.jobTitle || 'unknown'} at ${args.company || 'unknown'}
 
 CANDIDATE PROFILE (JSON):
-${JSON.stringify(args.profile, null, 2).slice(0, 12000)}
+${JSON.stringify(args.profile, null, 2).slice(0, 14000)}
 
 EMPTY FORM FIELDS (fill only when confident):
 ${args.fields.map((f) => `${f.id}. [${f.type}] ${f.label}`).join('\n')}
 
 Return strict JSON: { "mappings": [ { "id": <number>, "value": "<string>" } ] }
 Rules:
-- Use work_history[0] for current company/title/org fields.
-- Use education[0] for university/degree/major fields.
+- Prefer structured_work_history / work_history entries with start/end dates for experience date fields.
+- Workday month spinbuttons: two-digit month (01-12). Year spinbuttons: four-digit year (e.g. 2020).
+- Match work experience row index from labels like workExperience-19 to work_history[0], workExperience-20 to [1], etc.
+- Role description / job summary: use work_history[n].summary when label references that row.
+- Education school/university: use full school name from education[0].school (e.g. "SRM University, Chennai").
+- GPA / overall result: only numeric GPA if present in profile; never put degree names in GPA fields.
+- Facebook/LinkedIn "willing to share" text fields: put profile links.linkedin / links URL if available; otherwise skip.
+- Radio / yes-no: answer exactly "Yes" or "No".
 - Use custom_qa when the label matches a saved question.
-- For yes/no fields, answer Yes or No only.
 - Skip fields you cannot fill confidently.
 - Max 120 words per textarea.
 - Output JSON only.`;
@@ -2385,4 +2480,4 @@ Rules:
     return [];
   }
 }
-
+

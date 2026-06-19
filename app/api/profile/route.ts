@@ -181,6 +181,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  if (resumeChanged) {
+    try {
+      const { extractAndSaveStructuredProfile } = await import(
+        '@/lib/structured-profile-service'
+      );
+      await extractAndSaveStructuredProfile(sb, profile.id, resumeText);
+    } catch (e) {
+      console.warn('[profile] structured extract failed:', (e as Error).message);
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     profile: data,

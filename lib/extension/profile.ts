@@ -1,9 +1,15 @@
 import type { ResumeInsights } from '../types';
 import {
-  extractResumeStructure,
-  type EducationEntry,
-  type WorkEntry,
-} from './resume-structure';
+  buildStructureStatus,
+  normalizeEducationHistory,
+  normalizeWorkHistory,
+  resolveEducationHistory,
+  resolveWorkHistory,
+  type ProfileStructureStatus,
+  type StructuredEducationEntry,
+  type StructuredWorkEntry,
+} from './structured-profile';
+import type { EducationEntry, WorkEntry } from './resume-structure';
 
 export type CustomQa = { question: string; answer: string };
 
@@ -49,6 +55,10 @@ export type AutofillProfile = {
   answer_weaknesses?: string;
   answer_salary_expectation?: string;
   custom_qa?: CustomQa[];
+  /** Structured application profile (Simplify-style) for autofill gating */
+  profile_structure?: ProfileStructureStatus;
+  structured_work_history?: StructuredWorkEntry[];
+  structured_education?: StructuredEducationEntry[];
 };
 
 export type ApplyProfileRow = {
@@ -85,6 +95,12 @@ export type ApplyProfileRow = {
   answer_weaknesses?: string | null;
   answer_salary_expectation?: string | null;
   custom_qa?: CustomQa[] | null;
+  structured_work_history?: StructuredWorkEntry[] | null;
+  structured_education?: StructuredEducationEntry[] | null;
+  structure_extracted_at?: string | null;
+  structure_reviewed_at?: string | null;
+  structure_source?: string | null;
+  structure_warnings?: string[] | null;
 };
 
 function ensureHttp(url: string | undefined): string | undefined {
@@ -184,9 +200,15 @@ export function buildAutofillProfile(
   );
   const name = splitName(fullName ?? null);
   const location = buildLocation(apply, insightsLoc);
-  const resumeStruct = row.resume_text
-    ? extractResumeStructure(row.resume_text)
-    : { work_history: [], education: [] };
+  const work_history = resolveWorkHistory(apply, row.resume_text);
+  const education = resolveEducationHistory(apply, row.resume_text);
+  const profile_structure = buildStructureStatus(apply);
+  if (apply?.structure_source === 'regex' && apply?.structure_extracted_at) {
+    profile_structure.warnings = [
+      'Old regex data cleared — tap Refresh from resume in Profile tab.',
+      ...profile_structure.warnings,
+    ].slice(0, 12);
+  }
 
   return {
     first_name: name.first_name,
@@ -204,14 +226,13 @@ export function buildAutofillProfile(
     years_experience: pick(apply?.years_experience, row.insights?.years_experience),
     skills: row.insights?.top_skills ?? [],
     summary: row.insights?.summary,
-    current_title: pick(
-      apply?.current_title,
-      resumeStruct.parsed_title,
-      resumeStruct.work_history[0]?.title,
-    ),
-    latest_company: resumeStruct.latest_company,
-    work_history: resumeStruct.work_history,
-    education: resumeStruct.education,
+    current_title: pick(apply?.current_title, work_history[0]?.title),
+    latest_company: work_history[0]?.company,
+    work_history,
+    education,
+    structured_work_history: normalizeWorkHistory(apply?.structured_work_history),
+    structured_education: normalizeEducationHistory(apply?.structured_education),
+    profile_structure,
     zip_code: pick(apply?.zip_code, location?.zip),
     total_ctc: pick(apply?.total_ctc) ?? undefined,
     expected_ctc: pick(apply?.expected_ctc) ?? undefined,

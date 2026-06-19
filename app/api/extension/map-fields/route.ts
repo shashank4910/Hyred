@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const mappings = await mapAutofillFormFields({
-      fields: body.fields.slice(0, 30),
+      fields: body.fields.slice(0, 40),
       profile: body.profile,
       jobTitle: body.job_title,
       company: body.company,
