@@ -3,6 +3,14 @@
 // The service worker is the single network-call hub. Content scripts
 // post messages here to keep CORS and auth concerns out of the page world.
 
+chrome.runtime.onStartup?.addListener(() => {
+  console.log('[Hyred] background worker started (browser startup)');
+});
+
+chrome.runtime.onInstalled?.addListener(() => {
+  console.log('[Hyred] background worker installed/updated');
+});
+
 async function getCreds() {
   return new Promise((resolve) => {
     chrome.storage.local.get(['jr_url', 'jr_token'], (v) => resolve(v || {}));
