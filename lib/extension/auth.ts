@@ -29,6 +29,13 @@ export type ExtJwtPayload = {
   sub?: string;
 };
 
+export type ResumePreviewJwtPayload = {
+  scope: 'extension-resume-preview';
+  profile_id: string;
+  match_id?: string | null;
+  variant?: 'default' | 'tailored';
+};
+
 /**
  * Issue a long-lived JWT for an installed browser extension.
  * @param profileId - The user's profile_id (undefined for legacy APP_PASSWORD flow)
@@ -84,4 +91,40 @@ export async function isExtAuthed(
   req: NextRequest,
 ): Promise<ExtJwtPayload | null> {
   return verifyExtensionToken(bearer(req));
+}
+
+/** Short-lived token so the extension can open a PDF tab without Bearer headers. */
+export async function signResumePreviewToken(args: {
+  profile_id: string;
+  match_id?: string | null;
+  variant?: 'default' | 'tailored';
+}): Promise<string> {
+  return new SignJWT({
+    scope: 'extension-resume-preview',
+    profile_id: args.profile_id,
+    match_id: args.match_id ?? null,
+    variant: args.variant ?? 'default',
+  })
+    .setProtectedHeader({ alg: ALG })
+    .setIssuedAt()
+    .setAudience(AUDIENCE)
+    .setExpirationTime('5m')
+    .sign(getSecret());
+}
+
+export async function verifyResumePreviewToken(
+  token: string | undefined | null,
+): Promise<ResumePreviewJwtPayload | null> {
+  if (!token) return null;
+  try {
+    const { payload } = await jwtVerify(token, getSecret(), {
+      algorithms: [ALG],
+      audience: AUDIENCE,
+    });
+    const p = payload as unknown as ResumePreviewJwtPayload;
+    if (p.scope !== 'extension-resume-preview' || !p.profile_id) return null;
+    return p;
+  } catch {
+    return null;
+  }
 }
