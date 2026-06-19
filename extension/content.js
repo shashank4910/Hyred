@@ -3414,17 +3414,62 @@
     return [s];
   }
 
+  function workdayConsentCheckboxText(el) {
+    const parts = [];
+    if (el?.id) {
+      const l = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
+      if (l?.textContent) parts.push(l.textContent);
+    }
+    const cl = el?.closest?.('label');
+    if (cl?.textContent) parts.push(cl.textContent);
+    const field = el?.closest?.('[data-automation-id^="formField"]');
+    if (field) parts.push(workdayFieldLabel(field));
+    parts.push(fieldSignature(el));
+    const section = el?.closest?.('fieldset, [role="group"], section, div');
+    const h = section?.querySelector?.('h1, h2, h3, h4, legend, [data-automation-id="richText"]');
+    if (h?.textContent) parts.push(h.textContent);
+    return parts.join(' ').replace(/\s+/g, ' ').toLowerCase();
+  }
+
+  function isWorkdayLegalConsentText(text) {
+    return /i consent|consent to|agree to|acknowledge|read and accept|terms.*conditions|terms & conditions|privacy policy|accept the terms|have read|i have read|accept the privacy/.test(
+      text,
+    );
+  }
+
   function fillWorkdayConsentCheckboxes(filledSet) {
     let n = 0;
-    for (const cb of document.querySelectorAll('input[type="checkbox"]')) {
-      if (!isVisible(cb) || cb.checked || cb.disabled || filledSet.has(cb)) continue;
-      const sig = fieldSignature(cb);
-      if (/i consent|consent to|agree to|acknowledge/i.test(sig)) {
-        cb.click();
-        filledSet.add(cb);
-        n++;
-        log('workday:consent checked');
+    const seen = new Set();
+
+    function tryCheck(el) {
+      if (!el || seen.has(el) || !isVisible(el) || el.disabled || filledSet.has(el)) return false;
+      seen.add(el);
+      const text = workdayConsentCheckboxText(el);
+      if (!isWorkdayLegalConsentText(text)) return false;
+      const role = el.getAttribute?.('role');
+      if (el.type === 'checkbox') {
+        if (el.checked) return false;
+      } else if (role === 'checkbox') {
+        if (el.getAttribute('aria-checked') === 'true') return false;
+      } else {
+        return false;
       }
+      el.click();
+      filledSet.add(el);
+      n++;
+      log('workday:consent checked', text.slice(0, 70));
+      return true;
+    }
+
+    for (const field of document.querySelectorAll('[data-automation-id^="formField"]')) {
+      const label = workdayFieldLabel(field).toLowerCase();
+      if (!isWorkdayLegalConsentText(label)) continue;
+      const cb = field.querySelector('input[type="checkbox"], [role="checkbox"]');
+      tryCheck(cb);
+    }
+
+    for (const cb of document.querySelectorAll('input[type="checkbox"], [role="checkbox"]')) {
+      tryCheck(cb);
     }
     return n;
   }
@@ -3462,10 +3507,25 @@
 
   function isWorkdayVoluntaryDisclosuresStep() {
     if (!isWorkdaySite()) return false;
+    if (document.querySelector('input[data-automation-id="file-upload-input-ref"]')) return false;
+
+    for (const el of document.querySelectorAll('[aria-current="step"]')) {
+      if (/voluntary disclosures/i.test(el.textContent || '')) return true;
+    }
+
     const hay = document.body.innerText.slice(0, 12000).toLowerCase();
-    return (
-      /voluntary disclosures|voluntary self-identification|self-identification of/.test(hay) &&
-      (/select your gender|gender\b|veteran|disabilit/.test(hay) || /i consent/.test(hay))
+    if (!/voluntary disclosures/.test(hay)) return false;
+
+    const mainHay = (
+      document.querySelector(
+        'main, [data-automation-id="jobApplicationBody"], [data-automation-id="applyFlowPage"]',
+      )?.innerText || document.body.innerText
+    )
+      .slice(0, 8000)
+      .toLowerCase();
+
+    return /terms and conditions|privacy policy|read and accept|self-identification|select your gender|gender identity|veteran|disabilit|ethnic|\brace\b|hispanic|i consent|equal employment|eeo/.test(
+      mainHay,
     );
   }
 
@@ -3474,6 +3534,7 @@
     if (workdayVoluntaryPassDone) return 0;
     workdayVoluntaryPassDone = true;
     log('workday:voluntary-disclosures page');
+    if (IS_TOP_FRAME) fillUi.setPhase('Voluntary disclosures…');
     let n = 0;
     n += await fillWorkdayVoluntaryDropdowns(profile, filledSet);
     n += fillWorkdayConsentCheckboxes(filledSet);
