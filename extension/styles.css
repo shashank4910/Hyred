@@ -143,6 +143,18 @@
 #jobradar-card .jr-resume-picker.jr-hidden {
   display: none;
 }
+#jobradar-card .jr-resume-opt[data-row='tailored'].jr-hidden {
+  display: none;
+}
+#jobradar-card .jr-resume-hint {
+  font-size: 11px;
+  color: #8a94a3;
+  line-height: 1.35;
+  margin: 0 0 6px;
+}
+#jobradar-card .jr-resume-hint.jr-hidden {
+  display: none;
+}
 #jobradar-card .jr-resume-label {
   font-size: 11px;
   font-weight: 600;

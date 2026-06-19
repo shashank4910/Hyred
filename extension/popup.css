@@ -273,6 +273,18 @@ input:focus {
 .resume-picker.hidden {
   display: none;
 }
+.resume-picker-hint {
+  margin: 0 0 8px;
+  font-size: 11px;
+  color: #8a94a3;
+  line-height: 1.4;
+}
+.resume-picker-hint.hidden {
+  display: none;
+}
+.resume-opt[data-row='tailored'].hidden {
+  display: none;
+}
 .resume-opt {
   display: flex;
   align-items: center;

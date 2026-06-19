@@ -4456,7 +4456,7 @@
 
       const [profileRes, matchRes] = await Promise.all([
         send('profile'),
-        send('matchByUrl', { url: location.href }),
+        send('resolveMatch', { url: location.href }),
       ]);
 
       log('profile result:', JSON.stringify(profileRes?.ok), 'error:', profileRes?.error);
@@ -4684,12 +4684,13 @@
       <div class="jr-card-match jr-hidden"></div>
       <div class="jr-resume-picker jr-hidden">
         <div class="jr-resume-label">Resume for this application</div>
-        <label class="jr-resume-opt">
+        <div class="jr-resume-hint jr-hidden"></div>
+        <label class="jr-resume-opt" data-row="tailored">
           <input type="radio" name="jr-resume-variant" value="tailored" />
           <span class="jr-resume-opt-text"><strong>Optimized for this job</strong> <em>Recommended</em></span>
           <button type="button" class="jr-resume-preview" data-preview="tailored">Preview</button>
         </label>
-        <label class="jr-resume-opt">
+        <label class="jr-resume-opt" data-row="default">
           <input type="radio" name="jr-resume-variant" value="default" />
           <span class="jr-resume-opt-text"><strong>Default resume</strong></span>
           <button type="button" class="jr-resume-preview" data-preview="default">Preview</button>
@@ -4786,9 +4787,10 @@
     fillBtn.disabled = false;
     fillBtn.textContent = 'Autofill this form';
 
-    const res = await send('matchByUrl', { url: location.href });
+    const res = await send('resolveMatch', { url: location.href });
     const match = res?.ok ? res.match : null;
     const resumePicker = card.querySelector('.jr-resume-picker');
+    const resumeHint = card.querySelector('.jr-resume-hint');
     if (match?.job) {
       matchEl.classList.remove('jr-hidden');
       const score = match.score != null ? `${match.score}% match` : '';
@@ -4798,26 +4800,36 @@
       matchEl.querySelector('.jr-match-score').textContent = score;
       card.dataset.matchId = match.id || '';
       card.dataset.previewUrl = match.tailored_resume_url || '';
-      if (match.has_tailored_resume && resumePicker) {
+      if (resumePicker) {
         resumePicker.classList.remove('jr-hidden');
+        const hasTailored = !!match.has_tailored_resume;
+        const tailoredRow = resumePicker.querySelector('[data-row="tailored"]');
+        if (tailoredRow) tailoredRow.classList.toggle('jr-hidden', !hasTailored);
+        if (resumeHint) {
+          resumeHint.textContent = hasTailored
+            ? 'Choose which PDF to upload. Optimized is tailored for this job in Hyred.'
+            : 'No optimized resume yet — using default. Optimize on Hyred first for a tailored version.';
+          resumeHint.classList.remove('jr-hidden');
+        }
         const choice = await send('getResumeChoice', {
           match_id: match.id,
-          has_tailored_resume: match.has_tailored_resume,
+          has_tailored_resume: hasTailored,
         });
         const variant =
-          choice?.ok && choice.variant === 'default' ? 'default' : 'tailored';
+          hasTailored && choice?.ok && choice.variant === 'tailored'
+            ? 'tailored'
+            : 'default';
         const t = resumePicker.querySelector('input[value="tailored"]');
         const d = resumePicker.querySelector('input[value="default"]');
         if (t) t.checked = variant === 'tailored';
         if (d) d.checked = variant === 'default';
-      } else if (resumePicker) {
-        resumePicker.classList.add('jr-hidden');
       }
     } else {
       matchEl.classList.add('jr-hidden');
       card.dataset.matchId = '';
       card.dataset.previewUrl = '';
       resumePicker?.classList.add('jr-hidden');
+      resumeHint?.classList.add('jr-hidden');
     }
   }
 

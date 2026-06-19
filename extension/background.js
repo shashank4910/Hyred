@@ -473,6 +473,33 @@ const handlers = {
     return { ok: true, match: r.data.match };
   },
 
+  async matchById({ match_id }) {
+    if (!match_id) return { ok: true, match: null };
+    const r = await api(
+      `/api/extension/match-by-id?match_id=${encodeURIComponent(match_id)}`,
+    );
+    if (!r.ok) return { ok: false, error: r.data?.error ?? `HTTP ${r.status}` };
+    return { ok: true, match: r.data.match };
+  },
+
+  async resolveMatch({ url }) {
+    if (url) {
+      const byUrl = await handlers.matchByUrl({ url });
+      if (byUrl.ok && byUrl.match) {
+        return { ok: true, match: byUrl.match, via: 'url' };
+      }
+    }
+    const handoffRes = await handlers.getApplyHandoff();
+    const handoff = handoffRes.handoff;
+    if (handoff?.matchId) {
+      const byId = await handlers.matchById({ match_id: handoff.matchId });
+      if (byId.ok && byId.match) {
+        return { ok: true, match: byId.match, via: 'handoff' };
+      }
+    }
+    return { ok: true, match: null };
+  },
+
   async storeApplyHandoff(payload = {}) {
     const handoff = {
       matchId: payload.matchId,

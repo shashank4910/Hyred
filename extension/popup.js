@@ -248,20 +248,37 @@ function getSelectedResumeVariant() {
 
 async function renderResumePicker(match) {
   const picker = $('#resume-picker');
+  const hint = $('#resume-picker-hint');
   if (!picker) return;
   currentMatch = match;
-  if (!match?.id || !match.has_tailored_resume) {
+  if (!match?.id) {
     picker.classList.add('hidden');
     resumeVariant = 'default';
     return;
   }
   picker.classList.remove('hidden');
+  const tailoredRow = picker.querySelector('[data-row="tailored"]');
+  const hasTailored = !!match.has_tailored_resume;
+  if (tailoredRow) {
+    tailoredRow.classList.toggle('hidden', !hasTailored);
+  }
+  if (hint) {
+    if (hasTailored) {
+      hint.textContent =
+        'Choose which PDF to upload. Optimized is tailored for this job in Hyred.';
+      hint.classList.remove('hidden');
+    } else {
+      hint.textContent =
+        'No optimized resume for this job yet — using your default. Optimize on Hyred first for a tailored version.';
+      hint.classList.remove('hidden');
+    }
+  }
   const choice = await sendBg('getResumeChoice', {
     match_id: match.id,
-    has_tailored_resume: match.has_tailored_resume,
+    has_tailored_resume: hasTailored,
   });
   resumeVariant =
-    choice.ok && choice.variant === 'tailored' ? 'tailored' : 'default';
+    hasTailored && choice.ok && choice.variant === 'tailored' ? 'tailored' : 'default';
   const tailoredRadio = picker.querySelector('input[value="tailored"]');
   const defaultRadio = picker.querySelector('input[value="default"]');
   if (tailoredRadio) tailoredRadio.checked = resumeVariant === 'tailored';
@@ -340,10 +357,11 @@ async function loadTabContext() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.url || !/^https?:/i.test(tab.url)) {
     renderMatchCard(null);
+    await renderResumePicker(null);
     renderInsights(null);
     return;
   }
-  const res = await sendBg('matchByUrl', { url: tab.url });
+  const res = await sendBg('resolveMatch', { url: tab.url });
   const match = res.ok ? res.match : null;
   renderMatchCard(match);
   await renderResumePicker(match);
@@ -542,7 +560,12 @@ chrome.storage.onChanged.addListener((changes, area) => {
 });
 
 document.querySelectorAll('.tab').forEach((tab) => {
-  tab.addEventListener('click', () => showTab(tab.dataset.tab));
+  tab.addEventListener('click', () => {
+    showTab(tab.dataset.tab);
+    if (tab.dataset.tab === 'autofill' || tab.dataset.tab === 'profile') {
+      loadTabContext();
+    }
+  });
 });
 
 $('#resume-picker')?.addEventListener('change', (e) => {
@@ -738,7 +761,7 @@ $('#btn-autofill-tab').addEventListener('click', async () => {
       coverLetter: $('#opt-cover')?.checked !== false,
       commonFields: $('#opt-common')?.checked !== false,
       aiQuestions: $('#opt-ai')?.checked !== false,
-      resumeVariant: currentMatch?.has_tailored_resume
+      resumeVariant: currentMatch?.id
         ? getSelectedResumeVariant()
         : 'default',
       matchId: currentMatch?.id || null,
