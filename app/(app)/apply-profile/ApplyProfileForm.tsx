@@ -20,6 +20,7 @@ const DISABILITY_OPTIONS = ['No', 'Yes', 'Prefer not to say'];
 const FORM_DEFAULTS: Profile = {
   country: 'India',
   work_auth_country: 'India',
+  work_permit_type: 'Citizen of India',
   authorized_to_work: true,
   require_sponsorship: false,
   willing_to_relocate: false,
@@ -204,6 +205,14 @@ export function ApplyProfileForm() {
                 <input type="radio" name="sponsor" checked={!b('require_sponsorship')} onChange={() => set('require_sponsorship', false)} /> No
               </label>
             </div>
+          </Field>
+          <Field label="Work permit / authorization detail" span={2}>
+            <input
+              className="input"
+              value={f('work_permit_type') || 'Citizen of India'}
+              onChange={e => set('work_permit_type', e.target.value)}
+              placeholder="e.g. Citizen of India, H1B, Permanent resident"
+            />
           </Field>
         </Grid>
       </Section>
