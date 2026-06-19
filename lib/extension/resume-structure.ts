@@ -14,6 +14,7 @@ export type EducationEntry = {
   degree?: string;
   field?: string;
   end?: string;
+  gpa?: string;
 };
 
 export type ResumeStructure = {

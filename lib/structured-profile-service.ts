@@ -93,6 +93,7 @@ export async function saveStructuredProfileEdits(
     structured_work_history?: StructuredWorkEntry[];
     structured_education?: StructuredEducationEntry[];
     skills?: string[];
+    languages?: string[];
     mark_reviewed?: boolean;
   },
 ): Promise<void> {
@@ -131,6 +132,20 @@ export async function saveStructuredProfileEdits(
       })
       .eq('id', profileId);
     if (insErr) throw new Error(insErr.message);
+  }
+
+  if (Array.isArray(payload.languages) && payload.languages.length) {
+    const { error: langErr } = await sb
+      .from('apply_profiles')
+      .upsert(
+        {
+          profile_id: profileId,
+          languages: payload.languages.slice(0, 12),
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'profile_id' },
+      );
+    if (langErr) throw new Error(langErr.message);
   }
 }
 

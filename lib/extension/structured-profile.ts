@@ -16,6 +16,7 @@ export type StructuredEducationEntry = {
   field?: string;
   start?: string;
   end?: string;
+  gpa?: string;
   confidence?: 'high' | 'low';
 };
 
@@ -100,6 +101,7 @@ export function normalizeEducationEntry(raw: unknown): StructuredEducationEntry 
     field: cleanStr(o.field, 120),
     start: cleanStr(o.start, 20),
     end: cleanStr(o.end, 20),
+    gpa: cleanStr(o.gpa, 12),
     confidence: o.confidence === 'low' ? 'low' : 'high',
   };
 }
@@ -262,6 +264,7 @@ export function toAutofillEducationEntry(e: StructuredEducationEntry): Education
     degree: e.degree,
     field: e.field,
     end: e.end || e.start,
+    gpa: e.gpa,
   };
 }
 

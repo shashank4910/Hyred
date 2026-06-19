@@ -97,6 +97,7 @@ function renderStructuredProfile(profile) {
   const jobs = (p.structured_work_history?.length ? p.structured_work_history : p.work_history) ?? [];
   const edu = (p.structured_education?.length ? p.structured_education : p.education) ?? [];
   const skills = (p.skills ?? []).slice(0, 24);
+  const languages = (p.languages ?? ['English', 'Hindi']).slice(0, 12);
   const links = [
     p.links?.linkedin && `LinkedIn: ${p.links.linkedin}`,
     p.links?.github && `GitHub: ${p.links.github}`,
@@ -157,6 +158,8 @@ function renderStructuredProfile(profile) {
             <input class="prof-input" data-field="end" value="${escape(e.end || '')}" />
           </div>
         </div>
+        <label class="prof-label">Overall GPA / result (e.g. 8.2 or 8.2/10)</label>
+        <input class="prof-input" data-field="gpa" value="${escape(e.gpa || '')}" placeholder="Leave blank if not on resume" />
       </div>`,
         )
         .join('')
@@ -179,7 +182,11 @@ function renderStructuredProfile(profile) {
     <div class="prof-section">
       <div class="section-label">Skills (comma-separated)</div>
       <textarea id="prof-skills-input" class="prof-textarea" rows="2" placeholder="JMeter, LoadRunner, AppDynamics…">${escape(skills.join(', '))}</textarea>
-      <p class="muted" style="margin-top:4px">Saved with Save edits. Used when skill fields are not on the form.</p>
+    </div>
+    <div class="prof-section">
+      <div class="section-label">Languages (comma-separated)</div>
+      <textarea id="prof-languages-input" class="prof-textarea" rows="2" placeholder="English, Hindi">${escape(languages.join(', '))}</textarea>
+      <p class="muted" style="margin-top:4px">Saved with Save edits — used for Workday language multiselect.</p>
     </div>
     ${
       links.length
@@ -219,7 +226,13 @@ function collectStructuredEditsFromForm() {
     .map((s) => s.trim())
     .filter(Boolean)
     .slice(0, 32);
-  return { structured_work_history: work, structured_education: education, skills };
+  const languagesRaw = $('#prof-languages-input')?.value || '';
+  const languages = languagesRaw
+    .split(/[,;\n]/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 12);
+  return { structured_work_history: work, structured_education: education, skills, languages };
 }
 
 function renderProfileCopy(profile) {

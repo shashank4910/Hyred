@@ -28,6 +28,7 @@ export type AutofillProfile = {
   };
   years_experience?: number;
   skills?: string[];
+  languages?: string[];
   summary?: string;
   current_title?: string;
   latest_company?: string;
@@ -95,6 +96,7 @@ export type ApplyProfileRow = {
   answer_weaknesses?: string | null;
   answer_salary_expectation?: string | null;
   custom_qa?: CustomQa[] | null;
+  languages?: string[] | null;
   structured_work_history?: StructuredWorkEntry[] | null;
   structured_education?: StructuredEducationEntry[] | null;
   structure_extracted_at?: string | null;
@@ -225,6 +227,9 @@ export function buildAutofillProfile(
     },
     years_experience: pick(apply?.years_experience, row.insights?.years_experience),
     skills: row.insights?.top_skills ?? [],
+    languages: Array.isArray(apply?.languages)
+      ? apply!.languages!.map(String).filter(Boolean).slice(0, 12)
+      : ['English', 'Hindi'],
     summary: row.insights?.summary,
     current_title: pick(apply?.current_title, work_history[0]?.title),
     latest_company: work_history[0]?.company,

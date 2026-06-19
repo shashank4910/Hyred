@@ -28,6 +28,7 @@ export async function POST(req: NextRequest) {
     structured_work_history?: unknown;
     structured_education?: unknown;
     skills?: string[];
+    languages?: string[];
     mark_reviewed?: boolean;
   };
   const sb = supabaseAdmin();
@@ -36,7 +37,8 @@ export async function POST(req: NextRequest) {
       body.mark_reviewed &&
       !body.structured_work_history &&
       !body.structured_education &&
-      !body.skills?.length
+      !body.skills?.length &&
+      !body.languages?.length
     ) {
       await markStructureReviewed(sb, auth.profile_id);
     } else {
@@ -45,6 +47,9 @@ export async function POST(req: NextRequest) {
         structured_education: body.structured_education as never,
         skills: Array.isArray(body.skills)
           ? body.skills.map(String).filter(Boolean)
+          : undefined,
+        languages: Array.isArray(body.languages)
+          ? body.languages.map(String).filter(Boolean)
           : undefined,
         mark_reviewed: !!body.mark_reviewed,
       });
