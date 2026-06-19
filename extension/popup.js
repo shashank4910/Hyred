@@ -53,54 +53,177 @@ function showTab(name) {
   });
 }
 
-function renderProfileCopy(profile) {
-  const el = $('#profile-copy');
+function renderStructuredProfile(profile) {
+  const badge = $('#profile-structure-badge');
+  const el = $('#profile-structured');
+  const markBtn = $('#btn-mark-reviewed');
+  const saveBtn = $('#btn-save-edits');
   if (!el) return;
   const p = profile ?? {};
-  const rows = [
-    ['Full name', p.full_name],
-    ['Email', p.email],
-    ['Phone', p.phone],
-    ['City', p.location?.city],
-    ['State', p.location?.region],
-    ['Country', p.location?.country],
-    ['ZIP', p.zip_code],
-    ['LinkedIn', p.links?.linkedin],
-    ['GitHub', p.links?.github],
-    ['Portfolio', p.links?.portfolio],
-    ['Current title', p.current_title],
-    ['Years experience', p.years_experience],
-    ['Notice period', p.notice_period],
-    ['Expected CTC', p.expected_ctc],
-    ['Work auth country', p.work_auth_country],
-  ].filter(([, v]) => v != null && String(v).trim() !== '');
+  const ps = p.profile_structure ?? {};
+  const readiness = ps.readiness ?? 'empty';
 
-  el.innerHTML =
-    rows
-      .map(
-        ([label, val]) => `
-      <div class="copy-row">
-        <span class="copy-label">${escape(label)}</span>
-        <span class="copy-val">${escape(String(val))}</span>
-        <button type="button" class="btn-copy" data-copy="${escape(String(val))}">Copy</button>
+  if (badge) {
+    const labels = {
+      ready: { text: 'Ready for autofill', cls: 'ok' },
+      review: { text: 'Review work history before autofill', cls: 'warn' },
+      empty: { text: 'No work history — refresh from resume', cls: 'warn' },
+    };
+    const b = labels[readiness] || labels.empty;
+    badge.className = `structure-badge ${b.cls}`;
+    badge.textContent = b.text;
+    if (ps.source) {
+      badge.textContent += ` · ${ps.source}`;
+    }
+  }
+  if (markBtn) {
+    markBtn.disabled = readiness === 'ready' || !(ps.work_count > 0);
+    markBtn.textContent = readiness === 'ready' ? 'Reviewed ✓' : 'Mark as reviewed';
+  }
+  if (saveBtn) {
+    saveBtn.disabled = !(ps.work_count > 0);
+  }
+
+  const contact = [
+    p.full_name,
+    p.location?.full,
+    p.email,
+    p.phone,
+  ]
+    .filter(Boolean)
+    .map((v) => escape(String(v)))
+    .join('<br/>');
+
+  const jobs = (p.structured_work_history?.length ? p.structured_work_history : p.work_history) ?? [];
+  const edu = (p.structured_education?.length ? p.structured_education : p.education) ?? [];
+  const skills = (p.skills ?? []).slice(0, 24);
+  const links = [
+    p.links?.linkedin && `LinkedIn: ${p.links.linkedin}`,
+    p.links?.github && `GitHub: ${p.links.github}`,
+  ].filter(Boolean);
+
+  const jobHtml = jobs.length
+    ? jobs
+        .map(
+          (j, i) => `
+      <div class="prof-block editable" data-job-index="${i}">
+        <label class="prof-label">Job title</label>
+        <input class="prof-input" data-field="title" value="${escape(j.title || '')}" placeholder="Senior Performance Engineer" />
+        <label class="prof-label">Company</label>
+        <input class="prof-input" data-field="company" value="${escape(j.company || '')}" placeholder="Employer name" />
+        <label class="prof-label">Location</label>
+        <input class="prof-input" data-field="location" value="${escape(j.location || '')}" placeholder="City, State" />
+        <div class="prof-row-2">
+          <div>
+            <label class="prof-label">Start</label>
+            <input class="prof-input" data-field="start" value="${escape(j.start || '')}" placeholder="Sep 2024" />
+          </div>
+          <div>
+            <label class="prof-label">End</label>
+            <input class="prof-input" data-field="end" value="${escape(j.end || '')}" placeholder="Present" />
+          </div>
+        </div>
+        <label class="prof-label">Role description (used in Workday / ATS)</label>
+        <textarea class="prof-textarea" data-field="summary" rows="5" placeholder="Achievements, clients, metrics…">${escape(j.summary || '')}</textarea>
       </div>`,
-      )
-      .join('') ||
-    '<p class="muted">Complete Application Profile in Hyred Settings.</p>';
+        )
+        .join('')
+    : '<p class="muted">No jobs yet. Click Refresh from resume.</p>';
 
-  el.querySelectorAll('.btn-copy').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      try {
-        await navigator.clipboard.writeText(btn.dataset.copy || '');
-        btn.textContent = 'Copied';
-        setTimeout(() => {
-          btn.textContent = 'Copy';
-        }, 1200);
-      } catch {
-        /* ignore */
-      }
+  const eduHtml = edu.length
+    ? edu
+        .map(
+          (e, i) => `
+      <div class="prof-block compact editable" data-edu-index="${i}">
+        <label class="prof-label">School</label>
+        <input class="prof-input" data-field="school" value="${escape(e.school || '')}" />
+        <div class="prof-row-2">
+          <div>
+            <label class="prof-label">Degree</label>
+            <input class="prof-input" data-field="degree" value="${escape(e.degree || '')}" />
+          </div>
+          <div>
+            <label class="prof-label">Field</label>
+            <input class="prof-input" data-field="field" value="${escape(e.field || '')}" />
+          </div>
+        </div>
+        <div class="prof-row-2">
+          <div>
+            <label class="prof-label">From year</label>
+            <input class="prof-input" data-field="start" value="${escape(e.start || '')}" />
+          </div>
+          <div>
+            <label class="prof-label">Grad year</label>
+            <input class="prof-input" data-field="end" value="${escape(e.end || '')}" />
+          </div>
+        </div>
+      </div>`,
+        )
+        .join('')
+    : '<p class="muted">No education extracted.</p>';
+
+  el.innerHTML = `
+    <div class="prof-section">
+      <div class="section-label">Contact</div>
+      <div class="prof-contact">${contact || '<span class="muted">—</span>'}</div>
+      <p class="muted" style="margin-top:4px">Edit name, email, phone on Hyred Settings → Application Profile.</p>
+    </div>
+    <div class="prof-section">
+      <div class="section-label">Experience (${jobs.length}) — editable</div>
+      ${jobHtml}
+    </div>
+    <div class="prof-section">
+      <div class="section-label">Education — editable</div>
+      ${eduHtml}
+    </div>
+    <div class="prof-section">
+      <div class="section-label">Skills (comma-separated)</div>
+      <textarea id="prof-skills-input" class="prof-textarea" rows="2" placeholder="JMeter, LoadRunner, AppDynamics…">${escape(skills.join(', '))}</textarea>
+      <p class="muted" style="margin-top:4px">Saved with Save edits. Used when skill fields are not on the form.</p>
+    </div>
+    ${
+      links.length
+        ? `<div class="prof-section"><div class="section-label">Links</div><div class="prof-links">${links.map((l) => `<div>${escape(l)}</div>`).join('')}</div></div>`
+        : ''
+    }
+    ${
+      ps.warnings?.length
+        ? `<div class="prof-warnings"><div class="section-label">Check</div><ul>${ps.warnings.map((w) => `<li>${escape(w)}</li>`).join('')}</ul></div>`
+        : ''
+    }
+  `;
+}
+
+function collectStructuredEditsFromForm() {
+  const work = [];
+  document.querySelectorAll('[data-job-index]').forEach((block) => {
+    const row = {};
+    block.querySelectorAll('[data-field]').forEach((input) => {
+      const key = input.dataset.field;
+      row[key] = input.value.trim();
     });
+    if (row.company || row.title) work.push(row);
   });
+  const education = [];
+  document.querySelectorAll('[data-edu-index]').forEach((block) => {
+    const row = {};
+    block.querySelectorAll('[data-field]').forEach((input) => {
+      const key = input.dataset.field;
+      row[key] = input.value.trim();
+    });
+    if (row.school || row.degree) education.push(row);
+  });
+  const skillsRaw = $('#prof-skills-input')?.value || '';
+  const skills = skillsRaw
+    .split(/[,;\n]/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 32);
+  return { structured_work_history: work, structured_education: education, skills };
+}
+
+function renderProfileCopy(profile) {
+  renderStructuredProfile(profile);
 }
 
 function renderMatchCard(match) {
@@ -395,12 +518,120 @@ $('#setup-form').addEventListener('submit', async (e) => {
 
 $('#btn-recheck').addEventListener('click', refreshConnected);
 
+$('#btn-refresh-structure')?.addEventListener('click', async () => {
+  const msg = $('#profile-structure-msg');
+  const btn = $('#btn-refresh-structure');
+  if (!btn) return;
+  msg.textContent = '';
+  btn.disabled = true;
+  const prev = btn.textContent;
+  btn.textContent = 'Extracting…';
+  try {
+    const res = await sendBg('refreshStructure');
+    if (!res.ok) {
+      const err =
+        res.error === 'no_resume_text'
+          ? 'Upload a resume in Hyred first.'
+          : res.error || 'Refresh failed';
+      throw new Error(err);
+    }
+    if (res.profile) {
+      lastProfile = res.profile;
+      renderStructuredProfile(res.profile);
+    } else {
+      const prof = await sendBg('profile');
+      if (prof.ok) {
+        lastProfile = prof.profile;
+        renderStructuredProfile(prof.profile);
+      }
+    }
+    const n = res.work_count ?? 0;
+    msg.textContent = n
+      ? `Found ${n} job${n === 1 ? '' : 's'}. Review below, then Mark as reviewed.`
+      : 'No jobs found — check resume or edit on Hyred.';
+    msg.classList.remove('error');
+    msg.classList.add('ok');
+  } catch (e) {
+    msg.textContent = e.message ?? 'Refresh failed';
+    msg.classList.add('error');
+    msg.classList.remove('ok');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = prev;
+  }
+});
+
+$('#btn-mark-reviewed')?.addEventListener('click', async () => {
+  const msg = $('#profile-structure-msg');
+  const btn = $('#btn-mark-reviewed');
+  if (!btn || btn.disabled) return;
+  msg.textContent = '';
+  btn.disabled = true;
+  const prev = btn.textContent;
+  btn.textContent = 'Saving…';
+  try {
+    const edits = collectStructuredEditsFromForm();
+    const res = await sendBg('saveStructure', {
+      ...edits,
+      mark_reviewed: true,
+    });
+    if (!res.ok) throw new Error(res.error || 'Save failed');
+    if (res.profile) {
+      lastProfile = res.profile;
+      renderStructuredProfile(res.profile);
+    }
+    msg.textContent = 'Work history confirmed — autofill will use these jobs.';
+    msg.classList.remove('error');
+    msg.classList.add('ok');
+  } catch (e) {
+    msg.textContent = e.message ?? 'Save failed';
+    msg.classList.add('error');
+    msg.classList.remove('ok');
+    btn.disabled = false;
+    btn.textContent = prev;
+  }
+});
+
+$('#btn-save-edits')?.addEventListener('click', async () => {
+  const msg = $('#profile-structure-msg');
+  const btn = $('#btn-save-edits');
+  if (!btn || btn.disabled) return;
+  msg.textContent = '';
+  btn.disabled = true;
+  const prev = btn.textContent;
+  btn.textContent = 'Saving…';
+  const wasReady = lastProfile?.profile_structure?.readiness === 'ready';
+  try {
+    const edits = collectStructuredEditsFromForm();
+    const res = await sendBg('saveStructure', {
+      ...edits,
+      mark_reviewed: wasReady,
+    });
+    if (!res.ok) throw new Error(res.error || 'Save failed');
+    if (res.profile) {
+      lastProfile = res.profile;
+      renderStructuredProfile(res.profile);
+    }
+    msg.textContent = wasReady
+      ? 'Profile saved — autofill will use your edits.'
+      : 'Saved. Mark as reviewed when ready for autofill.';
+    msg.classList.remove('error');
+    msg.classList.add('ok');
+  } catch (e) {
+    msg.textContent = e.message ?? 'Save failed';
+    msg.classList.add('error');
+    msg.classList.remove('ok');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = prev;
+  }
+});
+
 $('#btn-disconnect').addEventListener('click', async () => {
   await clearStored();
   showConnectIntro();
 });
 
-// Manual-trigger button: works on any URL even if the FAB didn't auto-mount.
 $('#btn-autofill-tab').addEventListener('click', async () => {
   const errEl = $('#autofill-error');
   errEl.textContent = '';
@@ -416,7 +647,7 @@ $('#btn-autofill-tab').addEventListener('click', async () => {
     // loaded). autofill-engine.js MUST load first — content.js depends on it.
     try {
       await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
+        target: { tabId: tab.id, allFrames: true },
         files: ['autofill-engine.js', 'content.js'],
       });
     } catch (e) {
@@ -430,17 +661,16 @@ $('#btn-autofill-tab').addEventListener('click', async () => {
       commonFields: $('#opt-common')?.checked !== false,
       aiQuestions: $('#opt-ai')?.checked !== false,
     };
-    chrome.tabs.sendMessage(
-      tab.id,
-      { type: 'TRIGGER_AUTOFILL', payload: { options } },
-      () => {
-      const err = chrome.runtime.lastError;
-      if (err) {
-        errEl.textContent = err.message;
-      } else {
-        window.close();
-      }
-    });
+    const res = await sendBg('fanOutAutofill', { tabId: tab.id, options });
+    if (!res?.ok) {
+      throw new Error(res?.error || 'Autofill failed');
+    }
+    if ((res.filled || 0) === 0) {
+      errEl.textContent =
+        'No fields filled — open page Console (F12), filter [JobRadar], retry after page loads.';
+    } else {
+      window.close();
+    }
   } catch (e) {
     errEl.textContent = e.message ?? 'Failed';
   } finally {

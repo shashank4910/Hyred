@@ -27,16 +27,25 @@ export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as {
     structured_work_history?: unknown;
     structured_education?: unknown;
+    skills?: string[];
     mark_reviewed?: boolean;
   };
   const sb = supabaseAdmin();
   try {
-    if (body.mark_reviewed && !body.structured_work_history && !body.structured_education) {
+    if (
+      body.mark_reviewed &&
+      !body.structured_work_history &&
+      !body.structured_education &&
+      !body.skills?.length
+    ) {
       await markStructureReviewed(sb, auth.profile_id);
     } else {
       await saveStructuredProfileEdits(sb, auth.profile_id, {
         structured_work_history: body.structured_work_history as never,
         structured_education: body.structured_education as never,
+        skills: Array.isArray(body.skills)
+          ? body.skills.map(String).filter(Boolean)
+          : undefined,
         mark_reviewed: !!body.mark_reviewed,
       });
     }

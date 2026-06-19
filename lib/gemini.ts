@@ -970,7 +970,7 @@ Rules:
 - ONE row per employer company. If the same company appears for multiple client projects, merge into a single entry: span from earliest start to latest end, use the most senior title, and combine summaries with client/project labels (e.g. "Family Dollar (Sep 2020 – Dec 2021): ... Warner Bros (Oct 2018 – Aug 2020): ...").
 - Each job MUST have separate "title" (job role) and "company" (employer). NEVER put dates in title or company.
 - "start" and "end" are date fields only (e.g. "Sep 2024", "Present") — not title/company.
-- summary: synthesize from bullets; max 600 chars per job.
+- summary: synthesize from bullets; max 600 chars per job. Include concrete metrics (%, counts, time saved) and client names when present in the resume.
 - location: separate from company — do not put city only in field of study.
 - Use null-omission: omit unknown fields rather than guessing.
 - confidence low if dates or employer unclear.

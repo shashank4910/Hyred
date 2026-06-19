@@ -92,6 +92,7 @@ export async function saveStructuredProfileEdits(
   payload: {
     structured_work_history?: StructuredWorkEntry[];
     structured_education?: StructuredEducationEntry[];
+    skills?: string[];
     mark_reviewed?: boolean;
   },
 ): Promise<void> {
@@ -112,6 +113,25 @@ export async function saveStructuredProfileEdits(
   }
   const { error } = await sb.from('apply_profiles').upsert(patch, { onConflict: 'profile_id' });
   if (error) throw new Error(error.message);
+
+  if (Array.isArray(payload.skills) && payload.skills.length) {
+    const { data: row } = await sb
+      .from('profiles')
+      .select('insights')
+      .eq('id', profileId)
+      .maybeSingle();
+    const insights = (row?.insights as Record<string, unknown> | null) ?? {};
+    const { error: insErr } = await sb
+      .from('profiles')
+      .update({
+        insights: {
+          ...insights,
+          top_skills: payload.skills.slice(0, 32),
+        },
+      })
+      .eq('id', profileId);
+    if (insErr) throw new Error(insErr.message);
+  }
 }
 
 export async function markStructureReviewed(

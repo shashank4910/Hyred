@@ -266,6 +266,128 @@ input:focus {
   max-height: 220px;
   overflow: auto;
 }
+.profile-structured {
+  max-height: 340px;
+  overflow: auto;
+  margin-bottom: 10px;
+}
+.structure-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: 8px;
+  margin-bottom: 10px;
+  border: 1px solid #252b33;
+}
+.structure-badge.ok {
+  background: rgba(124, 255, 178, 0.08);
+  color: #7cffb2;
+  border-color: rgba(124, 255, 178, 0.25);
+}
+.structure-badge.warn {
+  background: rgba(255, 180, 80, 0.08);
+  color: #ffb450;
+  border-color: rgba(255, 180, 80, 0.25);
+}
+.profile-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.btn-primary.subtle {
+  flex: 1;
+  min-width: 120px;
+  font-size: 11px;
+  padding: 8px 10px;
+}
+.prof-section {
+  margin-bottom: 12px;
+}
+.prof-block {
+  padding: 8px 0;
+  border-bottom: 1px solid #252b33;
+}
+.prof-block.compact {
+  padding: 6px 0;
+}
+.prof-block-title {
+  font-weight: 600;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.prof-block-meta {
+  margin-top: 2px;
+  font-size: 10px;
+  color: #8a94a3;
+}
+.prof-block-body {
+  margin-top: 4px;
+  font-size: 10px;
+  color: #b8c0cc;
+  line-height: 1.4;
+}
+.prof-label {
+  display: block;
+  font-size: 10px;
+  color: #8a94a3;
+  margin: 6px 0 3px;
+}
+.prof-label:first-child {
+  margin-top: 0;
+}
+.prof-input,
+.prof-textarea {
+  width: 100%;
+  padding: 6px 8px;
+  background: #14181d;
+  border: 1px solid #252b33;
+  border-radius: 6px;
+  color: #e6ebf2;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.4;
+  resize: vertical;
+}
+.prof-textarea {
+  min-height: 88px;
+}
+.prof-input:focus,
+.prof-textarea:focus {
+  outline: none;
+  border-color: #7cffb255;
+  box-shadow: 0 0 0 2px #7cffb215;
+}
+.prof-row-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.prof-contact,
+.prof-links {
+  font-size: 11px;
+  line-height: 1.45;
+}
+.prof-warnings ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
+  font-size: 10px;
+  color: #ffb450;
+}
+.btn-link {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 11px;
+  color: #7cffb2;
+  text-decoration: none;
+}
+.btn-link:hover {
+  text-decoration: underline;
+}
+.error.ok,
+p.ok {
+  color: #7cffb2;
+}
 .copy-row {
   display: grid;
   grid-template-columns: 72px 1fr auto;
