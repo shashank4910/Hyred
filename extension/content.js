@@ -4728,19 +4728,26 @@
         variant: e.target.value === 'tailored' ? 'tailored' : 'default',
       });
     });
-    card.querySelector('.jr-resume-picker')?.addEventListener('click', (e) => {
+    card.querySelector('.jr-resume-picker')?.addEventListener('click', async (e) => {
       const btn = e.target?.closest?.('.jr-resume-preview');
       if (!btn) return;
       e.preventDefault();
       e.stopPropagation();
       const matchId = card.dataset.matchId;
       const variant = btn.dataset.preview || 'default';
-      send('previewResume', {
-        match_id: matchId,
+      if (variant === 'tailored' && !matchId) {
+        toast('No job match — optimize resume on Hyred first.', 'warn', 5000);
+        return;
+      }
+      const res = await send('previewResume', {
+        match_id: matchId || null,
         variant,
         preview_url:
           variant === 'tailored' ? card.dataset.previewUrl || null : null,
       });
+      if (!res?.ok) {
+        toast(res?.error || 'Could not open preview', 'err', 6000);
+      }
     });
     const fillBtn = card.querySelector('.jr-fill-btn');
     fillBtn.addEventListener('click', () => {

@@ -295,17 +295,32 @@ async function saveResumeChoice() {
 }
 
 async function previewResumeVariant(variant) {
-  if (!currentMatch?.id) return;
-  const errEl = $('#autofill-error');
-  if (errEl) errEl.textContent = '';
+  const errEl = $('#resume-picker-error') || $('#autofill-error');
+  if (errEl) {
+    errEl.textContent = '';
+    errEl.classList?.remove('hidden');
+  }
+  if (variant === 'tailored' && !currentMatch?.id) {
+    if (errEl) errEl.textContent = 'No job match on this page — optimize resume on Hyred first.';
+    return;
+  }
+  if (errEl) errEl.textContent = 'Opening preview…';
   const res = await sendBg('previewResume', {
-    match_id: currentMatch.id,
+    match_id: currentMatch?.id || null,
     variant,
     preview_url:
-      variant === 'tailored' ? currentMatch.tailored_resume_url : null,
+      variant === 'tailored' ? currentMatch?.tailored_resume_url : null,
   });
-  if (!res.ok && errEl) {
+  if (res.ok) {
+    if (errEl) {
+      errEl.textContent = '';
+      errEl.classList?.add('hidden');
+    }
+    return;
+  }
+  if (errEl) {
     errEl.textContent = res.error || 'Could not open preview';
+    errEl.classList?.remove('hidden');
   }
 }
 

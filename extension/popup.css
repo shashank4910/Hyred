@@ -282,6 +282,15 @@ input:focus {
 .resume-picker-hint.hidden {
   display: none;
 }
+.resume-picker-error {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: #ff8a8a;
+  line-height: 1.4;
+}
+.resume-picker-error.hidden {
+  display: none;
+}
 .resume-opt[data-row='tailored'].hidden {
   display: none;
 }
