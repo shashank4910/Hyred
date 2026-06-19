@@ -564,10 +564,31 @@ const handlers = {
     };
   },
 
+  async openPdfPreviewTab({ base64, contentType, filename }) {
+    if (!base64) return { ok: false, error: 'no pdf data' };
+    const previewId = `jr_preview_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    await chrome.storage.session.set({
+      [previewId]: {
+        base64,
+        contentType: contentType || 'application/pdf',
+        filename: filename || 'resume.pdf',
+      },
+    });
+    const url = chrome.runtime.getURL(
+      `preview.html?id=${encodeURIComponent(previewId)}`,
+    );
+    await chrome.tabs.create({ url, active: true });
+    return { ok: true };
+  },
+
   async previewResume({ match_id, variant, preview_url } = {}) {
-    if (preview_url && variant === 'tailored') {
-      await chrome.tabs.create({ url: preview_url });
-      return { ok: true };
+    if (preview_url && variant === 'tailored' && /^https?:\/\//i.test(preview_url)) {
+      try {
+        await chrome.tabs.create({ url: preview_url, active: true });
+        return { ok: true };
+      } catch {
+        /* fall through to API-built PDF */
+      }
     }
     const parts = [];
     if (match_id) parts.push(`match_id=${encodeURIComponent(match_id)}`);
@@ -577,16 +598,11 @@ const handlers = {
     if (!r.ok || !r.data?.data_base64) {
       return { ok: false, error: r.data?.error ?? `HTTP ${r.status}` };
     }
-    const bin = atob(r.data.data_base64);
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    const blob = new Blob([bytes], {
-      type: r.data.content_type || 'application/pdf',
+    return handlers.openPdfPreviewTab({
+      base64: r.data.data_base64,
+      contentType: r.data.content_type,
+      filename: r.data.filename,
     });
-    const url = URL.createObjectURL(blob);
-    await chrome.tabs.create({ url });
-    setTimeout(() => URL.revokeObjectURL(url), 120_000);
-    return { ok: true };
   },
 
   async answerQuestion({ question, match_id, page_text, max_words }) {
