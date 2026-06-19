@@ -29,6 +29,7 @@ export function JobActions({
   coverLetter,
   notes,
   applyUrl,
+  hasTailoredResume: initialHasTailored = false,
 }: {
   matchId: string;
   status: string;
@@ -36,6 +37,7 @@ export function JobActions({
   coverLetter: string | null;
   notes: string | null;
   applyUrl: string;
+  hasTailoredResume?: boolean;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -62,6 +64,7 @@ export function JobActions({
   const [keywords, setKeywords] = useState<GenResult>(null);
   // Change in ATS score vs the previous optimize (for the +N / -N badge).
   const [scoreDelta, setScoreDelta] = useState<number | null>(null);
+  const [hasTailoredResume, setHasTailoredResume] = useState(initialHasTailored);
 
   // Keyword state. jdKeywords = the stable JD keyword universe (from GET).
   // alreadyHaveKeywords = the subset present in the master resume.
@@ -229,6 +232,7 @@ export function JobActions({
         setKeywords(data.keywords);
       }
       if (data.filename_base) setFilenameBase(data.filename_base);
+      setHasTailoredResume(true);
       const newScore = data.keywords?.ats_match_score ?? 0;
       toast.success(`ATS Match Score: ${newScore}%`, { id });
     } catch (e) {
@@ -313,6 +317,23 @@ export function JobActions({
   }
 
 
+  function notifyExtensionApplyHandoff(useTailored: boolean) {
+    try {
+      window.postMessage(
+        {
+          source: 'hyred-app',
+          type: 'apply-handoff',
+          matchId,
+          resumeVariant: useTailored ? 'tailored' : 'default',
+          hasTailoredResume: useTailored,
+        },
+        window.location.origin,
+      );
+    } catch {
+      /* extension not installed */
+    }
+  }
+
   return (
     <div className="space-y-3">
       {/* Apply CTA */}
@@ -348,6 +369,8 @@ export function JobActions({
               target="_blank"
               rel="noopener noreferrer"
               onClick={() => {
+                const useTailored = hasTailoredResume || !!atsResume.trim();
+                notifyExtensionApplyHandoff(useTailored);
                 if (status !== 'applied' && status !== 'interviewing' && status !== 'offer') {
                   fetch(`/api/match/${matchId}/status`, {
                     method: 'POST',

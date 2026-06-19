@@ -440,12 +440,126 @@ const handlers = {
     return { ok: true, profile: r.data.profile };
   },
 
+  async refreshStructure() {
+    const r = await api('/api/extension/refresh-structure', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    if (!r.ok) return { ok: false, error: r.data?.error ?? `HTTP ${r.status}` };
+    const pr = await api('/api/extension/profile');
+    return {
+      ok: true,
+      source: r.data?.source,
+      work_count: r.data?.work_count,
+      warnings: r.data?.warnings,
+      profile: pr.ok ? pr.data.profile : undefined,
+    };
+  },
+
+  async saveStructure(payload) {
+    const r = await api('/api/extension/structure', {
+      method: 'POST',
+      body: JSON.stringify(payload ?? {}),
+    });
+    if (!r.ok) return { ok: false, error: r.data?.error ?? `HTTP ${r.status}` };
+    return { ok: true, profile: r.data.profile };
+  },
+
   async matchByUrl({ url }) {
     const r = await api(
       `/api/extension/match-by-url?url=${encodeURIComponent(url)}`,
     );
     if (!r.ok) return { ok: false, error: r.data?.error ?? `HTTP ${r.status}` };
     return { ok: true, match: r.data.match };
+  },
+
+  async storeApplyHandoff(payload = {}) {
+    const handoff = {
+      matchId: payload.matchId,
+      resumeVariant: payload.hasTailoredResume ? 'tailored' : 'default',
+      hasTailoredResume: !!payload.hasTailoredResume,
+      at: Date.now(),
+    };
+    await new Promise((resolve) =>
+      chrome.storage.local.set({ jr_apply_handoff: handoff }, resolve),
+    );
+    if (handoff.matchId) {
+      await new Promise((resolve) =>
+        chrome.storage.local.set(
+          { [`jr_resume_choice:${handoff.matchId}`]: handoff.resumeVariant },
+          resolve,
+        ),
+      );
+    }
+    return { ok: true, handoff };
+  },
+
+  async getApplyHandoff() {
+    const data = await new Promise((resolve) =>
+      chrome.storage.local.get(['jr_apply_handoff'], (v) => resolve(v || {})),
+    );
+    const handoff = data.jr_apply_handoff;
+    if (!handoff?.at || Date.now() - handoff.at > 86_400_000) {
+      return { ok: true, handoff: null };
+    }
+    return { ok: true, handoff };
+  },
+
+  async setResumeChoice({ match_id, variant }) {
+    if (!match_id || !variant) return { ok: false, error: 'match_id and variant required' };
+    await new Promise((resolve) =>
+      chrome.storage.local.set({ [`jr_resume_choice:${match_id}`]: variant }, resolve),
+    );
+    return { ok: true };
+  },
+
+  async getResumeChoice({ match_id, has_tailored_resume }) {
+    if (!match_id) return { ok: true, variant: 'default' };
+    const keys = [`jr_resume_choice:${match_id}`, 'jr_apply_handoff'];
+    const data = await new Promise((resolve) =>
+      chrome.storage.local.get(keys, (v) => resolve(v || {})),
+    );
+    const saved = data[`jr_resume_choice:${match_id}`];
+    if (saved === 'tailored' || saved === 'default') {
+      return { ok: true, variant: saved };
+    }
+    const handoff = data.jr_apply_handoff;
+    if (
+      handoff?.matchId === match_id &&
+      handoff.at &&
+      Date.now() - handoff.at < 86_400_000
+    ) {
+      return { ok: true, variant: handoff.resumeVariant || 'default' };
+    }
+    return {
+      ok: true,
+      variant: has_tailored_resume ? 'tailored' : 'default',
+    };
+  },
+
+  async previewResume({ match_id, variant, preview_url } = {}) {
+    if (preview_url && variant === 'tailored') {
+      await chrome.tabs.create({ url: preview_url });
+      return { ok: true };
+    }
+    const parts = [];
+    if (match_id) parts.push(`match_id=${encodeURIComponent(match_id)}`);
+    if (variant) parts.push(`variant=${encodeURIComponent(variant)}`);
+    const q = parts.length ? `?${parts.join('&')}` : '';
+    const r = await api(`/api/extension/resume${q}`);
+    if (!r.ok || !r.data?.data_base64) {
+      return { ok: false, error: r.data?.error ?? `HTTP ${r.status}` };
+    }
+    const bin = atob(r.data.data_base64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const blob = new Blob([bytes], {
+      type: r.data.content_type || 'application/pdf',
+    });
+    const url = URL.createObjectURL(blob);
+    await chrome.tabs.create({ url });
+    setTimeout(() => URL.revokeObjectURL(url), 120_000);
+    return { ok: true };
   },
 
   async answerQuestion({ question, match_id, page_text, max_words }) {
@@ -466,10 +580,11 @@ const handlers = {
     return { ok: true, mappings: r.data.mappings ?? [] };
   },
 
-  async fetchResume({ match_id } = {}) {
-    const q = match_id
-      ? `?match_id=${encodeURIComponent(match_id)}`
-      : '';
+  async fetchResume({ match_id, variant } = {}) {
+    const parts = [];
+    if (match_id) parts.push(`match_id=${encodeURIComponent(match_id)}`);
+    if (variant) parts.push(`variant=${encodeURIComponent(variant)}`);
+    const q = parts.length ? `?${parts.join('&')}` : '';
     const r = await api(`/api/extension/resume${q}`);
     if (!r.ok) return { ok: false, error: r.data?.error ?? `HTTP ${r.status}` };
     return {
@@ -477,6 +592,7 @@ const handlers = {
       filename: r.data.filename,
       content_type: r.data.content_type,
       data_base64: r.data.data_base64,
+      variant_used: r.data.variant_used,
     };
   },
 
@@ -495,15 +611,54 @@ const handlers = {
     });
     return { ok: !!r.ok, error: r.ok ? undefined : r.data?.error };
   },
+
+  // Fan out autofill to every frame in the tab (Workday on custom domains embeds
+  // the apply form in a cross-origin iframe — top-frame-only fill never runs).
+  async fanOutAutofill(payload = {}, sender = {}) {
+    const tabId = payload.tabId || sender.tab?.id;
+    if (!tabId) return { ok: false, error: 'no tab' };
+    const options = { ...(payload.options || {}), fromFanOut: true };
+    let frames = [];
+    try {
+      frames = await chrome.webNavigation.getAllFrames({ tabId });
+    } catch (e) {
+      return { ok: false, error: String(e?.message ?? e) };
+    }
+    const outcomes = [];
+    for (const frame of frames) {
+      try {
+        const res = await chrome.tabs.sendMessage(
+          tabId,
+          { type: 'TRIGGER_AUTOFILL', payload: { options } },
+          { frameId: frame.frameId },
+        );
+        outcomes.push({
+          frameId: frame.frameId,
+          url: frame.url,
+          ok: true,
+          res,
+        });
+      } catch (e) {
+        outcomes.push({
+          frameId: frame.frameId,
+          url: frame.url,
+          ok: false,
+          error: String(e?.message ?? e),
+        });
+      }
+    }
+    const filled = outcomes.reduce((n, o) => n + (o.res?.filled || 0), 0);
+    return { ok: true, frames: frames.length, filled, outcomes };
+  },
 };
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   const fn = handlers[msg?.type];
   if (!fn) {
     sendResponse({ ok: false, error: `unknown message ${msg?.type}` });
     return false;
   }
-  Promise.resolve(fn(msg.payload || {}))
+  Promise.resolve(fn(msg.payload || {}, sender))
     .then((res) => sendResponse(res))
     .catch((e) => sendResponse({ ok: false, error: String(e?.message ?? e) }));
   return true; // keep the channel open for the async response

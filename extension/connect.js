@@ -37,6 +37,25 @@
     if (d && d.source === 'hyred-extension' && d.token) {
       relay(d.token, location.origin);
     }
+    if (d && d.source === 'hyred-app' && d.type === 'apply-handoff' && d.matchId) {
+      try {
+        chrome.runtime.sendMessage(
+          {
+            type: 'storeApplyHandoff',
+            payload: {
+              matchId: d.matchId,
+              resumeVariant: d.hasTailoredResume ? 'tailored' : 'default',
+              hasTailoredResume: !!d.hasTailoredResume,
+            },
+          },
+          function () {
+            void chrome.runtime.lastError;
+          },
+        );
+      } catch (err) {
+        /* extension context invalidated */
+      }
+    }
   });
 
   // 2. DOM hook the server page can render directly (instant, no MAIN world
