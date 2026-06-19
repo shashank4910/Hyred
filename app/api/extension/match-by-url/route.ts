@@ -28,27 +28,53 @@ export async function GET(req: NextRequest) {
     return corsResponse({ error: 'url query required' }, { status: 400 });
   }
   // Strip query/fragment to get the canonical URL prefix.
-  const canonical = url.split(/[?#]/)[0];
+  const canonical = url.split(/[?#]/)[0].replace(/\/+$/, '');
 
   const sb = supabaseAdmin();
 
-  // Build query, scoped to user's profile if available
-  let query = sb
-    .from('matches')
-    .select(
-      `id, llm_score, reason, status, cover_letter, matched_skills, missing_skills, tailored_resume_url, tailored_resume_text,
-       job:jobs!inner(id, title, company, url, description)`,
-    )
-    .ilike('job.url', `${canonical}%`);
+  const selectCols =
+    `id, llm_score, reason, status, cover_letter, matched_skills, missing_skills, tailored_resume_url, tailored_resume_text,
+       job:jobs!inner(id, title, company, url, description)`;
 
-  if (auth.profile_id) {
-    query = query.eq('profile_id', auth.profile_id);
-  }
+  const baseQuery = () => {
+    let q = sb.from('matches').select(selectCols);
+    if (auth.profile_id) q = q.eq('profile_id', auth.profile_id);
+    return q;
+  };
 
-  const { data: match } = await query
+  // 1) Exact prefix match (posting URL stored as-is).
+  let { data: match } = await baseQuery()
+    .ilike('job.url', `${canonical}%`)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
+
+  // 2) Workday: apply URL often differs from listing URL — match on job slug / req id.
+  if (!match && auth.profile_id) {
+    const slug = canonical.match(/\/([^/?#]+)$/)?.[1];
+    if (slug && slug.length >= 6) {
+      const { data: slugMatch } = await baseQuery()
+        .ilike('job.url', `%${slug}%`)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      match = slugMatch;
+    }
+  }
+
+  // 3) Reverse prefix: stored job URL is shorter than apply wizard URL.
+  if (!match && auth.profile_id) {
+    const { data: rows } = await baseQuery()
+      .order('created_at', { ascending: false })
+      .limit(40);
+    match =
+      (rows ?? []).find((row) => {
+        const jobUrl = (
+          row.job as unknown as { url?: string }
+        )?.url?.split(/[?#]/)[0]?.replace(/\/+$/, '');
+        return jobUrl && (canonical.startsWith(jobUrl) || jobUrl.startsWith(canonical));
+      }) ?? null;
+  }
 
   if (!match) {
     return corsResponse({ ok: true, match: null });

@@ -25,26 +25,28 @@
         <button class="tab" data-tab="insights" type="button">Insights</button>
       </nav>
 
+      <div id="match-card" class="match-card hidden"></div>
+      <div id="resume-picker" class="resume-picker hidden">
+        <p class="section-label">Resume for this application</p>
+        <p id="resume-picker-hint" class="resume-picker-hint hidden"></p>
+        <label class="resume-opt" data-row="tailored">
+          <input type="radio" name="resume-variant" value="tailored" />
+          <span class="resume-opt-body">
+            <span class="resume-opt-title">Optimized for this job</span>
+            <span class="resume-opt-badge">Recommended</span>
+          </span>
+          <button type="button" class="btn-preview" data-preview="tailored">Preview</button>
+        </label>
+        <label class="resume-opt" data-row="default">
+          <input type="radio" name="resume-variant" value="default" />
+          <span class="resume-opt-body">
+            <span class="resume-opt-title">Default resume</span>
+          </span>
+          <button type="button" class="btn-preview" data-preview="default">Preview</button>
+        </label>
+      </div>
+
       <div id="panel-autofill" class="tab-panel">
-        <div id="match-card" class="match-card hidden"></div>
-        <div id="resume-picker" class="resume-picker hidden">
-          <p class="section-label">Resume for this application</p>
-          <label class="resume-opt">
-            <input type="radio" name="resume-variant" value="tailored" />
-            <span class="resume-opt-body">
-              <span class="resume-opt-title">Optimized for this job</span>
-              <span class="resume-opt-badge">Recommended</span>
-            </span>
-            <button type="button" class="btn-preview" data-preview="tailored">Preview</button>
-          </label>
-          <label class="resume-opt">
-            <input type="radio" name="resume-variant" value="default" />
-            <span class="resume-opt-body">
-              <span class="resume-opt-title">Default resume</span>
-            </span>
-            <button type="button" class="btn-preview" data-preview="default">Preview</button>
-          </label>
-        </div>
         <p class="section-label">What to fill</p>
         <div class="checks">
           <label class="check"><input type="checkbox" id="opt-resume" checked /> Resume upload</label>
