@@ -1,8 +1,9 @@
-import { parseResumePlainText } from '@/lib/pdf-resume';
+﻿import { parseResumePlainText } from '@/lib/pdf-resume';
 
 export type WorkEntry = {
   company?: string;
   title?: string;
+  location?: string;
   start?: string;
   end?: string;
   summary?: string;
@@ -26,7 +27,7 @@ const SECTION_HEADERS =
   /^(experience|work experience|professional experience|employment history|relevant experience|career history|education|academic|qualifications)$/i;
 
 const DATE_RANGE_RE =
-  /(\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{4}|\b\d{1,2}\/\d{4}|\b\d{4})\s*[-–—to]+\s*(\b(?:present|current|now)\b|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{4}|\b\d{4})/i;
+  /(\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{4}|\b\d{1,2}\/\d{4}|\b\d{4})\s*[-ΓÇôΓÇöto]+\s*(\b(?:present|current|now)\b|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{4}|\b\d{4})/i;
 
 const TITLE_RE =
   /\b(senior|junior|lead|staff|principal|engineer|developer|manager|analyst|architect|consultant|specialist|director|tester|qa|sde|performance)\b/i;
@@ -66,7 +67,7 @@ function parseWorkBlock(lines: string[]): WorkEntry | null {
   const entry: WorkEntry = {};
   const head = lines[0];
   const atSplit = head.split(/\s+at\s+/i);
-  const dashSplit = head.split(/\s*[|–—-]\s*/);
+  const dashSplit = head.split(/\s*[|ΓÇôΓÇö-]\s*/);
   if (atSplit.length === 2) {
     entry.title = atSplit[0].trim();
     entry.company = atSplit[1].trim();
@@ -96,7 +97,7 @@ function parseWorkBlock(lines: string[]): WorkEntry | null {
     }
     i = 2;
   }
-  const bullets = lines.slice(i).filter((l) => /^[-•*]/.test(l) || l.length > 20);
+  const bullets = lines.slice(i).filter((l) => /^[-ΓÇó*]/.test(l) || l.length > 20);
   if (bullets.length) entry.summary = bullets.join(' ').slice(0, 500);
   return entry.company || entry.title ? entry : null;
 }
@@ -131,7 +132,7 @@ function parseWorkHistory(text: string): WorkEntry[] {
     if (
       cur.length >= 2 &&
       !line.startsWith('-') &&
-      !line.startsWith('•') &&
+      !line.startsWith('ΓÇó') &&
       DATE_RANGE_RE.test(cur[1] || '')
     ) {
       blocks.push(cur);
@@ -154,7 +155,7 @@ function parseEducation(text: string): EducationEntry[] {
   let school = '';
   for (const line of section) {
     if (/^(b\.?tech|b\.?e\.?|m\.?tech|m\.?s\.?|mba|b\.?a\.?|b\.?sc|m\.?sc|ph\.?d|bachelor|master)/i.test(line)) {
-      const parts = line.split(/[|,–—-]/).map((s) => s.trim());
+      const parts = line.split(/[|,ΓÇôΓÇö-]/).map((s) => s.trim());
       out.push({
         school: school || undefined,
         degree: parts[0],
