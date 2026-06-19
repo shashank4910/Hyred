@@ -729,13 +729,15 @@
 
   function setNativeValue(el, value) {
     const str = String(value ?? '');
+    if (!el || el.nodeType !== 1) return;
+
     try {
       el.focus?.({ preventScroll: true });
     } catch {
       /* ignore */
     }
 
-    if (el.isContentEditable) {
+    if (el.isContentEditable && el.getAttribute('contenteditable') !== 'false') {
       el.textContent = str;
       el.dispatchEvent(new InputEvent('input', { bubbles: true, data: str }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
@@ -745,6 +747,10 @@
 
     if (el.tagName === 'SELECT') {
       setSelectValue(el, str);
+      return;
+    }
+
+    if (!(el instanceof HTMLInputElement) && !(el instanceof HTMLTextAreaElement)) {
       return;
     }
 
@@ -762,6 +768,9 @@
 
   async function typeIncrementalValue(input, value) {
     const str = String(value ?? '');
+    if (!(input instanceof HTMLInputElement) && !(input instanceof HTMLTextAreaElement)) {
+      return;
+    }
     try {
       input.focus?.({ preventScroll: true });
     } catch {
@@ -867,6 +876,29 @@
       if (setSelectValue(el, pref)) return true;
     }
     return false;
+  }
+
+  function isDropdownWidget(el) {
+    if (!el) return false;
+    if (el.tagName === 'SELECT') return true;
+    const role = el.getAttribute('role');
+    if (role === 'combobox' || role === 'listbox') return true;
+    return el.getAttribute('aria-haspopup') === 'listbox';
+  }
+
+  function isNativeTextControl(el) {
+    if (!el || el.nodeType !== 1) return false;
+    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) return true;
+    return !!(el.isContentEditable && el.getAttribute('contenteditable') !== 'false');
+  }
+
+  async function safeFillOp(label, fn) {
+    try {
+      return await fn();
+    } catch (e) {
+      log('fill:skip', String(label || 'field').slice(0, 55), e?.message || e);
+      return false;
+    }
   }
 
   function isVisible(el) {
@@ -1583,8 +1615,11 @@
             }
           }
         }
-      } else if (el.getAttribute('role') === 'combobox') {
-        ok = await fillLeverTypeahead(el, prefs[0]);
+      } else if (isDropdownWidget(el)) {
+        ok = await setGenericDropdownByPrefs(el, prefs);
+        if (!ok && /location|city|country/i.test(sig)) {
+          ok = await fillLeverTypeahead(el, prefs[0]);
+        }
       }
         if (ok) {
           filledSet.add(el);
@@ -1718,38 +1753,80 @@
     });
     let n = 0;
     for (const instr of plan) {
-      const sig = instr.blockLabel || instr.el?.id || '';
-      if (isWorkdayDedicatedField(sig) || isWorkdayDedicatedField(fieldSignature(instr.el))) continue;
-      if (instr.kind === 'radio') {
-        const pick = engine.pickRadio(instr.radios, instr.fieldId, instr.value);
-        if (pick && !pick.checked && !filledSet.has(pick)) {
-          pick.click();
-          filledSet.add(pick);
-          n++;
-          log('engine:radio', instr.fieldId, '=', instr.value);
+      await safeFillOp(instr.fieldId || instr.blockLabel, async () => {
+        const sig = instr.blockLabel || instr.el?.id || '';
+        if (isWorkdayDedicatedField(sig) || isWorkdayDedicatedField(fieldSignature(instr.el))) return;
+        if (instr.kind === 'radio') {
+          const pick = engine.pickRadio(instr.radios, instr.fieldId, instr.value);
+          if (pick && !pick.checked && !filledSet.has(pick)) {
+            pick.click();
+            filledSet.add(pick);
+            n++;
+            log('engine:radio', instr.fieldId, '=', instr.value);
+          }
+          return;
         }
-        continue;
-      }
-      const el = instr.el;
-      if (!el || !isVisible(el) || !isEmpty(el) || filledSet.has(el)) continue;
-      if (instr.kind === 'typeahead') {
-        if (await fillLeverTypeahead(el, instr.value)) {
-          filledSet.add(el);
-          n++;
-          log('engine:typeahead', instr.fieldId);
+        const el = instr.el;
+        if (!el || !isVisible(el) || !isEmpty(el) || filledSet.has(el)) return;
+
+        if (instr.kind === 'typeahead') {
+          if (await fillLeverTypeahead(el, instr.value)) {
+            filledSet.add(el);
+            n++;
+            log('engine:typeahead', instr.fieldId);
+          }
+          return;
         }
-      } else if (el.tagName === 'SELECT') {
-        if (setSelectValue(el, instr.value)) {
-          filledSet.add(el);
-          n++;
-          log('engine:select', instr.fieldId);
+
+        if (instr.kind === 'dropdown' || isDropdownWidget(el)) {
+          const elSig = fieldSignature(el);
+          const prefs = genericChoicePrefs(elSig, profile);
+          let ok = false;
+          if (el.tagName === 'SELECT') {
+            if (instr.fieldId === 'notice_period') {
+              ok = setSelectNoticePeriod(el, instr.value);
+            } else if (instr.fieldId === 'years_experience') {
+              ok = setSelectExperienceYears(el, instr.value);
+            } else {
+              ok =
+                setSelectValue(el, instr.value) ||
+                (prefs.length ? setSelectValue(el, prefs[0]) : false);
+            }
+          } else {
+            const pickPrefs =
+              prefs.length > 0
+                ? prefs
+                : instr.fieldId === 'notice_period'
+                  ? noticePeriodDropdownPrefs(instr.value)
+                  : instr.fieldId === 'years_experience'
+                    ? experienceDropdownPrefs(instr.value)
+                    : [String(instr.value)];
+            ok = await setGenericDropdownByPrefs(el, pickPrefs);
+          }
+          if (ok) {
+            filledSet.add(el);
+            n++;
+            log('engine:dropdown', instr.fieldId, instr.blockLabel?.slice(0, 50));
+          }
+          return;
         }
-      } else {
+
+        if (!isNativeTextControl(el)) return;
+
+        if (el.tagName === 'SELECT') {
+          if (setSelectValue(el, instr.value)) {
+            filledSet.add(el);
+            n++;
+            log('engine:select', instr.fieldId);
+          }
+          return;
+        }
+
         await setFieldValue(el, instr.value, instr.fieldId || instr.blockLabel?.slice(0, 40));
         filledSet.add(el);
         n++;
         log('engine:text', instr.fieldId, instr.blockLabel?.slice(0, 50));
-      }
+      });
     }
     return n;
   }
@@ -4581,39 +4658,43 @@
     const inputs = scopedFillableElements();
     let n = 0;
     for (const el of inputs) {
-      if (!isVisible(el) || el.disabled) continue;
-      if (el.readOnly && !prepareInputForFill(el)) continue;
-      if (el.type === 'radio' || el.type === 'checkbox' || el.type === 'file') continue;
-      if (!isEmpty(el) || filledSet.has(el)) continue;
+      await safeFillOp(fieldSignature(el), async () => {
+        if (!isVisible(el) || el.disabled) return;
+        if (el.readOnly && !prepareInputForFill(el)) return;
+        if (el.type === 'radio' || el.type === 'checkbox' || el.type === 'file') return;
+        if (!isEmpty(el) || filledSet.has(el)) return;
+        if (isDropdownWidget(el)) return;
 
-      const sig = fieldSignature(el);
-      if (!sig || isWorkdayDedicatedField(sig)) continue;
+        const sig = fieldSignature(el);
+        if (!sig || isWorkdayDedicatedField(sig)) return;
+        if (!isNativeTextControl(el) && el.tagName !== 'SELECT') return;
 
-      let value = null;
-      let path = matchRule(sig);
-      if (path) value = normalizeFilledValue(el, path, valueForPath(profile, path), profile);
-      if (!value) value = matchCustomQa(sig, profile.custom_qa);
+        let value = null;
+        let path = matchRule(sig);
+        if (path) value = normalizeFilledValue(el, path, valueForPath(profile, path), profile);
+        if (!value) value = matchCustomQa(sig, profile.custom_qa);
 
-      if (value != null && String(value).trim() !== '') {
-        if (!shouldAcceptValue(el, sig, value)) continue;
-        if (el.tagName === 'SELECT') {
-          let filled = false;
-          if (path === 'notice_period') {
-            filled = setSelectNoticePeriod(el, value);
-          } else if (path === 'years_experience') {
-            filled = setSelectExperienceYears(el, value);
+        if (value != null && String(value).trim() !== '') {
+          if (!shouldAcceptValue(el, sig, value)) return;
+          if (el.tagName === 'SELECT') {
+            let filled = false;
+            if (path === 'notice_period') {
+              filled = setSelectNoticePeriod(el, value);
+            } else if (path === 'years_experience') {
+              filled = setSelectExperienceYears(el, value);
+            } else {
+              filled =
+                (await setGenericDropdownByPrefs(el, [value])) || setSelectValue(el, value);
+            }
+            if (!filled) return;
           } else {
-            filled =
-              (await setGenericDropdownByPrefs(el, [value])) || setSelectValue(el, value);
+            await setFieldValue(el, value, path || sig.slice(0, 40));
           }
-          if (!filled) continue;
-        } else {
-          await setFieldValue(el, value, path || sig.slice(0, 40));
+          filledSet.add(el);
+          n++;
+          log('fill:', path || 'custom_qa', '=', String(value).slice(0, 40), '|', sig.slice(0, 50));
         }
-        filledSet.add(el);
-        n++;
-        log('fill:', path || 'custom_qa', '=', String(value).slice(0, 40), '|', sig.slice(0, 50));
-      }
+      });
     }
     return n;
   }
@@ -5093,7 +5174,7 @@
         toast(`Autofill failed: ${e?.message ?? e}`, 'err', 6000);
       }
       log('autofill error', e);
-      return { filled: 0, error: String(e?.message ?? e) };
+      return { filled, resumeUploaded, coverInjected, answered, error: String(e?.message ?? e) };
     } finally {
       if (!options.fromFanOut) busy = false;
       if (IS_TOP_FRAME && !options.fromFanOut) {
