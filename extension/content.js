@@ -84,15 +84,40 @@
     total: 0,
     done: 0,
     seen: new Set(),
+    sequential: false,
 
     begin(estimatedTotal) {
       if (!IS_TOP_FRAME) return;
       this.active = true;
+      this.sequential = false;
       this.total = Math.max(estimatedTotal, 6);
       this.done = 0;
       this.seen = new Set();
       this.render(0, 'Starting…');
       this.setCardBusy(true);
+    },
+
+    ensureTotal(minTotal) {
+      if (minTotal > this.total) this.total = minTotal;
+    },
+
+    setStep(current, total, label, el) {
+      if (!this.active || !IS_TOP_FRAME) return;
+      this.sequential = true;
+      this.done = current;
+      this.total = Math.max(total, current);
+      if (el) this.reveal(el);
+      this.render(current, label);
+    },
+
+    waiting(current, total, label) {
+      if (!this.active || !IS_TOP_FRAME) return;
+      const card = document.getElementById('jobradar-card');
+      const text = card?.querySelector('.jr-progress-text');
+      const bar = card?.querySelector('.jr-progress-fill');
+      const pct = total ? Math.min(99, Math.round(((current - 0.5) / total) * 100)) : 8;
+      if (text) text.textContent = `${current}/${total} · ${label}`;
+      if (bar) bar.style.width = `${Math.max(pct, 8)}%`;
     },
 
     setPhase(label) {
@@ -102,6 +127,10 @@
 
     onField(el, label) {
       if (!this.active || !IS_TOP_FRAME || !el) return;
+      if (this.sequential) {
+        this.reveal(el);
+        return;
+      }
       if (this.seen.has(el)) return;
       this.seen.add(el);
       this.done++;
@@ -117,7 +146,7 @@
           '[data-ph-at-id], .field, .form-group, [data-automation-id^="formField"], [class*="question"]',
         ) || el;
       try {
-        wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        wrap.scrollIntoView({ behavior: 'auto', block: 'center' });
       } catch {
         try {
           wrap.scrollIntoView({ block: 'center' });
@@ -168,6 +197,7 @@
       if (!IS_TOP_FRAME) return;
       const n = finalCount ?? this.done;
       this.active = false;
+      this.sequential = false;
       const card = document.getElementById('jobradar-card');
       const prog = card?.querySelector('.jr-fill-progress');
       const text = card?.querySelector('.jr-progress-text');
@@ -3348,16 +3378,194 @@
     return n;
   }
 
-  async function fillWorkdayApplicationQuestionsPage(profile, filledSet) {
+  function resolveWorkdayAppQuestionText(qRaw, profile) {
+    const q = String(qRaw || '');
+    const permit = resolveWorkPermitType(profile);
+    const pairs = [
+      [/current employer|name of your current employer/i, profile.latest_company],
+      [/current job title|your current job title/i, profile.current_title],
+      [
+        /permit type|work permit|outline your work permit|visa type|authorization type/i,
+        permit,
+      ],
+      [
+        /current location|where are you (?:currently )?located|your location|city.*located/i,
+        profile.location?.city || profile.location?.region,
+      ],
+      [/notice period/i, profile.notice_period],
+    ];
+    for (const [re, val] of pairs) {
+      if (val && re.test(q)) return String(val).trim();
+    }
+    const saved = matchCustomQa(q, profile.custom_qa);
+    return saved ? String(saved).trim() : null;
+  }
+
+  function collectWorkdayAppQuestionFields(filledSet) {
+    const items = [];
+    const seen = new Set();
+
+    function push(kind, el, label, extra = {}) {
+      if (!el || seen.has(el)) return;
+      seen.add(el);
+      items.push({ kind, el, label: label.replace(/\s+/g, ' ').trim().slice(0, 80), ...extra });
+    }
+
+    for (const field of document.querySelectorAll('[data-automation-id^="formField"]')) {
+      const q = workdayQuestionForControl(field);
+      const label = q || workdayFieldLabel(field);
+
+      const radios = [...field.querySelectorAll('input[type="radio"]')].filter(isVisible);
+      if (
+        radios.length &&
+        !radios.some((r) => r.checked) &&
+        !radios.some((r) => filledSet.has(r))
+      ) {
+        push('radio', radios[0], label, { radios, question: q });
+        continue;
+      }
+
+      const dd =
+        field.querySelector(
+          'button[aria-haspopup="listbox"], [role="combobox"], button[data-automation-id^="select"]',
+        ) ||
+        (field.matches?.('button[aria-haspopup="listbox"], [role="combobox"]') ? field : null);
+      if (dd && isVisible(dd) && !filledSet.has(dd)) {
+        const cur = (dd.textContent || '').toLowerCase().trim();
+        if (!cur || /select one|search|^choose|^\s*$/.test(cur)) {
+          push('dropdown', dd, label, { question: q });
+          continue;
+        }
+      }
+
+      const textEl = field.querySelector('textarea, input[type="text"]');
+      if (textEl && isVisible(textEl) && isEmpty(textEl) && !filledSet.has(textEl)) {
+        push('text', textEl, label, { question: q });
+      }
+    }
+
+    return items;
+  }
+
+  async function fillWorkdayAppQuestionItem(item, profile, filledSet, match, step, total) {
+    const short = item.label.slice(0, 48) || 'Question';
+    if (IS_TOP_FRAME && fillUi.active) {
+      fillUi.setStep(step, total, short, item.el);
+      await sleep(80);
+    }
+
+    if (item.kind === 'text') {
+      const q = item.question || item.label;
+      let value = resolveWorkdayAppQuestionText(q, profile);
+      if (!value && (looksLikeQuestionTextarea(item.el) || item.el.tagName === 'TEXTAREA')) {
+        if (IS_TOP_FRAME && fillUi.active) {
+          fillUi.waiting(step, total, 'Generating answer…');
+        }
+        const question = q.length > 200 ? q.slice(0, 200) : q;
+        const res = await send('answerQuestion', {
+          question,
+          match_id: match?.id,
+          page_text: document.body.innerText?.slice(0, 4000),
+          max_words: 120,
+        });
+        if (res?.ok && res.answer) {
+          value = res.answer;
+          send('saveQa', { question, answer: res.answer });
+        }
+      }
+      if (!value) return false;
+      await setFieldValue(item.el, value, short);
+      filledSet.add(item.el);
+      log('workday:appq-text', short.slice(0, 40));
+      return true;
+    }
+
+    if (item.kind === 'dropdown') {
+      const q = (item.question || item.label).toLowerCase();
+      const resolved = workdayScreeningPrefsForQuestion(q, profile);
+      if (!resolved) return false;
+      const { prefs, strict } = resolved;
+      const ok = strict
+        ? await setWorkdayDropdownStrict(item.el, prefs)
+        : await setWorkdayDropdownByPrefs(item.el, prefs);
+      if (!ok) return false;
+      filledSet.add(item.el);
+      log('workday:appq-dd', prefs[0], '<=', q.slice(0, 55));
+      return true;
+    }
+
+    if (item.kind === 'radio' && item.radios?.length) {
+      const container = item.radios[0].closest(
+        '[role="radiogroup"], fieldset, [data-automation-id]',
+      );
+      const q = (
+        (container ? labelForControl(container) : '') ||
+        item.radios.map((o) => labelForControl(o)).join(' ')
+      ).toLowerCase();
+      let want = null;
+      if (/sponsor/.test(q)) want = profile.require_sponsorship ? 'yes' : 'no';
+      else if (/authoriz|legally (?:able|entitled) to work|right to work|eligible to work/.test(q)) {
+        want = profile.authorized_to_work === false ? 'no' : 'yes';
+      } else if (
+        /ever been employed|previously (?:employed|worked)|interviewed|non-?compete|accreditation|certification|licen[cs]e/.test(
+          q,
+        )
+      ) {
+        want = 'no';
+      }
+      if (!want) return false;
+      const optText = (o) => {
+        const aria = o.getAttribute('aria-label');
+        if (aria) return aria.trim().toLowerCase();
+        if (o.id) {
+          const l = document.querySelector(`label[for="${CSS.escape(o.id)}"]`);
+          if (l?.textContent) return l.textContent.trim().toLowerCase();
+        }
+        const cl = o.closest('label');
+        if (cl?.textContent) return cl.textContent.trim().toLowerCase();
+        return (o.value || '').trim().toLowerCase();
+      };
+      const opt =
+        item.radios.find((o) => optText(o) === want) ||
+        item.radios.find((o) => optText(o).startsWith(want));
+      if (!opt || opt.checked) return false;
+      opt.click();
+      filledSet.add(opt);
+      item.radios.forEach((o) => filledSet.add(o));
+      log('workday:appq-radio', want, '<=', q.slice(0, 50));
+      return true;
+    }
+
+    return false;
+  }
+
+  async function fillWorkdayApplicationQuestionsPage(profile, filledSet, match) {
     if (!isWorkdayApplicationQuestionsStep()) return 0;
     if (workdayAppQuestionsPassDone) return 0;
     workdayAppQuestionsPassDone = true;
-    log('workday:application-questions page');
-    if (IS_TOP_FRAME) fillUi.setPhase('Application questions…');
+    log('workday:application-questions page (sequential)');
+
+    const items = collectWorkdayAppQuestionFields(filledSet);
+    if (!items.length) return 0;
+
+    const total = items.length;
+    if (IS_TOP_FRAME && fillUi.active) {
+      fillUi.ensureTotal(fillUi.done + total);
+      fillUi.setPhase(`Application questions (0/${total})…`);
+    }
+
     let n = 0;
-    n += fillWorkdayApplicationTextFields(profile, filledSet);
-    n += await fillWorkdayScreeningDropdowns(profile, filledSet);
-    n += fillWorkdayScreeningRadios(profile, filledSet);
+    for (let i = 0; i < items.length; i++) {
+      const ok = await fillWorkdayAppQuestionItem(
+        items[i],
+        profile,
+        filledSet,
+        match,
+        i + 1,
+        total,
+      );
+      if (ok) n++;
+    }
     return n;
   }
 
@@ -3731,7 +3939,7 @@
     n += await fillWorkdayExperiencePage(profile, filledSet, match);
 
     // 6. Page 3 "Application Questions" — screening dropdowns + employer/title.
-    n += await fillWorkdayApplicationQuestionsPage(profile, filledSet);
+    n += await fillWorkdayApplicationQuestionsPage(profile, filledSet, match);
 
     // 7. Page 4 "Voluntary Disclosures" — EEO dropdowns + consent checkbox.
     n += await fillWorkdayVoluntaryDisclosuresPage(profile, filledSet);
@@ -3852,9 +4060,11 @@
     const filledSet = new Set();
     let total = 0;
     const ats = detectAts();
+    const appQuestionsPage = ats === 'workday' && isWorkdayApplicationQuestionsStep();
+    const passCount = appQuestionsPage ? 1 : 3;
     // Config-driven ATS recipes run once — arrays click "Add" and must not repeat per pass.
     total += await runConfiguredAtsFill(profile, filledSet, ats);
-    for (let pass = 0; pass < 3; pass++) {
+    for (let pass = 0; pass < passCount; pass++) {
       if (ats === 'workday') total += await fillWorkday(profile, filledSet, match);
       total += await fillByVendorAttributes(profile, filledSet);
       total += await fillLeverUrls(profile, filledSet);
@@ -3863,9 +4073,11 @@
       total += await fillGenericChoiceFields(profile, filledSet);
       total += fillGenericScreeningRadios(profile, filledSet);
       total += fillEssayFromProfile(profile, filledSet);
-      if (pass < 2) await sleep(450);
+      if (pass < passCount - 1) await sleep(450);
     }
-    total += await fillViaSemanticMap(profile, match, filledSet, { workdayAi: ats === 'workday' });
+    if (!appQuestionsPage) {
+      total += await fillViaSemanticMap(profile, match, filledSet, { workdayAi: ats === 'workday' });
+    }
     if (ats === 'workday') {
       dumpWorkdayUnfilled(filledSet);
     } else {
@@ -4000,6 +4212,10 @@
   }
 
   async function fillViaSemanticMap(profile, match, filledSet, opts = {}) {
+    if (isWorkdayApplicationQuestionsStep()) {
+      log('mapFields: skipped on Application Questions page');
+      return 0;
+    }
     const workdayAi = opts.workdayAi === true || detectAts() === 'workday';
     const indexed = indexEmptyFields(filledSet, { forAi: workdayAi });
     if (!indexed.length) {
@@ -4275,6 +4491,7 @@
   // question, ask the LLM to answer based on the resume + JD context.
   // -------------------------------------------------------------------
   async function answerScreeningQuestions(matchId, profile) {
+    if (isWorkdayApplicationQuestionsStep()) return 0;
     const targets = [];
     for (const el of collectFillableElements()) {
       if (!looksLikeQuestionTextarea(el)) continue;
@@ -4285,14 +4502,24 @@
     if (!targets.length) return 0;
 
     let answered = 0;
-    for (const el of targets.slice(0, 8)) {
+    const total = Math.min(targets.length, 8);
+    for (let i = 0; i < total; i++) {
+      const el = targets[i];
+      const step = i + 1;
       const sig = fieldSignature(el);
+      const short = sig.replace(/\s+/g, ' ').trim().slice(0, 48);
+      if (IS_TOP_FRAME && fillUi.active) {
+        fillUi.setStep(step, total, short, el);
+      }
       const saved = matchCustomQa(sig, profile?.custom_qa);
       if (saved) {
-        setNativeValue(el, saved);
+        await setFieldValue(el, saved, short);
         answered++;
         log('screening: reused saved answer');
         continue;
+      }
+      if (IS_TOP_FRAME && fillUi.active) {
+        fillUi.waiting(step, total, 'Generating answer…');
       }
       const question = sig.length > 200 ? sig.slice(0, 200) : sig;
       const res = await send('answerQuestion', {
@@ -4302,7 +4529,7 @@
         max_words: 120,
       });
       if (res.ok && res.answer) {
-        setNativeValue(el, res.answer);
+        await setFieldValue(el, res.answer, short);
         answered++;
         send('saveQa', { question, answer: res.answer });
       }
