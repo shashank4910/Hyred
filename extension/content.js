@@ -44,7 +44,13 @@
               setTimeout(() => done(send(type, payload, true)), 150);
               return;
             }
-            done({ ok: false, error: err.message || 'no response' });
+            const invalidated = /Extension context invalidated/i.test(err.message || '');
+            done({
+              ok: false,
+              connected: false,
+              invalidated,
+              error: err.message || 'no response',
+            });
             return;
           }
           done(res ?? { ok: false, error: 'no response' });
@@ -71,18 +77,253 @@
   }
 
   // -------------------------------------------------------------------
+  // Simplify-style live fill progress — scroll, highlight, N/M counter.
+  // -------------------------------------------------------------------
+  const fillUi = {
+    active: false,
+    total: 0,
+    done: 0,
+    seen: new Set(),
+
+    begin(estimatedTotal) {
+      if (!IS_TOP_FRAME) return;
+      this.active = true;
+      this.total = Math.max(estimatedTotal, 6);
+      this.done = 0;
+      this.seen = new Set();
+      this.render(0, 'Starting…');
+      this.setCardBusy(true);
+    },
+
+    setPhase(label) {
+      if (!this.active || !IS_TOP_FRAME) return;
+      this.render(this.done, label);
+    },
+
+    onField(el, label) {
+      if (!this.active || !IS_TOP_FRAME || !el) return;
+      if (this.seen.has(el)) return;
+      this.seen.add(el);
+      this.done++;
+      if (this.done > this.total) this.total = this.done;
+      this.reveal(el);
+      const short = (label || labelForControl(el)).replace(/\s+/g, ' ').trim().slice(0, 44);
+      this.render(this.done, short || 'field');
+    },
+
+    reveal(el) {
+      const wrap =
+        el.closest(
+          '[data-ph-at-id], .field, .form-group, [data-automation-id^="formField"], [class*="question"]',
+        ) || el;
+      try {
+        wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } catch {
+        try {
+          wrap.scrollIntoView({ block: 'center' });
+        } catch {
+          /* ignore */
+        }
+      }
+      wrap.classList.remove('jobradar-fill-flash');
+      void wrap.offsetWidth;
+      wrap.classList.add('jobradar-fill-flash');
+      setTimeout(() => wrap.classList.remove('jobradar-fill-flash'), 900);
+    },
+
+    render(done, label) {
+      const card = document.getElementById('jobradar-card');
+      if (!card) return;
+      const prog = card.querySelector('.jr-fill-progress');
+      const text = card.querySelector('.jr-progress-text');
+      const bar = card.querySelector('.jr-progress-fill');
+      const btn = card.querySelector('.jr-fill-btn');
+      const status = card.querySelector('.jr-card-status');
+      const opts = card.querySelector('.jr-card-opts');
+      prog?.classList.remove('jr-hidden');
+      status?.classList.add('jr-hidden');
+      opts?.classList.add('jr-disabled');
+      card.classList.add('jr-busy');
+      const pct = this.total ? Math.min(100, Math.round((done / this.total) * 100)) : 8;
+      if (text) {
+        text.textContent =
+          done === 0 ? label : `${done}/${this.total} · ${label}`;
+      }
+      if (bar) bar.style.width = `${Math.max(pct, done === 0 ? 8 : pct)}%`;
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = done === 0 ? 'Filling…' : `${done}/${this.total}`;
+      }
+    },
+
+    setCardBusy(on) {
+      const card = document.getElementById('jobradar-card');
+      if (card) card.classList.toggle('jr-busy', !!on);
+      const opts = card?.querySelector('.jr-card-opts');
+      if (opts) opts.classList.toggle('jr-disabled', !!on);
+      setCardBusy(on);
+    },
+
+    end(finalCount, ok = true, statusMsg = '') {
+      if (!IS_TOP_FRAME) return;
+      const n = finalCount ?? this.done;
+      this.active = false;
+      const card = document.getElementById('jobradar-card');
+      const prog = card?.querySelector('.jr-fill-progress');
+      const text = card?.querySelector('.jr-progress-text');
+      const bar = card?.querySelector('.jr-progress-fill');
+      const status = card?.querySelector('.jr-card-status');
+      const btn = card?.querySelector('.jr-fill-btn');
+      if (text) {
+        text.textContent = statusMsg
+          ? statusMsg
+          : ok
+            ? `${n}/${Math.max(n, this.total)} fields complete ✓`
+            : 'No empty fields to fill';
+      }
+      if (bar) bar.style.width = ok ? '100%' : `${bar.style.width || '0%'}`;
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = ok ? `${n} filled ✓` : 'Autofill this form';
+      }
+      prog?.classList.add('jr-done');
+      card?.classList.remove('jr-busy');
+      card?.querySelector('.jr-card-opts')?.classList.remove('jr-disabled');
+      setTimeout(() => {
+        prog?.classList.add('jr-hidden');
+        prog?.classList.remove('jr-done');
+        status?.classList.remove('jr-hidden');
+        if (status) {
+          status.textContent =
+            statusMsg || (ok ? 'Ready to autofill' : 'No empty fields on this page');
+          status.className = ok ? 'jr-card-status jr-ok' : 'jr-card-status jr-warn';
+        }
+        if (btn && btn.textContent.includes('✓')) btn.textContent = 'Autofill this form';
+      }, 3200);
+    },
+  };
+
+  function countEmptyFillableFields() {
+    const seen = new Set();
+    let n = 0;
+    for (const el of scopedFillableElements()) {
+      if (!isVisible(el) || el.type === 'hidden' || el.type === 'file') continue;
+      if (el.type === 'radio' || el.type === 'checkbox') continue;
+      if (!isEmpty(el) || seen.has(el)) continue;
+      seen.add(el);
+      n++;
+    }
+    for (const el of applicationFormRoot().querySelectorAll(
+      'select, [role="combobox"], button[aria-haspopup="listbox"]',
+    )) {
+      if (!isVisible(el) || isAutofillExcluded(el) || seen.has(el)) continue;
+      const cur = (el.value || el.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+      if (cur && !/select|please select|choose one|^search$|^\s*$/.test(cur)) continue;
+      seen.add(el);
+      n++;
+    }
+    return n;
+  }
+
+  function isConfirmationOrPostApplyPage() {
+    const url = `${location.pathname}${location.search}`.toLowerCase();
+    if (
+      /applicationconfirmation|application.?confirm|thank.?you|thankyou|apply.?complete|application.?submitted|submission.?confirm|already.?applied|apply.?success|post.?apply|application.?complete/i.test(
+        url,
+      )
+    ) {
+      return true;
+    }
+    const hay = document.body?.innerText?.slice(0, 6000).toLowerCase() || '';
+    return (
+      /thank you for applying|application has been submitted|application received|successfully submitted|your application was submitted/i.test(
+        hay,
+      ) && countEmptyFillableFields() < 2
+    );
+  }
+
+  function shouldShowCopilotCard() {
+    if (isConfirmationOrPostApplyPage()) return false;
+    const empty = countEmptyFillableFields();
+    if (empty >= 1) return true;
+    const resumeIn = findResumeFileInput();
+    if (resumeIn && !resumeIn.files?.length) return true;
+    if ((isWorkdayDom() || isUniversalCareerSite()) && empty >= 1) return true;
+    return looksLikeApplicationForm() && empty >= 2;
+  }
+
+  function estimateFillTargetCount() {
+    return Math.min(Math.max(countEmptyFillableFields(), 5), 48);
+  }
+
+  function autofillSuccessCount(filled, resumeUploaded, coverInjected, answered) {
+    return filled + (resumeUploaded ? 1 : 0) + (coverInjected ? 1 : 0) + answered;
+  }
+
+  // -------------------------------------------------------------------
   // Detect whether the current page is a job application form.
   // We use a generous OR: heuristic count of identifiable input fields
   // OR known-ATS hostname.
   // -------------------------------------------------------------------
   const HOST = location.hostname;
 
+  /** Long-tail career sites (Phenom, custom domains, vendor-tagged forms) → universal ATS config. */
+  function isUniversalCareerSite() {
+    if (/phenompeople\.com/i.test(HOST)) return true;
+    for (const s of document.querySelectorAll('script[src], link[href]')) {
+      const url = s.getAttribute('src') || s.getAttribute('href') || '';
+      if (/phenompeople\.com/i.test(url)) return true;
+    }
+    if (document.querySelector('[data-ph-at-id], [data-ph-id], [data-phenom], [class*="phw-"]')) {
+      return true;
+    }
+    try {
+      if (window.Phenom || window.PhenomPeople) return true;
+    } catch {
+      /* cross-origin */
+    }
+    return false;
+  }
+
+  function isPhenomDom() {
+    return isUniversalCareerSite();
+  }
+
+  function isWorkdayDom() {
+    if (isUniversalCareerSite()) return false;
+    if (
+      document.querySelector('[data-automation-id^="formField"]') ||
+      document.querySelector('[data-automation-id="multiselectInputContainer"]') ||
+      document.querySelector('[data-automation-id="promptIcon"]') ||
+      document.querySelector('[data-automation-id="file-upload-input-ref"]') ||
+      document.querySelector('[data-automation-id="applyFlowPrimaryButton"]') ||
+      document.querySelector('[data-automation-id="candidateProfile"]')
+    ) {
+      return true;
+    }
+    const hay = document.body?.innerText?.slice(0, 10000).toLowerCase() || '';
+    const hasWdAid = !!document.querySelector('[data-automation-id]');
+    return (
+      hasWdAid &&
+      (/given name|family name|my information/.test(hay) &&
+        /how did you hear|phone device type|country phone code/.test(hay)) ||
+      /voluntary disclosures|type to add skills/.test(hay)
+    );
+  }
+
+  function isWorkdaySite() {
+    if (HOST.endsWith('myworkdayjobs.com')) return true;
+    return isWorkdayDom();
+  }
+
   function detectAts() {
+    // Custom career pages + long-tail ATS → universal config adapter (ats-fill).
+    // Platform-specific adapters only for Workday, Lever, Greenhouse, etc.
+    if (isWorkdaySite()) return 'workday';
     if (HOST.endsWith('greenhouse.io')) return 'greenhouse';
     if (HOST.endsWith('lever.co')) return 'lever';
     if (HOST.endsWith('ashbyhq.com')) return 'ashby';
     if (HOST.endsWith('workable.com')) return 'workable';
-    if (HOST.endsWith('myworkdayjobs.com')) return 'workday';
     if (HOST.endsWith('icims.com')) return 'icims';
     if (HOST.endsWith('bamboohr.com')) return 'bamboohr';
     if (HOST.endsWith('smartrecruiters.com')) return 'smartrecruiters';
@@ -136,9 +377,11 @@
     [/(^|\b)first[_\s-]*name\b/i, 'first_name'],
     [/(^|\b)given[_\s-]*name\b/i, 'first_name'],
     [/(^|\b)fname\b/i, 'first_name'],
+    [/\bfirstname\b/i, 'first_name'],
     [/(^|\b)last[_\s-]*name\b/i, 'last_name'],
     [/(^|\b)family[_\s-]*name\b/i, 'last_name'],
     [/(^|\b)lname\b/i, 'last_name'],
+    [/\blastname\b|\bfamilyname\b/i, 'last_name'],
     [/(^|\b)surname\b/i, 'last_name'],
     [/(^|\b)full[_\s-]*name\b/i, 'full_name'],
     [/(^|\b)preferred[_\s-]*name\b/i, 'full_name'],
@@ -165,14 +408,15 @@
     [/current[_\s-]*(ctc|salary)|present[_\s-]*salary/i, 'total_ctc'],
     [/expected[_\s-]*(ctc|salary)|desired[_\s-]*salary|salary[_\s-]*expect/i, 'expected_ctc'],
     [/notice[_\s-]*period|availability|joining/i, 'notice_period'],
-    [/available[_\s-]*(from|date)|start[_\s-]*date/i, 'available_from'],
+    [/available[_\s-]*(from|date)/i, 'available_from'],
     [/work[_\s-]*type|remote|hybrid|onsite/i, 'preferred_work_type'],
     [/travel/i, 'willing_to_travel'],
     [/relocat/i, 'relocation_cities'],
 
     [/gender\b/i, 'gender'],
     [/university|college|school/i, 'education.0.school'],
-    [/degree|major|field of study/i, 'education.0.degree'],
+    [/field of study|\bmajor\b/i, 'education.0.field'],
+    [/\bdegree\b/i, 'education.0.degree'],
     [/veteran/i, 'veteran_status'],
     [/disabilit/i, 'disability_status'],
     [/ethnic|race\b/i, 'ethnicity'],
@@ -207,14 +451,25 @@
     if (el.placeholder) bits.push(el.placeholder);
     if (el.name) bits.push(el.name);
     if (el.id) bits.push(el.id);
+    const phAt =
+      el.getAttribute('data-ph-at-id') ||
+      el.getAttribute('data-ph-id') ||
+      el.getAttribute('data-field') ||
+      el.closest('[data-ph-at-id], [data-ph-id]')?.getAttribute('data-ph-at-id') ||
+      el.closest('[data-ph-at-id], [data-ph-id]')?.getAttribute('data-ph-id') ||
+      '';
+    if (phAt) bits.push(phAt.replace(/([a-z])([A-Z])/g, '$1 $2'));
     const fieldset = el.closest('fieldset');
     const legend = fieldset?.querySelector('legend');
     if (legend?.textContent) bits.push(legend.textContent);
     const group =
-      el.closest('.field, .form-group, .form-field, .application-field, [class*="question"]') ||
-      el.parentElement;
+      el.closest(
+        '.field, .form-group, .form-field, .application-field, [class*="question"], [class*="phw-"], [data-ph-at-id]',
+      ) || el.parentElement;
     if (group) {
-      const gl = group.querySelector('label, .label, .question, h3, h4, p');
+      const gl = group.querySelector(
+        'label, .label, .question, h3, h4, p, [class*="phw-label"], [class*="field-label"]',
+      );
       if (gl?.textContent && gl !== el) bits.push(gl.textContent);
     }
     let sib = el.previousElementSibling;
@@ -225,6 +480,13 @@
   }
 
   function fieldSignature(el) {
+    const ancAid =
+      el.closest('[data-automation-id]')?.getAttribute('data-automation-id') || '';
+    const phenomOwn = el.getAttribute('data-ph-at-id') || el.getAttribute('data-ph-id') || '';
+    const phenomAnc =
+      el.closest('[data-ph-at-id], [data-ph-id]')?.getAttribute('data-ph-at-id') ||
+      el.closest('[data-ph-at-id], [data-ph-id]')?.getAttribute('data-ph-id') ||
+      '';
     return [
       labelForControl(el),
       el.name,
@@ -233,6 +495,9 @@
       el.getAttribute('aria-label'),
       el.getAttribute('data-testid'),
       el.getAttribute('data-automation-id'),
+      ancAid,
+      phenomOwn,
+      phenomAnc,
       el.getAttribute('data-qa'),
       el.getAttribute('autocomplete'),
       el.type,
@@ -241,7 +506,52 @@
       .filter(Boolean)
       .join(' ')
       .toLowerCase()
-      .slice(0, 300);
+      .slice(0, 400);
+  }
+
+  function applicationFormRoot() {
+    const selectors = [
+      '#apply-form-renderer',
+      '[class*="apply-form-renderer"]',
+      '[class*="applyForm"]',
+      '[class*="job-application"]',
+      '[class*="pcs-apply"]',
+      '#pcs-form',
+      '[id*="apply-form"]',
+      'main [class*="application"]',
+    ];
+    for (const sel of selectors) {
+      const el = document.querySelector(sel);
+      if (el) return el;
+    }
+    const ph = document.querySelector('[data-ph-at-id], [data-ph-id]');
+    if (ph) {
+      return (
+        ph.closest('main, [role="main"], form, section, [class*="apply"], #content') ||
+        document.body
+      );
+    }
+    return document.querySelector('form') || document.body;
+  }
+
+  function isAutofillExcluded(el) {
+    if (!el?.closest) return true;
+    if (
+      el.closest(
+        'header, nav, footer, [role="banner"], [role="navigation"], [class*="header"], [class*="navbar"], [class*="global-search"], [class*="job-search"], [class*="site-search"]',
+      )
+    ) {
+      return true;
+    }
+    const sig = fieldSignature(el);
+    return /gllocation|searchjob|search.job|search.location|typeahead.?job|site.?search|keyword.?search|locationinput.*search/i.test(
+      sig,
+    );
+  }
+
+  function scopedFillableElements() {
+    const root = applicationFormRoot();
+    return collectFillableElements(root).filter((el) => !isAutofillExcluded(el));
   }
 
   function collectFillableElements(root = document) {
@@ -272,7 +582,96 @@
 
   // -------------------------------------------------------------------
   // React/Vue-aware setter + focus/blur (required for modern ATS forms).
+  // SPA / Vue / React forms often ignore one-shot .value assignment — type incrementally.
   // -------------------------------------------------------------------
+  function phoneDigitsOnly(phone, stripCountryCode) {
+    let d = String(phone || '').replace(/[^\d]/g, '');
+    const cc = String(stripCountryCode || '').replace(/\D/g, '');
+    if (cc && d.startsWith(cc)) d = d.slice(cc.length);
+    if (d.length > 10) d = d.slice(-10);
+    return d;
+  }
+
+  function countryCodeDigits(profile, el) {
+    const root = el?.closest('[data-ph-at-id], .field, .form-group') || applicationFormRoot();
+    const hay = (root?.textContent || '').toLowerCase();
+    const m = hay.match(/\+(\d{1,3})/);
+    if (m) return m[1];
+    const country = profile.location?.country || profile.work_auth_country || '';
+    if (/india/i.test(country)) return '91';
+    return '';
+  }
+
+  function isPhoneNumberField(el, sig) {
+    if (/country code|device type|phone code|dial code/i.test(sig)) return false;
+    return (
+      el.type === 'tel' ||
+      /mobile.?number|phone.?number|\bphone\b|\bmobile\b|phonenumber/i.test(sig)
+    );
+  }
+
+  function isSalutationTitleSig(sig) {
+    if (/job title|current title|position title|designation|employer title/i.test(sig)) {
+      return false;
+    }
+    return /(^|\W)\*?title(\W|$)|salutation|^prefix\b|title mr|title ms|title dr/i.test(sig);
+  }
+
+  function salutationPrefs(profile) {
+    const g = String(profile.gender || '').toLowerCase();
+    if (/female|woman/.test(g)) return ['ms.', 'ms', 'mrs.', 'mrs'];
+    if (/male|man/.test(g)) return ['mr.', 'mr'];
+    return ['mr.', 'mr', 'ms.', 'ms'];
+  }
+
+  function normalizeFilledValue(el, path, raw, profile) {
+    if (raw == null) return null;
+    let val = String(raw).trim();
+    if (!val) return null;
+    const sig = fieldSignature(el);
+    if (path === 'phone' || isPhoneNumberField(el, sig)) {
+      return phoneDigitsOnly(val, countryCodeDigits(profile, el));
+    }
+    if (path === 'zip_code' || /pin.?code|postal|zipcode|postcode/i.test(sig)) {
+      const zip = profile.zip_code || val;
+      const digits = String(zip).replace(/[^\dA-Za-z-]/g, '');
+      if (digits.length >= 4) return digits.slice(0, 10);
+      return null;
+    }
+    if (path === 'location.city' && val.includes(',')) {
+      return val.split(',')[0].trim();
+    }
+    if (path === 'location.full' && /pin.?code|postal|zipcode/i.test(sig)) {
+      return normalizeFilledValue(el, 'zip_code', profile.zip_code, profile);
+    }
+    return val;
+  }
+
+  function hasFrameworkBinding(node) {
+    if (!node || node.nodeType !== 1) return false;
+    try {
+      if (node.__vue__ || node.__vueParentComponent || node._reactRootContainer) return true;
+    } catch {
+      /* ignore */
+    }
+    return false;
+  }
+
+  function usesReactiveBinding(el) {
+    if (!el?.closest) return false;
+    if (
+      el.closest(
+        '[data-ph-at-id], [data-ph-id], [data-field], [data-field-id], [data-form-field], [class*="pcs-"], [class*="phw-"], [data-reactroot], [data-v-app], [ng-version], [class*="ember-"]',
+      )
+    ) {
+      return true;
+    }
+    for (let n = el; n; n = n.parentElement) {
+      if (hasFrameworkBinding(n)) return true;
+    }
+    return false;
+  }
+
   function setNativeValue(el, value) {
     const str = String(value ?? '');
     try {
@@ -304,6 +703,51 @@
     el.dispatchEvent(new InputEvent('input', { bubbles: true, data: str }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
     el.dispatchEvent(new Event('blur', { bubbles: true }));
+  }
+
+  async function typeIncrementalValue(input, value) {
+    const str = String(value ?? '');
+    try {
+      input.focus?.({ preventScroll: true });
+    } catch {
+      /* ignore */
+    }
+    const proto = window.HTMLInputElement.prototype;
+    const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+    if (desc?.set) desc.set.call(input, '');
+    else input.value = '';
+    input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward' }));
+    await sleep(40);
+    let acc = '';
+    for (const ch of str) {
+      acc += ch;
+      if (desc?.set) desc.set.call(input, acc);
+      else input.value = acc;
+      input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: ch }));
+      input.dispatchEvent(
+        new InputEvent('input', { bubbles: true, data: ch, inputType: 'insertText' }),
+      );
+      input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: ch }));
+      await sleep(16);
+    }
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    input.dispatchEvent(new Event('blur', { bubbles: true }));
+  }
+
+  async function setFieldValue(el, value, label) {
+    if (fillUi.active && IS_TOP_FRAME) {
+      fillUi.onField(el, label);
+      await sleep(160);
+    }
+    if (
+      usesReactiveBinding(el) &&
+      (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') &&
+      !el.readOnly
+    ) {
+      await typeIncrementalValue(el, value);
+      return;
+    }
+    setNativeValue(el, value);
   }
 
   function setSelectValue(el, value) {
@@ -342,6 +786,308 @@
     return !el.value || el.value.trim() === '';
   }
 
+  function looksLikeUrl(v) {
+    const s = String(v ?? '').trim();
+    if (!s || /^(yes|no|n\/a|none|not applicable)$/i.test(s)) return false;
+    return (
+      /^https?:\/\//i.test(s) ||
+      /^www\./i.test(s) ||
+      /\.(com|org|net|io|in|co|dev)\b/i.test(s)
+    );
+  }
+
+  function isUrlLikeField(sig, el) {
+    if (el?.type === 'url') return true;
+    return /facebook|linkedin|twitter|instagram|github|social[\s_-]*network|profile\s*url|\burl\b|website|portfolio|x\.com/i.test(
+      sig,
+    );
+  }
+
+  function looksLikeGpa(v) {
+    const s = String(v ?? '').trim();
+    return /^\d+(\.\d+)?(\s*\/\s*\d+)?$/.test(s);
+  }
+
+  function shouldAcceptValue(el, sig, value) {
+    const v = String(value ?? '').trim();
+    if (!v) return false;
+    if (isUrlLikeField(sig, el) && !looksLikeUrl(v)) return false;
+    if (/gpa|overall result|grade point/i.test(sig) && !looksLikeGpa(v)) return false;
+    return true;
+  }
+
+  function workdayFieldLabel(node) {
+    const field =
+      node.closest?.('[data-automation-id^="formField"]') ||
+      ((node.getAttribute?.('data-automation-id') || '').startsWith('formField') ? node : null);
+    if (field) {
+      const rich = field.querySelector(
+        '[data-automation-id="richText"] label, [data-automation-id="richText"], label',
+      );
+      if (rich?.textContent) {
+        const t = rich.textContent.replace(/\s+/g, ' ').trim();
+        if (t && !/^select one/i.test(t)) return t;
+      }
+      const clone = field.cloneNode(true);
+      clone
+        .querySelectorAll('button, input, textarea, select, [role="listbox"]')
+        .forEach((n) => n.remove());
+      const inner = (clone.textContent || '').replace(/\s+/g, ' ').trim();
+      if (inner && inner.length < 120) return inner;
+    }
+    return labelForControl(node);
+  }
+
+  function fieldOfStudyFromDegree(degree) {
+    if (!degree) return null;
+    const m = String(degree).match(/\bin\s+(.+)/i);
+    return m?.[1]?.trim() || null;
+  }
+
+  function parseJobDateParts(raw) {
+    if (window.__JobRadarAtsFill?.parseDateParts) {
+      return window.__JobRadarAtsFill.parseDateParts(raw);
+    }
+    const s = String(raw ?? '').trim();
+    if (!s) return {};
+    if (/present|current|now/i.test(s)) return { present: true };
+    const months = {
+      jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+      jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
+    };
+    let month;
+    let year;
+    const my = s.match(
+      /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s*['']?(\d{2,4})\b/i,
+    );
+    if (my) {
+      month = months[my[1].toLowerCase().slice(0, 3)];
+      year = my[2].length === 2 ? `20${my[2]}` : my[2];
+    }
+    const yOnly = s.match(/\b(19|20)\d{2}\b/);
+    if (!year && yOnly) year = yOnly[0];
+    return { month, year, present: false };
+  }
+
+  function workdayExperienceRowScope(row) {
+    if (!row) return row;
+    const fromRow = (row.getAttribute('data-automation-id') || '').match(/^(workExperience-\d+)/i);
+    if (fromRow) {
+      const root = document.querySelector(`[data-automation-id="${fromRow[1]}"]`);
+      if (root) return root;
+    }
+    const titleEl = row.querySelector(
+      'input[data-automation-id="jobTitle"], input[name="jobTitle"], input[id*="jobTitle" i]',
+    );
+    const fromTitle = (titleEl?.id || '').match(/workExperience-(\d+)/i);
+    if (fromTitle) {
+      const root = document.querySelector(`[data-automation-id="workExperience-${fromTitle[1]}"]`);
+      if (root) return root;
+    }
+    return row;
+  }
+
+  function isLikelyCityName(val, profile) {
+    if (!val) return false;
+    const v = String(val).trim().toLowerCase();
+    const city = profile?.location?.city?.toLowerCase();
+    const region = profile?.location?.region?.toLowerCase();
+    if (city && v === city) return true;
+    if (region && v === region) return true;
+    return /^(chennai|bangalore|bengaluru|mumbai|delhi|gurgaon|gurugram|hyderabad|pune|noida|kolkata|ahmedabad|jaipur|lucknow|indore|coimbatore|kochi|thiruvananthapuram|visakhapatnam|bhopal|chandigarh|faridabad|ghaziabad|nagpur|surat|vadodara)$/i.test(
+      v,
+    );
+  }
+
+  function resolveEducationFieldOfStudy(edu, profile) {
+    const raw = edu?.field?.trim();
+    if (
+      raw &&
+      !isLikelyInvalidFieldOfStudy(raw) &&
+      !isLikelyCityName(raw, profile) &&
+      !/^(19|20)\d{2}$/.test(raw)
+    ) {
+      return raw.split(/\s*[-–—|]\s*/)[0].trim() || raw;
+    }
+    const fromDegree = fieldOfStudyFromDegree(edu?.degree);
+    if (fromDegree && !isLikelyInvalidFieldOfStudy(fromDegree)) return fromDegree;
+    const d = String(edu?.degree || '').toLowerCase();
+    if (/\bb\.?tech\b|\binformation technology\b/i.test(d)) return 'Information Technology';
+    if (/\bcomputer\b/i.test(d)) return 'Computer Science';
+    if (/\belectronics\b/i.test(d)) return 'Electronics';
+    return null;
+  }
+
+  function isLikelyInvalidFieldOfStudy(val) {
+    if (!val) return true;
+    if (/university|college|institute|school|\bsrm\b/i.test(val)) return true;
+    if (val.length > 40) return true;
+    return false;
+  }
+
+  function typeaheadSearchTerms(value) {
+    const v = String(value || '').trim();
+    if (!v) return [];
+    const primary = v.split(/\s*[-–—|]\s*/)[0].trim();
+    const out = [];
+    if (primary) out.push(primary);
+    for (const n of [3, 2, 1]) {
+      const w = primary.split(/\s+/).slice(0, n).join(' ');
+      if (w.length >= 2) out.push(w);
+    }
+    return [...new Set(out)];
+  }
+
+  function workdayAddButtonLabel(btn) {
+    return (btn.textContent || btn.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function isWorkdayAddButton(btn) {
+    const label = workdayAddButtonLabel(btn);
+    if (!label) return false;
+    if (/^add(\s+another)?$/i.test(label) || /\badd\s+another\b/i.test(label)) return true;
+    if (/^add$/i.test(label.split(/\s+/).filter(Boolean)[0] || '')) return true;
+    const aid = (btn.getAttribute('data-automation-id') || '').toLowerCase();
+    return /^add(-button)?$/.test(aid) || /addbutton|addanother/.test(aid);
+  }
+
+  function isWorkdayClickable(el) {
+    if (!el || !isVisible(el)) return false;
+    const tag = el.tagName?.toLowerCase();
+    if (tag === 'button' || tag === 'a') return true;
+    const role = el.getAttribute('role');
+    if (role === 'button') return true;
+    const aid = (el.getAttribute('data-automation-id') || '').toLowerCase();
+    if (/add(-button)?$/.test(aid) || aid.includes('addbutton')) return true;
+    return el.tabIndex >= 0 && isWorkdayAddButton(el);
+  }
+
+  function findWorkdaySectionAddButton(sectionTitleRe) {
+    const headings = [
+      ...document.querySelectorAll(
+        'h1,h2,h3,h4,legend,[data-automation-id="richText"],[data-automation-id^="formLabel"]',
+      ),
+    ];
+    const heading = headings.find((h) => sectionTitleRe.test((h.textContent || '').replace(/\s+/g, ' ').trim()));
+    if (!heading) return null;
+
+    let node = heading;
+    for (let depth = 0; depth < 10 && node; depth++) {
+      const clickables = [
+        ...node.querySelectorAll(
+          'button, [role="button"], [data-automation-id="add-button"], [data-automation-id*="add-button" i], [data-automation-id*="addButton" i], a',
+        ),
+      ].filter((b) => isWorkdayClickable(b) && isWorkdayAddButton(b));
+      if (clickables.length) return clickables[clickables.length - 1];
+      node = node.parentElement;
+    }
+
+    let sib = heading.parentElement;
+    for (let i = 0; i < 6 && sib; i++) {
+      const clickables = [...sib.querySelectorAll('[data-automation-id="add-button"], [data-automation-id*="add-button" i]')].filter(
+        (b) => isWorkdayClickable(b),
+      );
+      if (clickables.length) return clickables[0];
+      sib = sib.nextElementSibling;
+    }
+    return null;
+  }
+
+  async function workdayClick(el) {
+    if (!el) return;
+    el.scrollIntoView({ block: 'center', behavior: 'instant' });
+    await sleep(120);
+    el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+    el.click();
+  }
+
+  function isNonExperienceAddSection(aids) {
+    return /education|skill|language|website|social|resume|cv|certification/i.test(aids);
+  }
+
+  function normalizeWorkdayDegree(degree) {
+    const d = String(degree || '').toLowerCase();
+    if (/\b(ph\.?d|doctorate|doctor)\b/.test(d)) return 'Doctorate';
+    if (/\b(mba|m\.?b\.?a|master)\b/.test(d)) return 'Master';
+    if (/\b(associate|a\.?a\.?)\b/.test(d)) return 'Associate';
+    if (/\b(b\.?tech|b\.?e\.?|bachelor|b\.?s\.?|b\.?a\.?)\b/.test(d)) return 'Bachelor';
+    return degree;
+  }
+
+  function jobLocationFromEntry(job) {
+    if (job?.location?.trim()) return job.location.trim();
+    const c = job?.company || '';
+    const m = c.match(/,\s*([^,]+)$/);
+    return m?.[1]?.trim() || null;
+  }
+
+  function isWorkdayDedicatedField(sig) {
+    const s = String(sig || '').toLowerCase();
+    return (
+      /workexperience|datesection(?:month|day|year)|startdate|enddate|firstyearattended|lastyearattended|roleDescription|currentlyworkhere|jobtitle|companyname|formfield-skills|schoolname|education-\d+--school/.test(
+        s,
+      ) ||
+      (/facebook/.test(s) && /willing|share/.test(s)) ||
+      (/linked/.test(s) && /willing|share|profile with us/i.test(s))
+    );
+  }
+
+  function isValidWorkdayYear(val) {
+    return /^(19|20)\d{2}$/.test(String(val ?? '').trim());
+  }
+
+  function isValidWorkdayMonth(val) {
+    const m = String(val ?? '').trim();
+    return /^(0?[1-9]|1[0-2])$/.test(m);
+  }
+
+  async function setWorkdayDatePart(el, value) {
+    const v = String(value ?? '').trim();
+    if (!v || !el) return false;
+    const normalized = v.length === 1 && /^\d$/.test(v) ? `0${v}` : v;
+    if (el.getAttribute('role') === 'spinbutton' || usesReactiveBinding(el)) {
+      await typeIncrementalValue(el, normalized);
+    } else {
+      setNativeValue(el, normalized);
+    }
+    await sleep(80);
+    return true;
+  }
+
+  async function clearInvalidWorkdayDateEl(el) {
+    if (!el || isEmpty(el)) return;
+    const v = (el.value || '').trim();
+    const ctx = `${el.id || ''} ${el.getAttribute('aria-label') || ''}`.toLowerCase();
+    if (/year/i.test(ctx) && v && !isValidWorkdayYear(v)) {
+      setNativeValue(el, '');
+      log('workday:date cleared invalid year', v.slice(0, 20));
+    } else if (/month/i.test(ctx) && v && !isValidWorkdayMonth(v) && !/^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(v)) {
+      setNativeValue(el, '');
+      log('workday:date cleared invalid month', v.slice(0, 20));
+    }
+  }
+
+  function isAutofillableWorkJob(job) {
+    const t = (job?.title || '').trim();
+    const c = (job?.company || '').trim();
+    if (!t || !c) return false;
+    if (/^(present|current|now)$/i.test(t) || /^(present|current|now)$/i.test(c)) return false;
+    if (
+      /^(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(t) ||
+      /^(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(c)
+    ) {
+      return /\b(engineer|developer|manager|analyst|tester|performance|consultant)\b/i.test(t);
+    }
+    return /\b(engineer|developer|manager|analyst|tester|performance|consultant|analyst)\b/i.test(t);
+  }
+
+  function shouldSkipWorkExperience(profile) {
+    const ps = profile?.profile_structure;
+    if (!ps?.extracted_at) return false;
+    return ps.readiness !== 'ready';
+  }
+
   function valueForPath(profile, path) {
     const v = get(profile, path);
     if (v == null) return null;
@@ -351,8 +1097,26 @@
   }
 
   function matchRule(sig, rules = FIELD_RULES) {
+    const s = String(sig).toLowerCase();
+    if (
+      /workexperience|datesection|startdate|enddate|roleDescription|currentlyworkhere|jobtitle|companyname/.test(
+        s,
+      )
+    ) {
+      return null;
+    }
+    if (/schoolname|education-\d+--school/.test(s)) return null;
+    if (/facebook/.test(s) && /willing|share/.test(s)) return null;
+    if (/years?[_\s-]*of[_\s-]*experience|yoe\b|experience\s*years/i.test(s) && /workexperience|datesection/.test(s)) {
+      return null;
+    }
     for (const [re, path] of rules) {
-      if (re.test(sig)) return path;
+      if (!re.test(sig)) continue;
+      if (path === 'education.0.degree' && /gpa|overall result|grade point/i.test(sig)) continue;
+      if (path === 'education.0.field' && /gpa|overall result|grade point/i.test(sig)) continue;
+      if (path.startsWith('links.') && /school|university|college|education|gpa|degree\b/i.test(sig))
+        continue;
+      return path;
     }
     return null;
   }
@@ -463,6 +1227,290 @@
     );
   }
 
+  function genericPrefValue(profile, kind) {
+    const country = profile.location?.country || profile.work_auth_country;
+    switch (kind) {
+      case 'source':
+        return ['linkedin', 'job board', 'company website', 'internet'];
+      case 'phone_device_type':
+        return ['mobile', 'cell phone', 'cell'];
+      case 'country_phone_code':
+        return country ? [String(country).toLowerCase(), `${String(country).toLowerCase()} (+`] : [];
+      case 'work_authorization':
+        return profile.authorized_to_work === false ? ['no'] : ['yes'];
+      case 'sponsorship':
+        return profile.require_sponsorship ? ['yes'] : ['no'];
+      case 'conflict':
+        return ['no'];
+      case 'location_country':
+        return country ? [String(country).toLowerCase()] : [];
+      default:
+        return [];
+    }
+  }
+
+  function genericChoicePrefs(sig, profile) {
+    if (isSalutationTitleSig(sig)) {
+      return salutationPrefs(profile);
+    }
+    if (/how did you hear|hear about us|referral source|\bsource\b/.test(sig)) {
+      return genericPrefValue(profile, 'source');
+    }
+    if (/phone device type|device type/.test(sig)) {
+      return genericPrefValue(profile, 'phone_device_type');
+    }
+    if (/country phone code|phone code|dial code/.test(sig)) {
+      return genericPrefValue(profile, 'country_phone_code');
+    }
+    if (/authorized.*work|legally.*work|eligible to work|right to work/.test(sig)) {
+      return genericPrefValue(profile, 'work_authorization');
+    }
+    if (/sponsor|visa/.test(sig)) {
+      return genericPrefValue(profile, 'sponsorship');
+    }
+    if (
+      /relative|family member|conflict of interest|currently employed|previously employed|ever been employed|worked for/.test(
+        sig,
+      )
+    ) {
+      return genericPrefValue(profile, 'conflict');
+    }
+    if (
+      /(\bcity\b|\bcountry\b|address line|^\*?location\b)/.test(sig) &&
+      !/search|gllocation|global|navbar|header|searchjob|locationinput|pin.?code|postal|zip/i.test(
+        sig,
+      )
+    ) {
+      return genericPrefValue(profile, 'location_country');
+    }
+    return [];
+  }
+
+  const VENDOR_ATTR_MAP = [
+    ['firstname', 'first_name'],
+    ['givenname', 'first_name'],
+    ['lastname', 'last_name'],
+    ['familyname', 'last_name'],
+    ['email', 'email'],
+    ['phonenumber', 'phone'],
+    ['mobilephone', 'phone'],
+    ['phone', 'phone'],
+    ['pincode', 'zip_code'],
+    ['postalcode', 'zip_code'],
+    ['zipcode', 'zip_code'],
+    ['city', 'location.city'],
+    ['addressline1', 'location.full'],
+    ['linkedin', 'links.linkedin'],
+    ['salutation', 'salutation'],
+    ['title', 'salutation'],
+  ];
+
+  function vendorValueForAttr(attr, path, profile, el) {
+    if (path === 'salutation') return salutationPrefs(profile)[0];
+    const raw = valueForPath(profile, path);
+    return normalizeFilledValue(el, path, raw, profile);
+  }
+
+  function normalizeVendorKey(raw) {
+    return String(raw || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '');
+  }
+
+  function resolveVendorInput(node) {
+    if (!node) return null;
+    if (/^(INPUT|TEXTAREA|SELECT)$/i.test(node.tagName)) return node;
+    return node.querySelector(
+      'input:not([type=hidden]):not([type=submit]):not([type=button]), textarea, select',
+    );
+  }
+
+  function prepareInputForFill(el) {
+    if (!el) return false;
+    if (el.readOnly) {
+      try {
+        el.readOnly = false;
+      } catch {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  async function fillByVendorAttributes(profile, filledSet) {
+    let n = 0;
+    const root = applicationFormRoot();
+    const nodes = root.querySelectorAll(
+      '[data-ph-at-id], [data-ph-id], [data-field], [data-field-id], [data-form-field]',
+    );
+    for (const node of nodes) {
+      const attr = normalizeVendorKey(
+        node.getAttribute('data-ph-at-id') ||
+          node.getAttribute('data-ph-id') ||
+          node.getAttribute('data-field'),
+      );
+      const el = resolveVendorInput(node);
+      if (!el || !isVisible(el) || filledSet.has(el) || !isEmpty(el) || isAutofillExcluded(el)) {
+        continue;
+      }
+      for (const [key, path] of VENDOR_ATTR_MAP) {
+        if (attr !== key && !attr.endsWith(key) && !attr.includes(key)) continue;
+        if (key === 'phone' && /country|device|code|title|profile/i.test(attr)) continue;
+        if (key === 'title' && /jobtitle|positiontitle/i.test(attr)) continue;
+        const val = vendorValueForAttr(attr, path, profile, el);
+        if (!val || !prepareInputForFill(el)) continue;
+        if (el.tagName === 'SELECT') {
+          if (!(await setGenericDropdownByPrefs(el, [val]) || setSelectValue(el, val))) continue;
+          fillUi.onField(el, attr);
+        } else if (
+          el.getAttribute('role') === 'combobox' ||
+          node.querySelector('[role="combobox"], button[aria-haspopup]')
+        ) {
+          const trigger =
+            el.getAttribute('role') === 'combobox'
+              ? el
+              : node.querySelector('[role="combobox"], button[aria-haspopup="listbox"]');
+          if (trigger && (await setGenericDropdownByPrefs(trigger, [val]))) {
+            filledSet.add(trigger);
+            filledSet.add(el);
+            n++;
+            fillUi.onField(trigger, attr);
+            log('vendor:dd', attr, '=', val);
+            break;
+          }
+          continue;
+        } else {
+          await setFieldValue(el, val, attr);
+        }
+        filledSet.add(el);
+        n++;
+        log('vendor:attr', attr, '=', String(val).slice(0, 30));
+        break;
+      }
+    }
+    return n;
+  }
+
+  async function openGenericListbox(trigger) {
+    try {
+      trigger.scrollIntoView({ block: 'center', behavior: 'instant' });
+    } catch {
+      /* ignore */
+    }
+    await sleep(100);
+    trigger.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    trigger.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+    trigger.click?.();
+    let options = [];
+    for (let i = 0; i < 8; i++) {
+      await sleep(160);
+      options = [...document.querySelectorAll('[role="listbox"] [role="option"], [role="option"], li')]
+        .filter(isVisible)
+        .filter((o) => {
+          const t = (o.textContent || '').replace(/\s+/g, ' ').trim();
+          return t.length > 1 && !/^search results/i.test(t);
+        });
+      if (options.length) break;
+    }
+    return options;
+  }
+
+  async function setGenericDropdownByPrefs(trigger, prefs) {
+    if (!trigger || !prefs?.length) return false;
+    if (detectAts() === 'workday') return setWorkdayDropdownByPrefs(trigger, prefs);
+    const options = await openGenericListbox(trigger);
+    if (!options.length) return false;
+    let hit = null;
+    for (const pref of prefs) {
+      hit = options.find((o) => optionMatchesPref(o.textContent, pref));
+      if (hit) break;
+    }
+    if (!hit) return false;
+    hit.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    hit.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+    hit.click?.();
+    await sleep(200);
+    return true;
+  }
+
+  async function fillGenericChoiceFields(profile, filledSet) {
+    let n = 0;
+    for (const el of scopedFillableElements()) {
+      if (!isVisible(el) || filledSet.has(el) || !isEmpty(el)) continue;
+      const sig = fieldSignature(el);
+      if (!sig) continue;
+      const prefs = genericChoicePrefs(sig, profile);
+      if (!prefs.length) continue;
+      let ok = false;
+      if (el.tagName === 'SELECT') {
+        for (const pref of prefs) {
+          if (setSelectValue(el, pref)) {
+            ok = true;
+            break;
+          }
+        }
+      } else if (el.getAttribute('role') === 'combobox') {
+        ok = await fillLeverTypeahead(el, prefs[0]);
+      }
+        if (ok) {
+          filledSet.add(el);
+          n++;
+          fillUi.onField(el, sig.slice(0, 44));
+          log('generic:choice', prefs[0], '<=', sig.slice(0, 60));
+        }
+    }
+
+    const triggers = applicationFormRoot().querySelectorAll(
+      '[role="combobox"], button[aria-haspopup="listbox"], [aria-haspopup="listbox"], select',
+    );
+    for (const trigger of triggers) {
+      if (!isVisible(trigger) || filledSet.has(trigger) || isAutofillExcluded(trigger)) continue;
+      const cur = (trigger.value || trigger.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+      if (cur && !/select|please select|choose one|^search$|^\s*$/.test(cur) && cur.length > 2) {
+        continue;
+      }
+      const sig = fieldSignature(trigger);
+      const prefs = genericChoicePrefs(sig, profile);
+      if (!prefs.length) continue;
+      const ok = await setGenericDropdownByPrefs(trigger, prefs);
+      if (ok) {
+        filledSet.add(trigger);
+        n++;
+        fillUi.onField(trigger, sig.slice(0, 44));
+        log('generic:dropdown', prefs[0], '<=', sig.slice(0, 60));
+      }
+    }
+    return n;
+  }
+
+  function fillGenericScreeningRadios(profile, filledSet) {
+    const engine = window.HyredAutofillEngine;
+    if (!engine) return 0;
+    let n = 0;
+    const groups = new Map();
+    for (const el of scopedFillableElements().filter((e) => e.type === 'radio')) {
+      if (!isVisible(el) || el.disabled) continue;
+      const key = el.name || labelForControl(el.closest('fieldset, [role="radiogroup"]') || el);
+      if (!key) continue;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(el);
+    }
+    for (const radios of groups.values()) {
+      if (radios.some((r) => r.checked) || radios.every((r) => filledSet.has(r))) continue;
+      const sig = radios.map((r) => fieldSignature(r)).join(' ');
+      const prefs = genericChoicePrefs(sig, profile);
+      if (!prefs.length) continue;
+      const pick = engine.pickRadio(radios, 'authorized_work', prefs[0]) || engine.pickRadio(radios, 'sponsorship', prefs[0]);
+      if (pick && !pick.checked) {
+        pick.click();
+        radios.forEach((r) => filledSet.add(r));
+        n++;
+        log('generic:radio', prefs[0], '<=', sig.slice(0, 60));
+      }
+    }
+    return n;
+  }
+
   async function fillLeverUrls(profile, filledSet) {
     if (detectAts() !== 'lever') return 0;
     const pairs = [
@@ -512,7 +1560,7 @@
       profile,
       labelForControl,
       fieldSignature,
-      collectFillableElements,
+      collectFillableElements: scopedFillableElements,
       isVisible,
       isEmpty,
       detectAts,
@@ -520,6 +1568,8 @@
     });
     let n = 0;
     for (const instr of plan) {
+      const sig = instr.blockLabel || instr.el?.id || '';
+      if (isWorkdayDedicatedField(sig) || isWorkdayDedicatedField(fieldSignature(instr.el))) continue;
       if (instr.kind === 'radio') {
         const pick = engine.pickRadio(instr.radios, instr.fieldId, instr.value);
         if (pick && !pick.checked && !filledSet.has(pick)) {
@@ -545,7 +1595,7 @@
           log('engine:select', instr.fieldId);
         }
       } else {
-        setNativeValue(el, instr.value);
+        await setFieldValue(el, instr.value, instr.fieldId || instr.blockLabel?.slice(0, 40));
         filledSet.add(el);
         n++;
         log('engine:text', instr.fieldId, instr.blockLabel?.slice(0, 50));
@@ -568,18 +1618,48 @@
 
   // Open a Workday dropdown trigger and return its visible options.
   async function openWorkdayOptions(trigger) {
+    try {
+      trigger.scrollIntoView({ block: 'center', behavior: 'instant' });
+    } catch {
+      /* ignore */
+    }
+    await sleep(120);
+    trigger.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    trigger.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
     trigger.click();
+    const optionSel =
+      'ul[role="listbox"] li[role="option"], [role="listbox"] [role="option"],' +
+      '[data-automation-id="promptOption"], [data-automation-id="promptLeafNode"],' +
+      '[data-automation-id="menuItem"], [data-automation-id="activeListContainer"] li,' +
+      '[data-automation-id="selectGridContainer"] [role="option"], div[role="option"]';
     let options = [];
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 12; i++) {
       await sleep(180);
-      options = [
-        ...document.querySelectorAll(
-          'ul[role="listbox"] li[role="option"], [role="listbox"] [role="option"], div[data-automation-id="promptOption"], li[data-automation-id="promptOption"]',
-        ),
-      ].filter(isVisible);
+      options = [...document.querySelectorAll(optionSel)].filter((o) => {
+        if (!isVisible(o)) return false;
+        const t = (o.textContent || '').replace(/\s+/g, ' ').trim();
+        return t.length > 1 && !/^search results/i.test(t);
+      });
       if (options.length) break;
     }
     return options;
+  }
+
+  function optionMatchesPref(optText, pref) {
+    const t = String(optText || '')
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .trim();
+    const p = String(pref || '')
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!t || !p) return false;
+    if (t === p) return true;
+    if (p.length >= 3 && t.includes(p)) return true;
+    if (p === 'no' && (t === 'no' || t.startsWith('no '))) return true;
+    if (p === 'yes' && (t === 'yes' || t.startsWith('yes '))) return true;
+    return false;
   }
 
   // Open a Workday dropdown and click the option matching `value`.
@@ -597,6 +1677,33 @@
       trigger.click(); // close
       return false;
     }
+    hit.click();
+    await sleep(220);
+    return true;
+  }
+
+  // Pick only from prefs — never fall back to the first list option (avoids
+  // selecting North Korea etc. when the intended answer is "Does Not Apply").
+  async function setWorkdayDropdownStrict(trigger, prefs) {
+    if (!trigger || !prefs?.length) return false;
+    const options = await openWorkdayOptions(trigger);
+    if (!options.length) return false;
+    let hit = null;
+    for (const p of prefs) {
+      hit = options.find((o) => optionMatchesPref(o.textContent, p));
+      if (hit) break;
+    }
+    if (!hit) {
+      trigger.click();
+      return false;
+    }
+    try {
+      hit.scrollIntoView({ block: 'center' });
+    } catch {
+      /* ignore */
+    }
+    hit.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    hit.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
     hit.click();
     await sleep(220);
     return true;
@@ -715,40 +1822,106 @@
       .replace(/[^a-z0-9]/g, '');
   }
 
+  function optionMatchesSkill(option, skill) {
+    const want = skillToken(skill);
+    const t = skillToken(option?.textContent);
+    if (!want || !t) return false;
+    if (t === want) return true;
+    if (t.includes(want) && want.length >= 3) return true;
+    if (want.includes(t) && t.length >= 4) return true;
+    return false;
+  }
+
   function pickSkillOption(opts, skill) {
     const want = skillToken(skill);
     if (!want) return null;
     let best = null;
     let bestScore = 0;
     for (const o of opts) {
+      if (!optionMatchesSkill(o, skill)) continue;
       const t = skillToken(o.textContent);
-      if (!t) continue;
       if (t === want) return o;
-      if (t.includes(want) || want.includes(t)) {
-        const score = Math.min(t.length, want.length);
-        if (score > bestScore) {
-          bestScore = score;
-          best = o;
-        }
+      const score = Math.min(t.length, want.length);
+      if (score > bestScore) {
+        bestScore = score;
+        best = o;
       }
     }
     return best;
   }
 
-  function countSkillChips(root) {
-    if (!root) return 0;
-    let n = 0;
-    for (const el of root.querySelectorAll(
-      '[data-automation-id="selectedItem"], [data-automation-id="tag"], [data-automation-id="selectedItemList"] li',
-    )) {
-      const t = (el.textContent || '').replace(/\s+/g, ' ').trim();
-      if (t.length > 1 && !/^search$/i.test(t)) n++;
+  function dedupeOptionsByText(opts) {
+    const seen = new Set();
+    const out = [];
+    for (const o of opts) {
+      const t = skillToken(o.textContent);
+      if (!t || seen.has(t)) continue;
+      seen.add(t);
+      out.push(o);
     }
-    return n;
+    return out;
+  }
+
+  // Type char-by-char so Workday's skills typeahead receives incremental input events.
+  async function typeWorkdayIncremental(input, term) {
+    typeWorkday(input, '');
+    await sleep(60);
+    let acc = '';
+    for (const ch of String(term)) {
+      acc += ch;
+      typeWorkday(input, acc);
+      await sleep(45);
+    }
+  }
+
+  function allSkillOptions() {
+    const seen = new Set();
+    const out = [];
+    for (const o of [...msOptions(), ...msOptionsForInput()]) {
+      if (!o || seen.has(o)) continue;
+      seen.add(o);
+      out.push(o);
+    }
+    return dedupeOptionsByText(out);
+  }
+
+  async function waitSkillOptionsAfterSearch(skill) {
+    for (let i = 0; i < 12; i++) {
+      await sleep(200);
+      const opts = allSkillOptions();
+      if (!opts.length) continue;
+      if (opts.length === 1 && /no items/i.test(opts[0].textContent || '')) {
+        return { opts, hit: null };
+      }
+      const hit = pickSkillOption(opts, skill) || pickMsOption(opts, [skill], false);
+      if (hit) return { opts, hit };
+    }
+    const opts = allSkillOptions();
+    const hit = pickSkillOption(opts, skill) || pickMsOption(opts, [skill], false);
+    return { opts, hit };
+  }
+
+  function skillChipLabels(root) {
+    const labels = new Set();
+    for (const el of root?.querySelectorAll('[data-automation-id="selectedItem"]') || []) {
+      const t = (el.textContent || '').replace(/\s+/g, ' ').trim();
+      if (t.length > 1 && !/^search$/i.test(t)) labels.add(t.toLowerCase());
+    }
+    return labels;
+  }
+
+  function chipMatchesSkill(chipLabel, skill) {
+    const a = skillToken(chipLabel);
+    const b = skillToken(skill);
+    if (!a || !b) return false;
+    if (a === b) return true;
+    if (a.includes(b) && b.length >= 3) return true;
+    if (b.includes(a) && a.length >= 4) return true;
+    return false;
   }
 
   // Options scoped to the open Workday prompt popup (not the whole-page taxonomy).
-  function msOptionsForInput(_input) {
+  function msOptionsForInput() {
     const containers = [
       ...document.querySelectorAll('[data-automation-id="activeListContainer"]'),
       ...document.querySelectorAll('[data-automation-id="wd-ActiveList"]'),
@@ -770,94 +1943,103 @@
     return out;
   }
 
-  async function addWorkdaySkill(input, skill) {
-    const root = workdayMsFieldRoot(input);
-    const before = countSkillChips(root);
+  async function commitWorkdaySkillOne(input, skill, root, opts = {}) {
     const sk = String(skill).trim();
     if (!sk) return false;
+    const beforeLabels = skillChipLabels(root);
+    if ([...beforeLabels].some((c) => chipMatchesSkill(c, sk))) return true;
+
+    if (!opts.reusePrompt) {
+      await openWorkdayPrompt(input);
+    } else if (!opts.promptOpen) {
+      await openWorkdayPrompt(input);
+      opts.promptOpen = true;
+    }
+
+    // Simplify-style defaultWithoutBlur: set full value at once (not char-by-char).
+    typeWorkday(input, '');
+    await sleep(opts.fast ? 50 : 80);
+    typeWorkday(input, sk);
+    await sleep(opts.fast ? 140 : 200);
+    pressWorkdayEnter(input);
+    await sleep(opts.fast ? 200 : 300);
+
+    const { opts: listOpts, hit } = await waitSkillOptionsAfterSearch(sk);
+    log(
+      'workday:skill',
+      sk,
+      'opts=',
+      listOpts.length,
+      hit ? `hit=${(hit.textContent || '').trim().slice(0, 32)}` : 'no hit',
+    );
+
+    if (!hit) {
+      log('workday:skill', sk, 'failed — no match after type+Enter');
+      typeWorkday(input, '');
+      return false;
+    }
+
+    await confirmMsOption(input, hit, root);
+    typeWorkday(input, '');
+    await sleep(opts.fast ? 80 : 150);
+
+    const afterLabels = skillChipLabels(root);
+    const ok = [...afterLabels]
+      .filter((l) => !beforeLabels.has(l))
+      .some((l) => chipMatchesSkill(l, sk));
+    log(
+      'workday:skill',
+      sk,
+      ok ? 'committed' : 'failed',
+      'chips',
+      beforeLabels.size,
+      '->',
+      afterLabels.size,
+    );
+    return ok;
+  }
+
+  async function addWorkdaySkill(input, skill) {
+    const root = workdayMsFieldRoot(input);
+    try {
+      input.scrollIntoView({ block: 'center', behavior: 'instant' });
+    } catch {
+      /* ignore */
+    }
+    return commitWorkdaySkillOne(input, skill, root, { reusePrompt: false });
+  }
+
+  /** Simplify-style: open prompt once, pass skills[] with instant value set per item. */
+  async function addWorkdaySkillsBatch(input, skills) {
+    const root = workdayMsFieldRoot(input);
+    const pending = (skills || [])
+      .map((s) => String(s).trim())
+      .filter(Boolean)
+      .filter(
+        (sk) => ![...skillChipLabels(root)].some((c) => chipMatchesSkill(c, sk)),
+      )
+      .slice(0, 20);
+    if (!pending.length) return 0;
 
     try {
       input.scrollIntoView({ block: 'center', behavior: 'instant' });
     } catch {
       /* ignore */
     }
-    await sleep(150);
 
-    const icon = findWorkdayPromptIcon(input);
-    if (icon) {
-      icon.click();
-      await sleep(220);
-    }
-    try {
-      input.focus({ preventScroll: true });
-    } catch {
-      /* ignore */
-    }
-    typeWorkday(input, sk);
-    await sleep(400);
-
-    let opts = msOptionsForInput(input);
-    if (!opts.length) {
-      await sleep(300);
-      opts = msOptionsForInput(input);
-    }
-    log(
-      'workday:skill',
-      sk,
-      'scopedOpts=',
-      opts.length,
-      opts
-        .slice(0, 3)
-        .map((o) => (o.textContent || '').trim().slice(0, 28))
-        .join(' | '),
-    );
-
-    let hit = pickSkillOption(opts, sk);
-    if (!hit && opts.length) {
-      hit =
-        opts.find((o) => {
-          const t = (o.textContent || '').trim();
-          return t.length > 1 && !/^\+\s|expand|collapse|folder/i.test(t);
-        }) || opts[0];
-    }
-
-    const clickLeaf = async (option) => {
-      const leaf =
-        option.matches('[data-automation-id="promptLeafNode"], [data-automation-id="promptOption"]')
-          ? option
-          : option.querySelector(
-              '[data-automation-id="promptLeafNode"], [data-automation-id="promptOption"]',
-            ) || option;
-      try {
-        leaf.scrollIntoView({ block: 'center' });
-      } catch {
-        /* ignore */
+    log('workday:skills batch', pending.length, 'keywords');
+    const state = { reusePrompt: true, promptOpen: false, fast: true };
+    let n = 0;
+    for (let i = 0; i < pending.length; i++) {
+      const sk = pending[i];
+      if (await commitWorkdaySkillOne(input, sk, root, state)) n++;
+      if (IS_TOP_FRAME && fillUi.active) {
+        fillUi.setPhase(`Skills ${i + 1}/${pending.length}…`);
       }
-      leaf.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-      leaf.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
-      leaf.click();
-      await sleep(320);
-    };
-
-    if (hit) await clickLeaf(hit);
-
-    if (countSkillChips(root) <= before) {
-      pressWorkdayKey(input, 'ArrowDown');
-      await sleep(120);
-      pressWorkdayEnter(input);
-      await sleep(350);
+      await sleep(100);
     }
-    if (countSkillChips(root) <= before) {
-      pressWorkdayEnter(input);
-      await sleep(300);
-    }
-
-    typeWorkday(input, '');
-    await sleep(150);
-    const after = countSkillChips(root);
-    const ok = after > before;
-    log('workday:skill', sk, ok ? 'committed' : 'failed', 'chips', before, '->', after);
-    return ok;
+    log('workday:skills batch done', n, '/', pending.length);
+    return n;
   }
 
   function pickMsOption(opts, cands, preferExact) {
@@ -1103,7 +2285,7 @@
   }
 
   function isWorkdayExperienceStep() {
-    if (detectAts() !== 'workday') return false;
+    if (!isWorkdaySite()) return false;
     if (document.querySelector('input[data-automation-id="file-upload-input-ref"]'))
       return true;
     if (document.querySelector('[data-automation-id*="skills" i]')) return true;
@@ -1115,8 +2297,43 @@
     );
   }
 
-  async function fillWorkdaySkills(profile, filledSet) {
-    const skills = (profile.skills || []).filter(Boolean).slice(0, 20);
+  async function fillWorkdayLanguages(profile, filledSet) {
+    const langs = (profile.languages || ['English', 'Hindi'])
+      .map((s) => String(s).trim())
+      .filter(Boolean)
+      .slice(0, 8);
+    if (!langs.length) return 0;
+    const inputs = findWorkdayMultiSelectInputs().filter((inp) => {
+      const sig = `${wdAncestorAids(inp)} ${labelForControl(inp)}`.toLowerCase();
+      return (
+        /\blanguages?\b/i.test(sig) &&
+        !/programming|technical skill|field of study|skill/i.test(sig)
+      );
+    });
+    if (!inputs.length) {
+      log('workday:languages no multiselect found');
+      return 0;
+    }
+    let n = 0;
+    for (const input of inputs) {
+      if (filledSet.has(input) || workdayMultiSelectFilled(workdayMsFieldRoot(input), input)) continue;
+      const ok = await setWorkdayMultiSelect(input, langs, false);
+      if (ok) {
+        filledSet.add(input);
+        n++;
+        log('workday:languages', langs.join(', '));
+      }
+    }
+    return n;
+  }
+
+  async function fillWorkdaySkills(profile, filledSet, match) {
+    const fromProfile = (profile.skills || []).filter(Boolean);
+    const fromMatch = (match?.missing_skills || []).filter(Boolean);
+    const skills = [...new Set([...fromProfile, ...fromMatch].map((s) => String(s).trim()).filter(Boolean))].slice(
+      0,
+      20,
+    );
     if (!skills.length) return 0;
     const inputs = findWorkdayMultiSelectInputs().filter((inp) =>
       /skill|type to add/i.test(
@@ -1128,21 +2345,346 @@
       return 0;
     }
     const input = inputs[0];
-    const root = workdayMsFieldRoot(input);
-    const chipTexts = () =>
-      [...(root?.querySelectorAll('[data-automation-id="selectedItem"], [data-automation-id="tag"]') || [])].map(
-        (c) => (c.textContent || '').toLowerCase().trim(),
+    if (IS_TOP_FRAME && fillUi.active) fillUi.setPhase(`Adding ${skills.length} skills…`);
+    const n = await addWorkdaySkillsBatch(input, skills);
+    if (n && !filledSet.has(input)) filledSet.add(input);
+    return n;
+  }
+
+  async function fillWorkdayTypeahead(input, value, tag, filledSet) {
+    if (!input || !value || !isVisible(input) || !isEmpty(input) || filledSet.has(input)) return false;
+
+    const hasPrompt = !!findWorkdayPromptIcon(input);
+    for (const term of typeaheadSearchTerms(value)) {
+      if (hasPrompt) {
+        await openWorkdayPrompt(input);
+        await typeWorkdayIncremental(input, term);
+        await sleep(200);
+        pressWorkdayEnter(input);
+        await sleep(900);
+        const opts = msOptions().filter((o) => !/no matches found/i.test(o.textContent || ''));
+        const tl = term.toLowerCase();
+        const hit =
+          opts.find((o) => (o.textContent || '').toLowerCase().includes(tl.slice(0, Math.min(tl.length, 14)))) ||
+          opts[0];
+        if (hit) {
+          hit.click();
+          await sleep(300);
+        }
+      } else {
+        await setFieldValue(input, term, tag);
+      }
+      const cur = (input.value || '').trim();
+      if (cur && !/no matches found/i.test(cur)) {
+        filledSet.add(input);
+        log('workday:typeahead', tag, '=', term.slice(0, 40));
+        return true;
+      }
+      typeWorkday(input, '');
+      await sleep(150);
+    }
+    log('workday:typeahead failed', tag, String(value).slice(0, 40));
+    return false;
+  }
+
+  function findWorkdayExperienceRows() {
+    const roots = new Set();
+    for (const inp of document.querySelectorAll(
+      'input[data-automation-id="jobTitle"], input[name="jobTitle"], input[id*="jobTitle" i]',
+    )) {
+      if (!isVisible(inp)) continue;
+      const scope = workdayExperienceRowScope(
+        inp.closest('[data-automation-id^="workExperience-"]') ||
+          inp.closest('[role="group"]') ||
+          inp.closest('[data-automation-id^="formField"]') ||
+          inp.parentElement,
       );
+      if (scope) roots.add(scope);
+    }
+    if (!roots.size) {
+      for (const block of document.querySelectorAll('[data-automation-id^="workExperience-"]')) {
+        const aid = block.getAttribute('data-automation-id') || '';
+        if (!/^workExperience-\d+$/i.test(aid)) continue;
+        if (
+          block.querySelector(
+            'input[id*="jobTitle" i], input[data-automation-id="jobTitle"], input[id*="company" i], input[data-automation-id="company"]',
+          )
+        ) {
+          roots.add(block);
+        }
+      }
+    }
+    return [...roots];
+  }
+
+  async function clickWorkdayExperienceAdd() {
+    let btn =
+      findWorkdaySectionAddButton(/^work experience$/i) ||
+      findWorkdaySectionAddButton(/work experience/i);
+
+    const section = document.querySelector('[data-automation-id="workExperienceSection"]');
+    if (!btn && section) {
+      const inSection = [...section.querySelectorAll(
+        'button, [role="button"], [data-automation-id="add-button"], [data-automation-id*="add-button" i]',
+      )].filter((b) => isWorkdayClickable(b) && isWorkdayAddButton(b));
+      if (inSection.length) btn = inSection[inSection.length - 1];
+    }
+
+    if (!btn) {
+      const candidates = [...document.querySelectorAll(
+        'button, [role="button"], [data-automation-id="add-button"], [data-automation-id*="add-button" i]',
+      )].filter((b) => {
+        if (!isWorkdayClickable(b) || !isWorkdayAddButton(b)) return false;
+        const aids = wdAncestorAids(b);
+        if (isNonExperienceAddSection(aids)) return false;
+        return (
+          /workexperience|work experience/i.test(aids) ||
+          !!b.closest('[data-automation-id*="workExperience" i]')
+        );
+      });
+      if (candidates.length) btn = candidates[candidates.length - 1];
+    }
+
+    if (!btn) {
+      const expHeading = [...document.querySelectorAll('h2, h3, h4')].find((h) =>
+        /work experience/i.test(h.textContent || ''),
+      );
+      const eduHeading = [...document.querySelectorAll('h2, h3, h4')].find((h) =>
+        /^education$/i.test((h.textContent || '').trim()),
+      );
+      if (expHeading) {
+        const allAdd = [...document.querySelectorAll('[data-automation-id="add-button"], button')].filter(
+          (b) => isVisible(b) && isWorkdayAddButton(b),
+        );
+        const expY = expHeading.getBoundingClientRect().top;
+        const eduY = eduHeading?.getBoundingClientRect().top ?? Infinity;
+        const between = allAdd.filter((b) => {
+          const y = b.getBoundingClientRect().top;
+          return y >= expY - 20 && y < eduY;
+        });
+        if (between.length) btn = between[0];
+      }
+    }
+
+    if (!btn) {
+      log('workday:experience add button not found');
+      return false;
+    }
+    log('workday:experience clicking', workdayAddButtonLabel(btn) || btn.getAttribute('data-automation-id'));
+    await workdayClick(btn);
+    await sleep(1200);
+    return true;
+  }
+
+  async function fillWorkdayWorkExperienceRow(row, job, profile, filledSet, jobIndex = 0) {
     let n = 0;
-    for (const skill of skills) {
-      const sk = String(skill).trim();
-      if (!sk) continue;
-      const skLc = sk.toLowerCase();
-      if (chipTexts().some((c) => c && (c === skLc || c.includes(skLc) || skLc.includes(c))))
-        continue;
-      const ok = await addWorkdaySkill(input, sk);
-      if (ok) n++;
-      await sleep(400);
+    const scope = workdayExperienceRowScope(row);
+    const q = (sels) => {
+      for (const sel of sels) {
+        try {
+          const el = scope.querySelector(sel);
+          if (el && isVisible(el)) return el;
+        } catch {
+          /* invalid selector */
+        }
+      }
+      return null;
+    };
+
+    const pairs = [
+      ['title', job.title, ['input[data-automation-id="jobTitle"]', 'input[name="jobTitle"]', 'input[id*="jobTitle" i]']],
+      ['company', job.company, ['input[data-automation-id="company"]', 'input[name="companyName"]', 'input[id*="company" i]']],
+      [
+        'location',
+        jobLocationFromEntry(job),
+        ['input[data-automation-id="location"]', 'input[name="location"]', 'input[id*="location" i]'],
+      ],
+      [
+        'description',
+        job.summary,
+        ['textarea[data-automation-id="description"]', 'textarea[id*="roleDescription" i]', 'textarea[name="description"]'],
+      ],
+    ];
+
+    for (const [id, val, sels] of pairs) {
+      if (!val) continue;
+      const el = q(sels);
+      if (!el || !isEmpty(el) || filledSet.has(el)) continue;
+      if (!shouldAcceptValue(el, id, val)) continue;
+      await setFieldValue(el, val, `work.${id}`);
+      filledSet.add(el);
+      n++;
+    }
+
+    const start = parseJobDateParts(job.start);
+    const end = parseJobDateParts(job.end);
+    const present = end.present || /present|current|now/i.test(String(job.end || ''));
+    const startMonth = start.month || (start.year ? '01' : null);
+    const endMonth = end.month || (end.year && !present ? '12' : null);
+
+    const startMonthEl = q([
+      'input[id*="startDate" i][aria-label*="Month" i]',
+      'input[id*="startDate" i][data-automation-id="dateSectionMonth-input"]',
+      '[data-automation-id*="startDate" i] input[aria-label*="Month" i]',
+    ]);
+    const startYearEl = q([
+      'input[id*="startDate" i][data-automation-id="dateSectionYear-input"]',
+      'input[id*="startDate" i][aria-label*="Year" i]',
+      '[data-automation-id*="startDate" i] input[data-automation-id="dateSectionYear-input"]',
+    ]);
+    const endMonthEl = q([
+      'input[id*="endDate" i][aria-label*="Month" i]',
+      'input[id*="endDate" i][data-automation-id="dateSectionMonth-input"]',
+      '[data-automation-id*="endDate" i] input[aria-label*="Month" i]',
+    ]);
+    const endYearEl = q([
+      'input[id*="endDate" i][data-automation-id="dateSectionYear-input"]',
+      'input[id*="endDate" i][aria-label*="Year" i]',
+      '[data-automation-id*="endDate" i] input[data-automation-id="dateSectionYear-input"]',
+    ]);
+
+    for (const el of [startMonthEl, startYearEl, endMonthEl, endYearEl]) {
+      if (el) await clearInvalidWorkdayDateEl(el);
+    }
+
+    const fillDate = async (el, val, tag) => {
+      if (!el || !val || filledSet.has(el)) return false;
+      if (!isEmpty(el) && !/mm|yyyy|invalid/i.test(el.value || '')) return false;
+      await setWorkdayDatePart(el, val);
+      filledSet.add(el);
+      log('workday:experience', tag, val);
+      return true;
+    };
+
+    if (await fillDate(startMonthEl, startMonth, 'start_month')) n++;
+    if (await fillDate(startYearEl, start.year, 'start_year')) n++;
+    if (!present) {
+      if (await fillDate(endMonthEl, endMonth, 'end_month')) n++;
+      if (await fillDate(endYearEl, end.year, 'end_year')) n++;
+    }
+
+    const isCurrentRole =
+      jobIndex === 0 &&
+      (end.present || /present|current|now/i.test(String(job.end || '')));
+
+    const cb =
+      scope.querySelector('input[data-automation-id="currentlyWorkHere"]') ||
+      scope.querySelector('input[name="currentlyWorkHere"]');
+    if (cb && !filledSet.has(cb)) {
+      if (isCurrentRole && !cb.checked) {
+        cb.click();
+        n++;
+        log('workday:experience currentlyWorkHere checked row', jobIndex + 1);
+      } else if (!isCurrentRole && cb.checked) {
+        cb.click();
+        n++;
+        log('workday:experience currentlyWorkHere unchecked row', jobIndex + 1);
+      }
+      filledSet.add(cb);
+    }
+    return n;
+  }
+
+  async function fillWorkdayWorkExperience(profile, filledSet) {
+    if (!isWorkdayExperienceStep()) return 0;
+    if (shouldSkipWorkExperience(profile)) {
+      const ps = profile.profile_structure;
+      log(
+        'workday:experience skipped — profile readiness=',
+        ps?.readiness,
+        'work=',
+        profile.work_history?.length ?? 0,
+      );
+      return 0;
+    }
+    const jobs = (profile.work_history || []).filter(isAutofillableWorkJob).slice(0, 6);
+    const rawCount = profile.work_history?.length ?? 0;
+    if (rawCount > jobs.length) {
+      log(
+        'workday:experience filtered',
+        rawCount - jobs.length,
+        'invalid jobs — refresh Profile from resume (AI only)',
+      );
+    }
+    if (!jobs.length) {
+      log('workday:experience no work_history in profile');
+      if (IS_TOP_FRAME) {
+        toast(
+          'No work history. Extension → Profile → Refresh from resume, then Mark as reviewed.',
+          'warn',
+          9000,
+        );
+      }
+      return 0;
+    }
+    log('workday:experience filling', jobs.length, 'jobs');
+
+    let n = 0;
+    for (let i = 0; i < jobs.length; i++) {
+      let rows = findWorkdayExperienceRows();
+      while (rows.length <= i) {
+        const added = await clickWorkdayExperienceAdd();
+        if (!added) {
+          log('workday:experience add button not found at row', i);
+          break;
+        }
+        await sleep(600);
+        rows = findWorkdayExperienceRows();
+        if (rows.length <= i) {
+          log('workday:experience row did not appear after add', i, 'rows=', rows.length);
+          break;
+        }
+      }
+      const row = findWorkdayExperienceRows()[i];
+      if (!row) break;
+      n += await fillWorkdayWorkExperienceRow(row, jobs[i], profile, filledSet, i);
+      log('workday:experience row', i + 1, jobs[i].title || jobs[i].company || '');
+    }
+    if (n) log('workday:experience filled', jobs.length, 'jobs ops=', n);
+    return n;
+  }
+
+  function fillWorkdayProfileConsentRadios(profile, filledSet) {
+    let n = 0;
+    for (const field of document.querySelectorAll('[data-automation-id^="formField"]')) {
+      const label = workdayFieldLabel(field).toLowerCase();
+      if (!/willing.*share|share your.*profile/i.test(label)) continue;
+
+      const text = field.querySelector('input[type="text"], textarea');
+      if (text && !isEmpty(text) && !looksLikeUrl(text.value)) {
+        setNativeValue(text, '');
+        log('workday:consent cleared invalid text in', label.slice(0, 40));
+      }
+
+      const radios = [...field.querySelectorAll('input[type="radio"]')].filter(isVisible);
+      if (!radios.length || radios.some((r) => r.checked) || radios.some((r) => filledSet.has(r))) continue;
+
+      let want = 'no';
+      if (/facebook/.test(label) && profile.links?.facebook && looksLikeUrl(profile.links.facebook)) want = 'yes';
+      if (/linkedin/.test(label) && profile.links?.linkedin && looksLikeUrl(profile.links.linkedin)) want = 'yes';
+
+      const optText = (o) => {
+        const aria = o.getAttribute('aria-label');
+        if (aria) return aria.trim().toLowerCase();
+        if (o.id) {
+          const l = document.querySelector(`label[for="${CSS.escape(o.id)}"]`);
+          if (l?.textContent) return l.textContent.trim().toLowerCase();
+        }
+        const cl = o.closest('label');
+        if (cl?.textContent) return cl.textContent.trim().toLowerCase();
+        const sib = o.nextElementSibling;
+        if (sib?.textContent) return sib.textContent.trim().toLowerCase();
+        return (o.value || '').trim().toLowerCase();
+      };
+      const opt =
+        radios.find((o) => optText(o) === want) ||
+        radios.find((o) => optText(o).startsWith(want));
+      if (opt && !opt.checked) {
+        opt.click();
+        radios.forEach((r) => filledSet.add(r));
+        n++;
+        log('workday:consent', want, '<=', label.slice(0, 50));
+      }
     }
     return n;
   }
@@ -1150,21 +2692,59 @@
   function fillWorkdaySocialUrls(profile, filledSet) {
     let n = 0;
     const pairs = [
-      [/linkedin|social[\s_-]*network/i, profile.links?.linkedin],
+      [/facebook/i, profile.links?.facebook],
+      [/linkedin/i, profile.links?.linkedin],
+      [/twitter|\bx\.com\b|\bx handle/i, profile.links?.twitter],
       [/github/i, profile.links?.github],
-      [/portfolio|personal[\s_-]*site|website/i, profile.links?.portfolio],
+      [/portfolio|personal[\s_-]*site|\bwebsite\b/i, profile.links?.portfolio],
     ];
-    for (const node of document.querySelectorAll('[data-automation-id]')) {
+    for (const node of document.querySelectorAll(
+      '[data-automation-id^="formField"], [data-automation-id*="social" i]',
+    )) {
       const aid = (node.getAttribute('data-automation-id') || '').toLowerCase();
-      const label = labelForControl(node).toLowerCase();
+      const label = workdayFieldLabel(node).toLowerCase();
       const hay = `${aid} ${label}`;
+      if (/willing.*share|share your.*profile/i.test(hay)) {
+        const input = node.matches('input, textarea') ? node : node.querySelector('input:not([type=file]):not([type=hidden]), textarea');
+        if (input && isVisible(input) && !filledSet.has(input)) {
+          let url = null;
+          if (/linkedin/i.test(hay) && profile.links?.linkedin && looksLikeUrl(profile.links.linkedin)) {
+            url = profile.links.linkedin;
+          }
+          if (/facebook/i.test(hay) && profile.links?.facebook && looksLikeUrl(profile.links.facebook)) {
+            url = profile.links.facebook;
+          }
+          if (url && isEmpty(input)) {
+            setNativeValue(input, url);
+            filledSet.add(input);
+            n++;
+            log('workday:url share', aid || label.slice(0, 40), '=', String(url).slice(0, 50));
+          } else if (input && !isEmpty(input) && !looksLikeUrl(input.value)) {
+            setNativeValue(input, '');
+            log('workday:url cleared invalid share field', aid || label.slice(0, 30));
+          }
+        }
+        continue;
+      }
       let el = null;
       if (node.matches('input, textarea')) el = node;
       else el = node.querySelector('input:not([type=file]):not([type=hidden]), textarea');
       if (!el || !isVisible(el) || el.disabled || el.readOnly) continue;
-      if (!isEmpty(el) || filledSet.has(el)) continue;
+      if (!isEmpty(el)) {
+        const cur = (el.value || '').trim();
+        if (cur && isUrlLikeField(hay, el) && !looksLikeUrl(cur)) {
+          setNativeValue(el, '');
+          log('workday:url cleared invalid', aid || label.slice(0, 30));
+        } else if (filledSet.has(el)) {
+          continue;
+        } else {
+          continue;
+        }
+      }
+      if (filledSet.has(el)) continue;
       for (const [re, val] of pairs) {
-        if (!val || !re.test(hay)) continue;
+        if (!val || !looksLikeUrl(val) || !re.test(hay)) continue;
+        if (/willing|share your/i.test(hay)) continue;
         setNativeValue(el, val);
         filledSet.add(el);
         n++;
@@ -1175,12 +2755,460 @@
     return n;
   }
 
-  async function fillWorkdayExperiencePage(profile, filledSet) {
+  async function fillWorkdayEducation(profile, filledSet) {
+    if (!isWorkdayExperienceStep()) return 0;
+    const edu = profile.education?.[0];
+    if (!edu) return 0;
+    let n = 0;
+    const fieldOfStudy = resolveEducationFieldOfStudy(edu, profile);
+    const gradYear = parseJobDateParts(edu.end).year || (edu.end || '').match(/\b(19|20)\d{2}\b/)?.[0];
+    const fromYear = gradYear ? String(Number(gradYear) - 4) : null;
+
+    const schoolInput = document.querySelector(
+      'input[data-automation-id="schoolName"], input[name="schoolName"], input[id*="schoolName" i]',
+    );
+    if (
+      edu.school &&
+      schoolInput &&
+      isVisible(schoolInput) &&
+      isEmpty(schoolInput) &&
+      !filledSet.has(schoolInput)
+    ) {
+      const ok = await fillWorkdayTypeahead(schoolInput, edu.school, 'education.school', filledSet);
+      if (!ok) {
+        await setFieldValue(schoolInput, edu.school, 'education.school');
+        filledSet.add(schoolInput);
+      }
+      n++;
+      log('workday:education school', edu.school);
+    }
+
+    for (const field of document.querySelectorAll('[data-automation-id^="formField"]')) {
+      const label = workdayFieldLabel(field).toLowerCase();
+      const aid = (field.getAttribute('data-automation-id') || '').toLowerCase();
+      const hay = `${aid} ${label}`;
+
+      if (/gpa|overall result|grade point/i.test(hay)) {
+        const input = field.querySelector('input:not([type=hidden])');
+        const gpa = edu.gpa;
+        if (
+          gpa &&
+          looksLikeGpa(gpa) &&
+          input &&
+          isVisible(input) &&
+          isEmpty(input) &&
+          !filledSet.has(input)
+        ) {
+          await setFieldValue(input, gpa, 'education.gpa');
+          filledSet.add(input);
+          n++;
+          log('workday:education gpa', gpa);
+        } else if (input && !isEmpty(input)) {
+          const v = input.value.trim();
+          if (!looksLikeGpa(v) && /bachelor|master|technology|degree|b\.tech|diploma/i.test(v)) {
+            setNativeValue(input, '');
+            log('workday:education cleared invalid GPA');
+          }
+        }
+        continue;
+      }
+
+      if (
+        /school|university|college/.test(hay) &&
+        !/degree|field of study|gpa|overall result/.test(hay)
+      ) {
+        const input = field.querySelector('input:not([type=hidden])');
+        if (edu.school && input && isVisible(input) && isEmpty(input) && !filledSet.has(input)) {
+          const ok = await fillWorkdayTypeahead(input, edu.school, 'education.school', filledSet);
+          if (ok) n++;
+          else {
+            await setFieldValue(input, edu.school, 'education.0.school');
+            filledSet.add(input);
+            n++;
+            log('workday:education school', edu.school);
+          }
+        }
+        continue;
+      }
+
+      if (/\bdegree\b/.test(hay) && !/field of study|gpa|overall result/.test(hay)) {
+        const trigger = field.querySelector(
+          'button[aria-haspopup="listbox"], [role="combobox"], button[data-automation-id]',
+        );
+        if (edu.degree && trigger && !filledSet.has(trigger)) {
+          const cur = (trigger.textContent || '').toLowerCase().trim();
+          if (!cur || /select one|search|^choose|^$/.test(cur)) {
+            const want = normalizeWorkdayDegree(edu.degree);
+            const ok = await setWorkdayDropdown(trigger, want);
+            if (ok) {
+              filledSet.add(trigger);
+              n++;
+              log('workday:education degree', want);
+            }
+          }
+        }
+        continue;
+      }
+
+      if (/field of study|\bmajor\b/.test(hay) && !/gpa|overall result/.test(hay)) {
+        const input = field.querySelector('input:not([type=hidden]), textarea');
+        if (fieldOfStudy && input && isVisible(input) && isEmpty(input) && !filledSet.has(input)) {
+          const ok = await fillWorkdayTypeahead(input, fieldOfStudy, 'education.field', filledSet);
+          if (!ok) {
+            await setFieldValue(input, fieldOfStudy, 'education.0.field');
+            filledSet.add(input);
+          }
+          n++;
+          log('workday:education field', fieldOfStudy);
+        }
+        continue;
+      }
+
+      if (/firstyearattended|first[\s_-]*year/i.test(aid) || (/firstyear|first year|\bfrom\b/.test(hay) && /year|attended/i.test(hay))) {
+        const input = field.querySelector(
+          'input[data-automation-id="dateSectionYear-input"], input[aria-label*="Year" i]',
+        );
+        if (fromYear && input && isVisible(input) && isEmpty(input) && !filledSet.has(input)) {
+          await setFieldValue(input, fromYear, 'education.from_year');
+          filledSet.add(input);
+          n++;
+          log('workday:education from_year', fromYear);
+        }
+        continue;
+      }
+
+      if (/lastyearattended|last[\s_-]*year/i.test(aid) || (/lastyear|last year|\bto\b/.test(hay) && /year|attended/i.test(hay))) {
+        const input = field.querySelector(
+          'input[data-automation-id="dateSectionYear-input"], input[aria-label*="Year" i]',
+        );
+        if (gradYear && input && isVisible(input) && isEmpty(input) && !filledSet.has(input)) {
+          await setFieldValue(input, gradYear, 'education.to_year');
+          filledSet.add(input);
+          n++;
+          log('workday:education to_year', gradYear);
+        }
+      }
+    }
+
+    for (const input of document.querySelectorAll('input[data-automation-id="dateSectionYear-input"]')) {
+      if (!isVisible(input) || !isEmpty(input) || filledSet.has(input)) continue;
+      const ctx = `${input.id || ''} ${input.closest('[data-automation-id]')?.getAttribute('data-automation-id') || ''}`.toLowerCase();
+      if (/education/.test(ctx) && /firstyearattended|firstyear/.test(ctx) && fromYear) {
+        await setFieldValue(input, fromYear, 'education.from_year');
+        filledSet.add(input);
+        n++;
+        log('workday:education from_year', fromYear);
+      } else if (/education/.test(ctx) && /lastyearattended|lastyear/.test(ctx) && gradYear) {
+        await setFieldValue(input, gradYear, 'education.to_year');
+        filledSet.add(input);
+        n++;
+        log('workday:education to_year', gradYear);
+      }
+    }
+    return n;
+  }
+
+  let workdaySkillsPassDone = false;
+  let workdayAppQuestionsPassDone = false;
+  let workdayVoluntaryPassDone = false;
+
+  async function fillWorkdayExperiencePage(profile, filledSet, match) {
     if (!isWorkdayExperienceStep()) return 0;
     log('workday:experience page (My Experience)');
+    if (IS_TOP_FRAME) fillUi.setPhase('Work experience & education…');
     let n = 0;
-    n += await fillWorkdaySkills(profile, filledSet);
+    n += await fillWorkdayWorkExperience(profile, filledSet);
+    if (!workdaySkillsPassDone) {
+      workdaySkillsPassDone = true;
+      n += await fillWorkdaySkills(profile, filledSet, match);
+    }
+    n += await fillWorkdayLanguages(profile, filledSet);
     n += fillWorkdaySocialUrls(profile, filledSet);
+    n += fillWorkdayProfileConsentRadios(profile, filledSet);
+    n += await fillWorkdayEducation(profile, filledSet);
+    n += fillWorkdayScreeningRadios(profile, filledSet);
+    return n;
+  }
+
+  function isWorkdayApplicationQuestionsStep() {
+    if (!isWorkdaySite()) return false;
+    if (document.querySelector('input[data-automation-id="file-upload-input-ref"]'))
+      return false;
+    const hay = document.body.innerText.slice(0, 12000).toLowerCase();
+    return (
+      /application questions/.test(hay) &&
+      (/visa sponsorship|require visa sponsorship/.test(hay) ||
+        /citizen or permanent resident/.test(hay) ||
+        /current employer/.test(hay) ||
+        /close personal or family relationship/.test(hay))
+    );
+  }
+
+  function workdayQuestionForControl(el) {
+    const field =
+      el.closest('[data-automation-id^="formField"]') ||
+      (el.getAttribute('data-automation-id') || '').startsWith('formField')
+        ? el
+        : null;
+    if (field) {
+      const rich =
+        field.querySelector('[data-automation-id="richText"]') ||
+        field.querySelector('label') ||
+        field.querySelector('p');
+      if (rich?.textContent) {
+        const t = rich.textContent.replace(/\s+/g, ' ').trim();
+        if (t.length > 10 && !/^select one/i.test(t)) return t;
+      }
+      const clone = field.cloneNode(true);
+      clone
+        .querySelectorAll('button, input, textarea, select, [role="listbox"]')
+        .forEach((n) => n.remove());
+      const inner = (clone.textContent || '').replace(/\s+/g, ' ').trim();
+      if (inner.length > 10 && !/^select one/i.test(inner)) return inner;
+    }
+    let block = field || el;
+    for (let i = 0; i < 4; i++) {
+      const prev = block.previousElementSibling;
+      if (!prev) break;
+      const t = (prev.textContent || '').replace(/\s+/g, ' ').trim();
+      if (t.length > 15 && /\?/.test(t)) return t;
+      block = prev;
+    }
+    return labelForControl(el);
+  }
+
+  function findWorkdayEmptyDropdownTriggers() {
+    const out = [];
+    const seen = new Set();
+    const add = (el) => {
+      if (!el || seen.has(el) || !isVisible(el)) return;
+      const cur = (el.textContent || '').toLowerCase().trim();
+      if (cur && !/select one|search|^choose|^\s*$/.test(cur)) return;
+      seen.add(el);
+      out.push(el);
+    };
+    const sels = [
+      'button[data-automation-id^="formField"]',
+      '[data-automation-id^="formField"] button[type="button"]',
+      'button[aria-haspopup="listbox"]',
+      '[role="combobox"]',
+      'div[data-automation-id][aria-haspopup="listbox"]',
+    ];
+    for (const sel of sels) {
+      document.querySelectorAll(sel).forEach(add);
+    }
+    return out;
+  }
+
+  function fillWorkdayApplicationTextFields(profile, filledSet) {
+    let n = 0;
+    const pairs = [
+      [/current employer|name of your current employer/i, profile.latest_company],
+      [/current job title|your current job title/i, profile.current_title],
+    ];
+    for (const node of document.querySelectorAll('[data-automation-id]')) {
+      const aid = (node.getAttribute('data-automation-id') || '').toLowerCase();
+      let el = null;
+      const tag = node.tagName;
+      if (tag === 'TEXTAREA' || (tag === 'INPUT' && node.type === 'text')) el = node;
+      else el = node.querySelector('textarea, input[type="text"]');
+      if (!el || !isVisible(el) || !isEmpty(el) || filledSet.has(el)) continue;
+      const hay = `${aid} ${fieldSignature(el)}`;
+      for (const [re, val] of pairs) {
+        if (!val || !re.test(hay)) continue;
+        setNativeValue(el, val);
+        filledSet.add(el);
+        n++;
+        log('workday:appq-text', re.source.slice(0, 35), '=', String(val).slice(0, 40));
+        break;
+      }
+    }
+    return n;
+  }
+
+  async function fillWorkdayScreeningDropdowns(profile, filledSet) {
+    let n = 0;
+    for (const trigger of findWorkdayEmptyDropdownTriggers()) {
+      if (filledSet.has(trigger)) continue;
+
+      const q = workdayQuestionForControl(trigger).toLowerCase();
+      if (!q || q.length < 8) continue;
+
+      const saved = matchCustomQa(q, profile.custom_qa);
+      let prefs = null;
+      if (saved) {
+        prefs = [String(saved).toLowerCase()];
+      } else if (/visa sponsorship|require visa/.test(q)) {
+        prefs = profile.require_sponsorship
+          ? ['yes', 'will require']
+          : ['no', 'do not', 'not require'];
+      } else if (
+        /citizen or permanent resident of one of these|one of these nations|these nations or regions/.test(
+          q,
+        )
+      ) {
+        // Restricted-region screening list (NK, Ukraine oblasts, etc.) — not home country.
+        prefs = ['does not apply', "doesn't apply", 'not applicable'];
+      } else if (/dual citizenship|hold dual/.test(q)) {
+        prefs = ['does not apply', "doesn't apply", 'no'];
+      } else if (/citizen or permanent resident|country of citizenship|nationality/.test(q)) {
+        const country = profile.location?.country || profile.work_auth_country;
+        if (country) prefs = [String(country).toLowerCase()];
+      } else if (
+        /relationship.*employed|employed by|family relationship|close personal|conflict of interest/.test(
+          q,
+        )
+      ) {
+        prefs = ['no'];
+      }
+
+      if (!prefs) continue;
+      const strict =
+        /visa sponsorship|require visa|one of these nations|these nations or regions|dual citizenship|relationship.*employed|employed by|family relationship|close personal|conflict of interest/.test(
+          q,
+        );
+      const ok = strict
+        ? await setWorkdayDropdownStrict(trigger, prefs)
+        : await setWorkdayDropdownByPrefs(trigger, prefs);
+      if (ok) {
+        filledSet.add(trigger);
+        n++;
+        log('workday:appq-dd', prefs[0], '<=', q.slice(0, 55));
+      } else {
+        log('workday:appq-dd failed', q.slice(0, 55));
+      }
+    }
+    return n;
+  }
+
+  async function fillWorkdayApplicationQuestionsPage(profile, filledSet) {
+    if (!isWorkdayApplicationQuestionsStep()) return 0;
+    if (workdayAppQuestionsPassDone) return 0;
+    workdayAppQuestionsPassDone = true;
+    log('workday:application-questions page');
+    let n = 0;
+    n += fillWorkdayApplicationTextFields(profile, filledSet);
+    n += await fillWorkdayScreeningDropdowns(profile, filledSet);
+    n += fillWorkdayScreeningRadios(profile, filledSet);
+    return n;
+  }
+
+  function genderDropdownPrefs(gender) {
+    const g = String(gender || '')
+      .toLowerCase()
+      .trim();
+    if (!g || /decline|prefer not|don't wish|not specified/.test(g)) {
+      return ['decline to declare', 'decline', 'prefer not'];
+    }
+    if (/non.?binary|nb\b/.test(g)) return ['non-binary', 'nonbinary'];
+    if (/female|woman/.test(g)) return ['woman', 'female'];
+    if (/male|man\b/.test(g)) return ['man', 'male'];
+    return [g, 'decline to declare'];
+  }
+
+  function veteranDropdownPrefs(status) {
+    const s = String(status || '')
+      .toLowerCase()
+      .trim();
+    if (!s || /not|no|none|decline|prefer not/.test(s)) {
+      return [
+        'i am not',
+        'not a protected',
+        'not a veteran',
+        'no',
+        'decline',
+        'prefer not',
+      ];
+    }
+    if (/yes|protected|veteran/.test(s)) {
+      return ['protected veteran', 'yes', 'i am a'];
+    }
+    return [s];
+  }
+
+  function disabilityDropdownPrefs(status) {
+    const s = String(status || '')
+      .toLowerCase()
+      .trim();
+    if (!s || /not|no|none|decline|prefer not|don't have/.test(s)) {
+      return [
+        "don't have a disability",
+        'no, i do not',
+        'no disability',
+        'not disabled',
+        'decline',
+        'prefer not',
+      ];
+    }
+    if (/yes|have a disability|disabled/.test(s)) {
+      return ['yes', 'have a disability', 'i have a disability'];
+    }
+    return [s];
+  }
+
+  function fillWorkdayConsentCheckboxes(filledSet) {
+    let n = 0;
+    for (const cb of document.querySelectorAll('input[type="checkbox"]')) {
+      if (!isVisible(cb) || cb.checked || cb.disabled || filledSet.has(cb)) continue;
+      const sig = fieldSignature(cb);
+      if (/i consent|consent to|agree to|acknowledge/i.test(sig)) {
+        cb.click();
+        filledSet.add(cb);
+        n++;
+        log('workday:consent checked');
+      }
+    }
+    return n;
+  }
+
+  async function fillWorkdayVoluntaryDropdowns(profile, filledSet) {
+    let n = 0;
+    for (const trigger of findWorkdayEmptyDropdownTriggers()) {
+      if (filledSet.has(trigger)) continue;
+      const q = workdayQuestionForControl(trigger).toLowerCase();
+      if (!q || q.length < 6) continue;
+
+      let prefs = null;
+      if (/select your gender|\bgender\b/.test(q)) {
+        prefs = genderDropdownPrefs(profile.gender);
+      } else if (/veteran|armed forces|military service/.test(q)) {
+        prefs = veteranDropdownPrefs(profile.veteran_status);
+      } else if (/disabilit|\bdisabled\b/.test(q)) {
+        prefs = disabilityDropdownPrefs(profile.disability_status);
+      } else if (/ethnic|race\b|hispanic|latino/.test(q)) {
+        prefs = ['decline', 'prefer not', 'do not wish'];
+      }
+
+      if (!prefs) continue;
+      const ok = await setWorkdayDropdownStrict(trigger, prefs);
+      if (ok) {
+        filledSet.add(trigger);
+        n++;
+        log('workday:voluntary-dd', prefs[0], '<=', q.slice(0, 55));
+      } else {
+        log('workday:voluntary-dd failed', q.slice(0, 55));
+      }
+    }
+    return n;
+  }
+
+  function isWorkdayVoluntaryDisclosuresStep() {
+    if (!isWorkdaySite()) return false;
+    const hay = document.body.innerText.slice(0, 12000).toLowerCase();
+    return (
+      /voluntary disclosures|voluntary self-identification|self-identification of/.test(hay) &&
+      (/select your gender|gender\b|veteran|disabilit/.test(hay) || /i consent/.test(hay))
+    );
+  }
+
+  async function fillWorkdayVoluntaryDisclosuresPage(profile, filledSet) {
+    if (!isWorkdayVoluntaryDisclosuresStep()) return 0;
+    if (workdayVoluntaryPassDone) return 0;
+    workdayVoluntaryPassDone = true;
+    log('workday:voluntary-disclosures page');
+    let n = 0;
+    n += await fillWorkdayVoluntaryDropdowns(profile, filledSet);
+    n += fillWorkdayConsentCheckboxes(filledSet);
     return n;
   }
 
@@ -1212,15 +3240,21 @@
         continue;
       }
       const container = workdayMsFieldRoot(input);
-      if (workdayMultiSelectFilled(container, input)) {
+      const sig = `${wdAncestorAids(input)} ${labelForControl(input)}`.toLowerCase();
+      const isSkillsField = /skill|type to add/i.test(sig);
+      if (!isSkillsField && workdayMultiSelectFilled(container, input)) {
         log('workday:ms skip already has chip', wdAncestorAids(input).slice(0, 60));
         continue;
       }
-      const sig = `${wdAncestorAids(input)} ${labelForControl(input)}`.toLowerCase();
       log('workday:ms try', sig.slice(0, 80));
 
       if (/source--source|how did you hear|hear about us|referral source/.test(sig)) {
         n += await fillWorkdaySourceLinkedIn(input, filledSet);
+      } else if (
+        /\blanguages?\b/i.test(sig) &&
+        !/programming|technical skill|field of study|skill/i.test(sig)
+      ) {
+        n += await fillWorkdayLanguages(profile, filledSet);
       } else if (/countryphonecode|phoneNumber--countryPhoneCode|country phone code/.test(sig)) {
         const country = profile.location?.country || profile.work_auth_country;
         if (!country) {
@@ -1238,8 +3272,30 @@
     return n;
   }
 
-  async function fillWorkday(profile, filledSet) {
-    if (detectAts() !== 'workday') return 0;
+  function dumpScopedUnfilled(filledSet) {
+    const rows = [];
+    for (const el of scopedFillableElements()) {
+      if (!isVisible(el) || filledSet.has(el) || el.type === 'hidden' || el.type === 'file') continue;
+      if (!isEmpty(el)) continue;
+      const vendor =
+        el.getAttribute('data-ph-at-id') ||
+        el.getAttribute('data-ph-id') ||
+        el.getAttribute('data-field') ||
+        el.closest('[data-ph-at-id], [data-field]')?.getAttribute('data-ph-at-id') ||
+        '';
+      const label = labelForControl(el).slice(0, 70).replace(/\s+/g, ' ');
+      if (!label && !vendor) continue;
+      rows.push(
+        `${el.tagName.toLowerCase()}${el.type ? `[${el.type}]` : ''} vendor="${vendor}" label="${label}"`,
+      );
+    }
+    if (rows.length) {
+      log('universal:UNFILLED (' + rows.length + ') ↓\n' + rows.slice(0, 15).join('\n'));
+    }
+  }
+
+  async function fillWorkday(profile, filledSet, match) {
+    if (!isWorkdaySite()) return 0;
     let n = 0;
     const zip = profile.zip_code || profile.location?.zip;
     const phone = wdLocalPhone(profile.phone);
@@ -1348,7 +3404,13 @@
     n += fillWorkdayScreeningRadios(profile, filledSet);
 
     // 5. Page 2 "My Experience" — skills, LinkedIn/GitHub URLs.
-    n += await fillWorkdayExperiencePage(profile, filledSet);
+    n += await fillWorkdayExperiencePage(profile, filledSet, match);
+
+    // 6. Page 3 "Application Questions" — screening dropdowns + employer/title.
+    n += await fillWorkdayApplicationQuestionsPage(profile, filledSet);
+
+    // 7. Page 4 "Voluntary Disclosures" — EEO dropdowns + consent checkbox.
+    n += await fillWorkdayVoluntaryDisclosuresPage(profile, filledSet);
     return n;
   }
 
@@ -1395,6 +3457,8 @@
         )
       ) {
         want = 'no';
+      } else if (/facebook|share your.*profile|social media profile/i.test(q)) {
+        want = profile.links?.facebook && looksLikeUrl(profile.links.facebook) ? 'yes' : 'no';
       }
       if (!want) continue;
       const optText = (o) => {
@@ -1425,29 +3489,50 @@
     return n;
   }
 
+  function atsFillHooks() {
+    return {
+      log,
+      isVisible,
+      isEmpty,
+      setFieldValue,
+      setWorkdayDropdown,
+      setGenericDropdownByPrefs,
+      fillLeverTypeahead,
+      applicationFormRoot,
+      isUniversalCareerSite,
+    };
+  }
+
+  async function runConfiguredAtsFill(profile, filledSet, ats) {
+    const engine = window.__JobRadarAtsFill;
+    if (!engine?.runAtsFill) return 0;
+    const atsId =
+      ats === 'generic' && isUniversalCareerSite() ? 'universal' : ats;
+    return engine.runAtsFill(atsId, profile, filledSet, atsFillHooks());
+  }
+
   async function fillAllFields(profile, match) {
     const filledSet = new Set();
     let total = 0;
     const ats = detectAts();
+    // Config-driven ATS recipes run once — arrays click "Add" and must not repeat per pass.
+    total += await runConfiguredAtsFill(profile, filledSet, ats);
     for (let pass = 0; pass < 3; pass++) {
-      if (ats === 'workday') total += await fillWorkday(profile, filledSet);
+      if (ats === 'workday') total += await fillWorkday(profile, filledSet, match);
+      total += await fillByVendorAttributes(profile, filledSet);
       total += await fillLeverUrls(profile, filledSet);
       total += await executeFillPlan(profile, filledSet);
-      total += fillKnownFields(profile, filledSet);
+      total += await fillKnownFields(profile, filledSet);
+      total += await fillGenericChoiceFields(profile, filledSet);
+      total += fillGenericScreeningRadios(profile, filledSet);
       total += fillEssayFromProfile(profile, filledSet);
       if (pass < 2) await sleep(450);
     }
-    total += await fillViaSemanticMap(profile, match, filledSet);
+    total += await fillViaSemanticMap(profile, match, filledSet, { workdayAi: ats === 'workday' });
     if (ats === 'workday') {
       dumpWorkdayUnfilled(filledSet);
-    } else if (ats === 'lever') {
-      const remaining = indexEmptyFields(filledSet);
-      if (remaining.length) {
-        log(
-          'lever:still empty',
-          remaining.map((r) => r.label.slice(0, 60)).join(' | '),
-        );
-      }
+    } else {
+      dumpScopedUnfilled(filledSet);
     }
     log('fillAllFields: filled', filledSet.size, 'elements in', total, 'operations');
     return filledSet.size;
@@ -1486,7 +3571,7 @@
     // Custom dropdown triggers still showing a placeholder.
     document
       .querySelectorAll(
-        'button[aria-haspopup="listbox"], [role="combobox"], [data-automation-id][aria-haspopup="listbox"]',
+        'button[aria-haspopup="listbox"], [role="combobox"], [data-automation-id][aria-haspopup="listbox"], button[data-automation-id^="formField"]',
       )
       .forEach((el) => {
         if (!isVisible(el) || filledSet.has(el)) return;
@@ -1501,76 +3586,254 @@
     }
   }
 
-  async function fillViaSemanticMap(profile, match, filledSet) {
-    const indexed = indexEmptyFields(filledSet);
-    if (!indexed.length) return 0;
-    const res = await send('mapFields', {
-      fields: indexed.map(({ id, label, type }) => ({ id, label, type })),
-      profile,
-      job_title: match?.job?.title,
-      company: match?.job?.company,
-    });
-    if (!res?.ok || !Array.isArray(res.mappings)) {
-      log('mapFields skipped:', res?.error);
+  function dumpGenericUnfilled(filledSet) {
+    const rows = [];
+    const seen = new Set();
+    for (const el of collectFillableElements()) {
+      if (!isVisible(el) || filledSet.has(el) || el.type === 'hidden' || el.type === 'file')
+        continue;
+      if (!isEmpty(el)) continue;
+      if (seen.has(el)) continue;
+      seen.add(el);
+      const label = labelForControl(el).slice(0, 70).replace(/\s+/g, ' ');
+      if (!label || label.length < 2) continue;
+      rows.push(
+        `${el.tagName.toLowerCase()}${el.type ? `[${el.type}]` : ''} label="${label}"`,
+      );
+    }
+    if (rows.length) {
+      log('generic:UNFILLED (' + rows.length + ') ↓\n' + rows.slice(0, 15).join('\n'));
+    }
+  }
+
+  function countFormSignals() {
+    const inputs = applicationFormRoot().querySelectorAll(
+      'input:not([type=hidden]):not([type=submit]):not([type=button]), textarea, select, button[data-automation-id^="formField"], [data-ph-at-id] input, [data-field] input',
+    ).length;
+    const vendorBlocks = applicationFormRoot().querySelectorAll(
+      '[data-ph-at-id], [data-ph-id], [data-field], [data-field-id]',
+    ).length;
+    return Math.max(inputs, vendorBlocks > 2 ? vendorBlocks : 0);
+  }
+
+  const IS_TOP_FRAME = window === window.top;
+
+  let autofillInFlight = null;
+  async function triggerAutofillAllFrames(options) {
+    if (autofillInFlight) {
+      log('triggerAutofillAllFrames: already running');
+      return autofillInFlight;
+    }
+    if (IS_TOP_FRAME) {
+      busy = true;
+      const est = Math.max(countEmptyFillableFields(), 8);
+      fillUi.begin(est);
+      fillUi.setPhase('Connecting to Hyred…');
+    }
+    autofillInFlight = (async () => {
+      log('triggerAutofillAllFrames', 'ats=', detectAts(), 'vendor=', isUniversalCareerSite() ? 'universal' : 'other');
+      return send('fanOutAutofill', { options });
+    })();
+    let res;
+    try {
+      res = await autofillInFlight;
+    } finally {
+      autofillInFlight = null;
+    }
+    log('fanOutAutofill:', JSON.stringify(res));
+    const total = res?.filled || 0;
+    const frames = res?.frames || 0;
+    if (IS_TOP_FRAME) {
+      const msg =
+        total > 0
+          ? `Done — ${total} field${total === 1 ? '' : 's'} filled`
+          : 'Nothing filled — check console (F12) for [JobRadar]';
+      fillUi.end(total, total > 0, msg);
+      busy = false;
+      toast(
+        total > 0
+          ? `Filled ${total} field${total === 1 ? '' : 's'} across ${frames} frame(s)`
+          : 'No fields filled — open Console (F12) and filter [JobRadar]',
+        total > 0 ? 'ok' : 'warn',
+        5000,
+      );
+      setTimeout(() => refreshCardState(), 3500);
+    }
+    return res;
+  }
+
+  async function fillViaSemanticMap(profile, match, filledSet, opts = {}) {
+    const workdayAi = opts.workdayAi === true || detectAts() === 'workday';
+    const indexed = indexEmptyFields(filledSet, { forAi: workdayAi });
+    if (!indexed.length) {
+      log('mapFields: no empty labeled fields left');
       return 0;
     }
     let n = 0;
-    for (const m of res.mappings) {
-      const item = indexed.find((x) => x.id === m.id);
-      if (!item?.el || !m.value) continue;
-      setNativeValue(item.el, m.value);
-      filledSet.add(item.el);
-      n++;
-      log('semantic:', item.label.slice(0, 50));
+    const batches = [];
+    for (let i = 0; i < indexed.length; i += 25) {
+      batches.push(indexed.slice(i, i + 25));
+    }
+    for (const batch of batches) {
+      log('mapFields: asking AI for', batch.length, 'fields');
+      const res = await send('mapFields', {
+        fields: batch.map(({ id, label, type }) => ({ id, label, type })),
+        profile,
+        job_title: match?.job?.title,
+        company: match?.job?.company,
+      });
+      if (!res?.ok || !Array.isArray(res.mappings)) {
+        log('mapFields skipped:', res?.error);
+        continue;
+      }
+      for (const m of res.mappings) {
+        const item = batch.find((x) => x.id === m.id);
+        if (!item?.el || !m.value) continue;
+        const applied = await applySemanticFieldValue(item, m.value);
+        if (!applied) continue;
+        if (item.els) item.els.forEach((r) => filledSet.add(r));
+        else filledSet.add(item.el);
+        n++;
+        log('semantic:', item.label.slice(0, 50));
+      }
     }
     return n;
+  }
+
+  async function applySemanticFieldValue(item, value) {
+    const val = String(value ?? '').trim();
+    if (!val) return false;
+    if (item.kind === 'radio' && item.els?.length) {
+      const want = val.toLowerCase();
+      const optText = (o) => {
+        const aria = o.getAttribute('aria-label');
+        if (aria) return aria.trim().toLowerCase();
+        if (o.id) {
+          const l = document.querySelector(`label[for="${CSS.escape(o.id)}"]`);
+          if (l?.textContent) return l.textContent.trim().toLowerCase();
+        }
+        const cl = o.closest('label');
+        if (cl?.textContent) return cl.textContent.trim().toLowerCase();
+        return (o.value || '').trim().toLowerCase();
+      };
+      const opt =
+        item.els.find((o) => optText(o) === want) ||
+        item.els.find((o) => optText(o).startsWith(want)) ||
+        item.els.find((o) => want === 'yes' && /^(yes|true)$/i.test(optText(o))) ||
+        item.els.find((o) => want === 'no' && /^(no|false)$/i.test(optText(o)));
+      if (opt && !opt.checked) {
+        opt.click();
+        return true;
+      }
+      return false;
+    }
+    const el = item.el;
+    if (!el || !isVisible(el)) return false;
+    if (el.type === 'checkbox') {
+      if (/^(yes|true|1)$/i.test(val) && !el.checked) {
+        el.click();
+        return true;
+      }
+      if (/^(no|false|0)$/i.test(val) && el.checked) {
+        el.click();
+        return true;
+      }
+      return false;
+    }
+    if (
+      el.getAttribute('role') === 'spinbutton' ||
+      /datesection(?:month|year)/i.test(el.getAttribute('data-automation-id') || '') ||
+      /month|year/i.test(el.getAttribute('aria-label') || '')
+    ) {
+      if (!isEmpty(el) && !/mm|yyyy|invalid/i.test(el.value || '')) return false;
+      await setWorkdayDatePart(el, val);
+      return true;
+    }
+    if (el.tagName === 'SELECT') {
+      return (await setGenericDropdownByPrefs(el, [val])) || setSelectValue(el, val);
+    }
+    if (/school|university/i.test(item.label) && isWorkdaySite()) {
+      const ok = await fillWorkdayTypeahead(el, val, 'ai.school', new Set());
+      if (ok) return true;
+    }
+    await setFieldValue(el, val, item.label.slice(0, 40));
+    return true;
   }
 
   // -------------------------------------------------------------------
   // Fill fields — multi-pass for SPAs that mount inputs after first paint.
   // -------------------------------------------------------------------
-  function fillKnownFields(profile, filledSet) {
-    const inputs = collectFillableElements();
+  async function fillKnownFields(profile, filledSet) {
+    const inputs = scopedFillableElements();
     let n = 0;
-    inputs.forEach((el) => {
-      if (!isVisible(el) || el.disabled || el.readOnly) return;
-      if (el.type === 'radio' || el.type === 'checkbox' || el.type === 'file') return;
-      if (!isEmpty(el) || filledSet.has(el)) return;
+    for (const el of inputs) {
+      if (!isVisible(el) || el.disabled) continue;
+      if (el.readOnly && !prepareInputForFill(el)) continue;
+      if (el.type === 'radio' || el.type === 'checkbox' || el.type === 'file') continue;
+      if (!isEmpty(el) || filledSet.has(el)) continue;
 
       const sig = fieldSignature(el);
-      if (!sig) return;
+      if (!sig || isWorkdayDedicatedField(sig)) continue;
 
       let value = null;
-      const path = matchRule(sig);
-      if (path) value = valueForPath(profile, path);
+      let path = matchRule(sig);
+      if (path) value = normalizeFilledValue(el, path, valueForPath(profile, path), profile);
       if (!value) value = matchCustomQa(sig, profile.custom_qa);
 
       if (value != null && String(value).trim() !== '') {
+        if (!shouldAcceptValue(el, sig, value)) continue;
         if (el.tagName === 'SELECT') {
-          if (!setSelectValue(el, value)) return;
+          if (!(await setGenericDropdownByPrefs(el, [value]) || setSelectValue(el, value))) continue;
         } else {
-          setNativeValue(el, value);
+          await setFieldValue(el, value, path || sig.slice(0, 40));
         }
         filledSet.add(el);
         n++;
         log('fill:', path || 'custom_qa', '=', String(value).slice(0, 40), '|', sig.slice(0, 50));
       }
-    });
+    }
     return n;
   }
 
-  function indexEmptyFields(filledSet) {
+  function indexEmptyFields(filledSet, opts = {}) {
+    const forAi = opts.forAi === true;
     const items = [];
+    const radioGroupsDone = new Set();
     let id = 0;
-    for (const el of collectFillableElements()) {
+
+    if (forAi && isWorkdaySite()) {
+      for (const field of document.querySelectorAll('[data-automation-id^="formField"]')) {
+        const radios = [...field.querySelectorAll('input[type="radio"]')].filter(isVisible);
+        if (radios.length && !radios.some((r) => r.checked) && !radios.some((r) => filledSet.has(r))) {
+          const key = field.getAttribute('data-automation-id') || radios.map((r) => r.name).join('|');
+          if (radioGroupsDone.has(key)) continue;
+          radioGroupsDone.add(key);
+          const label = workdayFieldLabel(field).slice(0, 300);
+          if (!label || label.length < 3) continue;
+          items.push({
+            id: id++,
+            el: radios[0],
+            els: radios,
+            kind: 'radio',
+            label,
+            type: 'radio',
+          });
+        }
+      }
+    }
+
+    for (const el of scopedFillableElements()) {
       if (!isVisible(el) || el.type === 'file' || el.type === 'hidden') continue;
+      if (el.type === 'radio') continue;
       if (!isEmpty(el) || filledSet.has(el)) continue;
-      const label = labelForControl(el);
+      const sig = fieldSignature(el);
+      const label = (labelForControl(el) || sig).slice(0, 300);
       if (!label || label.length < 2) continue;
+      if (!forAi && (isWorkdayDedicatedField(sig) || isWorkdayDedicatedField(label))) continue;
       items.push({
         id: id++,
         el,
-        label: label.slice(0, 300),
+        label,
         type: el.type || el.tagName.toLowerCase(),
       });
     }
@@ -1585,17 +3848,24 @@
       'input[data-automation-id="file-upload-input-ref"], input[data-automation-id*="file-upload" i][type="file"]',
     );
     if (wd) return wd;
-    const inputs = [...document.querySelectorAll('input[type="file"]')];
+    const root = applicationFormRoot();
+    const inputs = [...root.querySelectorAll('input[type="file"]')];
     for (const inp of inputs) {
-      if (!isVisible(inp)) continue;
       const sig = fieldSignature(inp);
-      if (/resume|cv|curriculum|vitae|attachment/i.test(sig)) return inp;
+      if (/resume|cv|curriculum|vitae|attachment|drag|drop|upload/i.test(sig)) return inp;
+      const zone = inp.closest(
+        '[class*="upload"], [class*="resume"], [class*="file"], [class*="drop"], [data-ph-at-id*="resume" i], [data-ph-at-id*="cv" i]',
+      );
+      if (zone && /resume|cv|drag|drop|upload|attach/i.test(zone.textContent || '')) return inp;
     }
-    return inputs.find((inp) => isVisible(inp)) || null;
+    for (const inp of inputs) {
+      if (isVisible(inp)) return inp;
+    }
+    return inputs[0] || null;
   }
 
   async function uploadResume(matchId) {
-    const input = findResumeFileInput();
+    let input = findResumeFileInput();
     if (!input) {
       log('uploadResume: no file input found');
       return false;
@@ -1621,10 +3891,25 @@
       });
       const dt = new DataTransfer();
       dt.items.add(file);
-      input.files = dt.files;
+      try {
+        input.files = dt.files;
+      } catch {
+        const visible = input.closest('[class*="upload"], [class*="drop"]')?.querySelector(
+          'input[type="file"]',
+        );
+        if (visible && visible !== input) {
+          visible.files = dt.files;
+          input = visible;
+        }
+      }
       input.dispatchEvent(new Event('input', { bubbles: true }));
       input.dispatchEvent(new Event('change', { bubbles: true }));
+      const zone = input.closest('[class*="upload"], [class*="drop"], [class*="file"]');
+      if (zone) {
+        zone.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true }));
+      }
       log('uploadResume: attached', file.name);
+      fillUi.onField(input, 'Resume');
       return true;
     } catch (e) {
       log('uploadResume error:', e);
@@ -1735,24 +4020,80 @@
 
   async function runAutofill(opts = {}) {
     const options = { ...DEFAULT_OPTS, ...opts };
-    if (busy) return;
-    busy = true;
-    setCardBusy(true);
-    toast('Filling form...', 'ok', 2000);
+    if (busy && !options.fromFanOut) return { filled: 0, skipped: true, reason: 'busy' };
+    if (!options.fromFanOut) busy = true;
+    if (IS_TOP_FRAME && !options.fromFanOut) {
+      setCardBusy(true);
+      if (!fillUi.active) fillUi.begin(Math.max(countEmptyFillableFields(), 6));
+    }
+    workdaySkillsPassDone = false;
+    workdayAppQuestionsPassDone = false;
+    workdayVoluntaryPassDone = false;
+
+    let filled = 0;
+    let resumeUploaded = false;
+    let coverInjected = false;
+    let answered = 0;
+    let skipStatusMsg = '';
 
     try {
-      log('=== AUTOFILL START ===');
+      log(
+        '=== AUTOFILL START ===',
+        IS_TOP_FRAME ? 'top' : 'child',
+        location.href.slice(0, 90),
+      );
       const ping = await send('ping');
       log('ping result:', JSON.stringify(ping));
+      if (ping?.invalidated || /invalidated/i.test(ping?.error || '')) {
+        if (!options.fromFanOut && IS_TOP_FRAME) {
+          toast('Extension updated — refresh this page (Ctrl+Shift+R), then autofill again.', 'warn', 8000);
+          refreshCardState();
+        }
+        return { filled: 0, error: 'invalidated' };
+      }
       if (!ping?.connected) {
         log('NOT CONNECTED — token missing or invalid. ping:', JSON.stringify(ping));
-        toast(
-          'Not connected. Click the extension popup → Connect to Hyred first.',
-          'warn',
-          8000,
-        );
-        return;
+        if (!options.fromFanOut && IS_TOP_FRAME) {
+          toast(
+            'Not connected. Click the extension popup → Connect to Hyred first.',
+            'warn',
+            8000,
+          );
+        }
+        return { filled: 0, error: 'not_connected' };
       }
+
+      const signals = countFormSignals();
+      const wd = isWorkdayDom();
+      if (isConfirmationOrPostApplyPage()) {
+        skipStatusMsg =
+          'Confirmation page — go back to the application form step';
+        log('autofill skip: confirmation/post-apply page');
+        if (!options.fromFanOut && IS_TOP_FRAME) {
+          toast(
+            'This is a confirmation page — go back to the application form step, then autofill.',
+            'warn',
+            8000,
+          );
+        }
+        return { filled: 0, skipped: true, reason: 'confirmation_page' };
+      }
+
+      const emptyFields = countEmptyFillableFields();
+      const hasForm = emptyFields >= 1 || wd || looksLikeApplicationForm();
+      if (!hasForm) {
+        skipStatusMsg = 'No application form on this page';
+        log('autofill skip: empty frame signals=', signals, 'workdayDom=', wd);
+        if (!options.fromFanOut && IS_TOP_FRAME) {
+          toast('No application form found on this page.', 'warn', 6000);
+        }
+        return { filled: 0, skipped: true, reason: 'empty_frame' };
+      }
+
+      if (IS_TOP_FRAME && !options.fromFanOut && !fillUi.active) {
+        fillUi.begin(Math.max(emptyFields, 6));
+      }
+      if (IS_TOP_FRAME) fillUi.setPhase('Loading your profile…');
 
       const [profileRes, matchRes] = await Promise.all([
         send('profile'),
@@ -1763,15 +4104,48 @@
       log('match result:', JSON.stringify(matchRes?.ok), 'match:', !!matchRes?.match);
 
       if (!profileRes?.ok) {
-        toast(
-          `Couldn't load your profile: ${profileRes?.error ?? 'unknown'}`,
-          'err',
-          6000,
-        );
-        return;
+        if (!options.fromFanOut && IS_TOP_FRAME) {
+          toast(
+            `Couldn't load your profile: ${profileRes?.error ?? 'unknown'}`,
+            'err',
+            6000,
+          );
+        }
+        return { filled: 0, error: profileRes?.error };
       }
       const profile = profileRes.profile;
       const match = matchRes?.match ?? null;
+
+      const ps = profile?.profile_structure;
+      if (IS_TOP_FRAME && ps && isWorkdayExperienceStep()) {
+        if (ps.readiness === 'empty') {
+          toast(
+            'No work history in profile. Extension → Profile → Refresh from resume.',
+            'warn',
+            8000,
+          );
+        } else if (ps.readiness === 'review') {
+          toast(
+            'Work experience not confirmed. Open Profile tab → Mark as reviewed, then autofill again.',
+            'warn',
+            9000,
+          );
+        }
+      }
+
+      if (IS_TOP_FRAME) fillUi.setPhase('Filling application…');
+
+      const ats = detectAts();
+      log(
+        'ats:',
+        ats,
+        'host=',
+        HOST,
+        'workdayDom=',
+        wd,
+        'inputs=',
+        signals,
+      );
 
       log('profile keys:', Object.keys(profile || {}));
       log(
@@ -1784,56 +4158,61 @@
         profile.latest_company,
       );
 
-      const ats = detectAts();
-      let resumeUploaded = false;
-      if (options.resume && ats === 'lever') {
-        resumeUploaded = await uploadResume(match?.id);
-        if (resumeUploaded) await sleep(1200);
-      } else if (options.resume && ats === 'workday' && isWorkdayExperienceStep()) {
-        resumeUploaded = await uploadResume(match?.id);
-        if (resumeUploaded) await sleep(1500);
+      resumeUploaded = false;
+      if (options.resume) {
+        const fileInput = findResumeFileInput();
+        if (fileInput && !fileInput.files?.length) {
+          resumeUploaded = await uploadResume(match?.id);
+          if (resumeUploaded) await sleep(1200);
+        }
       }
 
-      const filled = options.commonFields
-        ? await fillAllFields(profile, match)
-        : 0;
+      filled = options.commonFields ? await fillAllFields(profile, match) : 0;
 
-      if (options.resume && !resumeUploaded) {
+      if (options.resume && !resumeUploaded && findResumeFileInput() && !findResumeFileInput().files?.length) {
         resumeUploaded = await uploadResume(match?.id);
       }
 
-      let coverInjected = false;
       if (options.coverLetter && match?.cover_letter) {
         coverInjected = injectCoverLetter(match.cover_letter);
       }
 
-      const answered = options.aiQuestions
-        ? await answerScreeningQuestions(match?.id, profile)
-        : 0;
+      if (options.aiQuestions) {
+        answered = await answerScreeningQuestions(match?.id, profile);
+      }
 
       attachApplyHook(match?.id);
 
-      const parts = [];
-      if (options.commonFields) {
-        parts.push(`Filled ${filled} field${filled === 1 ? '' : 's'}`);
-      }
-      if (resumeUploaded) parts.push('resume uploaded');
-      if (coverInjected) parts.push('cover letter injected');
-      if (answered) parts.push(`${answered} screening Q answered`);
-      if (match) parts.push(`match score ${match.score}`);
-      if (match?.missing_skills?.length) {
-        parts.push(
-          `missing: ${match.missing_skills.slice(0, 3).join(', ')}`,
+      if (!options.fromFanOut) {
+        const successCount = autofillSuccessCount(
+          filled,
+          resumeUploaded,
+          coverInjected,
+          answered,
+        );
+        const parts = [];
+        if (options.commonFields && filled) {
+          parts.push(`Filled ${filled} field${filled === 1 ? '' : 's'}`);
+        }
+        if (resumeUploaded) parts.push('resume uploaded');
+        if (coverInjected) parts.push('cover letter injected');
+        if (answered) parts.push(`${answered} screening Q answered`);
+        if (!parts.length && emptyFields === 0) {
+          parts.push('All fields already filled on this page');
+        }
+        if (match) parts.push(`match score ${match.score}`);
+        if (match?.missing_skills?.length) {
+          parts.push(`missing: ${match.missing_skills.slice(0, 3).join(', ')}`);
+        }
+        toast(
+          parts.join(' · ') ||
+            (successCount
+              ? 'Autofill complete'
+              : 'Nothing to fill — open the application form step first'),
+          successCount ? 'ok' : 'warn',
+          6500,
         );
       }
-      toast(
-        parts.join(' · ') +
-          (filled < 3
-            ? ' · Tip: complete Settings → Application Profile on Hyred for more fields'
-            : ''),
-        filled || coverInjected || answered || resumeUploaded ? 'ok' : 'warn',
-        5500,
-      );
       log(
         '=== AUTOFILL END === filled:',
         filled,
@@ -1844,12 +4223,36 @@
         'answered:',
         answered,
       );
+      return { filled, resumeUploaded, coverInjected, answered };
     } catch (e) {
-      toast(`Autofill failed: ${e?.message ?? e}`, 'err', 6000);
+      if (!options.fromFanOut && IS_TOP_FRAME) {
+        toast(`Autofill failed: ${e?.message ?? e}`, 'err', 6000);
+      }
       log('autofill error', e);
+      return { filled: 0, error: String(e?.message ?? e) };
     } finally {
-      busy = false;
-      setCardBusy(false);
+      if (!options.fromFanOut) busy = false;
+      if (IS_TOP_FRAME && !options.fromFanOut) {
+        const successCount = autofillSuccessCount(
+          filled,
+          resumeUploaded,
+          coverInjected,
+          answered,
+        );
+        let statusMsg = skipStatusMsg;
+        if (!statusMsg && successCount === 0 && isConfirmationOrPostApplyPage()) {
+          statusMsg = 'Confirmation page — open the application form first';
+        } else if (!statusMsg && successCount === 0) {
+          statusMsg = 'No empty fields — try the application form step';
+        } else if (!statusMsg && resumeUploaded && filled === 0) {
+          statusMsg = 'Resume uploaded · form fields already filled';
+        }
+        if (fillUi.active || successCount > 0 || skipStatusMsg) {
+          fillUi.end(successCount, successCount > 0, statusMsg);
+        }
+        setCardBusy(false);
+        if (!options.fromFanOut) refreshCardState();
+      }
     }
   }
 
@@ -1857,6 +4260,7 @@
   // Collapsed pill — small launcher shown after the card is dismissed.
   // -------------------------------------------------------------------
   function mountFab() {
+    if (!IS_TOP_FRAME) return;
     if (document.getElementById('jobradar-fab')) return;
     const fab = document.createElement('button');
     fab.id = 'jobradar-fab';
@@ -1893,6 +4297,7 @@
   }
 
   function mountCard() {
+    if (!IS_TOP_FRAME) return;
     if (cardDismissed || document.getElementById('jobradar-card')) return;
     const card = document.createElement('div');
     card.id = 'jobradar-card';
@@ -1909,6 +4314,13 @@
         <label><input type="checkbox" data-opt="commonFields" checked /> Fields</label>
         <label><input type="checkbox" data-opt="aiQuestions" checked /> AI answers</label>
       </div>
+      <div class="jr-fill-progress jr-hidden">
+        <div class="jr-progress-row">
+          <span class="jr-spinner" aria-hidden="true"></span>
+          <span class="jr-progress-text">Preparing…</span>
+        </div>
+        <div class="jr-progress-track"><span class="jr-progress-fill"></span></div>
+      </div>
       <button class="jr-fill-btn" type="button">Autofill this form</button>
       <div class="jr-card-hint"></div>
     `;
@@ -1920,7 +4332,13 @@
       mountFab();
     });
     const fillBtn = card.querySelector('.jr-fill-btn');
-    fillBtn.addEventListener('click', () => runAutofill(optsFromCard()));
+    fillBtn.addEventListener('click', () => {
+      if (busy || autofillInFlight) return;
+      setCardBusy(true);
+      fillUi.begin(Math.max(countEmptyFillableFields(), 8));
+      fillUi.setPhase('Starting autofill…');
+      triggerAutofillAllFrames(optsFromCard());
+    });
 
     requestAnimationFrame(() => card.classList.add('jr-show'));
     log('Copilot card mounted');
@@ -1936,6 +4354,14 @@
     const fillBtn = card.querySelector('.jr-fill-btn');
 
     const ping = await send('ping');
+    if (ping?.invalidated || /invalidated/i.test(ping?.error || '')) {
+      statusEl.textContent = 'Extension updated';
+      statusEl.className = 'jr-card-status jr-warn';
+      hintEl.textContent = 'Refresh this page (Ctrl+Shift+R), then autofill again.';
+      fillBtn.disabled = false;
+      fillBtn.textContent = 'Refresh page first';
+      return;
+    }
     if (!ping?.connected) {
       statusEl.textContent = 'Not connected';
       statusEl.className = 'jr-card-status jr-warn';
@@ -1969,8 +4395,10 @@
   // -------------------------------------------------------------------
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg?.type === 'TRIGGER_AUTOFILL') {
-      runAutofill(msg.payload?.options || {});
-      sendResponse({ ok: true });
+      runAutofill(msg.payload?.options || {})
+        .then((res) => sendResponse({ ok: true, ...res }))
+        .catch((e) => sendResponse({ ok: false, error: String(e?.message ?? e) }));
+      return true;
     }
     return false;
   });
@@ -1980,12 +4408,10 @@
   // Pops the Copilot card up automatically (once) the moment a form appears.
   // -------------------------------------------------------------------
   function maybeMount() {
+    if (!IS_TOP_FRAME) return;
     if (cardDismissed) return;
     if (document.getElementById('jobradar-card')) return;
-    const ats = detectAts();
-    if (ats !== 'generic' || looksLikeApplicationForm()) {
-      mountCard();
-    }
+    if (shouldShowCopilotCard()) mountCard();
   }
 
   const EXT_VERSION = chrome.runtime?.getManifest?.().version || '?';
