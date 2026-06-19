@@ -1059,7 +1059,8 @@
         s,
       ) ||
       (/facebook/.test(s) && /willing|share/.test(s)) ||
-      (/linked/.test(s) && /willing|share|profile with us/i.test(s))
+      (/linked/.test(s) && /willing|share|profile with us/i.test(s)) ||
+      /notice period|notice with your employer|current notice/.test(s)
     );
   }
 
@@ -1692,38 +1693,67 @@
     return false;
   }
 
-  function matchNoticePeriod(optionText, profileValue) {
-    const opt = String(optionText || '').toLowerCase();
-    const val = String(profileValue || '').toLowerCase();
-    if (/immediate|0 day|no notice|same day|instant/.test(val)) {
-      return /immediate|0 day|no notice|same day|instant|available now/.test(opt);
+  function isImmediateNoticeOption(optText) {
+    return /immediate|immediately|0\s*day|no notice|available now|same day|without notice|not applicable.*immediate/i.test(
+      String(optText || '').toLowerCase(),
+    );
+  }
+
+  function scoreNoticePeriodOption(optionText, profileValue) {
+    const opt = String(optionText || '').toLowerCase().trim();
+    const val = String(profileValue || '').toLowerCase().trim();
+    const isImmProfile = /immediate|0 day|no notice|same day|instant/.test(val);
+
+    if (isImmediateNoticeOption(opt)) {
+      return isImmProfile ? 100 : -1000;
     }
+    if (isImmProfile) return 0;
+
     const valDays = parseInt(val.match(/\d+/)?.[0] || '', 10);
-    if (!valDays) return opt.includes(val);
+    if (!valDays) return opt.includes(val) ? 50 : 0;
+
+    if (opt.includes(`${valDays} day`) || opt.includes(`${valDays}-day`)) return 98;
+    if (opt === String(valDays) || opt.startsWith(`${valDays} `)) return 96;
+
     const nums = (opt.match(/\d+/g) || []).map(Number);
-    if (nums.length >= 2) return valDays >= nums[0] && valDays <= nums[1];
-    if (nums.length === 1) return Math.abs(valDays - nums[0]) <= 15 || valDays <= nums[0];
-    return opt.includes(val);
+    if (nums.length >= 2) {
+      const lo = Math.min(nums[0], nums[1]);
+      const hi = Math.max(nums[0], nums[1]);
+      if (valDays >= lo && valDays <= hi) {
+        return 90 - (hi - lo);
+      }
+      return 0;
+    }
+    if (nums.length === 1) {
+      const diff = Math.abs(valDays - nums[0]);
+      if (diff <= 5) return 95 - diff;
+      if (diff <= 15) return 70 - diff;
+      return 0;
+    }
+
+    if (valDays === 30 && /1\s*month|one month|thirty/.test(opt)) return 88;
+    if (valDays === 60 && /2\s*month|two month|sixty/.test(opt)) return 88;
+    if (valDays === 90 && /3\s*month|three month|ninety/.test(opt)) return 88;
+    if (valDays === 15 && /2\s*week|fifteen/.test(opt)) return 88;
+    return 0;
+  }
+
+  function matchNoticePeriod(optionText, profileValue) {
+    return scoreNoticePeriodOption(optionText, profileValue) >= 50;
   }
 
   function noticePeriodDropdownPrefs(raw) {
     const val = String(raw || '30 days').toLowerCase().trim();
-    const prefs = [];
     if (/immediate|0 day|no notice|same day|instant/.test(val)) {
       return ['immediate', '0 days', 'no notice', 'available immediately', 'same day'];
     }
     const days = parseInt(val.match(/\d+/)?.[0] || '30', 10);
-    prefs.push(`${days} days`, `${days} day`, String(days));
-    if (days === 30) prefs.push('1 month', 'thirty', '30 calendar');
-    if (days === 15) prefs.push('2 weeks', 'fifteen', '15 calendar');
-    if (days === 45) prefs.push('45 days', 'forty-five');
-    if (days === 60) prefs.push('2 month', '60 days', 'sixty');
-    if (days === 90) prefs.push('3 month', '90 days', 'ninety');
-    if (days <= 15) prefs.push('0-15', '15 days or less', 'within 15', 'less than 15');
-    if (days <= 30) prefs.push('15-30', '15 to 30', 'within 30', 'less than 30');
-    if (days <= 45) prefs.push('30-45', 'within 45');
-    if (days <= 60) prefs.push('45-60', 'within 60', '2 months');
-    if (days <= 90) prefs.push('60-90', 'within 90', '3 months');
+    const prefs = [`${days} days`, `${days} day`, String(days)];
+    if (days === 30) prefs.push('1 month', 'thirty', '30 calendar', '30-45', '15-30', '15 to 30');
+    if (days === 15) prefs.push('2 weeks', 'fifteen', '15 calendar', '0-15', '15 days or less');
+    if (days === 45) prefs.push('45 days', 'forty-five', '30-45');
+    if (days === 60) prefs.push('60 days', 'sixty', '2 month', '2 months', '45-60', '45 to 60');
+    if (days === 90) prefs.push('90 days', 'ninety', '3 month', '3 months', '60-90', '61-90');
     return [...new Set(prefs)];
   }
 
@@ -1732,24 +1762,42 @@
     const value = String(profileValue || '30 days').trim();
     const options = await openWorkdayOptions(trigger);
     if (!options.length) return false;
-    let hit = options.find((o) => matchNoticePeriod(o.textContent, value));
-    if (!hit) {
-      for (const p of noticePeriodDropdownPrefs(value)) {
-        hit = options.find((o) => optionMatchesPref(o.textContent, p));
-        if (hit) break;
+
+    let best = null;
+    let bestScore = 0;
+    for (const o of options) {
+      const score = scoreNoticePeriodOption(o.textContent, value);
+      if (score > bestScore) {
+        bestScore = score;
+        best = o;
       }
     }
-    if (!hit) {
+
+    if (!best || bestScore < 50) {
+      for (const p of noticePeriodDropdownPrefs(value)) {
+        const hit = options.find((o) => optionMatchesPref(o.textContent, p));
+        if (hit && !isImmediateNoticeOption(hit.textContent)) {
+          best = hit;
+          bestScore = 50;
+          break;
+        }
+      }
+    }
+
+    if (!best || bestScore < 50) {
       trigger.click();
+      log('workday:notice-period no match for', value, 'options:', options.map((o) => o.textContent?.trim()).slice(0, 8));
       return false;
     }
+
     try {
-      hit.scrollIntoView({ block: 'center' });
+      best.scrollIntoView({ block: 'center' });
     } catch {
       /* ignore */
     }
-    hit.click();
+    best.click();
     await sleep(220);
+    log('workday:notice-period picked', best.textContent?.trim(), 'for profile', value, 'score', bestScore);
     return true;
   }
 
