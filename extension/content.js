@@ -2297,7 +2297,167 @@
     );
   }
 
-  async function fillWorkdayLanguages(profile, filledSet) {
+  function findWorkdayLanguageRows() {
+    const roots = new Set();
+    for (const block of document.querySelectorAll(
+      '[data-automation-id^="languages-"], [data-automation-id^="language-"]',
+    )) {
+      const aid = block.getAttribute('data-automation-id') || '';
+      if (/^languages?-\d+$/i.test(aid)) roots.add(block);
+    }
+    if (!roots.size) {
+      for (const h of document.querySelectorAll('h2, h3, h4, legend, [data-automation-id="richText"]')) {
+        const t = (h.textContent || '').replace(/\s+/g, ' ').trim();
+        if (!/^languages?\s+\d+/i.test(t)) continue;
+        const container =
+          h.closest('[data-automation-id^="languages-"]') ||
+          h.closest('[data-automation-id^="language-"]') ||
+          h.closest('[role="group"]') ||
+          h.parentElement?.parentElement;
+        if (container) roots.add(container);
+      }
+    }
+    if (!roots.size) {
+      for (const field of document.querySelectorAll('[data-automation-id^="formField"]')) {
+        const label = workdayFieldLabel(field).toLowerCase().trim();
+        if (!/^language\s*\*?$/.test(label)) continue;
+        let node = field;
+        for (let d = 0; d < 10 && node; d++) {
+          const text = (node.textContent || '').toLowerCase();
+          if (/comprehension/.test(text) && /speaking/.test(text) && /reading/.test(text)) {
+            roots.add(node);
+            break;
+          }
+          node = node.parentElement;
+        }
+      }
+    }
+    const sorted = [...roots].sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+    return sorted.filter((a, i) => {
+      for (let j = 0; j < sorted.length; j++) {
+        if (i !== j && a.contains(sorted[j]) && a !== sorted[j]) return false;
+      }
+      return true;
+    });
+  }
+
+  async function clickWorkdayLanguagesAdd() {
+    let btn =
+      findWorkdaySectionAddButton(/^languages$/i) ||
+      findWorkdaySectionAddButton(/^language$/i) ||
+      findWorkdaySectionAddButton(/languages/i);
+
+    if (!btn) {
+      const langHeading = [...document.querySelectorAll('h2, h3, h4, legend')].find((h) =>
+        /languages/i.test(h.textContent || ''),
+      );
+      if (langHeading) {
+        const allAdd = [...document.querySelectorAll(
+          '[data-automation-id="add-button"], button, [role="button"]',
+        )].filter((b) => isVisible(b) && isWorkdayAddButton(b));
+        const y = langHeading.getBoundingClientRect().top;
+        const near = allAdd.filter((b) => {
+          const by = b.getBoundingClientRect().top;
+          return by >= y - 30 && by < y + 500;
+        });
+        if (near.length) btn = near[near.length - 1];
+      }
+    }
+
+    if (!btn) {
+      log('workday:languages add button not found');
+      return false;
+    }
+    log('workday:languages clicking', workdayAddButtonLabel(btn) || btn.getAttribute('data-automation-id'));
+    await workdayClick(btn);
+    await sleep(1000);
+    return true;
+  }
+
+  const WORKDAY_FLUENT_LEVEL_PREFS = [
+    '4 - fluent',
+    'fluent',
+    '4 fluent',
+    'native',
+    'full professional',
+    'professional working',
+    'expert',
+    'advanced',
+    '5',
+    '4',
+  ];
+
+  function workdayLanguageDropdownTrigger(field) {
+    return field.querySelector(
+      'button[aria-haspopup="listbox"], [role="combobox"], button[data-automation-id], [data-automation-id][aria-haspopup="listbox"]',
+    );
+  }
+
+  function workdayDropdownNeedsFill(trigger) {
+    if (!trigger || !isVisible(trigger)) return false;
+    const t = (trigger.textContent || '').toLowerCase().trim();
+    return !t || /select one|search|^choose|^\s*$/.test(t);
+  }
+
+  async function fillWorkdayLanguageRow(scope, langName, filledSet) {
+    let n = 0;
+    const langPrefs = [
+      langName.toLowerCase(),
+      langName.split(/\s+/)[0].toLowerCase(),
+      langName.slice(0, 3).toLowerCase(),
+    ].filter(Boolean);
+
+    const fields = scope.matches('[data-automation-id^="formField"]')
+      ? [scope]
+      : [...scope.querySelectorAll('[data-automation-id^="formField"]')];
+
+    for (const field of fields) {
+      const label = workdayFieldLabel(field).toLowerCase().trim();
+      const aid = (field.getAttribute('data-automation-id') || '').toLowerCase();
+
+      if (
+        /^language\s*\*?$/.test(label) ||
+        (aid.includes('language') && !/programming|technical/.test(label))
+      ) {
+        const trigger = workdayLanguageDropdownTrigger(field);
+        if (trigger && workdayDropdownNeedsFill(trigger) && !filledSet.has(trigger)) {
+          const ok = await setWorkdayDropdownByPrefs(trigger, langPrefs);
+          if (ok) {
+            filledSet.add(trigger);
+            n++;
+            log('workday:language name', langName);
+          }
+        }
+        continue;
+      }
+
+      if (/fluent in this language|native speaker|i am fluent/i.test(label)) {
+        const cb = field.querySelector('input[type="checkbox"]');
+        if (cb && !cb.checked && !filledSet.has(cb)) {
+          cb.click();
+          filledSet.add(cb);
+          n++;
+          log('workday:language fluent checkbox', langName);
+        }
+        continue;
+      }
+
+      if (/^(comprehension|overall|reading|speaking|writing)\s*\*?$/.test(label)) {
+        const trigger = workdayLanguageDropdownTrigger(field);
+        if (trigger && workdayDropdownNeedsFill(trigger) && !filledSet.has(trigger)) {
+          const ok = await setWorkdayDropdownStrict(trigger, WORKDAY_FLUENT_LEVEL_PREFS);
+          if (ok) {
+            filledSet.add(trigger);
+            n++;
+            log('workday:language', label, 'fluent');
+          }
+        }
+      }
+    }
+    return n;
+  }
+
+  async function fillWorkdayLanguagesMultiselect(profile, filledSet) {
     const langs = (profile.languages || ['English', 'Hindi'])
       .map((s) => String(s).trim())
       .filter(Boolean)
@@ -2310,10 +2470,7 @@
         !/programming|technical skill|field of study|skill/i.test(sig)
       );
     });
-    if (!inputs.length) {
-      log('workday:languages no multiselect found');
-      return 0;
-    }
+    if (!inputs.length) return 0;
     let n = 0;
     for (const input of inputs) {
       if (filledSet.has(input) || workdayMultiSelectFilled(workdayMsFieldRoot(input), input)) continue;
@@ -2321,10 +2478,41 @@
       if (ok) {
         filledSet.add(input);
         n++;
-        log('workday:languages', langs.join(', '));
+        log('workday:languages multiselect', langs.join(', '));
       }
     }
     return n;
+  }
+
+  async function fillWorkdayLanguages(profile, filledSet) {
+    const langs = (profile.languages || ['English', 'Hindi'])
+      .map((s) => String(s).trim())
+      .filter(Boolean)
+      .slice(0, 6);
+    if (!langs.length) return 0;
+
+    let rows = findWorkdayLanguageRows();
+    if (rows.length) {
+      log('workday:languages panel rows found', rows.length);
+      let n = 0;
+      for (let i = 0; i < langs.length; i++) {
+        while (rows.length <= i) {
+          const added = await clickWorkdayLanguagesAdd();
+          if (!added) break;
+          await sleep(700);
+          rows = findWorkdayLanguageRows();
+          if (rows.length <= i) break;
+        }
+        const row = findWorkdayLanguageRows()[i];
+        if (!row) break;
+        n += await fillWorkdayLanguageRow(row, langs[i], filledSet);
+        log('workday:languages row', i + 1, langs[i]);
+      }
+      if (n) return n;
+    }
+
+    log('workday:languages no panel — trying multiselect fallback');
+    return fillWorkdayLanguagesMultiselect(profile, filledSet);
   }
 
   async function fillWorkdaySkills(profile, filledSet, match) {
@@ -3250,11 +3438,6 @@
 
       if (/source--source|how did you hear|hear about us|referral source/.test(sig)) {
         n += await fillWorkdaySourceLinkedIn(input, filledSet);
-      } else if (
-        /\blanguages?\b/i.test(sig) &&
-        !/programming|technical skill|field of study|skill/i.test(sig)
-      ) {
-        n += await fillWorkdayLanguages(profile, filledSet);
       } else if (/countryphonecode|phoneNumber--countryPhoneCode|country phone code/.test(sig)) {
         const country = profile.location?.country || profile.work_auth_country;
         if (!country) {

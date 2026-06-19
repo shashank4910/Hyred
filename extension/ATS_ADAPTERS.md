@@ -33,7 +33,8 @@ extension/
       index.js             # export { id, detect, fill }
       experience.js        # rows, dates, currentlyWorkHere
       education.js         # school, GPA, degree
-      multiselect.js       # skills, languages, source
+      multiselect.js       # skills, source (chip multiselect)
+      languages.js         # Languages 1 panel: dropdown + fluent + proficiency
       screening.js         # application questions, EEO
     lever/index.js
     greenhouse/index.js
