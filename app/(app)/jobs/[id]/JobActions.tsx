@@ -233,6 +233,7 @@ export function JobActions({
       }
       if (data.filename_base) setFilenameBase(data.filename_base);
       setHasTailoredResume(true);
+      notifyExtensionApplyHandoff(true);
       const newScore = data.keywords?.ats_match_score ?? 0;
       toast.success(`ATS Match Score: ${newScore}%`, { id });
     } catch (e) {

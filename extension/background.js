@@ -465,10 +465,14 @@ const handlers = {
     return { ok: true, profile: r.data.profile };
   },
 
-  async matchByUrl({ url }) {
-    const r = await api(
-      `/api/extension/match-by-url?url=${encodeURIComponent(url)}`,
-    );
+  async matchByUrl({ url, title, company, code }) {
+    const qs = new URLSearchParams();
+    if (url) qs.set('url', url);
+    if (title) qs.set('title', title);
+    if (company) qs.set('company', company);
+    if (code) qs.set('code', code);
+    if (!qs.toString()) return { ok: false, error: 'url or hints required' };
+    const r = await api(`/api/extension/match-by-url?${qs.toString()}`);
     if (!r.ok) return { ok: false, error: r.data?.error ?? `HTTP ${r.status}` };
     return { ok: true, match: r.data.match };
   },
@@ -482,9 +486,9 @@ const handlers = {
     return { ok: true, match: r.data.match };
   },
 
-  async resolveMatch({ url }) {
-    if (url) {
-      const byUrl = await handlers.matchByUrl({ url });
+  async resolveMatch({ url, title, company, code }) {
+    if (url || title || code || company) {
+      const byUrl = await handlers.matchByUrl({ url, title, company, code });
       if (byUrl.ok && byUrl.match) {
         return { ok: true, match: byUrl.match, via: 'url' };
       }
@@ -501,10 +505,18 @@ const handlers = {
   },
 
   async storeApplyHandoff(payload = {}) {
+    const existingRes = await handlers.getApplyHandoff();
+    const existing = existingRes.handoff;
     const handoff = {
-      matchId: payload.matchId,
-      resumeVariant: payload.hasTailoredResume ? 'tailored' : 'default',
-      hasTailoredResume: !!payload.hasTailoredResume,
+      matchId: payload.matchId ?? existing?.matchId,
+      resumeVariant:
+        payload.hasTailoredResume != null
+          ? payload.hasTailoredResume
+            ? 'tailored'
+            : 'default'
+          : existing?.resumeVariant || 'default',
+      hasTailoredResume:
+        payload.hasTailoredResume ?? existing?.hasTailoredResume ?? false,
       at: Date.now(),
     };
     await new Promise((resolve) =>
