@@ -459,38 +459,11 @@ async function fetchJson(url, opts) {
 }
 
 // Send a message to the background service worker and await a response.
-// Always reads chrome.runtime.lastError (otherwise Chrome logs an "Unchecked
-// runtime.lastError: Could not establish connection" warning) and retries once
-// when the MV3 worker was briefly asleep / the channel closed mid-flight.
-const sendBg = (type, payload, _retried) =>
-  new Promise((resolve) => {
-    let settled = false;
-    const done = (v) => {
-      if (settled) return;
-      settled = true;
-      resolve(v);
-    };
-    try {
-      chrome.runtime.sendMessage({ type, payload }, (res) => {
-        const err = chrome.runtime.lastError;
-        if (err) {
-          const transient =
-            /Receiving end does not exist|message channel closed|message port closed/i.test(
-              err.message || '',
-            );
-          if (transient && !_retried) {
-            setTimeout(() => done(sendBg(type, payload, true)), 150);
-            return;
-          }
-          done({ ok: false, error: err.message || 'no response' });
-          return;
-        }
-        done(res ?? { ok: false, error: 'no response' });
-      });
-    } catch (e) {
-      done({ ok: false, error: String(e?.message ?? e) });
-    }
-  });
+const sendBg =
+  typeof __HyredSendBg === 'function'
+    ? __HyredSendBg
+    : (type, payload) =>
+        Promise.resolve({ ok: false, error: 'bg-messaging.js not loaded' });
 
 // Try to auto-connect via background.js strategies:
 //   1. Stored token → verify
@@ -554,7 +527,9 @@ async function initiateConnect() {
   }
 
   statusEl.textContent =
-    bg.error === 'auth timeout or no token found'
+    bg.workerUnavailable
+      ? 'Extension is waking up — wait 2s, click Connect again, or reload at chrome://extensions'
+      : bg.error === 'auth timeout or no token found'
       ? 'Not connected. Log into Hyred in the tab that opened, then try again.'
       : bg.error || 'Connection failed. Try again or use app password.';
 }
@@ -764,7 +739,17 @@ $('#btn-autofill-tab').addEventListener('click', async () => {
     try {
       await chrome.scripting.executeScript({
         target: { tabId: tab.id, allFrames: true },
-        files: ['autofill-engine.js', 'content.js'],
+        files: [
+          'bg-messaging.js',
+          'autofill-engine.js',
+          'ats-config/workday.js',
+          'ats-config/greenhouse.js',
+          'ats-config/lever.js',
+          'ats-config/ashby.js',
+          'ats-config/universal.js',
+          'ats-fill.js',
+          'content.js',
+        ],
       });
     } catch (e) {
       throw new Error(

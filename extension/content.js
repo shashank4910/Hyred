@@ -24,41 +24,16 @@
   // -------------------------------------------------------------------
   // Send a message to the background and await the response.
   // -------------------------------------------------------------------
-  const send = (type, payload, _retried) =>
-    new Promise((resolve) => {
-      let settled = false;
-      const done = (v) => {
-        if (settled) return;
-        settled = true;
-        resolve(v);
-      };
-      try {
-        chrome.runtime.sendMessage({ type, payload }, (res) => {
-          const err = chrome.runtime.lastError;
-          if (err) {
-            const transient =
-              /Receiving end does not exist|message channel closed|message port closed/i.test(
-                err.message || '',
-              );
-            if (transient && !_retried) {
-              setTimeout(() => done(send(type, payload, true)), 150);
-              return;
-            }
-            const invalidated = /Extension context invalidated/i.test(err.message || '');
-            done({
-              ok: false,
-              connected: false,
-              invalidated,
-              error: err.message || 'no response',
-            });
-            return;
-          }
-          done(res ?? { ok: false, error: 'no response' });
-        });
-      } catch (e) {
-        done({ ok: false, error: String(e?.message ?? e) });
+  async function send(type, payload) {
+    if (typeof __HyredSendBg === 'function') {
+      const res = await __HyredSendBg(type, payload);
+      if (res && /Extension context invalidated/i.test(res.error || '')) {
+        return { ...res, invalidated: true, connected: false };
       }
-    });
+      return res;
+    }
+    return { ok: false, error: 'bg-messaging.js not loaded', connected: false };
+  }
 
   // -------------------------------------------------------------------
   // Toast helpers — minimal floating notification.
@@ -5329,6 +5304,10 @@
     });
     const fillBtn = card.querySelector('.jr-fill-btn');
     fillBtn.addEventListener('click', () => {
+      if (card.dataset.workerUnavailable) {
+        refreshCardState();
+        return;
+      }
       if (busy || autofillInFlight) return;
       setCardBusy(true);
       fillUi.begin(Math.max(countEmptyFillableFields(), 8));
@@ -5359,13 +5338,17 @@
       return;
     }
     if (!ping?.connected) {
-      statusEl.textContent = 'Not connected';
+      statusEl.textContent = ping?.workerUnavailable ? 'Extension waking up' : 'Not connected';
       statusEl.className = 'jr-card-status jr-warn';
-      hintEl.textContent = 'Open the Hyred extension icon and click Connect.';
-      fillBtn.disabled = true;
-      fillBtn.textContent = 'Connect Hyred first';
+      hintEl.textContent = ping?.workerUnavailable
+        ? 'Wait a moment, then open the Hyred popup and click Connect. If it persists, reload the extension at chrome://extensions.'
+        : 'Open the Hyred extension icon and click Connect.';
+      fillBtn.disabled = !ping?.workerUnavailable;
+      fillBtn.textContent = ping?.workerUnavailable ? 'Retry connection' : 'Connect Hyred first';
+      card.dataset.workerUnavailable = ping?.workerUnavailable ? '1' : '';
       return;
     }
+    card.dataset.workerUnavailable = '';
 
     statusEl.textContent = 'Ready to autofill';
     statusEl.className = 'jr-card-status jr-ok';
