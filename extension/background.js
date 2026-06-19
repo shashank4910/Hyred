@@ -3,17 +3,6 @@
 // The service worker is the single network-call hub. Content scripts
 // post messages here to keep CORS and auth concerns out of the page world.
 
-/** @type {Map<string, { base64?: string, contentType: string, filename: string, match_id?: string|null, variant?: string, at: number }>} */
-const previewCache = new Map();
-const PREVIEW_TTL_MS = 10 * 60 * 1000;
-
-function prunePreviewCache() {
-  const cutoff = Date.now() - PREVIEW_TTL_MS;
-  for (const [id, item] of previewCache) {
-    if (!item?.at || item.at < cutoff) previewCache.delete(id);
-  }
-}
-
 async function getCreds() {
   return new Promise((resolve) => {
     chrome.storage.local.get(['jr_url', 'jr_token'], (v) => resolve(v || {}));
@@ -575,85 +564,27 @@ const handlers = {
     };
   },
 
-  async openPdfPreviewTab({ base64, contentType, filename, match_id, variant }) {
-    if (!base64) return { ok: false, error: 'no pdf data' };
-    prunePreviewCache();
-    const previewId = `jr_preview_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    previewCache.set(previewId, {
-      base64,
-      contentType: contentType || 'application/pdf',
-      filename: filename || 'resume.pdf',
-      match_id: match_id || null,
-      variant: variant || 'default',
-      at: Date.now(),
-    });
-    const url = chrome.runtime.getURL(
-      `preview.html?id=${encodeURIComponent(previewId)}`,
-    );
-    await chrome.tabs.create({ url, active: true });
-    return { ok: true };
-  },
-
-  async getPreviewPdf({ previewId } = {}) {
-    if (!previewId) return { ok: false, error: 'missing preview id' };
-    prunePreviewCache();
-    let item = previewCache.get(previewId);
-    if (!item?.base64) {
-      const parts = [];
-      if (item?.match_id) parts.push(`match_id=${encodeURIComponent(item.match_id)}`);
-      if (item?.variant) parts.push(`variant=${encodeURIComponent(item.variant)}`);
-      if (parts.length) {
-        const r = await api(`/api/extension/resume?${parts.join('&')}`);
-        if (r.ok && r.data?.data_base64) {
-          item = {
-            ...(item || {}),
-            base64: r.data.data_base64,
-            contentType: r.data.content_type || 'application/pdf',
-            filename: r.data.filename || 'resume.pdf',
-            at: Date.now(),
-          };
-          previewCache.set(previewId, item);
-        }
-      }
-    }
-    if (!item?.base64) {
-      return {
-        ok: false,
-        error: 'Preview expired. Close this tab and click Preview again.',
-      };
-    }
-    return {
-      ok: true,
-      base64: item.base64,
-      contentType: item.contentType || 'application/pdf',
-      filename: item.filename || 'resume.pdf',
-    };
-  },
-
   async previewResume({ match_id, variant, preview_url } = {}) {
     if (preview_url && variant === 'tailored' && /^https?:\/\//i.test(preview_url)) {
       try {
         await chrome.tabs.create({ url: preview_url, active: true });
         return { ok: true };
       } catch {
-        /* fall through to API-built PDF */
+        /* fall through to signed preview link */
       }
     }
-    const parts = [];
-    if (match_id) parts.push(`match_id=${encodeURIComponent(match_id)}`);
-    if (variant) parts.push(`variant=${encodeURIComponent(variant)}`);
-    const q = parts.length ? `?${parts.join('&')}` : '';
-    const r = await api(`/api/extension/resume${q}`);
-    if (!r.ok || !r.data?.data_base64) {
+    const r = await api('/api/extension/resume/preview-link', {
+      method: 'POST',
+      body: JSON.stringify({
+        match_id: match_id || null,
+        variant: variant === 'tailored' ? 'tailored' : 'default',
+      }),
+    });
+    if (!r.ok || !r.data?.url) {
       return { ok: false, error: r.data?.error ?? `HTTP ${r.status}` };
     }
-    return handlers.openPdfPreviewTab({
-      base64: r.data.data_base64,
-      contentType: r.data.content_type,
-      filename: r.data.filename,
-      match_id,
-      variant,
-    });
+    await chrome.tabs.create({ url: r.data.url, active: true });
+    return { ok: true };
   },
 
   async answerQuestion({ question, match_id, page_text, max_words }) {
