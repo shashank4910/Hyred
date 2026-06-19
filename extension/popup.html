@@ -41,8 +41,15 @@
       </div>
 
       <div id="panel-profile" class="tab-panel hidden">
-        <p class="section-label">Copy from your Hyred profile</p>
-        <div id="profile-copy" class="profile-copy"></div>
+        <div id="profile-structure-badge" class="structure-badge"></div>
+        <div id="profile-structured" class="profile-structured"></div>
+        <div class="profile-actions">
+          <button id="btn-refresh-structure" class="btn-ghost" type="button">Refresh from resume</button>
+          <button id="btn-save-edits" class="btn-ghost" type="button">Save edits</button>
+          <button id="btn-mark-reviewed" class="btn-primary subtle" type="button">Mark as reviewed</button>
+        </div>
+        <p id="profile-structure-msg" class="error"></p>
+        <a id="link-hyred-profile" class="btn-link" href="https://www.hyred.in/apply-profile" target="_blank" rel="noopener">Edit full profile on Hyred →</a>
       </div>
 
       <div id="panel-insights" class="tab-panel hidden">

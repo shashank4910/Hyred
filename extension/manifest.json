@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "Hyred Autofill",
-  "version": "0.9.1",
+  "version": "0.12.6",
   "description": "AI-powered job application autofill, cover letter injection, and screening Q&A. Pairs with your Hyred app.",
-  "permissions": ["storage", "activeTab", "scripting", "tabs", "cookies"],
+  "permissions": ["storage", "activeTab", "scripting", "tabs", "cookies", "webNavigation"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js",
@@ -13,10 +13,19 @@
     {
       "matches": ["<all_urls>"],
       "exclude_matches": ["*://hyred.in/*", "*://www.hyred.in/*"],
-      "js": ["autofill-engine.js", "content.js"],
+      "js": [
+        "autofill-engine.js",
+        "ats-config/workday.js",
+        "ats-config/greenhouse.js",
+        "ats-config/lever.js",
+        "ats-config/ashby.js",
+        "ats-config/universal.js",
+        "ats-fill.js",
+        "content.js"
+      ],
       "css": ["styles.css"],
       "run_at": "document_idle",
-      "all_frames": false
+      "all_frames": true
     },
     {
       "matches": ["*://hyred.in/*", "*://www.hyred.in/*"],
