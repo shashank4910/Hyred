@@ -44,6 +44,7 @@ export type AutofillProfile = {
   relocation_cities?: string;
   willing_to_travel?: string;
   work_auth_country?: string;
+  work_permit_type?: string;
   authorized_to_work?: boolean;
   require_sponsorship?: boolean;
   gender?: string;
@@ -84,6 +85,7 @@ export type ApplyProfileRow = {
   relocation_cities?: string | null;
   willing_to_travel?: string | null;
   work_auth_country?: string | null;
+  work_permit_type?: string | null;
   authorized_to_work?: boolean | null;
   require_sponsorship?: boolean | null;
   gender?: string | null;
@@ -250,6 +252,11 @@ export function buildAutofillProfile(
     relocation_cities: pick(apply?.relocation_cities) ?? undefined,
     willing_to_travel: pick(apply?.willing_to_travel) ?? undefined,
     work_auth_country: pick(apply?.work_auth_country) ?? undefined,
+    work_permit_type:
+      pick(apply?.work_permit_type) ??
+      (apply?.authorized_to_work !== false && pick(apply?.work_auth_country)
+        ? `Citizen of ${pick(apply?.work_auth_country)}`
+        : undefined),
     authorized_to_work: apply?.authorized_to_work ?? undefined,
     require_sponsorship: apply?.require_sponsorship ?? undefined,
     gender: pick(apply?.gender) ?? undefined,

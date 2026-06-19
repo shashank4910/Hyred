@@ -3123,13 +3123,102 @@
     if (document.querySelector('input[data-automation-id="file-upload-input-ref"]'))
       return false;
     const hay = document.body.innerText.slice(0, 12000).toLowerCase();
-    return (
-      /application questions/.test(hay) &&
-      (/visa sponsorship|require visa sponsorship/.test(hay) ||
-        /citizen or permanent resident/.test(hay) ||
-        /current employer/.test(hay) ||
-        /close personal or family relationship/.test(hay))
+    if (!/application questions/.test(hay)) return false;
+    return /require sponsorship|visa sponsorship|authorized to work|legally authorized|work authorization|permit type|current employer|close personal|non-?compete|interviewed.*(?:last|earlier|before)|been employed|accreditation|certification/.test(
+      hay,
     );
+  }
+
+  function resolveWorkPermitType(profile) {
+    if (profile.work_permit_type) return String(profile.work_permit_type).trim();
+    const country = profile.work_auth_country || profile.location?.country;
+    if (profile.authorized_to_work !== false && country) {
+      return `Citizen of ${country}`;
+    }
+    return null;
+  }
+
+  /** Universal Workday screening question → dropdown prefs (all tenants). */
+  function workdayScreeningPrefsForQuestion(qRaw, profile) {
+    const q = String(qRaw || '').toLowerCase();
+    if (!q || q.length < 8) return null;
+
+    const saved = matchCustomQa(q, profile.custom_qa);
+    if (saved) return { prefs: [String(saved).toLowerCase()], strict: false };
+
+    if (/visa sponsorship|require visa|require sponsorship/.test(q)) {
+      return {
+        prefs: profile.require_sponsorship
+          ? ['yes', 'will require']
+          : ['no', 'do not', 'not require'],
+        strict: true,
+      };
+    }
+    if (
+      /legally authorized|authorized to work|eligible to work|right to work|legally permitted/.test(
+        q,
+      ) &&
+      !/permit type|outline your work permit/.test(q)
+    ) {
+      return {
+        prefs: profile.authorized_to_work === false ? ['no'] : ['yes'],
+        strict: true,
+      };
+    }
+    if (
+      /citizen or permanent resident of one of these|one of these nations|these nations or regions/.test(
+        q,
+      )
+    ) {
+      return {
+        prefs: ['does not apply', "doesn't apply", 'not applicable'],
+        strict: true,
+      };
+    }
+    if (/dual citizenship|hold dual/.test(q)) {
+      return { prefs: ['does not apply', "doesn't apply", 'no'], strict: true };
+    }
+    if (
+      /citizen or permanent resident|country of citizenship|nationality/.test(q) &&
+      !/one of these/.test(q)
+    ) {
+      const country = profile.work_auth_country || profile.location?.country;
+      if (country) return { prefs: [String(country).toLowerCase()], strict: false };
+    }
+    if (
+      /relationship.*employed|employed by|family relationship|close personal|conflict of interest/.test(
+        q,
+      )
+    ) {
+      return { prefs: ['no'], strict: true };
+    }
+    if (/non-?compete|restrictive covenant/.test(q)) {
+      return { prefs: ['no'], strict: true };
+    }
+    if (
+      /interviewed.*(?:last|past|earlier|before)|been interviewed|interview.*(?:6|12)\s*months/.test(
+        q,
+      )
+    ) {
+      return { prefs: ['no'], strict: true };
+    }
+    if (
+      /ever been employed|previously (?:employed|worked)|worked (?:at|for)|former(?:ly)? employ|been employed/.test(
+        q,
+      )
+    ) {
+      return { prefs: ['no'], strict: true };
+    }
+    if (
+      /accreditation|certification|licen[cs]e|professional credential/.test(q) &&
+      /\?|holding|relevant|describe/.test(q)
+    ) {
+      return {
+        prefs: ['no', 'does not apply', "doesn't apply", 'not applicable', 'none'],
+        strict: true,
+      };
+    }
+    return null;
   }
 
   function workdayQuestionForControl(el) {
@@ -3190,10 +3279,31 @@
 
   function fillWorkdayApplicationTextFields(profile, filledSet) {
     let n = 0;
+    const permit = resolveWorkPermitType(profile);
     const pairs = [
       [/current employer|name of your current employer/i, profile.latest_company],
       [/current job title|your current job title/i, profile.current_title],
+      [
+        /permit type|work permit|outline your work permit|visa type|authorization type/i,
+        permit,
+      ],
     ];
+
+    for (const field of document.querySelectorAll('[data-automation-id^="formField"]')) {
+      const q = workdayQuestionForControl(field).toLowerCase();
+      if (!q) continue;
+      const el = field.querySelector('textarea, input[type="text"]');
+      if (!el || !isVisible(el) || !isEmpty(el) || filledSet.has(el)) continue;
+      for (const [re, val] of pairs) {
+        if (!val || !re.test(q)) continue;
+        setNativeValue(el, val);
+        filledSet.add(el);
+        n++;
+        log('workday:appq-text', re.source.slice(0, 35), '=', String(val).slice(0, 40));
+        break;
+      }
+    }
+
     for (const node of document.querySelectorAll('[data-automation-id]')) {
       const aid = (node.getAttribute('data-automation-id') || '').toLowerCase();
       let el = null;
@@ -3201,7 +3311,7 @@
       if (tag === 'TEXTAREA' || (tag === 'INPUT' && node.type === 'text')) el = node;
       else el = node.querySelector('textarea, input[type="text"]');
       if (!el || !isVisible(el) || !isEmpty(el) || filledSet.has(el)) continue;
-      const hay = `${aid} ${fieldSignature(el)}`;
+      const hay = `${aid} ${fieldSignature(el)} ${workdayQuestionForControl(el).toLowerCase()}`;
       for (const [re, val] of pairs) {
         if (!val || !re.test(hay)) continue;
         setNativeValue(el, val);
@@ -3220,41 +3330,10 @@
       if (filledSet.has(trigger)) continue;
 
       const q = workdayQuestionForControl(trigger).toLowerCase();
-      if (!q || q.length < 8) continue;
+      const resolved = workdayScreeningPrefsForQuestion(q, profile);
+      if (!resolved) continue;
 
-      const saved = matchCustomQa(q, profile.custom_qa);
-      let prefs = null;
-      if (saved) {
-        prefs = [String(saved).toLowerCase()];
-      } else if (/visa sponsorship|require visa/.test(q)) {
-        prefs = profile.require_sponsorship
-          ? ['yes', 'will require']
-          : ['no', 'do not', 'not require'];
-      } else if (
-        /citizen or permanent resident of one of these|one of these nations|these nations or regions/.test(
-          q,
-        )
-      ) {
-        // Restricted-region screening list (NK, Ukraine oblasts, etc.) — not home country.
-        prefs = ['does not apply', "doesn't apply", 'not applicable'];
-      } else if (/dual citizenship|hold dual/.test(q)) {
-        prefs = ['does not apply', "doesn't apply", 'no'];
-      } else if (/citizen or permanent resident|country of citizenship|nationality/.test(q)) {
-        const country = profile.location?.country || profile.work_auth_country;
-        if (country) prefs = [String(country).toLowerCase()];
-      } else if (
-        /relationship.*employed|employed by|family relationship|close personal|conflict of interest/.test(
-          q,
-        )
-      ) {
-        prefs = ['no'];
-      }
-
-      if (!prefs) continue;
-      const strict =
-        /visa sponsorship|require visa|one of these nations|these nations or regions|dual citizenship|relationship.*employed|employed by|family relationship|close personal|conflict of interest/.test(
-          q,
-        );
+      const { prefs, strict } = resolved;
       const ok = strict
         ? await setWorkdayDropdownStrict(trigger, prefs)
         : await setWorkdayDropdownByPrefs(trigger, prefs);
@@ -3274,6 +3353,7 @@
     if (workdayAppQuestionsPassDone) return 0;
     workdayAppQuestionsPassDone = true;
     log('workday:application-questions page');
+    if (IS_TOP_FRAME) fillUi.setPhase('Application questions…');
     let n = 0;
     n += fillWorkdayApplicationTextFields(profile, filledSet);
     n += await fillWorkdayScreeningDropdowns(profile, filledSet);
@@ -3638,6 +3718,19 @@
         /ever been employed|previously (?:employed|worked)|currently employed|former(?:ly)? employ|worked (?:at|for|on assignment)|intern or contract|relative|family member|related to|conflict of interest|been convicted|criminal/.test(
           q,
         )
+      ) {
+        want = 'no';
+      } else if (/non-?compete|restrictive covenant/.test(q)) {
+        want = 'no';
+      } else if (
+        /interviewed.*(?:last|past|earlier|before)|been interviewed|interview.*(?:6|12)\s*months/.test(
+          q,
+        )
+      ) {
+        want = 'no';
+      } else if (
+        /accreditation|certification|licen[cs]e|professional credential/.test(q) &&
+        /\?|holding|relevant/.test(q)
       ) {
         want = 'no';
       } else if (/facebook|share your.*profile|social media profile/i.test(q)) {
