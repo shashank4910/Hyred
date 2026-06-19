@@ -2,6 +2,10 @@
  * Normalize apply-profile payload before DB write.
  * years_experience allows one decimal (e.g. 7.7) — matches resume insights.
  */
+import {
+  normalizeEducationHistory,
+  normalizeWorkHistory,
+} from '@/lib/extension/structured-profile';
 export function parseYearsExperience(raw: unknown): number | null {
   if (raw == null || raw === '') return null;
   const n =
@@ -21,6 +25,12 @@ export function sanitizeApplyProfilePayload(
   }
   if ('available_from' in out && out.available_from === '') {
     out.available_from = null;
+  }
+  if ('structured_work_history' in out) {
+    out.structured_work_history = normalizeWorkHistory(out.structured_work_history);
+  }
+  if ('structured_education' in out) {
+    out.structured_education = normalizeEducationHistory(out.structured_education);
   }
   return out;
 }
