@@ -2,6 +2,26 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 25 — ATS Checker v9 accuracy + public widget parity (June 18, 2026)
+
+**Goal:** Raise free ATS Checker from ~7/10 to ~9/10 — fix keyword false positives, India contact gaps, length over-penalty, public widget feature drift.
+
+### Shipped
+
+| PR | What |
+|---|---|
+| **#187** | `keywordInText()` word-boundary matching; JD alias equivalents; India phone/location/names; length bands for concise resumes; colon-tolerant headers; `lib/ats-checker-samples.ts`; public `AtsCheckerWidget` paste + Try sample + full file types + JD match display; 55 tests |
+
+### Design notes (keep)
+
+- **Still zero LLM** — heuristic coach, not a real Workday/Greenhouse parser simulator.
+- **Public + logged-in share engine** — app page keeps radar/history; widget uses same API.
+- **Sample resume** — India perf engineer (`ATS_SAMPLE_RESUME`) scores ~78, JD match ~92% on bundled JD.
+
+**Doc pointer:** `CONTEXT.md` → `## ATS Resume Checker`; `AGENTS.md` Index row.
+
+---
+
 ## Session 24 — Extension Tier B custom forms (beta) + GlobalLogic (June 20, 2026)
 
 **Goal:** Long-tail custom career pages (WordPress/jQuery, e.g. GlobalLogic) — partial autofill with shared **form skeleton** (structure only, no cross-user PII). Simplify skips these sites; Hyred tries with **Autofill (beta)** UX.
