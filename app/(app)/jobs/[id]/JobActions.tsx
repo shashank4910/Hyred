@@ -17,31 +17,12 @@ import {
   FileText,
   Rocket,
   Bookmark,
-  Brain,
-  ClipboardList,
-  Lock,
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
 import { STATUS_ORDER } from '@/lib/ui';
 import { KeywordManager, type GenResult } from './KeywordManager';
-import type { MatchIntelligenceResult, InterviewPrepPack, ResumeVersionSummary } from '@/lib/types';
-
-
-function PrepSection({ title, items }: { title: string; items: string[] }) {
-  return (
-    <div>
-      <p className="text-xs font-medium text-on-surface mb-1.5">{title}</p>
-      <ul className="space-y-1">
-        {items.map((item, i) => (
-          <li key={i} className="text-sm text-on-surface-variant flex gap-2">
-            <span className="text-primary mt-0.5 shrink-0">›</span> {item}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
+import type { ResumeVersionSummary } from '@/lib/types';
 
 export function JobActions({
   matchId,
@@ -108,15 +89,6 @@ export function JobActions({
   const [resumeVersions, setResumeVersions] = useState<ResumeVersionSummary[]>(initialResumeVersions);
   const [showVersions, setShowVersions] = useState(initialResumeVersions.length > 0);
 
-  // Match Intelligence state
-  const [verdictLoading, setVerdictLoading] = useState(false);
-  const [verdictResult, setVerdictResult] = useState<MatchIntelligenceResult | null>(null);
-  const [verdictLocked, setVerdictLocked] = useState(false);
-
-  // Interview Prep Pack state
-  const [prepLoading, setPrepLoading] = useState(false);
-  const [prepPack, setPrepPack] = useState<InterviewPrepPack | null>(null);
-
   // Load JD keywords for the keyword panel
   useEffect(() => {
     let cancelled = false;
@@ -141,34 +113,6 @@ export function JobActions({
       .finally(() => { if (!cancelled) setLoadingKeywords(false); });
     return () => { cancelled = true; };
   }, [matchId]);
-
-  // Load cached verdict on mount (non-blocking)
-  useEffect(() => {
-    let cancelled = false;
-    fetch(`/api/match/${matchId}/verdict`)
-      .then((r) => r.json())
-      .then((d) => {
-        if (cancelled) return;
-        setVerdictLocked(Boolean(d.locked));
-        setVerdictResult(d.result ?? null);
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [matchId]);
-
-  // Load cached prep pack on mount (non-blocking)
-  useEffect(() => {
-    let cancelled = false;
-    fetch(`/api/match/${matchId}/prep`)
-      .then((r) => r.json())
-      .then((d) => {
-        if (cancelled) return;
-        setPrepPack(d.result ?? null);
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [matchId]);
-
 
   async function generate() {
     setGenerating(true);
@@ -205,53 +149,11 @@ export function JobActions({
       }
       toast.success(`Marked as ${next}`, { id });
       if (next === 'interviewing') {
-        toast('Interview stage reached — unlock your Interview Prep Pack next.');
+        toast('Interview stage — open Interview prep from the dashboard for this job.');
       }
       startTransition(() => router.refresh());
     } catch (e) {
       toast.error((e as Error).message, { id });
-    }
-  }
-
-  async function generateVerdict() {
-    setVerdictLoading(true);
-    const tid = toast.loading('Analyzing this match...');
-    try {
-      const res = await fetch(`/api/match/${matchId}/verdict`, { method: 'POST' });
-      const data = await res.json();
-      if (res.status === 402) {
-        toast.error('Premium upgrade required to unlock Match Intelligence.', { id: tid });
-        setVerdictLocked(true);
-        return;
-      }
-      if (!res.ok) throw new Error(data.error || 'Could not generate verdict');
-      setVerdictResult(data.result);
-      setVerdictLocked(false);
-      toast.success('Match Intelligence ready', { id: tid });
-    } catch (e) {
-      toast.error((e as Error).message, { id: tid });
-    } finally {
-      setVerdictLoading(false);
-    }
-  }
-
-  async function generatePrepPack() {
-    setPrepLoading(true);
-    const tid = toast.loading('Building interview prep...');
-    try {
-      const res = await fetch(`/api/match/${matchId}/prep`, { method: 'POST' });
-      const data = await res.json();
-      if (res.status === 402) {
-        toast.error('Premium upgrade required to generate Interview Prep Pack.', { id: tid });
-        return;
-      }
-      if (!res.ok) throw new Error(data.error || 'Could not generate prep');
-      setPrepPack(data.result);
-      toast.success('Interview Prep Pack ready', { id: tid });
-    } catch (e) {
-      toast.error((e as Error).message, { id: tid });
-    } finally {
-      setPrepLoading(false);
     }
   }
 
@@ -553,185 +455,6 @@ export function JobActions({
         </div>
       </div>
 
-
-      {/* Match Intelligence */}
-      <div className="card">
-        <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div>
-            <h2 className="font-semibold text-on-surface flex items-center gap-2">
-              <Brain className="h-4 w-4 text-primary" /> Match Intelligence
-            </h2>
-            <p className="text-xs text-on-surface-variant mt-0.5">
-              AI verdict on whether this role is worth your effort.
-            </p>
-          </div>
-          {!verdictResult && (
-            <button
-              onClick={generateVerdict}
-              disabled={verdictLoading}
-              className="btn-primary"
-            >
-              {verdictLoading ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Lock className="h-3.5 w-3.5" />
-              )}
-              {verdictLoading ? 'Analyzing…' : 'Unlock verdict'}
-            </button>
-          )}
-        </div>
-
-        {verdictLocked && !verdictResult && !verdictLoading && (
-          <div className="mt-3 rounded-xl border border-outline-variant bg-surface-container-low p-4 text-sm text-on-surface-variant flex items-center gap-2">
-            <Lock className="h-4 w-4 shrink-0 text-on-surface-variant/60" />
-            Apply / Stretch / Skip is a Premium feature. Upgrade to unlock instant verdict on every match.
-          </div>
-        )}
-
-        {verdictResult && (
-          <div className="mt-4 space-y-3">
-            {/* Verdict badge */}
-            <div className="flex items-center gap-3 flex-wrap">
-              <span className={[
-                'rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide',
-                verdictResult.verdict === 'apply' ? 'bg-match-success/15 text-match-success' :
-                verdictResult.verdict === 'skip' ? 'bg-error/15 text-error' :
-                'bg-warning/15 text-warning',
-              ].join(' ')}>
-                {verdictResult.verdict}
-              </span>
-              <span className="text-xs text-on-surface-variant">
-                Seniority fit: <span className="font-medium text-on-surface">{verdictResult.seniorityFit}</span>
-              </span>
-              <button
-                onClick={generateVerdict}
-                disabled={verdictLoading}
-                className="btn text-xs ml-auto"
-                title="Refresh verdict"
-              >
-                {verdictLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCw className="h-3 w-3" />}
-              </button>
-            </div>
-
-            {/* Reasons */}
-            {verdictResult.reasons.length > 0 && (
-              <div>
-                <p className="text-xs font-medium text-on-surface mb-1.5">Why</p>
-                <ul className="space-y-1">
-                  {verdictResult.reasons.map((r, i) => (
-                    <li key={i} className="text-sm text-on-surface-variant flex gap-2">
-                      <span className="text-primary mt-0.5">•</span> {r}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* Actions */}
-            {verdictResult.actions.length > 0 && (
-              <div>
-                <p className="text-xs font-medium text-on-surface mb-1.5">Recommended actions</p>
-                <ul className="space-y-1">
-                  {verdictResult.actions.map((a, i) => (
-                    <li key={i} className="text-sm text-on-surface-variant flex gap-2">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-match-success mt-0.5 shrink-0" /> {a}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Interview Prep Pack */}
-      <div className="card">
-        <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div>
-            <h2 className="font-semibold text-on-surface flex items-center gap-2">
-              <ClipboardList className="h-4 w-4 text-primary" /> Interview Prep Pack
-            </h2>
-            <p className="text-xs text-on-surface-variant mt-0.5">
-              Likely questions, gap defense, and talking points for this job.
-            </p>
-          </div>
-          <button
-            onClick={generatePrepPack}
-            disabled={prepLoading}
-            className="btn-primary"
-          >
-            {prepLoading ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : prepPack ? (
-              <RotateCw className="h-3.5 w-3.5" />
-            ) : (
-              <Sparkles className="h-3.5 w-3.5" />
-            )}
-            {prepLoading ? 'Building…' : prepPack ? 'Refresh' : 'Generate prep pack'}
-          </button>
-        </div>
-
-        {prepPack ? (
-          <div className="mt-4 space-y-4">
-            {prepPack.quickSummary && (
-              <p className="text-sm text-on-surface-variant rounded-lg bg-surface-container-low border border-outline-variant p-3">
-                {prepPack.quickSummary}
-              </p>
-            )}
-
-            {prepPack.likelyQuestions.length > 0 && (
-              <PrepSection title="Likely interview questions" items={prepPack.likelyQuestions} />
-            )}
-            {prepPack.technicalQuestions.length > 0 && (
-              <PrepSection title="Technical questions" items={prepPack.technicalQuestions} />
-            )}
-            {prepPack.behavioralQuestions.length > 0 && (
-              <PrepSection title="Behavioral questions" items={prepPack.behavioralQuestions} />
-            )}
-            {prepPack.gapDefenseQuestions.length > 0 && (
-              <PrepSection title="Gap defense" items={prepPack.gapDefenseQuestions} />
-            )}
-            {prepPack.starAnswerHints.length > 0 && (
-              <div>
-                <p className="text-xs font-medium text-on-surface mb-2">STAR answer hints</p>
-                <div className="space-y-2">
-                  {prepPack.starAnswerHints.map((h, i) => (
-                    <div key={i} className="rounded-lg bg-surface-container-low border border-outline-variant p-3">
-                      <p className="text-xs font-medium text-on-surface mb-1">Q: {h.question}</p>
-                      <p className="text-xs text-on-surface-variant">{h.answerHint}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {prepPack.questionsToAsk.length > 0 && (
-              <PrepSection title="Questions to ask the interviewer" items={prepPack.questionsToAsk} />
-            )}
-
-            <button
-              onClick={async () => {
-                const text = [
-                  prepPack.quickSummary,
-                  '\n\nLikely questions:\n' + prepPack.likelyQuestions.map((q) => `• ${q}`).join('\n'),
-                  '\n\nTechnical:\n' + prepPack.technicalQuestions.map((q) => `• ${q}`).join('\n'),
-                  '\n\nBehavioral:\n' + prepPack.behavioralQuestions.map((q) => `• ${q}`).join('\n'),
-                  '\n\nGap defense:\n' + prepPack.gapDefenseQuestions.map((q) => `• ${q}`).join('\n'),
-                  '\n\nQuestions to ask:\n' + prepPack.questionsToAsk.map((q) => `• ${q}`).join('\n'),
-                ].join('\n');
-                await navigator.clipboard.writeText(text);
-                toast.success('Prep pack copied to clipboard');
-              }}
-              className="btn text-xs w-full"
-            >
-              <Copy className="h-3 w-3" /> Copy all to clipboard
-            </button>
-          </div>
-        ) : !prepLoading && (
-          <p className="mt-3 text-sm text-on-surface-variant">
-            Generate a personalized prep pack with questions tailored to your skills and this JD.
-          </p>
-        )}
-      </div>
 
       {/* Cover letter */}
       <div className="card">
