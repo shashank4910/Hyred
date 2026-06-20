@@ -10,8 +10,6 @@ import {
   Download,
   CheckCircle2,
   ExternalLink,
-  Save,
-  StickyNote,
   RotateCw,
   Pencil,
   FileText,
@@ -19,9 +17,13 @@ import {
   Bookmark,
   ChevronDown,
   ChevronUp,
+  Eye,
 } from 'lucide-react';
 import { STATUS_ORDER } from '@/lib/ui';
+import { CollapsibleCard } from '../../_components/CollapsibleCard';
 import { KeywordManager, type GenResult } from './KeywordManager';
+import { ResumePreviewModal } from './ResumePreviewModal';
+import { ResumeTemplatePicker, DEFAULT_RESUME_TEMPLATE_ID } from './ResumeTemplatePicker';
 import type { ResumeVersionSummary } from '@/lib/types';
 
 export function JobActions({
@@ -29,19 +31,21 @@ export function JobActions({
   status,
   bookmarked: initialBookmarked,
   coverLetter,
-  notes,
   applyUrl,
   hasTailoredResume: initialHasTailored = false,
+  initialResumeText = '',
   initialResumeVersions = [],
+  isPremium = false,
 }: {
   matchId: string;
   status: string;
   bookmarked: boolean;
   coverLetter: string | null;
-  notes: string | null;
   applyUrl: string;
   hasTailoredResume?: boolean;
+  initialResumeText?: string;
   initialResumeVersions?: ResumeVersionSummary[];
+  isPremium?: boolean;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -55,13 +59,9 @@ export function JobActions({
   const [editing, setEditing] = useState(false);
   const [generating, setGenerating] = useState(false);
 
-  // Notes state
-  const [notesValue, setNotesValue] = useState(notes ?? '');
-  const [savingNotes, setSavingNotes] = useState(false);
-  const [notesDirty, setNotesDirty] = useState(false);
-
   // ATS Resume state
-  const [atsResume, setAtsResume] = useState('');
+  const [atsResume, setAtsResume] = useState(initialResumeText);
+  const [editedResume, setEditedResume] = useState(initialResumeText);
   const [generatingResume, setGeneratingResume] = useState(false);
   const [resumeCopied, setResumeCopied] = useState(false);
   const [filenameBase, setFilenameBase] = useState<string>('Shashank_Performance_7.7');
@@ -88,6 +88,9 @@ export function JobActions({
   // Resume versions (saved history from the DB, updated live when a new one is generated)
   const [resumeVersions, setResumeVersions] = useState<ResumeVersionSummary[]>(initialResumeVersions);
   const [showVersions, setShowVersions] = useState(initialResumeVersions.length > 0);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewMode, setPreviewMode] = useState<'preview' | 'edit'>('preview');
+  const [resumeTemplateId, setResumeTemplateId] = useState(DEFAULT_RESUME_TEMPLATE_ID);
 
   // Load JD keywords for the keyword panel
   useEffect(() => {
@@ -182,24 +185,6 @@ export function JobActions({
     }
   }
 
-  async function saveNotes() {
-    setSavingNotes(true);
-    try {
-      const res = await fetch(`/api/match/${matchId}/notes`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ notes: notesValue }),
-      });
-      if (!res.ok) throw new Error('Failed');
-      toast.success('Notes saved');
-      setNotesDirty(false);
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      setSavingNotes(false);
-    }
-  }
-
   async function copy() {
     await navigator.clipboard.writeText(letter);
     toast.success('Copied to clipboard');
@@ -215,10 +200,6 @@ export function JobActions({
     URL.revokeObjectURL(url);
   }
 
-
-  // Resume editing state
-  const [editingResume, setEditingResume] = useState(false);
-  const [editedResume, setEditedResume] = useState('');
 
   // The single action. Generates (or regenerates in-place) the resume, weaving
   // in exactly the staged keywords. Keeps the current resume visible while it
@@ -263,7 +244,6 @@ export function JobActions({
       if (!res.ok) throw new Error(data.error || 'Failed');
       setAtsResume(data.resume);
       setEditedResume(data.resume);
-      if (firstRun) setEditingResume(false);
       if (data.keywords) {
         const newScore = data.keywords.ats_match_score ?? 0;
         setScoreDelta(oldScore != null ? newScore - oldScore : null);
@@ -456,37 +436,37 @@ export function JobActions({
       </div>
 
 
-      {/* Cover letter */}
-      <div className="card">
-        <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-          <h2 className="font-semibold text-on-surface flex items-center gap-2">
-            <Pencil className="h-4 w-4 text-primary" /> Cover letter
-          </h2>
-          <div className="flex gap-2 flex-wrap">
-            {letter && (
-              <>
-                <button onClick={copy} className="btn">
-                  <Copy className="h-3.5 w-3.5" /> Copy
-                </button>
-                <button onClick={download} className="btn">
-                  <Download className="h-3.5 w-3.5" /> Download
-                </button>
-                <button onClick={() => setEditing((v) => !v)} className="btn">
-                  {editing ? 'Done' : 'Edit'}
-                </button>
-              </>
+      {/* Cover letter — collapsed until generated */}
+      <CollapsibleCard
+        title="Cover letter"
+        icon={<Pencil className="h-4 w-4 text-primary" />}
+        summary={letter ? `${letter.slice(0, 80).trim()}…` : 'Generate a tailored cover letter'}
+        defaultOpen={!!letter}
+      >
+        <div className="flex items-center justify-end mb-3 flex-wrap gap-2">
+          {letter && (
+            <>
+              <button onClick={copy} className="btn">
+                <Copy className="h-3.5 w-3.5" /> Copy
+              </button>
+              <button onClick={download} className="btn">
+                <Download className="h-3.5 w-3.5" /> Download
+              </button>
+              <button onClick={() => setEditing((v) => !v)} className="btn">
+                {editing ? 'Done' : 'Edit'}
+              </button>
+            </>
+          )}
+          <button onClick={generate} disabled={generating} className="btn-primary">
+            {generating ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : letter ? (
+              <RotateCw className="h-3.5 w-3.5" />
+            ) : (
+              <Sparkles className="h-3.5 w-3.5" />
             )}
-            <button onClick={generate} disabled={generating} className="btn-primary">
-              {generating ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : letter ? (
-                <RotateCw className="h-3.5 w-3.5" />
-              ) : (
-                <Sparkles className="h-3.5 w-3.5" />
-              )}
-              {generating ? 'Drafting...' : letter ? 'Regenerate' : 'Generate'}
-            </button>
-          </div>
+            {generating ? 'Drafting...' : letter ? 'Regenerate' : 'Generate'}
+          </button>
         </div>
         {generating && !letter && (
           <div className="space-y-2">
@@ -504,7 +484,7 @@ export function JobActions({
               className="input min-h-[260px] font-sans text-sm leading-relaxed"
             />
           ) : (
-            <pre className="whitespace-pre-wrap text-sm text-on-surface-variant font-sans leading-relaxed">
+            <pre className="whitespace-pre-wrap text-sm text-on-surface-variant font-sans leading-relaxed max-h-[320px] overflow-y-auto">
               {letter}
             </pre>
           )
@@ -516,18 +496,29 @@ export function JobActions({
             </p>
           )
         )}
-      </div>
+      </CollapsibleCard>
 
 
-      {/* ATS-Optimized Resume */}
+      {/* Resume Studio */}
       <div id="ats-resume" className="card">
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <h2 className="font-semibold text-on-surface flex items-center gap-2">
-            <FileText className="h-4 w-4 text-primary" /> ATS Resume
+            <FileText className="h-4 w-4 text-primary" /> Resume Studio
           </h2>
           <div className="flex gap-2 flex-wrap">
             {atsResume && (
               <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPreviewMode('preview');
+                    setPreviewOpen(true);
+                  }}
+                  className="btn"
+                  title="Preview resume"
+                >
+                  <Eye className="h-3.5 w-3.5" /> Preview
+                </button>
                 <button onClick={copyResume} className="btn">
                   <Copy className="h-3.5 w-3.5" /> {resumeCopied ? 'Copied!' : 'Copy'}
                 </button>
@@ -569,8 +560,15 @@ export function JobActions({
             onUnstage={onUnstage}
             onStageMany={onStageMany}
             onOptimize={optimize}
+            defaultChipsCollapsed
           />
         )}
+
+        <ResumeTemplatePicker
+          selectedId={resumeTemplateId}
+          onSelect={setResumeTemplateId}
+          isPremium={isPremium}
+        />
 
         {/* Resume Studio Pro — saved version history */}
         {resumeVersions.length > 0 && (
@@ -606,118 +604,37 @@ export function JobActions({
           </div>
         )}
 
-        {/* First-run loading skeleton for the resume body */}
         {generatingResume && !atsResume && (
           <div className="space-y-2 mt-3">
             <div className="skeleton h-4 w-full" />
             <div className="skeleton h-4 w-11/12" />
             <div className="skeleton h-4 w-10/12" />
-            <div className="skeleton h-4 w-9/12" />
-            <div className="skeleton h-4 w-3/4" />
           </div>
         )}
 
-        {/* Generated resume — editable preview */}
-        {atsResume && (
-          <div className="space-y-3 border-t border-outline-variant pt-3 mt-3">
-            {/* Action bar: Edit / Preview toggle */}
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setEditingResume(true)}
-                  className={editingResume
-                    ? 'text-xs font-medium text-primary border-b border-primary pb-0.5'
-                    : 'text-xs text-on-surface-variant hover:text-on-surface'
-                  }
-                >
-                  <Pencil className="h-3 w-3 inline mr-1" />
-                  Edit
-                </button>
-                <button
-                  onClick={() => {
-                    setEditingResume(false);
-                    setAtsResume(editedResume);
-                  }}
-                  className={!editingResume
-                    ? 'text-xs font-medium text-primary border-b border-primary pb-0.5'
-                    : 'text-xs text-on-surface-variant hover:text-on-surface'
-                  }
-                >
-                  <FileText className="h-3 w-3 inline mr-1" />
-                  Preview
-                </button>
-              </div>
-            </div>
-
-            {/* Editable textarea or read-only preview */}
-            {editingResume ? (
-              <div className="space-y-2">
-                <textarea
-                  value={editedResume}
-                  onChange={(e) => setEditedResume(e.target.value)}
-                  className="input min-h-[420px] font-mono text-sm leading-relaxed resize-y"
-                  placeholder="Edit your resume here..."
-                />
-                <div className="flex items-center justify-between">
-                  <p className="text-[11px] text-on-surface-variant">
-                    Edit anything above — your changes will be used when exporting PDF or copying.
-                  </p>
-                  <button
-                    onClick={() => {
-                      setAtsResume(editedResume);
-                      setEditingResume(false);
-                      toast.success('Changes saved');
-                    }}
-                    className="btn-primary text-xs"
-                  >
-                    <Save className="h-3 w-3" />
-                    Save & Preview
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <pre className="whitespace-pre-wrap text-sm text-on-surface-variant font-sans leading-relaxed bg-surface-container-low border border-outline-variant rounded-2xl p-4 max-h-[420px] overflow-y-auto">
-                  {editedResume || atsResume}
-                </pre>
-                <div className="flex items-center gap-1.5 text-xs text-on-surface-variant">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-match-success" />
-                  Tailored for this job. Click Edit to make changes, then export as PDF.
-                </div>
-              </div>
-            )}
-          </div>
+        {atsResume && !generatingResume && (
+          <p className="mt-3 flex items-center gap-1.5 text-xs text-on-surface-variant border-t border-outline-variant pt-3">
+            <CheckCircle2 className="h-3.5 w-3.5 text-match-success shrink-0" />
+            Tailored for this job — use <span className="font-medium text-on-surface">Preview</span> to read or edit without cluttering this page.
+          </p>
         )}
       </div>
 
-
-      {/* Notes */}
-      <div className="card">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="font-semibold text-on-surface flex items-center gap-2">
-            <StickyNote className="h-4 w-4 text-primary" /> Notes
-          </h2>
-          {notesDirty && (
-            <button onClick={saveNotes} disabled={savingNotes} className="btn-primary">
-              {savingNotes ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Save className="h-3.5 w-3.5" />
-              )}
-              Save
-            </button>
-          )}
-        </div>
-        <textarea
-          className="input min-h-[120px]"
-          value={notesValue}
-          onChange={(e) => {
-            setNotesValue(e.target.value);
-            setNotesDirty(true);
-          }}
-          placeholder="Recruiter contact, interview prep, follow-up dates..."
-        />
-      </div>
+      <ResumePreviewModal
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        text={editedResume || atsResume}
+        mode={previewMode}
+        onModeChange={setPreviewMode}
+        editedText={editedResume}
+        onEditedTextChange={setEditedResume}
+        onSave={() => {
+          setAtsResume(editedResume);
+          setPreviewMode('preview');
+          toast.success('Changes saved');
+        }}
+        title="Resume Studio preview"
+      />
     </div>
   );
 }

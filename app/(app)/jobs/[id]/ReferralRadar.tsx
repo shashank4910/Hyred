@@ -102,7 +102,7 @@ export function ReferralRadar({
 }: Props) {
   const [activeTemplate, setActiveTemplate] = useState<Template>('peer');
   const [copied, setCopied] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const [reached, setReached] = useState(false);
 
   // AI customized messages state
