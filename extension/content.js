@@ -120,13 +120,15 @@
         el.closest(
           '[data-ph-at-id], .field, .form-group, [data-automation-id^="formField"], [class*="question"]',
         ) || el;
-      try {
-        wrap.scrollIntoView({ behavior: 'auto', block: 'center' });
-      } catch {
+      if (!isElementInViewport(wrap)) {
         try {
-          wrap.scrollIntoView({ block: 'center' });
+          wrap.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'nearest' });
         } catch {
-          /* ignore */
+          try {
+            wrap.scrollIntoView({ block: 'nearest' });
+          } catch {
+            /* ignore */
+          }
         }
       }
       wrap.classList.remove('jobradar-fill-flash');
@@ -293,6 +295,49 @@
 
   function isPhenomDom() {
     return isUniversalCareerSite();
+  }
+
+  function isElementInViewport(el) {
+    if (!el?.getBoundingClientRect) return true;
+    const r = el.getBoundingClientRect();
+    const margin = 80;
+    return r.top >= -margin && r.bottom <= window.innerHeight + margin;
+  }
+
+  function isWorkdayPageLoading() {
+    if (!isWorkdaySite()) return false;
+    if (
+      document.querySelector(
+        '[data-automation-id="loading"], [data-automation-id*="spinner" i], [data-automation-id*="skeleton" i], [aria-busy="true"]',
+      )
+    ) {
+      return true;
+    }
+    const main = document.querySelector(
+      '[data-automation-id="jobApplicationBody"], [data-automation-id="applyFlowPage"], main',
+    );
+    if (!main) return false;
+    const hasFormField = main.querySelector('[data-automation-id^="formField"]');
+    const title = (document.querySelector('h1, h2')?.textContent || '').trim();
+    if (title && /application questions|my information|cover letter|my experience|voluntary disclosures/i.test(title)) {
+      return !hasFormField;
+    }
+    return false;
+  }
+
+  async function waitForWorkdayApplyReady(maxMs = 15000) {
+    if (!isWorkdaySite()) return true;
+    const start = Date.now();
+    while (Date.now() - start < maxMs) {
+      if (!isWorkdayPageLoading()) {
+        if (document.querySelector('[data-automation-id^="formField"]')) return true;
+        if (Date.now() - start > 2500) return true;
+      }
+      if (IS_TOP_FRAME && fillUi.active) fillUi.setPhase('Waiting for page…');
+      await sleep(450);
+    }
+    log('waitForWorkdayApplyReady: timed out, continuing anyway');
+    return !isWorkdayPageLoading();
   }
 
   function isWorkdayDom() {
@@ -807,7 +852,7 @@
   async function setFieldValue(el, value, label) {
     if (fillUi.active && IS_TOP_FRAME) {
       fillUi.onField(el, label);
-      await sleep(160);
+      await sleep(fillUi.sequential ? 80 : 40);
     }
     if (
       usesReactiveBinding(el) &&
@@ -4936,11 +4981,32 @@
   const IS_TOP_FRAME = window === window.top;
 
   let autofillInFlight = null;
+  let autofillGen = 0;
+  let autofillStartUrl = '';
+
+  function abortAutofillIfStale(gen) {
+    if (gen !== autofillGen) return true;
+    if (autofillStartUrl && location.href !== autofillStartUrl) return true;
+    return false;
+  }
+
+  function resetAutofillUi(reason = 'Autofill stopped') {
+    autofillGen++;
+    busy = false;
+    autofillInFlight = null;
+    if (IS_TOP_FRAME && fillUi.active) {
+      fillUi.end(0, false, reason);
+      setCardBusy(false);
+    }
+  }
+
   async function triggerAutofillAllFrames(options) {
     if (autofillInFlight) {
       log('triggerAutofillAllFrames: already running');
       return autofillInFlight;
     }
+    const gen = ++autofillGen;
+    autofillStartUrl = location.href;
     if (IS_TOP_FRAME) {
       busy = true;
       const est = Math.max(countEmptyFillableFields(), 8);
@@ -4949,11 +5015,16 @@
     }
     autofillInFlight = (async () => {
       log('triggerAutofillAllFrames', 'ats=', detectAts(), 'vendor=', isUniversalCareerSite() ? 'universal' : 'other');
-      return send('fanOutAutofill', { options });
+      if (isWorkdaySite()) await waitForWorkdayApplyReady();
+      if (abortAutofillIfStale(gen)) return { ok: false, filled: 0, aborted: true };
+      return send('fanOutAutofill', { options: { ...options, autofillGen: gen } });
     })();
     let res;
     try {
-      res = await autofillInFlight;
+      res = await Promise.race([
+        autofillInFlight,
+        sleep(120000).then(() => ({ ok: false, filled: 0, error: 'timeout' })),
+      ]);
     } finally {
       autofillInFlight = null;
     }
@@ -4961,19 +5032,26 @@
     const total = res?.filled || 0;
     const frames = res?.frames || 0;
     if (IS_TOP_FRAME) {
-      const msg =
-        total > 0
+      const timedOut = res?.error === 'timeout';
+      const msg = timedOut
+        ? 'Autofill timed out — refresh the page and retry'
+        : total > 0
           ? `Done — ${total} field${total === 1 ? '' : 's'} filled`
           : 'Nothing filled — check console (F12) for [JobRadar]';
-      fillUi.end(total, total > 0, msg);
+      fillUi.end(total, total > 0 && !timedOut, msg);
       busy = false;
       toast(
-        total > 0
-          ? `Filled ${total} field${total === 1 ? '' : 's'} across ${frames} frame(s)`
-          : 'No fields filled — open Console (F12) and filter [JobRadar]',
-        total > 0 ? 'ok' : 'warn',
+        timedOut
+          ? 'Autofill timed out on this page — wait for it to load, then retry'
+          : total > 0
+            ? `Filled ${total} field${total === 1 ? '' : 's'} across ${frames} frame(s)`
+            : 'No fields filled — open Console (F12) and filter [JobRadar]',
+        timedOut ? 'warn' : total > 0 ? 'ok' : 'warn',
         5000,
       );
+      if (total > 0 && !timedOut && !abortAutofillIfStale(gen)) {
+        void assistPostAutofillNavigation();
+      }
       setTimeout(() => refreshCardState(), 3500);
     }
     return res;
@@ -5630,13 +5708,15 @@
 
   function highlightContinueButton(btn) {
     if (!btn) return;
-    try {
-      btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    } catch {
+    if (!isElementInViewport(btn)) {
       try {
-        btn.scrollIntoView({ block: 'center' });
+        btn.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'nearest' });
       } catch {
-        /* ignore */
+        try {
+          btn.scrollIntoView({ block: 'nearest' });
+        } catch {
+          /* ignore */
+        }
       }
     }
     btn.classList.remove('jobradar-fill-flash');
@@ -5646,6 +5726,10 @@
   }
 
   async function scrollToApplicationContinue() {
+    if (isWorkdayPageLoading()) {
+      log('scrollToContinue: skipped — page still loading');
+      return { ok: false, loading: true };
+    }
     const btn = findApplicationContinueButton();
     if (btn) {
       highlightContinueButton(btn);
@@ -5653,12 +5737,28 @@
       return { ok: true, found: true, label: continueButtonLabel(btn) };
     }
     try {
-      window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
+      window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'auto' });
     } catch {
       window.scrollTo(0, document.documentElement.scrollHeight);
     }
     log('scrollToContinue: no button — scrolled to page bottom');
     return { ok: true, found: false };
+  }
+
+  async function assistPostAutofillNavigation() {
+    if (!IS_TOP_FRAME) return;
+    if (isCoverLetterStep()) {
+      onCoverFieldSeen();
+      return;
+    }
+    if (isWorkdayPageLoading()) {
+      log('assistPostAutofillNavigation: skipped — page loading');
+      return;
+    }
+    if (Date.now() - lastNavAssistAt < 1500) return;
+    lastNavAssistAt = Date.now();
+    await sleep(400);
+    await scrollToApplicationContinue();
   }
 
   async function clickApplicationContinue() {
@@ -5675,18 +5775,6 @@
     log('clickApplicationContinue:', label);
     toast(`Clicked "${label}"`, 'ok', 3500);
     return { ok: true, clicked: true, label };
-  }
-
-  async function assistPostAutofillNavigation() {
-    if (!IS_TOP_FRAME) return;
-    if (isCoverLetterStep()) {
-      onCoverFieldSeen();
-      return;
-    }
-    if (Date.now() - lastNavAssistAt < 1500) return;
-    lastNavAssistAt = Date.now();
-    await sleep(400);
-    await scrollToApplicationContinue();
   }
 
   // -------------------------------------------------------------------
@@ -5766,6 +5854,7 @@
 
   async function runAutofill(opts = {}) {
     const options = { ...DEFAULT_OPTS, ...opts };
+    const gen = options.autofillGen ?? autofillGen;
     if (busy && !options.fromFanOut) return { filled: 0, skipped: true, reason: 'busy' };
     if (!options.fromFanOut) busy = true;
     if (IS_TOP_FRAME && !options.fromFanOut) {
@@ -5886,6 +5975,21 @@
       }
 
       if (IS_TOP_FRAME) fillUi.setPhase('Filling application…');
+
+      if (isWorkdaySite()) {
+        const ready = await waitForWorkdayApplyReady();
+        if (abortAutofillIfStale(gen)) {
+          skipStatusMsg = 'Page changed — autofill stopped';
+          return { filled: 0, aborted: true };
+        }
+        if (!ready) {
+          skipStatusMsg = 'Page still loading — wait, then retry autofill';
+          if (!options.fromFanOut && IS_TOP_FRAME) {
+            toast('Workday page still loading — wait for the form, then autofill again.', 'warn', 7000);
+          }
+          return { filled: 0, skipped: true, reason: 'page_loading' };
+        }
+      }
 
       const ats = detectAts();
       log(
@@ -6369,15 +6473,29 @@
   }
 
   function startCoverFieldWatcher() {
+    let coverTickTimer = 0;
     const tick = () => notifyCoverFieldIfPresent();
     tick();
     if (document.body) {
-      const coverObs = new MutationObserver(() => tick());
+      const coverObs = new MutationObserver(() => {
+        clearTimeout(coverTickTimer);
+        coverTickTimer = setTimeout(tick, 400);
+      });
       coverObs.observe(document.body, { childList: true, subtree: true });
     }
-    setInterval(tick, 2500);
+    setInterval(tick, 5000);
   }
   startCoverFieldWatcher();
+
+  if (IS_TOP_FRAME) {
+    let lastTrackedUrl = location.href;
+    setInterval(() => {
+      if (location.href === lastTrackedUrl) return;
+      lastTrackedUrl = location.href;
+      log('page navigation detected — resetting autofill UI');
+      resetAutofillUi('Page changed — tap Autofill again');
+    }, 700);
+  }
 
   maybeMount();
   const obs = new MutationObserver(() => maybeMount());
