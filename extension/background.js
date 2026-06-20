@@ -3,6 +3,14 @@
 // The service worker is the single network-call hub. Content scripts
 // post messages here to keep CORS and auth concerns out of the page world.
 
+chrome.runtime.onStartup?.addListener(() => {
+  console.log('[Hyred] background worker started (browser startup)');
+});
+
+chrome.runtime.onInstalled?.addListener(() => {
+  console.log('[Hyred] background worker installed/updated');
+});
+
 async function getCreds() {
   return new Promise((resolve) => {
     chrome.storage.local.get(['jr_url', 'jr_token'], (v) => resolve(v || {}));
@@ -487,20 +495,37 @@ const handlers = {
   },
 
   async resolveMatch({ url, title, company, code }) {
-    if (url || title || code || company) {
-      const byUrl = await handlers.matchByUrl({ url, title, company, code });
-      if (byUrl.ok && byUrl.match) {
-        return { ok: true, match: byUrl.match, via: 'url' };
-      }
-    }
     const handoffRes = await handlers.getApplyHandoff();
     const handoff = handoffRes.handoff;
+
+    // Explicit Apply/Optimize handoff beats fuzzy page hints — hints can match a
+    // different row (same IRC, duplicate ingest) without tailored_resume_text.
     if (handoff?.matchId) {
       const byId = await handlers.matchById({ match_id: handoff.matchId });
       if (byId.ok && byId.match) {
-        return { ok: true, match: byId.match, via: 'handoff' };
+        const match = { ...byId.match };
+        if (handoff.hasTailoredResume && !match.has_tailored_resume) {
+          match.has_tailored_resume = true;
+        }
+        return { ok: true, match, via: 'handoff' };
       }
     }
+
+    if (url || title || code || company) {
+      const byUrl = await handlers.matchByUrl({ url, title, company, code });
+      if (byUrl.ok && byUrl.match) {
+        const match = { ...byUrl.match };
+        if (
+          handoff?.matchId === match.id &&
+          handoff.hasTailoredResume &&
+          !match.has_tailored_resume
+        ) {
+          match.has_tailored_resume = true;
+        }
+        return { ok: true, match, via: 'url' };
+      }
+    }
+
     return { ok: true, match: null };
   },
 
@@ -611,10 +636,41 @@ const handlers = {
   async mapFields({ fields, profile, job_title, company }) {
     const r = await api('/api/extension/map-fields', {
       method: 'POST',
-      body: JSON.stringify({ fields, profile, job_title, company }),
+      body: JSON.stringify({ fields, profile, job_title, company, mode: 'legacy' }),
     });
     if (!r.ok) return { ok: false, error: r.data?.error ?? `HTTP ${r.status}` };
     return { ok: true, mappings: r.data.mappings ?? [] };
+  },
+
+  async mapFieldsSemantic({ domain, fields }) {
+    const r = await api('/api/extension/map-fields', {
+      method: 'POST',
+      body: JSON.stringify({ mode: 'semantic', domain, fields }),
+    });
+    if (!r.ok) return { ok: false, error: r.data?.error ?? `HTTP ${r.status}` };
+    return { ok: true, mappings: r.data.mappings ?? [] };
+  },
+
+  async getFormTemplate({ domain, structure_hash }) {
+    const qs = new URLSearchParams();
+    if (domain) qs.set('domain', domain);
+    if (structure_hash) qs.set('structure_hash', structure_hash);
+    const r = await api(`/api/extension/form-template?${qs.toString()}`);
+    if (!r.ok) return { ok: false, error: r.data?.error ?? `HTTP ${r.status}` };
+    return {
+      ok: true,
+      template: r.data.template ?? null,
+      capture_count: r.data.capture_count ?? 0,
+    };
+  },
+
+  async captureFormTemplate(payload) {
+    const r = await api('/api/extension/form-template/capture', {
+      method: 'POST',
+      body: JSON.stringify(payload ?? {}),
+    });
+    if (!r.ok) return { ok: false, error: r.data?.error ?? `HTTP ${r.status}` };
+    return { ok: true, ...r.data };
   },
 
   async fetchResume({ match_id, variant } = {}) {
