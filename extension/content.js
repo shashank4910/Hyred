@@ -1538,6 +1538,13 @@
     return !!(inp?.files?.length);
   }
 
+  /** True when the Workday form already shows a cover letter attachment. */
+  function coverLetterAlreadyOnForm() {
+    if (isCoverLetterUploadedOnPage()) return true;
+    const inp = findCoverLetterFileInput();
+    return !!(inp?.files?.length);
+  }
+
   function coverLetterSnippet(text, maxLen = 220) {
     const flat = String(text || '')
       .replace(/\s+/g, ' ')
@@ -5130,6 +5137,7 @@
     }
     autofillInFlight = (async () => {
       log('triggerAutofillAllFrames', 'ats=', detectAts(), 'vendor=', isUniversalCareerSite() ? 'universal' : 'other');
+      if (IS_TOP_FRAME) void send('releaseCoverUploadLock');
       if (isWorkdaySite()) await waitForWorkdayApplyReady();
       if (abortAutofillIfStale(gen)) return { ok: false, filled: 0, aborted: true };
       return send('fanOutAutofill', { options: { ...options, autofillGen: gen } });
@@ -5516,25 +5524,28 @@ startxref
     if (!input || !file) return false;
     const dt = new DataTransfer();
     dt.items.add(file);
-    const targets = [input];
-    const visible = input.closest('[class*="upload"], [class*="drop"], [data-automation-id*="file"]')?.querySelector(
-      'input[type="file"]',
-    );
-    if (visible && visible !== input) targets.push(visible);
-    for (const target of targets) {
-      try {
-        target.files = dt.files;
-      } catch {
-        /* hidden input may reject direct assign */
+    let target = input;
+    try {
+      input.files = dt.files;
+    } catch {
+      const visible = input.closest('[class*="upload"], [class*="drop"], [data-automation-id*="file"]')?.querySelector(
+        'input[type="file"]',
+      );
+      if (visible && visible !== input) {
+        try {
+          visible.files = dt.files;
+          target = visible;
+        } catch {
+          return false;
+        }
+      } else {
+        return false;
       }
-      target.dispatchEvent(new Event('input', { bubbles: true }));
-      target.dispatchEvent(new Event('change', { bubbles: true }));
     }
-    const zone = input.closest('[class*="upload"], [class*="drop"], [class*="file"], [data-automation-id*="file"]');
-    if (zone) {
-      zone.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true }));
-    }
-    return !!(input.files?.length || visible?.files?.length);
+    // Workday treats each change/input/drop as a new attachment — fire once only.
+    target.dispatchEvent(new Event('input', { bubbles: true }));
+    target.dispatchEvent(new Event('change', { bubbles: true }));
+    return !!target.files?.length;
   }
 
   async function uploadCoverLetterFile(text) {
@@ -5543,8 +5554,19 @@ startxref
       log('uploadCoverLetter: no input or text', !!input);
       return false;
     }
+    if (coverLetterAlreadyOnForm()) {
+      log('uploadCoverLetter: already on form');
+      return true;
+    }
+    const lock = await send('tryCoverUploadLock');
+    if (lock?.locked) {
+      log('uploadCoverLetter: another frame/tab pass already uploaded');
+      return coverLetterAlreadyOnForm();
+    }
+    const acquired = !!lock?.acquired;
     if (input.files?.length) {
       log('uploadCoverLetter: input already has a file');
+      if (acquired) void send('releaseCoverUploadLock');
       return false;
     }
     try {
@@ -5553,12 +5575,14 @@ startxref
       const ok = await attachFileToInput(input, file);
       if (!ok) {
         log('uploadCoverLetter: PDF attach failed');
+        if (acquired) void send('releaseCoverUploadLock');
         return false;
       }
       log('uploadCoverLetter: attached', file.name);
       if (IS_TOP_FRAME && fillUi.active) fillUi.onField(input, 'Cover letter file');
       return true;
     } catch (e) {
+      if (acquired) void send('releaseCoverUploadLock');
       log('uploadCoverLetter error:', e);
       return false;
     }
@@ -5566,8 +5590,11 @@ startxref
 
   async function applyCoverLetterEverywhere(text, { force = false } = {}) {
     if (!text?.trim()) return false;
+    if (!force && coverLetterAlreadyOnForm()) return true;
     if (injectCoverLetter(text, { force })) return true;
-    if (await uploadCoverLetterFile(text)) return true;
+    if (findCoverLetterFileInput()) {
+      return uploadCoverLetterFile(text);
+    }
     if (IS_TOP_FRAME) {
       const res = await send('fanOutInjectCoverLetter', { text });
       return !!res?.injected;
@@ -5738,6 +5765,7 @@ startxref
 
     panel.querySelector('.jr-cover-use')?.addEventListener('click', async () => {
       if (!coverLetterCache?.trim()) return;
+      void send('releaseCoverUploadLock');
       const ok = await applyCoverLetterEverywhere(coverLetterCache, { force: true });
       const isFile = !!findCoverLetterFileInput();
       refreshCoverLetterUi();
@@ -6269,9 +6297,12 @@ startxref
 
       if (options.coverLetter) {
         const letter = coverLetterCache || match?.cover_letter || '';
+        const alreadyOnForm = coverLetterAlreadyOnForm();
         if (onCoverStep) {
           onCoverFieldSeen();
-          if (letter && findCoverLetterField() && !findCoverLetterFileInput()) {
+          if (alreadyOnForm) {
+            coverInjected = true;
+          } else if (letter && findCoverLetterField() && !findCoverLetterFileInput()) {
             coverInjected = await applyCoverLetterEverywhere(letter);
           } else if (letter && findCoverLetterFileInput()) {
             coverInjected = await applyCoverLetterEverywhere(letter, { force: true });
@@ -6282,6 +6313,8 @@ startxref
               7000,
             );
           }
+        } else if (alreadyOnForm) {
+          coverInjected = true;
         } else if (letter && (optionalCoverUpload || findCoverLetterField() || findCoverLetterFileInput())) {
           coverInjected = await applyCoverLetterEverywhere(letter, { force: true });
           if (!coverInjected && IS_TOP_FRAME) {
@@ -6663,7 +6696,12 @@ startxref
       return true;
     }
     if (msg?.type === 'INJECT_COVER_LETTER') {
-      applyCoverLetterEverywhere(msg.payload?.text, { force: true })
+      const text = msg.payload?.text;
+      if (coverLetterAlreadyOnForm()) {
+        sendResponse({ ok: true, injected: true, skipped: true });
+        return true;
+      }
+      applyCoverLetterEverywhere(text, { force: true })
         .then((injected) => sendResponse({ ok: true, injected }))
         .catch((e) => sendResponse({ ok: false, error: String(e?.message ?? e) }));
       return true;
