@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase/server';
 import { getCurrentProfile } from '@/lib/current-user';
 import { ensureFullDescription } from '@/lib/jd-fetcher';
 import { generateAtsResume, extractJdKeywordsTyped, keywordInText, type KeywordType } from '@/lib/gemini';
+import { requireFeatureAccess, recordFeatureUsage } from '@/lib/premium';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -43,7 +44,7 @@ export async function GET(
     jobId: job.id, currentDescription: job.description, url: job.url,
   });
 
-  if (!fullDescription) return NextResponse.json({ keywords: [], alreadyHave: [], keywordTypes: {} });
+  if (!fullDescription) return NextResponse.json({ keywords: [], alreadyHave: [], keywordTypes: {}, versions: [] });
 
   // LLM-based extraction + per-keyword type (tool vs activity) — the same
   // typed function the generator uses. The type is decided by the model here,
@@ -74,10 +75,19 @@ export async function GET(
     else available.push(kw);
   }
 
+  const { data: versions } = await sb
+    .from('resume_versions')
+    .select('id, label, ats_match_score, created_at')
+    .eq('profile_id', profile0.id)
+    .eq('match_id', id)
+    .order('created_at', { ascending: false })
+    .limit(10);
+
   return NextResponse.json({
     keywords: [...new Set([...available, ...alreadyHave])],
     alreadyHave: [...new Set(alreadyHave)],
     keywordTypes,
+    versions: versions ?? [],
   });
 }
 
@@ -157,6 +167,11 @@ export async function POST(
     return NextResponse.json({ error: 'No resume text found' }, { status: 400 });
   }
 
+  const gate = await requireFeatureAccess({ profileId: profile0.id, feature: 'resume_studio' });
+  if (!gate.ok) {
+    return NextResponse.json(gate, { status: gate.status });
+  }
+
   const fullDescription = await ensureFullDescription({
     jobId: job.id, currentDescription: job.description, url: job.url,
   });
@@ -193,6 +208,22 @@ export async function POST(
     .update({ tailored_resume_text: result.resume })
     .eq('id', id);
 
+  const versionLabel = `Resume ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`;
+  await sb.from('resume_versions').insert({
+    profile_id: profile0.id,
+    match_id: id,
+    label: versionLabel,
+    resume_text: result.resume,
+    ats_match_score: result.ats_match_score,
+    selected_keywords: selectedKeywords,
+  });
+
+  await recordFeatureUsage({
+    profileId: profile0.id,
+    feature: 'resume_studio',
+    eventKey: `${id}:${Date.now()}`,
+  });
+
   // Build a recruiter-friendly default download filename:
   //   {FirstName}_{Specialization}_{Years}
   // e.g. "Shashank_Performance_7.7"
@@ -214,6 +245,7 @@ export async function POST(
       selected_count: selectedKeywords.length,
       ats_match_score: result.ats_match_score,
     },
+    usage: gate.usage,
   });
 }
 

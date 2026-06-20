@@ -368,7 +368,7 @@ Note: the ~$10-15/mo in this file's "Cost Model" section is the **owner's heavy-
 
 #### Minimum premium pricing floor (May 2026, evidence-based — planning only)
 
-**Not in code yet.** Grounded in `#### OpenAI-primary cost model` + Groq overflow to OpenAI.
+**Tier 1 entitlement code shipped (Session 27, Jun 2026):** `lib/premium.ts` + migration **0015** — quota gates on verdict/prep/resume; no Stripe yet. See `### Premium Tier 1` under Core App Features and `docs/features-jun26-to-be-built.md`.
 
 | Assumption | Floor |
 |---|---|
@@ -1076,9 +1076,28 @@ The LLM scoring prompt (`scoreJob` in `lib/gemini.ts`) has explicit rules:
 | JD keyword analysis + Optimize resume | `GET/POST /api/match/[id]/resume` → `generateAtsResume()`, `extractJdKeywords` |
 | PDF download | `POST /api/match/[id]/resume/pdf` → `lib/pdf-resume.ts` |
 | Cover letter | `POST /api/coverletter` |
+| **Match Intelligence** (premium) | `GET/POST /api/match/[id]/verdict` → `lib/match-intelligence.ts` |
+| **Interview Prep Pack** (quota) | `GET/POST /api/match/[id]/prep` → `lib/interview-prep.ts` |
+| Resume version history | `GET /api/match/[id]/resume` → `resume_versions` table |
 | Bookmark / status / notes | `/api/match/[id]/bookmark`, `status`, `notes` |
 
-**Pitfalls:** ATS keyword flow (Sessions 9–11), owner PII in prompts, JD HTML sanitization, hallucinated skill chips (Session 19). See Known Pitfalls rows for `generateAtsResume`.
+**Pitfalls:** ATS keyword flow (Sessions 9–11), owner PII in prompts, JD HTML sanitization, hallucinated skill chips (Session 19). See Known Pitfalls rows for `generateAtsResume`. Premium verdict GET returns `locked: false` for users who can generate (premium plan); free users see locked preview until they upgrade.
+
+### Premium Tier 1 — Match Intelligence, Interview Prep, Resume Studio Pro
+
+**Roadmap:** `docs/features-jun26-to-be-built.md` · **Entitlements:** `lib/premium.ts` · **Migration:** `0015_hyred_premium_tier1.sql` (**manual run** in Supabase)
+
+| Feature | Free quota | Premium quota | API |
+|---|---|---|---|
+| Match Intelligence | 0 (locked) | 9999/cycle | `GET/POST /api/match/[id]/verdict` |
+| Interview Prep Pack | 1 lifetime | 8/cycle | `GET/POST /api/match/[id]/prep` |
+| Resume Studio Pro | 3/month | 40/cycle | `POST /api/match/[id]/resume` (+ `resume_versions` on GET) |
+
+**UI:** `JobActions.tsx` — verdict card, prep card, collapsible resume version list; 402 → premium toast.
+
+**Not built yet:** Stripe checkout, subscription management UI, Tier 2 (Smart Scan Plus, Autofill Pro).
+
+**Dev testing premium:** insert `premium_subscriptions` row for your `profile_id` with `plan = 'premium_sprint'`, `status = 'active'`.
 
 ### Onboarding — resume upload & first profile
 
@@ -1131,6 +1150,9 @@ lib/matcher.ts             ← Cosine similarity + embedding text builder
 lib/top-companies.ts       ← MNC company name list for /top-mnc filter
 lib/ats-checker.ts         ← Free ATS score engine (zero LLM; PR #129 + v9 #187)
 lib/ats-checker-samples.ts   ← Shared Try-sample resume + JD
+lib/premium.ts               ← Premium entitlements + quota helpers (interview_prep, match_intelligence, resume_studio)
+lib/match-intelligence.ts    ← Apply/Stretch/Skip verdict generation (LLM JSON)
+lib/interview-prep.ts        ← Interview prep pack generation (questions + STAR hints)
 
 app/(app)/jobs/[id]/        ← Job detail: JobActions.tsx, ReferralRadar.tsx, AutoApplyButton, BackToMatches.tsx
 app/(app)/onboarding/       ← First-run resume upload + profile setup
@@ -1145,7 +1167,9 @@ tailwind.config.ts          ← Luminous design tokens (Stitch)
 app/globals.css             ← .teal-gradient, .btn-*, .card, .input
 .stitch/                    ← Stitch reference HTML/PNG (Matches Dashboard Luminous)
 app/api/match/[id]/skills/  ← Skill match endpoint
-app/api/match/[id]/resume/  ← ATS resume (GET=keywords, POST=generate)
+app/api/match/[id]/resume/  ← ATS resume (GET=keywords+versions, POST=generate, quota-gated)
+app/api/match/[id]/verdict/ ← Match Intelligence (GET cached/locked preview, POST generate)
+app/api/match/[id]/prep/    ← Interview Prep Pack (GET cached, POST generate, quota-gated)
 app/api/match/[id]/resume/pdf/ ← Generate PDF + upload to Supabase Storage
 app/api/match/[id]/bookmark/ ← Toggle bookmark
 app/api/match/[id]/auto-apply/ ← Orchestrate full auto-apply flow
@@ -1186,6 +1210,8 @@ app/api/extension/form-template/route.ts       ← GET load domain skeleton
 app/api/extension/form-template/capture/route.ts ← POST passive structure capture
 app/api/extension/map-fields/route.ts            ← legacy map (profile in prompt) + mode: semantic (Tier B)
 supabase/migrations/0014_domain_form_templates.sql ← Tier B tables (manual run if not applied)
+supabase/migrations/0015_hyred_premium_tier1.sql   ← Premium tables: subscriptions, usage, resume_versions, match_verdicts, interview_prep_packs (manual run)
+docs/features-jun26-to-be-built.md                 ← Locked premium roadmap + Tier 1 status
 
 scripts/ingest.ts                    ← Cron entry point
 scripts/backfill-jds.ts             ← Backfill: fetch full JDs + re-embed + re-score existing jobs

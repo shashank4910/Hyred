@@ -1,0 +1,15 @@
+---
+inclusion: always
+---
+
+# JobRadar — read AGENTS.md first
+
+This project's rules + a token-saving context **index** live in **`AGENTS.md`** at the repo root.
+
+**Before doing work:** open `AGENTS.md`, then follow its Read Protocol — do NOT bulk-read `CONTEXT.md`. Use the Index in `AGENTS.md` to open only the one section relevant to the task.
+
+Always-on rules (full list in `AGENTS.md`):
+- `npm run typecheck` before pushing; new branch → PR → **merge when CI is green** (user approval = merge; do not wait for a second ask); verify live via `raw.githubusercontent.com/.../main/<path>`.
+- AI providers: Groq primary + OpenAI fallback (`LLM_PRIMARY`); never reintroduce `gemini-2.0-flash`.
+- Multi-user: resolve users with `getCurrentProfile()`; scope every query by `profile_id`.
+- Evidence-based debugging (logs first); free infra only beyond API keys.

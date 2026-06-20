@@ -97,6 +97,14 @@ export default async function JobMatchPage({
     }
   }
 
+  // Fetch saved resume versions for this match (Task 5 — Tier 1 UI)
+  const { data: resumeVersions } = await sb
+    .from('resume_versions')
+    .select('id, label, ats_match_score, created_at')
+    .eq('profile_id', profile0.id)
+    .eq('match_id', id)
+    .order('created_at', { ascending: false })
+    .limit(10);
 
   return (
     <div className="space-y-5">
@@ -185,6 +193,7 @@ export default async function JobMatchPage({
             (match as unknown as { tailored_resume_url?: string | null }).tailored_resume_url
           )
         }
+        initialResumeVersions={resumeVersions ?? []}
       />
 
       {/* Referral Radar */}

@@ -2,6 +2,42 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 27 — Premium Tier 1 (Match Intelligence, Interview Prep, Resume Studio Pro) (June 20, 2026)
+
+**Goal:** Ship Tier 1 premium features from locked roadmap (`docs/features-jun26-to-be-built.md`) — entitlement layer + three job-detail capabilities + UI. Orchestrator + subagent execution on branch `feat/tier-1-premium-features`.
+
+### Shipped
+
+| Area | What |
+|---|---|
+| **Migration 0015** | `premium_subscriptions`, `premium_usage_events`, `resume_versions`, `match_verdicts`, `interview_prep_packs` |
+| **`lib/premium.ts`** | `getPremiumAccess`, `requireFeatureAccess`, `recordFeatureUsage`, per-plan quotas |
+| **Match Intelligence** | `lib/match-intelligence.ts`, `GET/POST /api/match/[id]/verdict` — Apply/Stretch/Skip + seniority fit |
+| **Interview Prep Pack** | `lib/interview-prep.ts`, `GET/POST /api/match/[id]/prep` — questions + STAR hints |
+| **Resume Studio Pro** | Quota gate + `resume_versions` insert on `POST /api/match/[id]/resume`; version list on GET |
+| **Job detail UI** | `JobActions.tsx` — verdict card, prep card, resume version history, 402 premium toasts |
+| **Tests** | `tests/unit/premium.test.ts`, `match-intelligence.test.ts`, `interview-prep.test.ts` (13 passing) |
+| **Docs** | `docs/features-jun26-to-be-built.md`, `docs/superpowers/plans/2026-06-20-tier-1-premium-features.md` |
+
+### Free vs premium quotas (locked)
+
+| Feature | Free | Premium |
+|---|---|---|
+| `interview_prep` | 1 lifetime | 8/billing cycle |
+| `match_intelligence` | 0 (locked) | 9999/cycle |
+| `resume_studio` | 3/month | 40/cycle |
+
+### Design notes (keep)
+
+- **No Stripe yet** — premium via manual `premium_subscriptions` row for dev; production billing is Tier 2+ roadmap work.
+- **Verdict GET** — `locked: false` when user can generate (premium); free users get locked preview.
+- **`lib/gemini.ts`** — `chat()` exported for interview prep (was module-private).
+- **Manual step:** run migration **0015** in Supabase before live testing.
+
+**Doc pointer:** `CONTEXT.md` → `### Premium Tier 1`; `AGENTS.md` Index row; `docs/features-jun26-to-be-built.md`.
+
+---
+
 ## Session 26 — Doc system bridge audit (June 20, 2026)
 
 **Goal:** Fix broken grep targets and missing Index rows so multi-agent handoffs (Cursor, Claude, Kiro, Antigravity) find the right CONTEXT section without re-explaining the product.

@@ -1,0 +1,31 @@
+---
+description: Always explain to the user in simple, plain language — every chat, every topic
+alwaysApply: true
+---
+
+# Simple language for Shashank
+
+When talking to the user (any task, any project, code or not):
+
+## Do
+
+- Use **plain English** — short sentences, everyday words
+- Explain **what happened and why** before technical detail
+- Use **simple analogies** when a concept is hard (e.g. "key in the lock" not "selector mismatch")
+- Keep answers **as short as the question needs** — no long essays unless asked
+- If you must use a tech term, **define it in one line** right after
+
+## Don't
+
+- Stack jargon (`ensureRowCount`, `pub-sub`, `hydration mismatch`) without explaining
+- Write like a formal doc or blog unless asked
+- Use bullet chains of identifiers instead of plain sentences
+- Assume the user wants architecture essays — give the **bottom line first**
+
+## Order
+
+1. **Bottom line** (yes/no, done/not done, what to do next)
+2. **Simple why** (1–3 sentences)
+3. **Details** only if useful (logs, file names, steps)
+
+Applies to: reviews, bugs, shipping status, how things work, and casual questions.

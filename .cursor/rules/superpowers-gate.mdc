@@ -1,0 +1,84 @@
+---
+description: When to use Superpowers workflow (big tasks) vs skip (surgical fixes). Always decide at task start.
+alwaysApply: true
+---
+
+# Superpowers gate — use wisely
+
+Superpowers is installed (Cursor plugin). **Do not use it for every task.**
+
+At the **start of each task**, classify it and follow the matching path.
+
+---
+
+## USE Superpowers (full workflow)
+
+Use when **two or more** of these are true:
+
+- New **feature or subsystem** (not a one-line fix)
+- **3+ files** or **2+ layers** (DB + API + extension, etc.)
+- **Architecture or schema** decisions (e.g. domain form skeleton, Tier B autofill)
+- **Multi-phase** work (Phase 1 / 2 / 3 plans)
+- Expected effort **> ~1 hour** of focused implementation
+- User says **"use Superpowers"** or **"big task"**
+
+**Workflow when gated ON:**
+
+1. **brainstorming** — clarify goal, constraints, out-of-scope (short; user is busy)
+2. **writing-plans** — bite-sized tasks with files + verification steps
+3. Implement with **test-driven-development** where tests already exist or are cheap to add
+4. **verification-before-completion** — run typecheck/tests/logs before claiming done
+5. **requesting-code-review** mindset — self-check against plan before handoff
+
+Skip subagent marathons unless the user asks for autonomous multi-hour runs.
+
+**Hyred examples (USE):** Tier B skeleton + map-fields v2, domain template tables, extension widget executor overhaul, multi-user auth phases.
+
+---
+
+## SKIP Superpowers (surgical mode)
+
+Use when **any** of these is true:
+
+- **Bug fix** with known cause (logs, repro, single root issue)
+- **One file** or **< ~20 lines** intended change
+- **Copy, styling, typo**, version bump, config tweak
+- User says **"quick fix"**, **"surgical"**, **"skip Superpowers"**
+- **Investigation only** (explain, RCA, review — no large build)
+
+**Surgical mode:**
+
+- No design doc, no formal plan artifact
+- Minimal diff, match existing patterns
+- Run relevant checks (`npm run typecheck`, syntax check) — no mandatory TDD from scratch
+- Simple English summary for the user
+
+**Hyred examples (SKIP):** notice period typo, MV3 wake retry, single regex, merge conflict, "why does X fail" questions.
+
+---
+
+## Gray area — default
+
+If unsure: **SKIP** for the first fix attempt. **Upgrade to Superpowers** only if the fix grows into a multi-file feature.
+
+---
+
+## Conflicts with JobRadar rules
+
+When Superpowers is ON, still follow:
+
+- `AGENTS.md` read protocol and Hyred pitfalls
+- User: **commit only when asked**
+- **Simple English** for user-facing text
+- **Minimal diffs** — Superpowers plans must not justify scope creep
+
+Superpowers ** supplements** `AGENTS.md`; it does not replace it.
+
+---
+
+## Announce at task start (one line)
+
+Tell the user which mode you chose, e.g.:
+
+- "Superpowers **on** — Tier B skeleton is a multi-phase feature; I'll plan then implement."
+- "Superpowers **off** — surgical fix for this crash; minimal diff."

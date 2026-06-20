@@ -38,13 +38,14 @@ How to open one section cheaply: `grep -n "<heading text>" CONTEXT.md` to get th
 | **Import job (manual URL)** | `CONTEXT.md` → `### Import job` | `/import`, `/api/import-job` |
 | **Outreach / referral messages** | `CONTEXT.md` → `### Outreach` + `lib/gemini.ts` `generateOutreachMessage` | `ReferralRadar.tsx`, `/api/match/[id]/outreach` |
 | **Cover letter generation** | `CONTEXT.md` → `### Job detail` + `app/api/coverletter/route.ts` | job detail page |
+| **Premium Tier 1** (Match Intelligence, Interview Prep, Resume Studio Pro) | `CONTEXT.md` → `### Premium Tier 1` + `docs/features-jun26-to-be-built.md` + `lib/premium.ts` + migration **0015** | verdict/prep/resume APIs, quotas, `JobActions.tsx` |
 | **Apply profile form** | `CONTEXT.md` → `### Apply profile` + AI Auto-Apply section + Known Pitfalls (owner PII rows) | `/apply-profile`, extension autofill source |
 | **Current UI / design tokens / Stitch / UI PRs** | `CONTEXT.md` → `## UI & Design System` | any frontend styling, layout, or UX work |
 | Multi-tenant plan & phase status | `CONTEXT.md` → `## ⭐ ACTIVE INITIATIVE` → `### Progress Tracker` | planning the next phase |
 | LLM provider strategy (Groq/OpenAI, why not Gemini) | `CONTEXT.md` → Phase 0 research note + the `gemini-2.0-flash` pitfall row | changing AI providers |
 | Capacity limits (Groq free tier, users per key) | `CONTEXT.md` → `#### Phase 3 capacity analysis` | scaling / quota decisions |
 | Cost per user / 1→1000 scaling | `CONTEXT.md` → `#### OpenAI-primary cost model` | budgeting |
-| Premium pricing floor / monetization planning | `CONTEXT.md` → `#### Minimum premium pricing floor` | Stripe tiers, what to charge |
+| Premium pricing floor / monetization planning | `CONTEXT.md` → `#### Minimum premium pricing floor` + `### Premium Tier 1` | Stripe tiers, what to charge, quota gates |
 | Shared ingest / pub-sub by role topic (Phase 3) | `CONTEXT.md` → `#### Phase 3 design note — shared ingest / pub-sub by role topic` | scaling ingest before public launch |
 | Multi-tenant PII in forms / resume prompts | `CONTEXT.md` → `## Known Pitfalls` (owner PII rows) | onboarding, apply-profile, `generateAtsResume` |
 | Resume upload / `.doc` vs `.docx` / Vercel `fs` build | `CONTEXT.md` → `## Known Pitfalls` (resume parser + client bundle rows) + `lib/resume-upload.ts` | onboarding upload, `lib/resume.ts`, deploy failures |

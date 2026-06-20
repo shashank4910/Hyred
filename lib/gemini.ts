@@ -361,7 +361,7 @@ async function buildProviderChainCached(): Promise<ProviderEntry[]> {
  *
  * To enable per-user rate limiting, pass the user's profileId.
  */
-async function chat(
+export async function chat(
   systemPrompt: string,
   userPrompt: string,
   temperature = 0.3,

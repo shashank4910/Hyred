@@ -21,4 +21,8 @@ next-env.d.ts
 # Python bytecode (e.g. from .kiro/steering/ui-ux-pro-max/scripts/)
 __pycache__/
 *.pyc
-*.pyo
+browser_agent/venv/
+nul
+ext.zip
+ext/
+Hyred/
