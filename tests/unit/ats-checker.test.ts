@@ -10,7 +10,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { checkAtsCompatibility, extractKeywords } from '@/lib/ats-checker';
+import { checkAtsCompatibility, extractKeywords, keywordInText } from '@/lib/ats-checker';
+import { ATS_SAMPLE_RESUME } from '@/lib/ats-checker-samples';
 
 /* ------------------------------------------------------------------ */
 /*  Helper: create a minimal passing resume                            */
@@ -533,7 +534,118 @@ describe('extractKeywords', () => {
   it('extracts capitalized proper nouns', () => {
     const text = 'Worked with Datadog and New Relic for monitoring.';
     const keywords = extractKeywords(text);
-    // extractKeywords returns lowercase tech keywords
     expect(keywords).toContain('datadog');
+  });
+
+  it('does not false-match short tokens inside other words', () => {
+    expect(keywordInText('We improved performance ago', 'go')).toBe(false);
+    expect(keywordInText('We improved performance metrics', 'r')).toBe(false);
+    expect(extractKeywords('We improved performance ago')).not.toContain('go');
+    expect(extractKeywords('We improved performance metrics')).not.toContain('r');
+  });
+
+  it('matches standalone Go and R language tokens', () => {
+    expect(keywordInText('Backend in Go and Python', 'go')).toBe(true);
+    expect(keywordInText('Statistical models in R and Python', 'r')).toBe(true);
+  });
+
+  it('does not match java inside javascript', () => {
+    expect(keywordInText('Expert in JavaScript', 'java')).toBe(false);
+    expect(keywordInText('Expert in Java and Kotlin', 'java')).toBe(true);
+  });
+});
+
+describe('India-friendly contact detection', () => {
+  it('detects Indian phone and location', () => {
+    const text = [
+      'Rajesh Kumar | rajesh@email.com | +91 9876543210',
+      'Bangalore, Karnataka',
+      '',
+      'PROFESSIONAL EXPERIENCE',
+      '- Built systems with Java and Spring Boot',
+      '- Reduced latency by 35%',
+      '- Led team of 4 engineers',
+      '- Deployed on AWS with Docker',
+      '',
+      'EDUCATION',
+      'B.Tech, IIT Bombay',
+      '',
+      'TECHNICAL SKILLS',
+      'Java, Python, AWS, Docker, Kubernetes',
+    ].join('\n');
+    const result = checkAtsCompatibility(text);
+    expect(result.breakdown.contactInfo.score).toBeGreaterThanOrEqual(70);
+  });
+
+  it('recognizes ALL CAPS name at top', () => {
+    const text = [
+      'PRIYA SHARMA',
+      'priya@email.com | +91 9876543210',
+      'Hyderabad, Telangana',
+      '',
+      'PROFESSIONAL EXPERIENCE',
+      '- Did work.',
+      '',
+      'EDUCATION',
+      'Degree',
+      '',
+      'SKILLS',
+      'Java, Python',
+    ].join('\n');
+    const result = checkAtsCompatibility(text);
+    expect(result.breakdown.contactInfo.score).toBeGreaterThanOrEqual(50);
+  });
+});
+
+describe('Length calibration', () => {
+  it('does not over-penalize concise structured resumes', () => {
+    const result = checkAtsCompatibility(ATS_SAMPLE_RESUME);
+    expect(result.stats.wordCount).toBeGreaterThanOrEqual(190);
+    expect(result.breakdown.lengthReadability.score).toBeGreaterThanOrEqual(38);
+    expect(result.overallScore).toBeGreaterThanOrEqual(65);
+  });
+});
+
+describe('JD keyword aliases', () => {
+  it('treats postgres and postgresql as equivalent', () => {
+    const resume = [
+      'John Smith | john@email.com',
+      '',
+      'PROFESSIONAL EXPERIENCE',
+      '- Managed PostgreSQL databases at scale',
+      '',
+      'EDUCATION',
+      'Degree',
+      '',
+      'SKILLS',
+      'PostgreSQL, Docker',
+    ].join('\n');
+    const jd = 'Need postgres and docker experience.';
+    const result = checkAtsCompatibility(resume, 'resume.txt', jd);
+    expect(result.jdMatch?.matched).toContain('postgres');
+    expect(result.jdMatch?.matchScore).toBeGreaterThanOrEqual(50);
+  });
+});
+
+describe('Skills header with trailing colon', () => {
+  it('parses skills section when header has a colon', () => {
+    const text = [
+      'John Smith',
+      'john@email.com | San Francisco, CA',
+      '',
+      'PROFESSIONAL EXPERIENCE',
+      '- Built apps with React and Node.js serving 1M users',
+      '- Reduced costs by 20% using AWS Lambda',
+      '- Led team of 3 engineers',
+      '- Improved CI/CD with GitHub Actions',
+      '',
+      'EDUCATION',
+      'BS CS',
+      '',
+      'TECHNICAL SKILLS:',
+      'TypeScript, React, Node.js, Docker, Kubernetes, PostgreSQL',
+    ].join('\n');
+    const result = checkAtsCompatibility(text);
+    expect(result.breakdown.skillsOptimization.score).toBeGreaterThan(15);
   });
 });
