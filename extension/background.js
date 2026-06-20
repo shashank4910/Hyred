@@ -309,6 +309,9 @@ async function verifyToken(token, base) {
   }
 }
 
+/** tabId → timestamp; prevents duplicate cover-letter file uploads during fan-out autofill */
+const coverUploadLocks = new Map();
+
 const handlers = {
   // Handshake entry point — called by the hyred.in content script (connect.js)
   // with a freshly-signed extension JWT it picked up from the web app. We
@@ -629,12 +632,34 @@ const handlers = {
           { type: 'INJECT_COVER_LETTER', payload: { text } },
           { frameId: frame.frameId },
         );
-        if (res?.injected) injected = true;
+        if (res?.injected) {
+          injected = true;
+          break;
+        }
       } catch {
         /* frame has no content script */
       }
     }
     return { ok: true, injected };
+  },
+
+  /** One cover-letter file upload per tab per autofill pass (Workday fan-out runs many frames). */
+  async tryCoverUploadLock(_payload = {}, sender = {}) {
+    const tabId = sender.tab?.id;
+    if (!tabId) return { ok: false, locked: false, acquired: false };
+    const now = Date.now();
+    const key = `coverUpload_${tabId}`;
+    const prev = coverUploadLocks.get(key) || 0;
+    if (now - prev < 30_000) return { ok: false, locked: true, acquired: false };
+    coverUploadLocks.set(key, now);
+    return { ok: true, locked: false, acquired: true };
+  },
+
+  async releaseCoverUploadLock(_payload = {}, sender = {}) {
+    const tabId = sender.tab?.id;
+    if (!tabId) return { ok: true };
+    coverUploadLocks.delete(`coverUpload_${tabId}`);
+    return { ok: true };
   },
 
   async previewResume({ match_id, variant, preview_url } = {}) {
