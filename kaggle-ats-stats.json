@@ -2,15 +2,15 @@
   "totalResumes": 962,
   "errors": 0,
   "overallStats": {
-    "average": 22.3,
-    "median": 22,
+    "average": 22,
+    "median": 21,
     "min": 16,
     "max": 40
   },
   "scoreDistribution": {
-    "0-19": 170,
-    "20-39": 789,
-    "40-59": 3,
+    "0-19": 195,
+    "20-39": 763,
+    "40-59": 4,
     "60-79": 0,
     "80-89": 0,
     "90-100": 0
@@ -27,8 +27,8 @@
         "bulletQuality": 18,
         "quantifiableAchievements": 11,
         "skillsOptimization": 15,
-        "lengthReadability": 28,
-        "formatCleanliness": 93,
+        "lengthReadability": 26,
+        "formatCleanliness": 88,
         "dateConsistency": 61
       }
     },
@@ -36,7 +36,7 @@
       "count": 70,
       "avgScore": 21,
       "minScore": 19,
-      "maxScore": 25,
+      "maxScore": 24,
       "avgBreakdown": {
         "sectionStructure": 0,
         "contactInfo": 26,
@@ -44,7 +44,7 @@
         "quantifiableAchievements": 13,
         "skillsOptimization": 15,
         "lengthReadability": 31,
-        "formatCleanliness": 94,
+        "formatCleanliness": 89,
         "dateConsistency": 61
       }
     },
@@ -52,7 +52,7 @@
       "count": 55,
       "avgScore": 24,
       "minScore": 21,
-      "maxScore": 30,
+      "maxScore": 29,
       "avgBreakdown": {
         "sectionStructure": 0,
         "contactInfo": 26,
@@ -60,87 +60,87 @@
         "quantifiableAchievements": 10,
         "skillsOptimization": 15,
         "lengthReadability": 49,
-        "formatCleanliness": 93,
+        "formatCleanliness": 94,
         "dateConsistency": 69
       }
     },
     "Python Developer": {
       "count": 48,
       "avgScore": 23,
-      "minScore": 18,
-      "maxScore": 27,
+      "minScore": 20,
+      "maxScore": 26,
       "avgBreakdown": {
         "sectionStructure": 0,
         "contactInfo": 33,
         "bulletQuality": 17,
         "quantifiableAchievements": 10,
         "skillsOptimization": 15,
-        "lengthReadability": 33,
-        "formatCleanliness": 97,
+        "lengthReadability": 34,
+        "formatCleanliness": 94,
         "dateConsistency": 60
       }
     },
     "Web Designing": {
       "count": 45,
-      "avgScore": 25,
-      "minScore": 21,
-      "maxScore": 31,
+      "avgScore": 24,
+      "minScore": 19,
+      "maxScore": 28,
       "avgBreakdown": {
         "sectionStructure": 0,
-        "contactInfo": 25,
+        "contactInfo": 22,
         "bulletQuality": 32,
         "quantifiableAchievements": 8,
         "skillsOptimization": 15,
-        "lengthReadability": 53,
-        "formatCleanliness": 97,
+        "lengthReadability": 51,
+        "formatCleanliness": 76,
         "dateConsistency": 64
       }
     },
     "HR": {
       "count": 44,
-      "avgScore": 18,
-      "minScore": 16,
-      "maxScore": 22,
+      "avgScore": 19,
+      "minScore": 18,
+      "maxScore": 21,
       "avgBreakdown": {
         "sectionStructure": 0,
         "contactInfo": 25,
         "bulletQuality": 10,
         "quantifiableAchievements": 15,
         "skillsOptimization": 15,
-        "lengthReadability": 10,
-        "formatCleanliness": 97,
+        "lengthReadability": 17,
+        "formatCleanliness": 91,
         "dateConsistency": 55
       }
     },
     "Hadoop": {
       "count": 42,
-      "avgScore": 23,
+      "avgScore": 22,
       "minScore": 19,
-      "maxScore": 31,
+      "maxScore": 29,
       "avgBreakdown": {
         "sectionStructure": 0,
-        "contactInfo": 25,
+        "contactInfo": 21,
         "bulletQuality": 17,
         "quantifiableAchievements": 15,
         "skillsOptimization": 15,
         "lengthReadability": 48,
-        "formatCleanliness": 92,
+        "formatCleanliness": 88,
         "dateConsistency": 52
       }
     },
     "Data Science": {
       "count": 40,
       "avgScore": 23,
-      "minScore": 17,
-      "maxScore": 34,
+      "minScore": 18,
+      "maxScore": 33,
       "avgBreakdown": {
         "sectionStructure": 0,
         "contactInfo": 31,
         "bulletQuality": 14,
         "quantifiableAchievements": 15,
-        "skillsOptimization": 19,
-        "lengthReadability": 35,
-        "formatCleanliness": 94,
+        "skillsOptimization": 20,
+        "lengthReadability": 36,
+        "formatCleanliness": 91,
         "dateConsistency": 56
       }
     },
@@ -148,63 +148,63 @@
       "count": 40,
       "avgScore": 23,
       "minScore": 19,
-      "maxScore": 27,
+      "maxScore": 28,
       "avgBreakdown": {
         "sectionStructure": 0,
         "contactInfo": 29,
         "bulletQuality": 22,
         "quantifiableAchievements": 19,
         "skillsOptimization": 15,
-        "lengthReadability": 26,
-        "formatCleanliness": 95,
+        "lengthReadability": 31,
+        "formatCleanliness": 89,
         "dateConsistency": 61
       }
     },
     "Sales": {
       "count": 40,
-      "avgScore": 21,
-      "minScore": 19,
-      "maxScore": 24,
+      "avgScore": 19,
+      "minScore": 17,
+      "maxScore": 21,
       "avgBreakdown": {
         "sectionStructure": 0,
-        "contactInfo": 31,
+        "contactInfo": 27,
         "bulletQuality": 14,
         "quantifiableAchievements": 14,
         "skillsOptimization": 15,
         "lengthReadability": 26,
-        "formatCleanliness": 91,
+        "formatCleanliness": 78,
         "dateConsistency": 45
       }
     },
     "Operations Manager": {
       "count": 40,
-      "avgScore": 24,
-      "minScore": 21,
-      "maxScore": 27,
+      "avgScore": 22,
+      "minScore": 19,
+      "maxScore": 24,
       "avgBreakdown": {
         "sectionStructure": 4,
-        "contactInfo": 33,
+        "contactInfo": 16,
         "bulletQuality": 23,
         "quantifiableAchievements": 14,
         "skillsOptimization": 15,
-        "lengthReadability": 30,
-        "formatCleanliness": 85,
+        "lengthReadability": 34,
+        "formatCleanliness": 79,
         "dateConsistency": 66
       }
     },
     "ETL Developer": {
       "count": 40,
-      "avgScore": 24,
-      "minScore": 22,
-      "maxScore": 26,
+      "avgScore": 23,
+      "minScore": 20,
+      "maxScore": 25,
       "avgBreakdown": {
         "sectionStructure": 0,
-        "contactInfo": 35,
+        "contactInfo": 31,
         "bulletQuality": 10,
         "quantifiableAchievements": 15,
         "skillsOptimization": 15,
-        "lengthReadability": 43,
-        "formatCleanliness": 91,
+        "lengthReadability": 44,
+        "formatCleanliness": 90,
         "dateConsistency": 68
       }
     },
@@ -219,24 +219,24 @@
         "bulletQuality": 19,
         "quantifiableAchievements": 12,
         "skillsOptimization": 15,
-        "lengthReadability": 34,
-        "formatCleanliness": 96,
+        "lengthReadability": 36,
+        "formatCleanliness": 90,
         "dateConsistency": 66
       }
     },
     "Arts": {
       "count": 36,
-      "avgScore": 21,
-      "minScore": 19,
-      "maxScore": 24,
+      "avgScore": 22,
+      "minScore": 20,
+      "maxScore": 25,
       "avgBreakdown": {
         "sectionStructure": 0,
         "contactInfo": 35,
         "bulletQuality": 13,
         "quantifiableAchievements": 16,
         "skillsOptimization": 15,
-        "lengthReadability": 16,
-        "formatCleanliness": 96,
+        "lengthReadability": 24,
+        "formatCleanliness": 92,
         "dateConsistency": 62
       }
     },
@@ -244,7 +244,7 @@
       "count": 33,
       "avgScore": 25,
       "minScore": 20,
-      "maxScore": 40,
+      "maxScore": 39,
       "avgBreakdown": {
         "sectionStructure": 0,
         "contactInfo": 30,
@@ -252,23 +252,23 @@
         "quantifiableAchievements": 18,
         "skillsOptimization": 15,
         "lengthReadability": 57,
-        "formatCleanliness": 87,
+        "formatCleanliness": 84,
         "dateConsistency": 56
       }
     },
     "Health and fitness": {
       "count": 30,
-      "avgScore": 22,
-      "minScore": 20,
+      "avgScore": 21,
+      "minScore": 18,
       "maxScore": 24,
       "avgBreakdown": {
         "sectionStructure": 0,
-        "contactInfo": 30,
+        "contactInfo": 24,
         "bulletQuality": 10,
         "quantifiableAchievements": 15,
         "skillsOptimization": 18,
-        "lengthReadability": 28,
-        "formatCleanliness": 96,
+        "lengthReadability": 33,
+        "formatCleanliness": 85,
         "dateConsistency": 63
       }
     },
@@ -283,15 +283,15 @@
         "bulletQuality": 23,
         "quantifiableAchievements": 12,
         "skillsOptimization": 15,
-        "lengthReadability": 37,
-        "formatCleanliness": 88,
+        "lengthReadability": 38,
+        "formatCleanliness": 83,
         "dateConsistency": 51
       }
     },
     "PMO": {
       "count": 30,
       "avgScore": 22,
-      "minScore": 21,
+      "minScore": 20,
       "maxScore": 23,
       "avgBreakdown": {
         "sectionStructure": 0,
@@ -299,8 +299,8 @@
         "bulletQuality": 10,
         "quantifiableAchievements": 15,
         "skillsOptimization": 15,
-        "lengthReadability": 55,
-        "formatCleanliness": 88,
+        "lengthReadability": 53,
+        "formatCleanliness": 87,
         "dateConsistency": 35
       }
     },
@@ -315,31 +315,31 @@
         "bulletQuality": 10,
         "quantifiableAchievements": 15,
         "skillsOptimization": 15,
-        "lengthReadability": 26,
-        "formatCleanliness": 88,
+        "lengthReadability": 35,
+        "formatCleanliness": 79,
         "dateConsistency": 61
       }
     },
     "DotNet Developer": {
       "count": 28,
-      "avgScore": 21,
-      "minScore": 17,
-      "maxScore": 24,
+      "avgScore": 22,
+      "minScore": 16,
+      "maxScore": 40,
       "avgBreakdown": {
         "sectionStructure": 0,
-        "contactInfo": 31,
-        "bulletQuality": 9,
+        "contactInfo": 21,
+        "bulletQuality": 23,
         "quantifiableAchievements": 13,
-        "skillsOptimization": 15,
+        "skillsOptimization": 24,
         "lengthReadability": 31,
-        "formatCleanliness": 95,
+        "formatCleanliness": 82,
         "dateConsistency": 51
       }
     },
     "Automation Testing": {
       "count": 26,
       "avgScore": 23,
-      "minScore": 20,
+      "minScore": 18,
       "maxScore": 28,
       "avgBreakdown": {
         "sectionStructure": 0,
@@ -347,8 +347,8 @@
         "bulletQuality": 15,
         "quantifiableAchievements": 14,
         "skillsOptimization": 15,
-        "lengthReadability": 46,
-        "formatCleanliness": 90,
+        "lengthReadability": 48,
+        "formatCleanliness": 88,
         "dateConsistency": 50
       }
     },
@@ -363,24 +363,24 @@
         "bulletQuality": 10,
         "quantifiableAchievements": 15,
         "skillsOptimization": 15,
-        "lengthReadability": 57,
-        "formatCleanliness": 93,
+        "lengthReadability": 56,
+        "formatCleanliness": 90,
         "dateConsistency": 62
       }
     },
     "Civil Engineer": {
       "count": 24,
-      "avgScore": 24,
-      "minScore": 19,
-      "maxScore": 29,
+      "avgScore": 22,
+      "minScore": 18,
+      "maxScore": 26,
       "avgBreakdown": {
         "sectionStructure": 0,
-        "contactInfo": 28,
+        "contactInfo": 26,
         "bulletQuality": 17,
         "quantifiableAchievements": 17,
         "skillsOptimization": 15,
-        "lengthReadability": 41,
-        "formatCleanliness": 93,
+        "lengthReadability": 39,
+        "formatCleanliness": 80,
         "dateConsistency": 63
       }
     },
@@ -395,15 +395,15 @@
         "bulletQuality": 9,
         "quantifiableAchievements": 13,
         "skillsOptimization": 15,
-        "lengthReadability": 40,
-        "formatCleanliness": 93,
+        "lengthReadability": 42,
+        "formatCleanliness": 88,
         "dateConsistency": 52
       }
     },
     "Advocate": {
       "count": 20,
-      "avgScore": 19,
-      "minScore": 16,
+      "avgScore": 20,
+      "minScore": 18,
       "maxScore": 24,
       "avgBreakdown": {
         "sectionStructure": 0,
@@ -411,8 +411,8 @@
         "bulletQuality": 12,
         "quantifiableAchievements": 14,
         "skillsOptimization": 15,
-        "lengthReadability": 16,
-        "formatCleanliness": 99,
+        "lengthReadability": 21,
+        "formatCleanliness": 95,
         "dateConsistency": 54
       }
     }

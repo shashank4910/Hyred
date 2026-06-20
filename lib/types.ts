@@ -90,6 +90,35 @@ export type MatchStatus =
   | 'offer'
   | 'closed';
 
+export type PremiumPlan = 'free' | 'premium_monthly' | 'premium_sprint';
+
+export type MatchVerdict = 'apply' | 'stretch' | 'skip';
+export type SeniorityFit = 'underqualified' | 'calibrated' | 'overqualified';
+
+export type MatchIntelligenceResult = {
+  verdict: MatchVerdict;
+  seniorityFit: SeniorityFit;
+  reasons: string[];
+  actions: string[];
+};
+
+export type InterviewPrepPack = {
+  quickSummary: string;
+  likelyQuestions: string[];
+  technicalQuestions: string[];
+  behavioralQuestions: string[];
+  gapDefenseQuestions: string[];
+  starAnswerHints: { question: string; answerHint: string }[];
+  questionsToAsk: string[];
+};
+
+export type ResumeVersionSummary = {
+  id: string;
+  label: string | null;
+  ats_match_score: number | null;
+  created_at: string;
+};
+
 export type RawJob = {
   source: string;
   source_id: string;

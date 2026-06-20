@@ -24,6 +24,33 @@ describe('extractResumeStructure', () => {
     expect(s.latest_company).toMatch(/Acme/i);
   });
 
+  it('parses pipe-separated jobs and does not treat date lines as employers', () => {
+    const text = `PROFESSIONAL EXPERIENCE
+Senior Performance Engineer  |  IRIS Software, Noida
+Sep 2024 - Present
+Client: Charles Schwab
+- Built load tests
+
+Performance Test Analyst  |  Coforge Ltd, Noida
+Aug 2023 - Sep 2024
+Client: Tokio Marine
+
+Performance Engineer  |  Tata Consultancy Services, Bangalore
+Dec 2021 - Aug 2023
+
+Performance Tester  |  Cognizant Technology Solutions, Bangalore
+Sep 2020 - Dec 2021
+`;
+    const s = extractResumeStructure(text);
+    expect(s.work_history).toHaveLength(4);
+    expect(s.work_history[0]?.company).toMatch(/IRIS/i);
+    expect(s.work_history[0]?.start).toMatch(/Sep 2024/i);
+    expect(s.work_history[1]?.company).toMatch(/Coforge/i);
+    expect(s.work_history[2]?.company).toMatch(/Tata/i);
+    expect(s.work_history[3]?.company).toMatch(/Cognizant/i);
+    expect(s.work_history.some((j) => j.title === 'Present')).toBe(false);
+  });
+
   it('does not swap title into company when pipe order is title | company', () => {
     const text = `SHASHANK SINGH
 Senior Performance Engineer
