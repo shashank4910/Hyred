@@ -209,14 +209,22 @@ export async function POST(
     .eq('id', id);
 
   const versionLabel = `Resume ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`;
-  await sb.from('resume_versions').insert({
-    profile_id: profile0.id,
-    match_id: id,
-    label: versionLabel,
-    resume_text: result.resume,
-    ats_match_score: result.ats_match_score,
-    selected_keywords: selectedKeywords,
-  });
+  const { data: newVersion, error: versionErr } = await sb
+    .from('resume_versions')
+    .insert({
+      profile_id: profile0.id,
+      match_id: id,
+      label: versionLabel,
+      resume_text: result.resume,
+      ats_match_score: result.ats_match_score,
+      selected_keywords: selectedKeywords,
+    })
+    .select('id, label, ats_match_score, created_at')
+    .single();
+
+  if (versionErr) {
+    console.error('[resume] failed to save version:', versionErr.message);
+  }
 
   await recordFeatureUsage({
     profileId: profile0.id,
@@ -246,6 +254,7 @@ export async function POST(
       ats_match_score: result.ats_match_score,
     },
     usage: gate.usage,
+    version: newVersion ?? null,
   });
 }
 

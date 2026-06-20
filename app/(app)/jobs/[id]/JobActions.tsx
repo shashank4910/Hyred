@@ -106,7 +106,7 @@ export function JobActions({
 
   // Resume versions (saved history from the DB, updated live when a new one is generated)
   const [resumeVersions, setResumeVersions] = useState<ResumeVersionSummary[]>(initialResumeVersions);
-  const [showVersions, setShowVersions] = useState(false);
+  const [showVersions, setShowVersions] = useState(initialResumeVersions.length > 0);
 
   // Match Intelligence state
   const [verdictLoading, setVerdictLoading] = useState(false);
@@ -368,6 +368,13 @@ export function JobActions({
         setKeywords(data.keywords);
       }
       if (data.filename_base) setFilenameBase(data.filename_base);
+      if (data.version) {
+        setResumeVersions((prev) => {
+          const without = prev.filter((v) => v.id !== data.version.id);
+          return [data.version as ResumeVersionSummary, ...without].slice(0, 10);
+        });
+        setShowVersions(true);
+      }
       setHasTailoredResume(true);
       notifyExtensionApplyHandoff(true);
       const newScore = data.keywords?.ats_match_score ?? 0;
@@ -842,15 +849,15 @@ export function JobActions({
           />
         )}
 
-        {/* Resume version history */}
+        {/* Resume Studio Pro — saved version history */}
         {resumeVersions.length > 0 && (
           <div className="mt-3 border-t border-outline-variant pt-3">
             <button
               onClick={() => setShowVersions((v) => !v)}
-              className="flex items-center gap-1.5 text-xs text-on-surface-variant hover:text-on-surface transition-colors"
+              className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
             >
               {showVersions ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-              {resumeVersions.length} saved version{resumeVersions.length !== 1 ? 's' : ''}
+              Resume Studio — {resumeVersions.length} saved version{resumeVersions.length !== 1 ? 's' : ''}
             </button>
             {showVersions && (
               <div className="mt-2 space-y-1.5">
