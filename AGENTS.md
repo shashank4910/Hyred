@@ -18,7 +18,7 @@ Pick the smallest tier that fits the task. **Never read `CONTEXT.md` in full for
 - **Tier 0 — every task (already loaded):** this file. It has the rules + the index. If the task is trivial, you're done here.
 - **Tier 1 — first time in this repo, or architecture/multi-file work:** open `CONTEXT.md` → `## Key Architecture Decisions`, `## File Map`, `## Known Pitfalls` (only those three).
 - **Tier 2 — a specific task:** find the matching row in the **Index** below → open ONLY that one section (grep its exact `##`/`####` heading in the target file and read from there).
-- **Tier 3 — "why was this done?" / history:** open the dated session logs at the bottom of `CONTEXT.md` ONLY when investigating past decisions.
+- **Tier 3 — "why was this done?" / history:** open `docs/context/session-log.md` (newest first) ONLY when investigating past decisions.
 
 How to open one section cheaply: `grep -n "<heading text>" CONTEXT.md` to get the line, then read a bounded range — don't load the whole file.
 
@@ -32,6 +32,13 @@ How to open one section cheaply: `grep -n "<heading text>" CONTEXT.md` to get th
 | **Coding rules / gotchas** (the must-nots) | `CONTEXT.md` → `## Known Pitfalls` | before editing AI/ingest/resume/auth code |
 | How the AI pipeline works (search profile, JD fetch, 4-phase skill match, scoring) | `CONTEXT.md` → `## Key Architecture Decisions` | touching `lib/gemini.ts`, `lib/ingest.ts`, `lib/search-profile.ts` |
 | Where a file/feature lives | `CONTEXT.md` → `## File Map` | locating code |
+| **Job detail page** (skill match, tailored resume, keywords, PDF) | `CONTEXT.md` → `## Core App Features` → `### Job detail` + Known Pitfalls (ATS keyword rows) + `docs/context/session-log.md` → Sessions 9–11 | `JobActions.tsx`, `generateAtsResume`, keyword chips |
+| **Onboarding / resume upload** | `CONTEXT.md` → `### Onboarding` + Known Pitfalls (resume parser + `.doc` rows) + `lib/resume-upload.ts` | first-time user, `/onboarding`, `/api/profile/parse` |
+| **Top MNC page** | `CONTEXT.md` → `### Top MNC` + `lib/top-companies.ts` | `/top-mnc`, MNC badge filter |
+| **Import job (manual URL)** | `CONTEXT.md` → `### Import job` | `/import`, `/api/import-job` |
+| **Outreach / referral messages** | `CONTEXT.md` → `### Outreach` + `lib/gemini.ts` `generateOutreachMessage` | `ReferralRadar.tsx`, `/api/match/[id]/outreach` |
+| **Cover letter generation** | `CONTEXT.md` → `### Job detail` + `app/api/coverletter/route.ts` | job detail page |
+| **Apply profile form** | `CONTEXT.md` → `### Apply profile` + AI Auto-Apply section + Known Pitfalls (owner PII rows) | `/apply-profile`, extension autofill source |
 | **Current UI / design tokens / Stitch / UI PRs** | `CONTEXT.md` → `## UI & Design System` | any frontend styling, layout, or UX work |
 | Multi-tenant plan & phase status | `CONTEXT.md` → `## ⭐ ACTIVE INITIATIVE` → `### Progress Tracker` | planning the next phase |
 | LLM provider strategy (Groq/OpenAI, why not Gemini) | `CONTEXT.md` → Phase 0 research note + the `gemini-2.0-flash` pitfall row | changing AI providers |
@@ -66,6 +73,7 @@ How to open one section cheaply: `grep -n "<heading text>" CONTEXT.md` to get th
 | Kiro-specific steering | `.kiro/steering/jobradar-context.md` | Kiro auto-loads it |
 | **Superpowers workflow (big tasks only)** | `.cursor/rules/superpowers-gate.mdc` | multi-phase features, new subsystems; skip for surgical fixes |
 | Past session history | `docs/context/session-log.md` (newest first) | Tier 3 only |
+| **Doc system / context bridges** | `docs/context/session-log.md` → Session 26 | fixing AGENTS↔CONTEXT↔session-log gaps |
 
 > Keep this Index in sync when you add/rename a `##` section in `CONTEXT.md`. It is the single source of the map.
 
@@ -89,4 +97,5 @@ How to open one section cheaply: `grep -n "<heading text>" CONTEXT.md` to get th
 - `.cursor/rules/jobradar.mdc` — pointer here (Cursor, always-apply).
 - `.kiro/steering/jobradar-context.md` — Kiro steering (auto-loaded); also points here.
 - `CONTEXT.md` — the full knowledge base (open by section via the Index).
+- `docs/context/session-log.md` — dated session archive (Tier 3 history).
 - `docs/AUTH_SETUP.md` — auth/go-live runbook.

@@ -36,6 +36,7 @@ JobRadar / Hyred is a personalized AI-powered job-search dashboard that:
 | Google Stitch project / screens | [Stitch design source](#stitch-design-source) |
 | What changed and when (PRs) | [UI change log](#ui-change-log) |
 | **ATS Resume Checker** | [ATS Checker](#ats-resume-checker) |
+| **Job detail, onboarding, Top MNC, import, outreach** | [Core App Features](#core-app-features) |
 | UI bugs already fixed | [UI pitfalls](#ui-pitfalls) |
 
 ### Current UI (live on hyred.in)
@@ -1019,6 +1020,9 @@ WHERE domain LIKE '%globallogic%';
 
 ---
 
+## Key Architecture Decisions
+
+> Core AI/ingest pipeline rules. Open this section (not the whole file) before editing `lib/gemini.ts`, `lib/ingest.ts`, or `lib/search-profile.ts`. Indexed from `AGENTS.md`.
 
 ### 1. AI-First Job Search (not keyword regex)
 
@@ -1058,6 +1062,54 @@ The LLM scoring prompt (`scoreJob` in `lib/gemini.ts`) has explicit rules:
 
 ---
 
+## Core App Features
+
+> Logged-in product pages with no dedicated extension/SEO section. Token-light pointers — pitfalls hold the must-nots.
+
+### Job detail — skill match, tailored resume, cover letter
+
+**Route:** `/jobs/[id]` · **UI:** `app/(app)/jobs/[id]/page.tsx`, `JobActions.tsx`
+
+| Capability | API / lib |
+|---|---|
+| 4-phase skill match | `GET/POST /api/match/[id]/skills` → `matchSkills()` in `lib/gemini.ts` |
+| JD keyword analysis + Optimize resume | `GET/POST /api/match/[id]/resume` → `generateAtsResume()`, `extractJdKeywords` |
+| PDF download | `POST /api/match/[id]/resume/pdf` → `lib/pdf-resume.ts` |
+| Cover letter | `POST /api/coverletter` |
+| Bookmark / status / notes | `/api/match/[id]/bookmark`, `status`, `notes` |
+
+**Pitfalls:** ATS keyword flow (Sessions 9–11), owner PII in prompts, JD HTML sanitization, hallucinated skill chips (Session 19). See Known Pitfalls rows for `generateAtsResume`.
+
+### Onboarding — resume upload & first profile
+
+**Route:** `/onboarding` · **API:** `/api/profile`, `/api/profile/parse`
+
+User uploads resume → parse server-side (`lib/resume.ts`) → AI insights → seeds `profiles` + preferences. **Client forms must use `lib/resume-upload.ts` only** (never import `lib/resume.ts` in client — Vercel `fs` build failure). Supports `.pdf`, `.doc`, `.docx`, `.txt`.
+
+### Top MNC — premium-style MNC filter
+
+**Route:** `/top-mnc` · **Filter:** `lib/top-companies.ts` against existing `matches` / `jobs` — **$0 extra ingest/API cost** (no separate scan). Sidebar: **Top MNCs**.
+
+### Import job — paste a job URL manually
+
+**Route:** `/import` (desktop nav) · **API:** `POST /api/import-job`
+
+Fetches JD from URL, creates/updates job + match for current user (`getCurrentProfile()`). Use when user found a role outside cron ingest.
+
+### Outreach — referral / recruiter messages
+
+**UI:** `ReferralRadar.tsx` on job detail · **API:** `POST /api/match/[id]/outreach` · **AI:** `generateOutreachMessage()` in `lib/gemini.ts`
+
+Generates a short personalized outreach blurb from resume + JD. Requires uploaded resume.
+
+### Apply profile — autofill & auto-apply field memory
+
+**Route:** `/apply-profile` · **API:** `/api/apply-profile`
+
+50+ application fields (screening answers, work history structure, EEO prefs) used by **extension autofill** and **auto-apply agent**. Extension APIs: `/api/extension/profile`, `structure`, `refresh-structure`. Never hard-code owner PII in form defaults (PR #76).
+
+---
+
 ## File Map
 
 ```
@@ -1076,8 +1128,15 @@ lib/pdf-resume.ts          ← Beautiful PDF resume generator (matches Shashank'
 lib/resume.ts              ← Server-only resume parsers (.pdf / .doc / .docx / .txt) — API routes only
 lib/resume-upload.ts       ← Client-safe upload helpers (`RESUME_FILE_ACCEPT`, `isResumeFilename`) — use from `'use client'` forms
 lib/matcher.ts             ← Cosine similarity + embedding text builder
+lib/top-companies.ts       ← MNC company name list for /top-mnc filter
+lib/ats-checker.ts         ← Free ATS score engine (zero LLM; PR #129 + v9 #187)
+lib/ats-checker-samples.ts   ← Shared Try-sample resume + JD
 
-app/(app)/jobs/[id]/        ← Job detail page + actions + AutoApplyButton + BackToMatches.tsx (router.back, no skeleton)
+app/(app)/jobs/[id]/        ← Job detail: JobActions.tsx, ReferralRadar.tsx, AutoApplyButton, BackToMatches.tsx
+app/(app)/onboarding/       ← First-run resume upload + profile setup
+app/(app)/top-mnc/          ← Top MNC filtered job list (lib/top-companies.ts)
+app/(app)/import/           ← Manual job URL import UI
+app/(app)/ats-checker/      ← Logged-in ATS checker (radar chart, history)
 app/(app)/apply-profile/    ← Application profile form (memory store for auto-apply)
 app/(app)/_components/      ← AppShell (sidebar), MatchCard, MatchScoreRing, StatusFilter, DashboardInsights, HeaderSearch, RunIngestButton, MatchList (paginated, infinite-scroll, sessionStorage snapshot for back-nav)
 app/(app)/admin/            ← Admin Center: AdminDashboard + LlmKeysPanel.tsx (LLM keys + live usage bars), JobsControlPanel.tsx (backup/delete/restore database UI)
@@ -1091,8 +1150,12 @@ app/api/match/[id]/resume/pdf/ ← Generate PDF + upload to Supabase Storage
 app/api/match/[id]/bookmark/ ← Toggle bookmark
 app/api/match/[id]/auto-apply/ ← Orchestrate full auto-apply flow
 app/api/match/[id]/apply-callback/ ← Agent callback on completion
+app/api/match/[id]/outreach/ ← Referral/recruiter outreach message (ReferralRadar)
 app/api/apply-profile/      ← GET/POST application profile
+app/api/import-job/         ← Manual job URL import
+app/api/profile/parse/      ← Onboarding resume parse
 app/api/coverletter/        ← Cover letter generation
+app/api/ats-checker/        ← POST free ATS analysis (file or JSON)
 app/api/ingest/             ← Manual ingest trigger
 app/api/matches/            ← (Session 16) Paginated match list (page=1..N, page size 20, all filters, Cache-Control SWR)
 app/api/admin/llm-keys/     ← (Session 16) GET/POST list + add LLM keys; PATCH/DELETE [id] toggle/update/remove
@@ -1379,7 +1442,9 @@ When a feature seems broken:
 - Changes to the file map
 - **Keep the `AGENTS.md` Index in sync** when you add/rename a `##` section here, and append new dated session logs to `docs/context/session-log.md` (not here).
 
-**Last updated:** June 18, 2026 — **ATS Checker v9 (PR #187)** documented: word-boundary keywords, India contact, length calibration, public widget paste/sample parity; `AGENTS.md` Index row for ATS Checker.
+**Last updated:** June 20, 2026 — **Doc bridge audit:** restored `## Key Architecture Decisions` heading; added `## Core App Features` (job detail, onboarding, Top MNC, import, outreach, apply profile); expanded File Map + `AGENTS.md` Index rows; fixed Tier 3 pointer to `session-log.md`; Sessions 17–18 + 26 in archive. See Session 26.
+
+**Last updated:** June 18, 2026 — **ATS Checker v9 (PR #187)** + docs **PR #188** documented: word-boundary keywords, India contact, length calibration, public widget parity; `AGENTS.md` Index row for ATS Checker.
 
 **Last updated:** June 20, 2026 — **Tier B custom career autofill (beta)** documented: domain form skeleton (PRs #185–#186, extension v0.16.1+, migration 0014). Partial fill on GlobalLogic-style sites; structure-only Supabase capture; `AGENTS.md` Index rows for Tier B. Workday end-to-end remains Tier A (v0.13.0+).
 
