@@ -546,6 +546,8 @@
 
   function applicationFormRoot() {
     const selectors = [
+      '[data-automation-id="jobApplicationBody"]',
+      '[data-automation-id="applyFlowPage"]',
       '#apply-form-renderer',
       '[class*="apply-form-renderer"]',
       '[class*="applyForm"]',
@@ -1422,19 +1424,71 @@
     return /resume|résumé|curriculum|vitae|\bcv\b|cv\s*\/|\/\s*cv/.test(sig);
   }
 
+  function workdayApplicationMainText(maxLen = 12000) {
+    const root =
+      document.querySelector(
+        '[data-automation-id="jobApplicationBody"], [data-automation-id="applyFlowPage"], main',
+      ) || applicationFormRoot();
+    let text = root?.innerText || '';
+    const card = document.getElementById('jobradar-card');
+    if (card && text.includes(card.innerText || '')) {
+      text = text.replace(card.innerText || '', '');
+    }
+    return text.slice(0, maxLen).toLowerCase();
+  }
+
+  function workdayActiveStepLabels() {
+    const labels = [];
+    for (const el of document.querySelectorAll(
+      '[aria-current="step"], [data-automation-id="progressBar"] [aria-current="step"], [data-automation-id="progressBar"] button[aria-current="step"]',
+    )) {
+      const t = (el.textContent || '').replace(/\s+/g, ' ').trim();
+      if (t) labels.push(t.toLowerCase());
+    }
+    return labels;
+  }
+
+  function workdayExperiencePageHints() {
+    if (!isWorkdaySite()) return false;
+    const fileIn = document.querySelector('input[data-automation-id="file-upload-input-ref"]');
+    if (fileIn) {
+      const sig = fileUploadZoneSignature(fileIn);
+      if (isCoverLetterUploadSignature(sig)) return false;
+      return true;
+    }
+    if (document.querySelector('[data-automation-id*="skills" i]')) return true;
+    const hay = workdayApplicationMainText(10000);
+    return (
+      /my experience/.test(hay) &&
+      (/type to add skills|resume\s*\/\s*cv|social network|upload a file/i.test(hay) ||
+        /websites/.test(hay))
+    );
+  }
+
   function workdayCoverLetterPageHints() {
     if (!isWorkdaySite()) return false;
-    for (const el of document.querySelectorAll('[aria-current="step"]')) {
-      if (/cover[_\s-]?letter/i.test(el.textContent || '')) return true;
+
+    for (const step of workdayActiveStepLabels()) {
+      if (/cover[_\s-]?letter|supporting documents?|attachments/.test(step)) return true;
     }
-    const hay = document.body.innerText.slice(0, 12000).toLowerCase();
-    if (!/cover[_\s-]?letter/.test(hay)) return false;
-    if (/my experience|resume\s*\/\s*cv|upload resume|type to add skills/.test(hay)) return false;
-    return (
-      /upload.*cover|cover.*upload|attach.*cover|cover letter.*required|supporting documents/.test(
-        hay,
-      ) || !!document.querySelector('input[data-automation-id="file-upload-input-ref"]')
-    );
+
+    const hay = workdayApplicationMainText();
+    if (/cover[_\s-]?letter/.test(hay) && !/my experience|resume\s*\/\s*cv|type to add skills/.test(hay)) {
+      return true;
+    }
+
+    const fileIn = document.querySelector('input[data-automation-id="file-upload-input-ref"]');
+    if (fileIn) {
+      const sig = fileUploadZoneSignature(fileIn);
+      if (isCoverLetterUploadSignature(sig)) return true;
+      if (isResumeUploadSignature(sig)) return false;
+      if (!workdayExperiencePageHints() && !/my experience|type to add skills|websites|social network/.test(hay)) {
+        if (/cover|letter|attachment|supporting|document|upload a file|drag and drop/.test(hay)) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   function findCoverLetterFileInput() {
@@ -1457,7 +1511,11 @@
   }
 
   function isCoverLetterStep() {
-    return !!findCoverLetterField() || !!findCoverLetterFileInput() || workdayCoverLetterPageHints();
+    return (
+      !!findCoverLetterField() ||
+      !!findCoverLetterFileInput() ||
+      workdayCoverLetterPageHints()
+    );
   }
 
   function findCoverLetterField() {
@@ -2822,20 +2880,8 @@
 
   function isWorkdayExperienceStep() {
     if (!isWorkdaySite()) return false;
-    if (isWorkdayCoverLetterStep()) return false;
-    const fileIn = document.querySelector('input[data-automation-id="file-upload-input-ref"]');
-    if (fileIn) {
-      const sig = fileUploadZoneSignature(fileIn);
-      if (isCoverLetterUploadSignature(sig)) return false;
-      return true;
-    }
-    if (document.querySelector('[data-automation-id*="skills" i]')) return true;
-    const hay = document.body.innerText.slice(0, 10000).toLowerCase();
-    return (
-      /my experience/.test(hay) &&
-      (/type to add skills|resume\s*\/\s*cv|social network|upload a file/i.test(hay) ||
-        /websites/.test(hay))
-    );
+    if (workdayCoverLetterPageHints()) return false;
+    return workdayExperiencePageHints();
   }
 
   function findWorkdayLanguageRows() {
@@ -4358,6 +4404,10 @@
 
   async function fillWorkday(profile, filledSet, match) {
     if (!isWorkdaySite()) return 0;
+    if (isCoverLetterStep()) {
+      log('workday: cover letter step — skip Workday field fill');
+      return 0;
+    }
     let n = 0;
     const zip = profile.zip_code || profile.location?.zip;
     const phone = wdLocalPhone(profile.phone);
@@ -4757,6 +4807,11 @@
   }
 
   async function fillAllFields(profile, match) {
+    if (isCoverLetterStep()) {
+      log('fillAllFields: cover letter step — skip generic fill, show cover panel');
+      if (IS_TOP_FRAME) onCoverFieldSeen();
+      return 0;
+    }
     const filledSet = new Set();
     let total = 0;
     const ats = detectAts();
@@ -4822,7 +4877,7 @@
     document
       .querySelectorAll('input, textarea, select')
       .forEach((el) => {
-        if (!isVisible(el) || filledSet.has(el)) return;
+        if (!isVisible(el) || filledSet.has(el) || isAutofillExcluded(el)) return;
         if (el.type === 'hidden' || el.type === 'file') return;
         const empty =
           el.type === 'radio' || el.type === 'checkbox'
@@ -4836,7 +4891,7 @@
         'button[aria-haspopup="listbox"], [role="combobox"], [data-automation-id][aria-haspopup="listbox"], button[data-automation-id^="formField"]',
       )
       .forEach((el) => {
-        if (!isVisible(el) || filledSet.has(el)) return;
+        if (!isVisible(el) || filledSet.has(el) || isAutofillExcluded(el)) return;
         const t = (el.textContent || '').toLowerCase().trim();
         if (!t || /select one|search|^choose|^\s*$/.test(t)) push(el, 'DROPDOWN');
       });
@@ -5624,6 +5679,10 @@
 
   async function assistPostAutofillNavigation() {
     if (!IS_TOP_FRAME) return;
+    if (isCoverLetterStep()) {
+      onCoverFieldSeen();
+      return;
+    }
     if (Date.now() - lastNavAssistAt < 1500) return;
     lastNavAssistAt = Date.now();
     await sleep(400);
@@ -5853,6 +5912,16 @@
 
       resumeUploaded = false;
       const onCoverStep = isCoverLetterStep();
+      log(
+        'cover step:',
+        onCoverStep,
+        'fileInput:',
+        !!findCoverLetterFileInput(),
+        'hints:',
+        workdayCoverLetterPageHints(),
+        'steps:',
+        workdayActiveStepLabels().join(' | '),
+      );
       if (onCoverStep && IS_TOP_FRAME) onCoverFieldSeen();
 
       if (options.resume && !onCoverStep) {
@@ -5972,6 +6041,7 @@
           fillUi.end(successCount, successCount > 0, statusMsg);
         }
         setCardBusy(false);
+        if (isCoverLetterStep()) onCoverFieldSeen();
         if (successCount > 0 || resumeUploaded || coverInjected || answered > 0) {
           void assistPostAutofillNavigation();
         }
