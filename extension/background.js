@@ -660,6 +660,36 @@ const handlers = {
     return { ok: true };
   },
 
+  async previewCoverLetter({ text } = {}) {
+    const letter = String(text || '').trim();
+    if (!letter) return { ok: false, error: 'Generate a cover letter first' };
+    const escaped = letter
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\n/g, '<br>');
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Cover Letter Preview — Hyred</title><style>body{font-family:Georgia,"Times New Roman",serif;max-width:720px;margin:48px auto;padding:0 28px 48px;line-height:1.65;color:#1a1a1a;background:#fafafa}header{font-family:system-ui,sans-serif;border-bottom:1px solid #ddd;padding-bottom:12px;margin-bottom:28px}h1{font-size:13px;font-weight:600;color:#666;margin:0}p{margin:0 0 1em}</style></head><body><header><h1>Hyred — Cover letter preview</h1></header><div>${escaped}</div></body></html>`;
+    const url = `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+    await chrome.tabs.create({ url, active: true });
+    return { ok: true };
+  },
+
+  async openHyredJobEdit({ match_id } = {}) {
+    const { jr_url, jr_token } = await getCreds();
+    const base = canonicalBase(jr_url || DEFAULT_URL);
+    if (!match_id) {
+      return { ok: false, error: 'Apply from Hyred first to link this job.' };
+    }
+    const jobUrl = `${base}/jobs/${match_id}`;
+    if (!jr_token) {
+      const loginUrl = `${base}/login?next=${encodeURIComponent(`/jobs/${match_id}`)}`;
+      await chrome.tabs.create({ url: loginUrl, active: true });
+      return { ok: true, login: true };
+    }
+    await chrome.tabs.create({ url: jobUrl, active: true });
+    return { ok: true };
+  },
+
   async answerQuestion({ question, match_id, page_text, max_words }) {
     const r = await api('/api/extension/answer', {
       method: 'POST',
