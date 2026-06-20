@@ -775,12 +775,50 @@ $('#btn-autofill-tab').addEventListener('click', async () => {
       errEl.textContent =
         'No fields filled — open page Console (F12), filter [JobRadar], retry after page loads.';
     } else {
-      window.close();
+      errEl.textContent = `Filled ${res.filled} field${res.filled === 1 ? '' : 's'}. Use Save & continue below.`;
+      errEl.classList.remove('error');
+      errEl.classList.add('ok');
     }
   } catch (e) {
     errEl.textContent = e.message ?? 'Failed';
+    errEl.classList.add('error');
+    errEl.classList.remove('ok');
   } finally {
     btn.disabled = false;
     btn.textContent = 'Autofill this page';
+  }
+});
+
+$('#btn-save-continue')?.addEventListener('click', async () => {
+  const errEl = $('#autofill-error');
+  const btn = $('#btn-save-continue');
+  btn.disabled = true;
+  const prev = btn.textContent;
+  btn.textContent = 'Clicking…';
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id || !tab.url || !/^https?:/i.test(tab.url)) {
+      throw new Error('Open a job application page (https) first.');
+    }
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id, allFrames: true },
+        files: ['bg-messaging.js', 'content.js'],
+      });
+    } catch {
+      /* already injected */
+    }
+    const res = await sendBg('clickApplicationContinue', { tabId: tab.id });
+    if (!res?.ok) throw new Error(res.error || 'Save / Continue button not found');
+    errEl.textContent = res.label ? `Clicked "${res.label}"` : 'Clicked Save / Continue';
+    errEl.classList.remove('error');
+    errEl.classList.add('ok');
+  } catch (e) {
+    errEl.textContent = e.message ?? 'Could not click Save / Continue';
+    errEl.classList.add('error');
+    errEl.classList.remove('ok');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = prev;
   }
 });

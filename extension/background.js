@@ -741,6 +741,33 @@ const handlers = {
     return { ok: !!r.ok, error: r.ok ? undefined : r.data?.error };
   },
 
+  async clickApplicationContinue(payload = {}, sender = {}) {
+    const tabId = payload.tabId || sender.tab?.id;
+    if (!tabId) return { ok: false, error: 'no tab' };
+    const type = 'CLICK_SAVE_CONTINUE';
+    try {
+      const res = await chrome.tabs.sendMessage(tabId, { type });
+      if (res?.ok) return res;
+    } catch {
+      /* try other frames */
+    }
+    let frames = [];
+    try {
+      frames = await chrome.webNavigation.getAllFrames({ tabId });
+    } catch (e) {
+      return { ok: false, error: String(e?.message ?? e) };
+    }
+    for (const frame of frames) {
+      try {
+        const res = await chrome.tabs.sendMessage(tabId, { type }, { frameId: frame.frameId });
+        if (res?.ok) return res;
+      } catch {
+        /* frame has no content script */
+      }
+    }
+    return { ok: false, error: 'Save / Continue button not found on this page' };
+  },
+
   // Fan out autofill to every frame in the tab (Workday on custom domains embeds
   // the apply form in a cross-origin iframe — top-frame-only fill never runs).
   async fanOutAutofill(payload = {}, sender = {}) {
