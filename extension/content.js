@@ -253,7 +253,7 @@
     if (isConfirmationOrPostApplyPage()) return false;
     const empty = countEmptyFillableFields();
     if (empty >= 1) return true;
-    if (isCoverLetterStep()) return true;
+    if (isCoverLetterStep() || hasOptionalCoverLetterUpload()) return true;
     const resumeIn = findResumeFileInput();
     if (resumeIn && !resumeIn.files?.length) return true;
     if ((isWorkdayDom() || isUniversalCareerSite()) && empty >= 1) return true;
@@ -1459,8 +1459,61 @@
   }
 
   function isCoverLetterUploadSignature(sig) {
-    return /cover[_\s-]?letter|motivation[_\s-]?letter|letter of interest|supporting document|coverletter/.test(
+    return /cover[_\s-]?letter|motivation[_\s-]?letter|letter of interest|supporting document|coverletter|additional application document|upload additional|cover letter, references|optional.*document/i.test(
       sig,
+    );
+  }
+
+  function isOptionalDocumentUploadSignature(sig) {
+    return /additional application document|upload additional|cover letter, references|optional.*document|certificates or similar/i.test(
+      sig,
+    );
+  }
+
+  function isWorkdayApplicationQuestionsActive() {
+    if (!isWorkdaySite()) return false;
+    for (const step of workdayActiveStepLabels()) {
+      if (/application questions/i.test(step)) return true;
+    }
+    const title = (document.querySelector('h1, h2')?.textContent || '').trim().toLowerCase();
+    return title === 'application questions' || title.startsWith('application questions');
+  }
+
+  function isDedicatedCoverLetterStep() {
+    if (findCoverLetterField()) return true;
+    if (isWorkdayApplicationQuestionsActive()) return false;
+    if (!isWorkdaySite()) return false;
+    for (const step of workdayActiveStepLabels()) {
+      if (/^cover[_\s-]?letter$/i.test(step.trim())) return true;
+    }
+    const hay = workdayApplicationMainText();
+    if (
+      /^cover letter$/m.test(hay) &&
+      !/application questions|my experience|require sponsorship/.test(hay)
+    ) {
+      return true;
+    }
+    const fileIn = document.querySelector('input[data-automation-id="file-upload-input-ref"], input[type="file"]');
+    if (fileIn) {
+      const sig = fileUploadZoneSignature(fileIn);
+      if (isResumeUploadSignature(sig)) return false;
+      if (isCoverLetterUploadSignature(sig) && !isOptionalDocumentUploadSignature(sig)) return true;
+    }
+    return false;
+  }
+
+  function hasOptionalCoverLetterUpload() {
+    if (!isWorkdaySite()) return false;
+    const inputs = [...applicationFormRoot().querySelectorAll('input[type="file"]')].filter(isVisible);
+    return inputs.some((inp) => isOptionalDocumentUploadSignature(fileUploadZoneSignature(inp)));
+  }
+
+  function shouldShowCoverLetterPanel() {
+    return (
+      isDedicatedCoverLetterStep() ||
+      hasOptionalCoverLetterUpload() ||
+      coverFieldSeen ||
+      !!findCoverLetterField()
     );
   }
 
@@ -1512,25 +1565,25 @@
 
   function workdayCoverLetterPageHints() {
     if (!isWorkdaySite()) return false;
+    if (isWorkdayApplicationQuestionsActive()) return false;
 
     for (const step of workdayActiveStepLabels()) {
-      if (/cover[_\s-]?letter|supporting documents?|attachments/.test(step)) return true;
+      if (/^cover[_\s-]?letter$/i.test(step.trim())) return true;
     }
 
     const hay = workdayApplicationMainText();
-    if (/cover[_\s-]?letter/.test(hay) && !/my experience|resume\s*\/\s*cv|type to add skills/.test(hay)) {
+    if (/^cover letter$/m.test(hay) && !/application questions|my experience|require sponsorship/.test(hay)) {
       return true;
     }
 
     const fileIn = document.querySelector('input[data-automation-id="file-upload-input-ref"]');
     if (fileIn) {
       const sig = fileUploadZoneSignature(fileIn);
+      if (isOptionalDocumentUploadSignature(sig)) return false;
       if (isCoverLetterUploadSignature(sig)) return true;
       if (isResumeUploadSignature(sig)) return false;
       if (!workdayExperiencePageHints() && !/my experience|type to add skills|websites|social network/.test(hay)) {
-        if (/cover|letter|attachment|supporting|document|upload a file|drag and drop/.test(hay)) {
-          return true;
-        }
+        if (/cover letter.*required|upload.*cover letter|attach.*cover letter/.test(hay)) return true;
       }
     }
     return false;
@@ -1538,29 +1591,30 @@
 
   function findCoverLetterFileInput() {
     const root = applicationFormRoot();
-    const inputs = [...root.querySelectorAll('input[type="file"]')].filter(isVisible);
-    for (const inp of inputs) {
+    const inputs = [
+      ...root.querySelectorAll(
+        'input[type="file"], input[data-automation-id="file-upload-input-ref"]',
+      ),
+    ].filter((inp) => inp.type === 'file' || inp.matches?.('[data-automation-id="file-upload-input-ref"]'));
+    const visible = inputs.filter((inp) => isVisible(inp) || inp.matches?.('[data-automation-id="file-upload-input-ref"]'));
+    for (const inp of visible) {
       const sig = fileUploadZoneSignature(inp);
       if (isCoverLetterUploadSignature(sig)) return inp;
     }
-    if (!workdayCoverLetterPageHints()) return null;
-    if (!inputs.length) return null;
+    if (!isDedicatedCoverLetterStep() && !workdayCoverLetterPageHints()) return null;
+    if (!visible.length) return null;
     return (
-      inputs.find((i) => i.matches('[data-automation-id="file-upload-input-ref"]')) || inputs[0]
+      visible.find((i) => i.matches('[data-automation-id="file-upload-input-ref"]')) || visible[0]
     );
   }
 
   function isWorkdayCoverLetterStep() {
     if (!isWorkdaySite()) return false;
-    return !!findCoverLetterField() || !!findCoverLetterFileInput() || workdayCoverLetterPageHints();
+    return isDedicatedCoverLetterStep() || workdayCoverLetterPageHints();
   }
 
   function isCoverLetterStep() {
-    return (
-      !!findCoverLetterField() ||
-      !!findCoverLetterFileInput() ||
-      workdayCoverLetterPageHints()
-    );
+    return isDedicatedCoverLetterStep();
   }
 
   function findCoverLetterField() {
@@ -3752,13 +3806,14 @@
 
   function isWorkdayApplicationQuestionsStep() {
     if (!isWorkdaySite()) return false;
-    if (document.querySelector('input[data-automation-id="file-upload-input-ref"]'))
-      return false;
-    const hay = document.body.innerText.slice(0, 12000).toLowerCase();
+    const hay = workdayApplicationMainText();
+    const hasScreeningQs =
+      /require sponsorship|sponsorship to work|visa sponsorship|authorized to work|legally authorized|work authorization|valid work permit|permit type|current employer|notice period|relocat|close personal|non-?compete|interviewed.*(?:last|earlier|before)|been employed|accreditation|certification/.test(
+        hay,
+      );
+    if (isWorkdayApplicationQuestionsActive()) return hasScreeningQs;
     if (!/application questions/.test(hay)) return false;
-    return /require sponsorship|visa sponsorship|authorized to work|legally authorized|work authorization|permit type|current employer|notice period|relocat|close personal|non-?compete|interviewed.*(?:last|earlier|before)|been employed|accreditation|certification/.test(
-      hay,
-    );
+    return hasScreeningQs;
   }
 
   function resolveWorkPermitType(profile) {
@@ -3778,7 +3833,7 @@
     const saved = matchCustomQa(q, profile.custom_qa);
     if (saved) return { prefs: [String(saved).toLowerCase()], strict: false };
 
-    if (/visa sponsorship|require visa|require sponsorship/.test(q)) {
+    if (/visa sponsorship|require visa|require sponsorship|sponsorship to work/.test(q)) {
       return {
         prefs: profile.require_sponsorship
           ? ['yes', 'will require']
@@ -3787,7 +3842,7 @@
       };
     }
     if (
-      /legally authorized|authorized to work|eligible to work|right to work|legally permitted/.test(
+      /legally authorized|authorized to work|eligible to work|right to work|legally permitted|valid work permit/.test(
         q,
       ) &&
       !/permit type|outline your work permit/.test(q)
@@ -4164,10 +4219,14 @@
     if (!isWorkdayApplicationQuestionsStep()) return 0;
     if (workdayAppQuestionsPassDone) return 0;
     workdayAppQuestionsPassDone = true;
-    log('workday:application-questions page (sequential)');
+    log('workday:application-questions page');
+
+    let n = 0;
+    n += fillWorkdayApplicationTextFields(profile, filledSet);
+    n += await fillWorkdayScreeningDropdowns(profile, filledSet);
 
     const items = collectWorkdayAppQuestionFields(filledSet);
-    if (!items.length) return 0;
+    if (!items.length) return n;
 
     const total = items.length;
     if (IS_TOP_FRAME && fillUi.active) {
@@ -4175,7 +4234,6 @@
       fillUi.setPhase(`Application questions (0/${total})…`);
     }
 
-    let n = 0;
     for (let i = 0; i < items.length; i++) {
       const ok = await fillWorkdayAppQuestionItem(
         items[i],
@@ -5357,31 +5415,89 @@
     return true;
   }
 
+  function buildCoverLetterPdfBlob(text) {
+    const safe = String(text || '')
+      .replace(/\\/g, '\\\\')
+      .replace(/\(/g, '\\(')
+      .replace(/\)/g, '\\)')
+      .replace(/[^\x09\x0a\x0d\x20-\x7e]/g, ' ');
+    const lines = safe.split(/\r?\n/).slice(0, 55);
+    let content = 'BT /F1 11 Tf ';
+    let y = 740;
+    for (const line of lines) {
+      const chunk = line.slice(0, 95);
+      content += `40 ${y} Td (${chunk}) Tj `;
+      y -= 14;
+      if (y < 60) break;
+    }
+    content += 'ET';
+    const stream = `${content}\n`;
+    const len = stream.length;
+    const pdf = `%PDF-1.4
+1 0 obj<< /Type /Catalog /Pages 2 0 R >>endobj
+2 0 obj<< /Type /Pages /Kids [3 0 R] /Count 1 >>endobj
+3 0 obj<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources<< /Font<< /F1 5 0 R >> >> >>endobj
+4 0 obj<< /Length ${len} >>stream
+${stream}endstream endobj
+5 0 obj<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>endobj
+xref
+0 6
+0000000000 65535 f 
+0000000010 00000 n 
+0000000060 00000 n 
+0000000114 00000 n 
+0000000241 00000 n 
+0000000340 00000 n 
+trailer<< /Size 6 /Root 1 0 R >>
+startxref
+420
+%%EOF`;
+    return new Blob([pdf], { type: 'application/pdf' });
+  }
+
+  async function attachFileToInput(input, file) {
+    if (!input || !file) return false;
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    const targets = [input];
+    const visible = input.closest('[class*="upload"], [class*="drop"], [data-automation-id*="file"]')?.querySelector(
+      'input[type="file"]',
+    );
+    if (visible && visible !== input) targets.push(visible);
+    for (const target of targets) {
+      try {
+        target.files = dt.files;
+      } catch {
+        /* hidden input may reject direct assign */
+      }
+      target.dispatchEvent(new Event('input', { bubbles: true }));
+      target.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    const zone = input.closest('[class*="upload"], [class*="drop"], [class*="file"], [data-automation-id*="file"]');
+    if (zone) {
+      zone.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true }));
+    }
+    return !!(input.files?.length || visible?.files?.length);
+  }
+
   async function uploadCoverLetterFile(text) {
     const input = findCoverLetterFileInput();
-    if (!input || !text?.trim()) return false;
+    if (!input || !text?.trim()) {
+      log('uploadCoverLetter: no input or text', !!input);
+      return false;
+    }
     if (input.files?.length) {
       log('uploadCoverLetter: input already has a file');
       return false;
     }
     try {
-      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-      const file = new File([blob], 'cover-letter.txt', { type: 'text/plain' });
-      const dt = new DataTransfer();
-      dt.items.add(file);
-      try {
-        input.files = dt.files;
-      } catch {
-        const visible = input.closest('[class*="upload"], [class*="drop"]')?.querySelector(
-          'input[type="file"]',
-        );
-        if (visible && visible !== input) visible.files = dt.files;
-      }
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      input.dispatchEvent(new Event('change', { bubbles: true }));
-      const zone = input.closest('[class*="upload"], [class*="drop"], [class*="file"]');
-      if (zone) {
-        zone.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true }));
+      const pdfBlob = buildCoverLetterPdfBlob(text);
+      const file = new File([pdfBlob], 'cover-letter.pdf', { type: 'application/pdf' });
+      const ok = await attachFileToInput(input, file);
+      if (!ok) {
+        const txtBlob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+        const txtFile = new File([txtBlob], 'cover-letter.txt', { type: 'text/plain' });
+        await attachFileToInput(input, txtFile);
       }
       log('uploadCoverLetter: attached', file.name);
       if (IS_TOP_FRAME && fillUi.active) fillUi.onField(input, 'Cover letter file');
@@ -5422,7 +5538,7 @@
   }
 
   function notifyCoverFieldIfPresent() {
-    if (!isCoverLetterStep()) return;
+    if (!shouldShowCoverLetterPanel()) return;
     try {
       if (window.top !== window) {
         window.top.postMessage({ type: 'JR_COVER_LETTER_FIELD' }, '*');
@@ -5438,7 +5554,11 @@
     const card = document.getElementById('jobradar-card');
     if (card) {
       card.querySelector('.jr-cover-picker')?.classList.remove('jr-hidden');
-      card.querySelector('.jr-resume-picker')?.classList.toggle('jr-hidden', isCoverLetterStep());
+      card.querySelector('.jr-resume-picker')?.classList.toggle('jr-hidden', isDedicatedCoverLetterStep());
+      card.querySelector('.jr-cover-picker')?.classList.toggle(
+        'jr-cover-compact',
+        hasOptionalCoverLetterUpload() && !isDedicatedCoverLetterStep(),
+      );
       refreshCoverLetterUi();
     } else if (!cardDismissed && IS_TOP_FRAME) {
       maybeMount();
@@ -5453,8 +5573,10 @@
     if (!panel) return;
 
     const matchId = card.dataset.matchId;
-    const showPanel = coverFieldSeen || isCoverLetterStep();
+    const optionalUpload = hasOptionalCoverLetterUpload() && !isDedicatedCoverLetterStep();
+    const showPanel = shouldShowCoverLetterPanel();
     panel.classList.toggle('jr-hidden', !showPanel);
+    panel.classList.toggle('jr-cover-compact', optionalUpload);
 
     const hasLetter = !!String(coverLetterCache || '').trim();
     const isFileStep = !!findCoverLetterFileInput();
@@ -5465,17 +5587,22 @@
     const dlBtn = panel.querySelector('.jr-cover-download');
     const toggleBtn = panel.querySelector('.jr-cover-toggle');
     const hint = panel.querySelector('.jr-cover-hint');
+    const label = panel.querySelector('.jr-cover-label');
+
+    if (label) {
+      label.textContent = optionalUpload ? 'Optional cover letter' : 'Cover letter';
+    }
 
     if (pre && hasLetter) pre.textContent = coverLetterCache;
     if (preview) {
       preview.classList.toggle('jr-hidden', !hasLetter);
+      preview.classList.toggle('jr-collapsed', optionalUpload && hasLetter);
     }
     useBtn?.classList.toggle('jr-hidden', !hasLetter);
     if (useBtn) {
       useBtn.textContent = isFileStep ? 'Upload to form' : 'Use on form';
     }
     dlBtn?.classList.toggle('jr-hidden', !hasLetter);
-    toggleBtn?.classList.toggle('jr-hidden', !hasLetter);
 
     if (genBtn) {
       genBtn.disabled = coverGenerating || !matchId;
@@ -5486,6 +5613,13 @@
           : 'Generate cover letter';
     }
 
+    if (toggleBtn) {
+      toggleBtn.classList.toggle('jr-hidden', !hasLetter);
+      toggleBtn.textContent = preview?.classList.contains('jr-collapsed')
+        ? 'Show preview'
+        : 'Hide preview';
+    }
+
     if (hint) {
       if (!matchId) {
         hint.textContent =
@@ -5493,13 +5627,17 @@
       } else if (coverGenerating) {
         hint.textContent = 'Drafting your cover letter…';
       } else if (hasLetter) {
-        hint.textContent = isFileStep
-          ? 'Ready — preview below, then upload to the cover letter field.'
-          : 'Ready — preview below, then use it on the form or download.';
+        hint.textContent = optionalUpload
+          ? 'Ready — click Upload to attach your cover letter (optional).'
+          : isFileStep
+            ? 'Ready — preview below, then upload to the cover letter field.'
+            : 'Ready — preview below, then use it on the form or download.';
       } else {
-        hint.textContent = isFileStep
-          ? 'This step needs a cover letter file — generate one here, then upload to form.'
-          : 'Generate a tailored cover letter for this job (same as Hyred app).';
+        hint.textContent = optionalUpload
+          ? 'Optional — generate a cover letter, then upload it with the button below.'
+          : isFileStep
+            ? 'This step needs a cover letter file — generate one here, then upload to form.'
+            : 'Generate a tailored cover letter for this job (same as Hyred app).';
       }
     }
   }
@@ -6016,17 +6154,20 @@
 
       resumeUploaded = false;
       const onCoverStep = isCoverLetterStep();
+      const optionalCoverUpload = hasOptionalCoverLetterUpload();
       log(
         'cover step:',
         onCoverStep,
+        'optionalUpload:',
+        optionalCoverUpload,
         'fileInput:',
         !!findCoverLetterFileInput(),
-        'hints:',
-        workdayCoverLetterPageHints(),
         'steps:',
         workdayActiveStepLabels().join(' | '),
+        'appQuestions:',
+        isWorkdayApplicationQuestionsStep(),
       );
-      if (onCoverStep && IS_TOP_FRAME) onCoverFieldSeen();
+      if ((onCoverStep || optionalCoverUpload) && IS_TOP_FRAME) onCoverFieldSeen();
 
       if (options.resume && !onCoverStep) {
         const fileInput = findResumeFileInput();
@@ -6048,6 +6189,8 @@
           onCoverFieldSeen();
           if (letter && findCoverLetterField() && !findCoverLetterFileInput()) {
             coverInjected = await applyCoverLetterEverywhere(letter);
+          } else if (letter && findCoverLetterFileInput()) {
+            coverInjected = await applyCoverLetterEverywhere(letter, { force: true });
           } else if (!letter && !options.fromFanOut && IS_TOP_FRAME) {
             toast(
               'Cover letter step — generate one in Hyred Copilot, then Upload to form.',
@@ -6055,12 +6198,16 @@
               7000,
             );
           }
-        } else if (letter) {
-          coverInjected = await applyCoverLetterEverywhere(letter);
-        } else if (findCoverLetterField()) {
+        } else if (letter && (optionalCoverUpload || findCoverLetterField() || findCoverLetterFileInput())) {
+          coverInjected = await applyCoverLetterEverywhere(letter, { force: true });
+          if (!coverInjected && IS_TOP_FRAME) {
+            onCoverFieldSeen();
+            toast('Cover letter ready — click Upload to form in Copilot.', 'warn', 6000);
+          }
+        } else if (optionalCoverUpload || findCoverLetterField()) {
           onCoverFieldSeen();
-          if (!options.fromFanOut && IS_TOP_FRAME) {
-            toast('Cover letter step — generate one in Hyred Copilot, then Use on form.', 'warn', 7000);
+          if (!letter && !options.fromFanOut && IS_TOP_FRAME) {
+            toast('Optional cover letter — generate in Copilot, then Upload to form.', 'warn', 6000);
           }
         }
       }
@@ -6372,7 +6519,7 @@
       card.dataset.previewUrl = match.tailored_resume_url || '';
       coverLetterCache = match.cover_letter || coverLetterCache || '';
       if (resumePicker) {
-        resumePicker.classList.toggle('jr-hidden', isCoverLetterStep());
+        resumePicker.classList.toggle('jr-hidden', isDedicatedCoverLetterStep());
         const hasTailored = !!match.has_tailored_resume;
         const tailoredRow = resumePicker.querySelector('[data-row="tailored"]');
         if (tailoredRow) tailoredRow.classList.toggle('jr-hidden', !hasTailored);
@@ -6407,10 +6554,8 @@
       resumeHint?.classList.add('jr-hidden');
     }
     refreshCoverLetterUi();
+    notifyCoverFieldIfPresent();
   }
-
-  // -------------------------------------------------------------------
-  // Listen for messages from the popup ("Autofill this page" button).
   // -------------------------------------------------------------------
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg?.type === 'TRIGGER_AUTOFILL') {
