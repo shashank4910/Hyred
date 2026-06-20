@@ -593,6 +593,7 @@
 
   function isAutofillExcluded(el) {
     if (!el?.closest) return true;
+    if (el.closest('#jobradar-card, #jobradar-fab, #jobradar-toast')) return true;
     if (
       el.closest(
         'header, nav, footer, [role="banner"], [role="navigation"], [class*="header"], [class*="navbar"], [class*="global-search"], [class*="job-search"], [class*="site-search"]',
@@ -1129,11 +1130,18 @@
     const v = String(value || '').trim();
     if (!v) return [];
     const primary = v.split(/\s*[-–—|]\s*/)[0].trim();
+    const words = primary.split(/\s+/).filter(Boolean);
     const out = [];
     if (primary) out.push(primary);
-    for (const n of [3, 2, 1]) {
-      const w = primary.split(/\s+/).slice(0, n).join(' ');
+    const maxN = Math.min(3, words.length);
+    for (let n = maxN; n >= 1; n--) {
+      const w = words.slice(0, n).join(' ');
       if (w.length >= 2) out.push(w);
+    }
+    // Multi-word fields (e.g. "Information Technology"): skip single-word terms
+    // that often match the wrong typeahead ("Information" -> Information Security).
+    if (words.length >= 2) {
+      return [...new Set(out.filter((t) => t.split(/\s+/).length >= 2 || words.length === 1))];
     }
     return [...new Set(out)];
   }
@@ -1213,6 +1221,48 @@
     if (/\b(associate|a\.?a\.?)\b/.test(d)) return 'Associate';
     if (/\b(b\.?tech|b\.?e\.?|bachelor|b\.?s\.?|b\.?a\.?)\b/.test(d)) return 'Bachelor';
     return degree;
+  }
+
+  /** Ordered Workday degree dropdown labels — strict match only (never first "includes bachelor"). */
+  function workdayDegreePrefs(degree) {
+    const d = String(degree || '').toLowerCase();
+    const cfg = window.__JR_ATS?.workday?.degreeSynonyms || {};
+    if (/\b(ph\.?d|doctorate|doctor)\b/.test(d)) {
+      return cfg.doctorate || ['Doctorate', 'PhD', 'Ph.D.'];
+    }
+    if (/\b(mba|m\.?b\.?a|master)\b/.test(d)) {
+      return cfg.master || ['Master', "Master's", 'M.S.', 'MBA'];
+    }
+    if (/\b(associate|a\.?a\.?)\b/.test(d)) {
+      return cfg.associate || ['Associate', 'Associates', 'A.A.'];
+    }
+    if (/\bb\.?tech\b|\bb\.?e\.?\b|\bbachelor of technology\b|\bbachelor of engineering\b/.test(d)) {
+      return [
+        'Bachelor of Technology',
+        'B.Tech',
+        'B.E.',
+        'B.E',
+        'Bachelor of Engineering',
+        'University/Bachelors Degree',
+        'Bachelor',
+        ...(cfg.bachelor || []),
+      ];
+    }
+    if (/\bb\.?s\.?\b|\bbachelor of science\b/.test(d)) {
+      return ['Bachelor of Science', 'B.S.', 'B.S', ...(cfg.bachelor || ['Bachelor'])];
+    }
+    if (/\bb\.?a\.?\b|\bbachelor of arts\b/.test(d)) {
+      return ['Bachelor of Arts', 'B.A.', 'B.A', ...(cfg.bachelor || ['Bachelor'])];
+    }
+    if (/\bbachelor\b/.test(d)) {
+      return [
+        'University/Bachelors Degree',
+        'Bachelor',
+        ...(cfg.bachelor || ['Bachelor of Science', 'B.A.', 'B.Tech']),
+      ];
+    }
+    const trimmed = String(degree || '').trim();
+    return trimmed ? [trimmed] : ['Bachelor'];
   }
 
   function jobLocationFromEntry(job) {
@@ -3451,12 +3501,12 @@
         if (edu.degree && trigger && !filledSet.has(trigger)) {
           const cur = (trigger.textContent || '').toLowerCase().trim();
           if (!cur || /select one|search|^choose|^$/.test(cur)) {
-            const want = normalizeWorkdayDegree(edu.degree);
-            const ok = await setWorkdayDropdown(trigger, want);
+            const prefs = workdayDegreePrefs(edu.degree);
+            const ok = await setWorkdayDropdownStrict(trigger, prefs);
             if (ok) {
               filledSet.add(trigger);
               n++;
-              log('workday:education degree', want);
+              log('workday:education degree', prefs[0]);
             }
           }
         }
@@ -5076,7 +5126,7 @@
       if (zone) {
         zone.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true }));
       }
-      log('uploadResume: attached', file.name, 'variant=', variant);
+      log('uploadResume: attached', file.name, 'variant=', variant, 'api_variant=', res.variant_used || variant);
       fillUi.onField(input, 'Resume');
       return true;
     } catch (e) {
@@ -5333,22 +5383,30 @@
     coverLetter: true,
     commonFields: true,
     aiQuestions: true,
-    resumeVariant: 'default',
+    resumeVariant: 'auto',
   };
 
   async function resolveResumeVariant(match, options) {
-    if (options.resumeVariant === 'tailored' || options.resumeVariant === 'default') {
-      return options.resumeVariant;
+    // Copilot card radios are the source of truth for this click (not DEFAULT_OPTS).
+    if (IS_TOP_FRAME) {
+      const card = document.getElementById('jobradar-card');
+      if (card) {
+        const tailored = card.querySelector('input[name="jr-resume-variant"][value="tailored"]');
+        const defaultR = card.querySelector('input[name="jr-resume-variant"][value="default"]');
+        if (tailored?.checked) {
+          return match?.has_tailored_resume ? 'tailored' : 'default';
+        }
+        if (defaultR?.checked) return 'default';
+      }
     }
-    if (!match?.id) return 'default';
-    if (!match.has_tailored_resume) return 'default';
+    if (options.resumeVariant === 'tailored') return 'tailored';
+    if (options.resumeVariant === 'default') return 'default';
+    if (!match?.id || !match?.has_tailored_resume) return 'default';
     const choice = await send('getResumeChoice', {
       match_id: match.id,
       has_tailored_resume: match.has_tailored_resume,
     });
-    if (choice?.ok && (choice.variant === 'tailored' || choice.variant === 'default')) {
-      return choice.variant;
-    }
+    if (choice?.ok && choice.variant === 'default') return 'default';
     return 'tailored';
   }
 
@@ -5855,7 +5913,9 @@
         const variant =
           hasTailored && choice?.ok && choice.variant === 'tailored'
             ? 'tailored'
-            : 'default';
+            : hasTailored && (!choice?.ok || choice.variant !== 'default')
+              ? 'tailored'
+              : 'default';
         const t = resumePicker.querySelector('input[value="tailored"]');
         const d = resumePicker.querySelector('input[value="default"]');
         if (t) t.checked = variant === 'tailored';

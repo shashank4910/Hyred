@@ -593,7 +593,7 @@ const handlers = {
       handoff.at &&
       Date.now() - handoff.at < 86_400_000
     ) {
-      return { ok: true, variant: handoff.resumeVariant || 'default' };
+      return { ok: true, variant: handoff.resumeVariant || 'tailored' };
     }
     return {
       ok: true,
