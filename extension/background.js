@@ -636,10 +636,41 @@ const handlers = {
   async mapFields({ fields, profile, job_title, company }) {
     const r = await api('/api/extension/map-fields', {
       method: 'POST',
-      body: JSON.stringify({ fields, profile, job_title, company }),
+      body: JSON.stringify({ fields, profile, job_title, company, mode: 'legacy' }),
     });
     if (!r.ok) return { ok: false, error: r.data?.error ?? `HTTP ${r.status}` };
     return { ok: true, mappings: r.data.mappings ?? [] };
+  },
+
+  async mapFieldsSemantic({ domain, fields }) {
+    const r = await api('/api/extension/map-fields', {
+      method: 'POST',
+      body: JSON.stringify({ mode: 'semantic', domain, fields }),
+    });
+    if (!r.ok) return { ok: false, error: r.data?.error ?? `HTTP ${r.status}` };
+    return { ok: true, mappings: r.data.mappings ?? [] };
+  },
+
+  async getFormTemplate({ domain, structure_hash }) {
+    const qs = new URLSearchParams();
+    if (domain) qs.set('domain', domain);
+    if (structure_hash) qs.set('structure_hash', structure_hash);
+    const r = await api(`/api/extension/form-template?${qs.toString()}`);
+    if (!r.ok) return { ok: false, error: r.data?.error ?? `HTTP ${r.status}` };
+    return {
+      ok: true,
+      template: r.data.template ?? null,
+      capture_count: r.data.capture_count ?? 0,
+    };
+  },
+
+  async captureFormTemplate(payload) {
+    const r = await api('/api/extension/form-template/capture', {
+      method: 'POST',
+      body: JSON.stringify(payload ?? {}),
+    });
+    if (!r.ok) return { ok: false, error: r.data?.error ?? `HTTP ${r.status}` };
+    return { ok: true, ...r.data };
   },
 
   async fetchResume({ match_id, variant } = {}) {

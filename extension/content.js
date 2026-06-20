@@ -344,6 +344,33 @@
     return 'generic';
   }
 
+  /** Tier B: custom WordPress / jQuery career pages — not a known ATS adapter. */
+  function isCustomFormMode() {
+    return detectAts() === 'generic' && !isUniversalCareerSite() && !isWorkdayDom();
+  }
+
+  function tierBCtx() {
+    return {
+      applicationFormRoot,
+      labelForControl,
+      fieldSignature,
+      isVisible,
+      isEmpty,
+      isDropdownWidget,
+      isNativeTextControl,
+      openGenericListbox,
+      setGenericDropdownByPrefs,
+      setSelectValue,
+      setSelectNoticePeriod,
+      setSelectExperienceYears,
+      setFieldValue,
+      fillLeverTypeahead,
+      safeFillOp,
+      log,
+      sleep,
+    };
+  }
+
   function looksLikeApplicationForm() {
     // Quick wins
     if (document.querySelector('form[action*="apply"]')) return true;
@@ -4369,14 +4396,186 @@
     return engine.runAtsFill(atsId, profile, filledSet, atsFillHooks());
   }
 
+  async function applyTierBField(field, value, filledSet) {
+    const val = String(value ?? '').trim();
+    if (!val || !field?.el) return false;
+    const el = field.el;
+    if (!isVisible(el) || filledSet.has(el)) return false;
+    if (!isEmpty(el)) return false;
+
+    if (field.widget_kind === 'radio') {
+      const group = el.closest('fieldset, [role="radiogroup"], form') || document;
+      const radios = [...group.querySelectorAll(`input[type="radio"][name="${CSS.escape(el.name)}"]`)].filter(
+        isVisible,
+      );
+      const want = val.toLowerCase();
+      const opt =
+        radios.find((r) => (r.value || '').toLowerCase() === want) ||
+        radios.find((r) => {
+          const lbl = labelForControl(r).toLowerCase();
+          return lbl === want || lbl.startsWith(want);
+        });
+      if (opt && !opt.checked) {
+        opt.click();
+        filledSet.add(opt);
+        return true;
+      }
+      return false;
+    }
+
+    if (field.widget_kind === 'native_select' || el.tagName === 'SELECT') {
+      if (field.semantic_key === 'notice_period_days') {
+        if (setSelectNoticePeriod(el, val)) {
+          filledSet.add(el);
+          return true;
+        }
+      }
+      if (field.semantic_key === 'total_experience_years') {
+        if (setSelectExperienceYears(el, Number.parseFloat(val))) {
+          filledSet.add(el);
+          return true;
+        }
+      }
+      const picked =
+        (field.options?.length
+          ? window.__HyredTierBForm?.pickDropdownOption(val, field.options, field.semantic_key || '')
+          : null) || val;
+      if ((await setGenericDropdownByPrefs(el, [picked])) || setSelectValue(el, picked)) {
+        filledSet.add(el);
+        return true;
+      }
+      return false;
+    }
+
+    if (field.widget_kind === 'custom_dropdown' || isDropdownWidget(el)) {
+      const picked =
+        (field.options?.length
+          ? window.__HyredTierBForm?.pickDropdownOption(val, field.options, field.semantic_key || '')
+          : null) || val;
+      if (await setGenericDropdownByPrefs(el, [picked])) {
+        filledSet.add(el);
+        return true;
+      }
+      return false;
+    }
+
+    if (field.widget_kind === 'typeahead') {
+      if (await fillLeverTypeahead(el, val)) {
+        filledSet.add(el);
+        return true;
+      }
+    }
+
+    if (isNativeTextControl(el)) {
+      await setFieldValue(el, val, field.label?.slice(0, 40));
+      filledSet.add(el);
+      return true;
+    }
+    return false;
+  }
+
+  async function fillCustomFormTierB(profile, match, filledSet) {
+    const TierB = window.__HyredTierBForm;
+    if (!TierB || !isCustomFormMode()) return 0;
+    const ctx = tierBCtx();
+    const discovered = await TierB.discoverFields(ctx);
+    if (!discovered.length) {
+      log('tierB: no discoverable fields');
+      return 0;
+    }
+    const domain = TierB.normalizeDomain(HOST);
+    const structureHash = TierB.computeStructureHash(discovered);
+    log('tierB: discovered', discovered.length, 'fields', structureHash);
+
+    const templateMap = new Map();
+    const tplRes = await send('getFormTemplate', {
+      domain,
+      structure_hash: structureHash,
+    });
+    if (tplRes?.ok && tplRes.template?.fields?.length) {
+      for (const f of tplRes.template.fields) {
+        templateMap.set(f.field_fp, f);
+        if (f.options?.length) {
+          const disc = discovered.find((d) => d.field_fp === f.field_fp);
+          if (disc) disc.options = [...new Set([...(disc.options || []), ...f.options])];
+        }
+      }
+      log('tierB: loaded template', tplRes.template.status, 'conf=', tplRes.template.confidence);
+    }
+
+    const needMap = discovered.filter((f) => {
+      const t = templateMap.get(f.field_fp);
+      return !t?.semantic_key;
+    });
+    if (needMap.length) {
+      const mapRes = await send('mapFieldsSemantic', {
+        domain,
+        fields: needMap.map((f) => ({
+          field_fp: f.field_fp,
+          label: f.label,
+          widget_kind: f.widget_kind,
+          options: (f.options || []).slice(0, 25),
+        })),
+      });
+      if (mapRes?.ok && Array.isArray(mapRes.mappings)) {
+        for (const m of mapRes.mappings) {
+          if (!m.semantic_key || m.semantic_key === 'skip') continue;
+          templateMap.set(m.field_fp, {
+            field_fp: m.field_fp,
+            semantic_key: m.semantic_key,
+            semantic_conf: m.confidence,
+          });
+        }
+        log('tierB: semantic map', mapRes.mappings.length, 'keys');
+      }
+    }
+
+    let n = 0;
+    for (const field of discovered) {
+      const meta = templateMap.get(field.field_fp);
+      const semanticKey = meta?.semantic_key;
+      if (!semanticKey || semanticKey === 'skip') continue;
+      field.semantic_key = semanticKey;
+      field.options = field.options?.length ? field.options : meta?.options;
+
+      const profileVal = TierB.resolveSemanticValue(semanticKey, profile);
+      if (!profileVal) continue;
+      const value = field.options?.length
+        ? TierB.pickDropdownOption(profileVal, field.options, semanticKey) || profileVal
+        : profileVal;
+
+      const ok = await safeFillOp(field.label, () => applyTierBField(field, value, filledSet));
+      if (ok) {
+        n++;
+        fillUi.onField(field.el, field.label.slice(0, 44));
+        log('tierB:fill', semanticKey, '<=', field.label.slice(0, 50));
+      }
+    }
+    log('tierB: filled', n, 'of', discovered.length);
+    return n;
+  }
+
   async function fillAllFields(profile, match) {
     const filledSet = new Set();
     let total = 0;
     const ats = detectAts();
+    const customMode = isCustomFormMode();
     const appQuestionsPage = ats === 'workday' && isWorkdayApplicationQuestionsStep();
-    const passCount = appQuestionsPage ? 1 : 3;
-    // Config-driven ATS recipes run once — arrays click "Add" and must not repeat per pass.
+    const passCount = appQuestionsPage ? 1 : customMode ? 1 : 3;
     total += await runConfiguredAtsFill(profile, filledSet, ats);
+
+    if (customMode) {
+      total += await fillKnownFields(profile, filledSet);
+      total += await fillCustomFormTierB(profile, match, filledSet);
+      total += await fillGenericChoiceFields(profile, filledSet);
+      total += fillGenericScreeningRadios(profile, filledSet);
+      total += fillEssayFromProfile(profile, filledSet);
+      total += await fillViaSemanticMap(profile, match, filledSet, { workdayAi: false });
+      dumpGenericUnfilled(filledSet);
+      log('fillAllFields: filled', filledSet.size, 'elements in', total, 'operations (tier B)');
+      return filledSet.size;
+    }
+
     for (let pass = 0; pass < passCount; pass++) {
       if (ats === 'workday') total += await fillWorkday(profile, filledSet, match);
       total += await fillByVendorAttributes(profile, filledSet);
@@ -5353,7 +5552,12 @@
     statusEl.textContent = 'Ready to autofill';
     statusEl.className = 'jr-card-status jr-ok';
     fillBtn.disabled = false;
-    fillBtn.textContent = 'Autofill this form';
+    fillBtn.textContent = isCustomFormMode() ? 'Autofill (beta)' : 'Autofill this form';
+    if (isCustomFormMode()) {
+      hintEl.textContent = 'Custom form — review every field before you submit.';
+    } else {
+      hintEl.textContent = '';
+    }
 
     const res = await send('resolveMatch', { url: location.href, ...pageMatchHints() });
     const match = res?.ok ? res.match : null;
@@ -5418,11 +5622,23 @@
   // Auto-detect: known ATS host OR a page that looks like an app form.
   // Pops the Copilot card up automatically (once) the moment a form appears.
   // -------------------------------------------------------------------
+  let tierBCaptureScheduled = false;
+  function maybeScheduleTierBCapture() {
+    if (tierBCaptureScheduled || !IS_TOP_FRAME || !isCustomFormMode()) return;
+    const TierB = window.__HyredTierBForm;
+    if (!TierB?.schedulePassiveCapture) return;
+    tierBCaptureScheduled = true;
+    TierB.schedulePassiveCapture(tierBCtx(), send);
+  }
+
   function maybeMount() {
     if (!IS_TOP_FRAME) return;
     if (cardDismissed) return;
     if (document.getElementById('jobradar-card')) return;
-    if (shouldShowCopilotCard()) mountCard();
+    if (shouldShowCopilotCard()) {
+      mountCard();
+      maybeScheduleTierBCapture();
+    }
   }
 
   const EXT_VERSION = chrome.runtime?.getManifest?.().version || '?';

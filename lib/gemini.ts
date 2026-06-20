@@ -2482,3 +2482,104 @@ Rules:
   }
 }
 
+const SEMANTIC_FIELD_KEYS = [
+  'email',
+  'phone',
+  'first_name',
+  'last_name',
+  'full_name',
+  'current_title',
+  'current_company',
+  'current_location',
+  'linkedin',
+  'github',
+  'portfolio',
+  'notice_period_days',
+  'total_experience_years',
+  'current_ctc',
+  'expected_ctc',
+  'willing_to_relocate',
+  'require_sponsorship',
+  'authorized_to_work',
+  'gender',
+  'skip',
+] as const;
+
+/** Tier B: map form structure to semantic keys only — never send user PII to the LLM. */
+export async function mapFormFieldsSemantic(args: {
+  domain: string;
+  fields: {
+    field_fp: string;
+    label: string;
+    widget_kind: string;
+    options?: string[];
+  }[];
+}): Promise<{ field_fp: string; semantic_key: string; confidence: number }[]> {
+  if (!args.fields.length) return [];
+
+  const fieldLines = args.fields
+    .slice(0, 35)
+    .map((f) => {
+      const opts =
+        f.options?.length && f.options.length <= 12
+          ? ` options=[${f.options.map((o) => JSON.stringify(o)).join(', ')}]`
+          : f.options?.length
+            ? ` options_count=${f.options.length}`
+            : '';
+      return `- ${f.field_fp}: label=${JSON.stringify(f.label)} kind=${f.widget_kind}${opts}`;
+    })
+    .join('\n');
+
+  const prompt = `Map job application form fields to semantic keys for domain "${args.domain}".
+
+FIELDS (structure only — do NOT invent or output user values):
+${fieldLines}
+
+Allowed semantic_key values:
+${SEMANTIC_FIELD_KEYS.join(', ')}
+
+Return strict JSON:
+{ "mappings": [ { "field_fp": "<string>", "semantic_key": "<key>", "confidence": 0.0-1.0 } ] }
+
+Rules:
+- Map by label meaning only (e.g. "Notice Period" → notice_period_days).
+- Use skip for captcha, file upload, cover letter upload, referral free-text, or unknown fields.
+- For dropdowns with options, semantic_key describes what the field asks for; do not pick an option value.
+- confidence 0.9+ when label clearly matches; 0.5-0.8 when plausible; skip if unsure.
+- Output JSON only.`;
+
+  const text = await chat(
+    'You map form field labels to semantic keys. No PII. Output JSON only.',
+    prompt,
+    0.05,
+    true,
+    'mapFormFieldsSemantic',
+  );
+
+  try {
+    const parsed = JSON.parse(text) as {
+      mappings?: { field_fp: string; semantic_key: string; confidence?: number }[];
+    };
+    if (!Array.isArray(parsed.mappings)) return [];
+    const allowed = new Set<string>(SEMANTIC_FIELD_KEYS);
+    return parsed.mappings
+      .filter(
+        (m) =>
+          typeof m.field_fp === 'string' &&
+          typeof m.semantic_key === 'string' &&
+          allowed.has(m.semantic_key),
+      )
+      .map((m) => ({
+        field_fp: m.field_fp,
+        semantic_key: m.semantic_key,
+        confidence:
+          typeof m.confidence === 'number'
+            ? Math.max(0, Math.min(1, m.confidence))
+            : 0.7,
+      }))
+      .slice(0, 35);
+  } catch {
+    return [];
+  }
+}
+
