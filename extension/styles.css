@@ -211,7 +211,23 @@
   border: 1px solid #2a313a;
   background: rgba(0, 0, 0, 0.15);
 }
-#jobradar-card .jr-cover-label {
+#jobradar-card .jr-cover-picker.jr-cover-compact {
+  padding: 6px 8px;
+  margin-bottom: 8px;
+}
+#jobradar-card .jr-cover-compact .jr-cover-preview {
+  max-height: 72px;
+}
+#jobradar-card .jr-cover-compact .jr-cover-preview.jr-collapsed {
+  display: none;
+}
+#jobradar-card .jr-cover-compact .jr-cover-actions {
+  gap: 4px;
+}
+#jobradar-card .jr-cover-compact .jr-cover-actions button {
+  font-size: 11px;
+  padding: 5px 8px;
+}
   font-size: 12px;
   font-weight: 600;
   color: #e6ebf2;
