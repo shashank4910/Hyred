@@ -60,7 +60,7 @@ export function KeywordManager({
   onStage: (kw: string) => void;
   onUnstage: (kw: string) => void;
   onStageMany: (kws: string[]) => void;
-  onOptimize: () => void;
+  onOptimize: (keywordsToWeave?: string[]) => void;
 }) {
   const originalSet = useMemo(
     () => new Set(originalPresent.map((k) => k.toLowerCase())),
@@ -309,7 +309,7 @@ export function KeywordManager({
 
       {/* The one CTA */}
       <button
-        onClick={onOptimize}
+        onClick={() => onOptimize()}
         disabled={generating}
         className={[
           'w-full justify-center',
