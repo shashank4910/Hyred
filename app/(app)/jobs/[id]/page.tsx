@@ -1,13 +1,14 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowLeft, MapPin, Building2, Clock } from 'lucide-react';
+import { ArrowLeft, MapPin, Building2, Clock, FileText } from 'lucide-react';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { getCurrentProfile, isCurrentUserAdmin } from '@/lib/current-user';
 import { ensureFullDescription } from '@/lib/jd-fetcher';
 import { isSkillPresentInJd } from '@/lib/gemini';
 import { JobActions } from './JobActions';
 import { AutoApplyButton } from './AutoApplyButton';
-import { MatchSkillPills } from '../../_components/MatchSkillPills';
+import { CollapsibleMatchSkills } from './CollapsibleMatchSkills';
+import { CollapsibleCard } from '../../_components/CollapsibleCard';
 import { relativeTime, scoreColorClass, scoreLabel, SOURCE_LABELS } from '@/lib/ui';
 import { ReferralRadar } from './ReferralRadar';
 
@@ -106,6 +107,20 @@ export default async function JobMatchPage({
     .order('created_at', { ascending: false })
     .limit(10);
 
+  const { data: premiumSub } = await sb
+    .from('premium_subscriptions')
+    .select('plan')
+    .eq('profile_id', profile0.id)
+    .eq('status', 'active')
+    .maybeSingle();
+
+  const isPremium = Boolean(premiumSub?.plan && premiumSub.plan !== 'free');
+  const tailoredText =
+    (match as unknown as { tailored_resume_text?: string | null }).tailored_resume_text ?? '';
+  const jdRaw = fullDescription || job.description || 'No description.';
+  const jdPreview =
+    jdRaw.length > 120 ? `${jdRaw.slice(0, 120).trim()}…` : jdRaw;
+
   return (
     <div className="space-y-5">
       <Link
@@ -145,11 +160,6 @@ export default async function JobMatchPage({
                 <span className="badge">{SOURCE_LABELS[job.source] ?? job.source}</span>
               )}
               {job.salary && <span className="badge-success">{job.salary}</span>}
-              {(job.tags ?? []).slice(0, 8).map((t) => (
-                <span key={t} className="badge">
-                  {t}
-                </span>
-              ))}
             </div>
           </div>
           <div className="text-right shrink-0">
@@ -171,13 +181,11 @@ export default async function JobMatchPage({
           </div>
         )}
 
-        <div className="mt-4">
-          <MatchSkillPills
-            matchedSkills={(match as unknown as { matched_skills: string[] | null }).matched_skills ?? []}
-            missingSkills={(match as unknown as { missing_skills: string[] | null }).missing_skills ?? []}
-            resumeHref="#ats-resume"
-          />
-        </div>
+        <CollapsibleMatchSkills
+          matchedSkills={(match as unknown as { matched_skills: string[] | null }).matched_skills ?? []}
+          missingSkills={(match as unknown as { missing_skills: string[] | null }).missing_skills ?? []}
+          resumeHref="#ats-resume"
+        />
       </div>
 
       <JobActions
@@ -185,15 +193,11 @@ export default async function JobMatchPage({
         status={match.status}
         bookmarked={(match as unknown as { bookmarked: boolean }).bookmarked ?? false}
         coverLetter={match.cover_letter}
-        notes={match.notes}
         applyUrl={job.url}
-        hasTailoredResume={
-          !!(
-            (match as unknown as { tailored_resume_text?: string | null }).tailored_resume_text ||
-            (match as unknown as { tailored_resume_url?: string | null }).tailored_resume_url
-          )
-        }
+        hasTailoredResume={!!(tailoredText || (match as unknown as { tailored_resume_url?: string | null }).tailored_resume_url)}
+        initialResumeText={tailoredText}
         initialResumeVersions={resumeVersions ?? []}
+        isPremium={isPremium}
       />
 
       {/* Referral Radar */}
@@ -208,11 +212,13 @@ export default async function JobMatchPage({
         />
       )}
 
-      {/* Auto Apply */}
-      <div className="glass-card p-6 border-secondary/20 bg-gradient-to-r from-secondary-fixed/20 to-transparent">
-        <h2 className="font-headline font-semibold text-on-background flex items-center gap-2 mb-1">
-          <span className="text-secondary">⚡</span> Auto Apply
-        </h2>
+      {/* Auto Apply — collapsed by default */}
+      <CollapsibleCard
+        title="Auto Apply"
+        icon={<span className="text-secondary">⚡</span>}
+        summary="AI agent fills the application for you"
+        defaultOpen={false}
+      >
         <p className="text-xs text-on-surface-variant mb-4">
           The AI agent will open the company&apos;s career page, fill the form using your
           Application Profile, upload your ATS resume, and submit — while you watch it live.
@@ -221,15 +227,19 @@ export default async function JobMatchPage({
           matchId={match.id}
           agentUrl={process.env.NEXT_PUBLIC_APPLY_AGENT_URL ?? null}
         />
-      </div>
+      </CollapsibleCard>
 
-      {/* Job description */}
-      <div className="glass-card p-6 md:p-8">
-        <h2 className="font-headline font-semibold text-on-background mb-4">Job description</h2>
-        <pre className="whitespace-pre-wrap text-sm text-on-surface-variant font-sans leading-relaxed">
+      {/* Job description — collapsed by default */}
+      <CollapsibleCard
+        title="Job description"
+        icon={<FileText className="h-4 w-4 text-primary" />}
+        summary={jdPreview}
+        defaultOpen={false}
+      >
+        <pre className="whitespace-pre-wrap text-sm text-on-surface-variant font-sans leading-relaxed max-h-[70vh] overflow-y-auto">
           {fullDescription || job.description || 'No description.'}
         </pre>
-      </div>
+      </CollapsibleCard>
     </div>
   );
 }
