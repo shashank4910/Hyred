@@ -5351,6 +5351,154 @@
   }
 
   // -------------------------------------------------------------------
+  // Post-autofill: scroll to Save / Continue and click it on request.
+  // -------------------------------------------------------------------
+  let lastNavAssistAt = 0;
+
+  function continueButtonLabel(btn) {
+    return (btn.textContent || btn.value || btn.getAttribute('aria-label') || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 64);
+  }
+
+  function scoreApplicationContinueButton(btn) {
+    if (!btn || !isVisible(btn) || btn.disabled || btn.getAttribute('aria-disabled') === 'true') {
+      return -1000;
+    }
+    if (btn.closest('#jobradar-card, #jobradar-fab, #jobradar-toast')) return -1000;
+
+    let score = 0;
+    const text = continueButtonLabel(btn).toLowerCase();
+    const aid = (btn.getAttribute('data-automation-id') || '').toLowerCase();
+
+    if (/save and continue|save & continue|save and next/i.test(text)) score += 120;
+    else if (/^continue$/i.test(text)) score += 90;
+    else if (/^save$/i.test(text)) score += 85;
+    else if (/^next$/i.test(text) || /next step/i.test(text)) score += 75;
+    else if (/submit application|review and submit/i.test(text)) score += 70;
+    else if (/continue|save|next/.test(text)) score += 40;
+
+    if (/pagefooternext|bottom-navigation-next|saveandcontinue|footer.*next/i.test(aid)) score += 100;
+    if (/pagefooter/i.test(aid)) score += 30;
+
+    if (/cancel|back|previous|discard|close|delete|logout|sign out|don't save|without saving/i.test(text)) {
+      score -= 200;
+    }
+
+    try {
+      score += btn.getBoundingClientRect().top / 8;
+    } catch {
+      /* ignore */
+    }
+    return score;
+  }
+
+  function findApplicationContinueButton() {
+    const seen = new Set();
+    const candidates = [];
+
+    const selectorHits = document.querySelectorAll(
+      [
+        '[data-automation-id="pageFooterNextButton"]',
+        '[data-automation-id="bottom-navigation-next-button"]',
+        '[data-automation-id*="saveAndContinue" i]',
+        '[data-automation-id*="pageFooterNext" i]',
+        'button[data-automation-id*="continue" i]',
+      ].join(','),
+    );
+    for (const btn of selectorHits) {
+      if (seen.has(btn)) continue;
+      seen.add(btn);
+      candidates.push(btn);
+    }
+
+    const root = applicationFormRoot();
+    const scope = root && root !== document.body ? root : document;
+    for (const btn of scope.querySelectorAll(
+      'button, [role="button"], input[type="submit"], a[role="button"]',
+    )) {
+      if (seen.has(btn)) continue;
+      seen.add(btn);
+      const text = continueButtonLabel(btn).toLowerCase();
+      if (
+        /^(save and continue|save & continue|save and next|continue|next|save|submit)$/i.test(text) ||
+        /save and continue|save & continue|review and submit/i.test(text)
+      ) {
+        candidates.push(btn);
+      }
+    }
+
+    let best = null;
+    let bestScore = -Infinity;
+    for (const btn of candidates) {
+      const score = scoreApplicationContinueButton(btn);
+      if (score > bestScore) {
+        bestScore = score;
+        best = btn;
+      }
+    }
+    return bestScore > 0 ? best : null;
+  }
+
+  function highlightContinueButton(btn) {
+    if (!btn) return;
+    try {
+      btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } catch {
+      try {
+        btn.scrollIntoView({ block: 'center' });
+      } catch {
+        /* ignore */
+      }
+    }
+    btn.classList.remove('jobradar-fill-flash');
+    void btn.offsetWidth;
+    btn.classList.add('jobradar-fill-flash');
+    setTimeout(() => btn.classList.remove('jobradar-fill-flash'), 2200);
+  }
+
+  async function scrollToApplicationContinue() {
+    const btn = findApplicationContinueButton();
+    if (btn) {
+      highlightContinueButton(btn);
+      log('scrollToContinue:', continueButtonLabel(btn));
+      return { ok: true, found: true, label: continueButtonLabel(btn) };
+    }
+    try {
+      window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
+    } catch {
+      window.scrollTo(0, document.documentElement.scrollHeight);
+    }
+    log('scrollToContinue: no button — scrolled to page bottom');
+    return { ok: true, found: false };
+  }
+
+  async function clickApplicationContinue() {
+    const btn = findApplicationContinueButton();
+    if (!btn) {
+      return { ok: false, error: 'Save / Continue button not found on this page' };
+    }
+    highlightContinueButton(btn);
+    await sleep(280);
+    btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    btn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+    btn.click();
+    const label = continueButtonLabel(btn);
+    log('clickApplicationContinue:', label);
+    toast(`Clicked "${label}"`, 'ok', 3500);
+    return { ok: true, clicked: true, label };
+  }
+
+  async function assistPostAutofillNavigation() {
+    if (!IS_TOP_FRAME) return;
+    if (Date.now() - lastNavAssistAt < 1500) return;
+    lastNavAssistAt = Date.now();
+    await sleep(400);
+    await scrollToApplicationContinue();
+  }
+
+  // -------------------------------------------------------------------
   // Hook form-submit to mark the match as 'applied' once the user clicks.
   // We listen at capture phase so we don't miss SPA-managed buttons.
   // -------------------------------------------------------------------
@@ -5678,6 +5826,9 @@
           fillUi.end(successCount, successCount > 0, statusMsg);
         }
         setCardBusy(false);
+        if (successCount > 0 || resumeUploaded || coverInjected || answered > 0) {
+          void assistPostAutofillNavigation();
+        }
         if (!options.fromFanOut) refreshCardState();
       }
     }
@@ -5783,6 +5934,7 @@
         <div class="jr-progress-track"><span class="jr-progress-fill"></span></div>
       </div>
       <button class="jr-fill-btn" type="button">Autofill this form</button>
+      <button class="jr-continue-btn" type="button">Save &amp; continue →</button>
       <div class="jr-card-hint"></div>
     `;
     document.body.appendChild(card);
@@ -5833,6 +5985,10 @@
       fillUi.begin(Math.max(countEmptyFillableFields(), 8));
       fillUi.setPhase('Starting autofill…');
       triggerAutofillAllFrames(optsFromCard());
+    });
+    card.querySelector('.jr-continue-btn')?.addEventListener('click', async () => {
+      const res = await clickApplicationContinue();
+      if (!res?.ok) toast(res?.error || 'Button not found — scroll and click manually', 'warn', 6000);
     });
 
     requestAnimationFrame(() => card.classList.add('jr-show'));
@@ -5946,6 +6102,18 @@
     if (msg?.type === 'INJECT_COVER_LETTER') {
       const injected = injectCoverLetter(msg.payload?.text, { force: true });
       sendResponse({ ok: true, injected });
+      return true;
+    }
+    if (msg?.type === 'CLICK_SAVE_CONTINUE') {
+      clickApplicationContinue()
+        .then((res) => sendResponse(res))
+        .catch((e) => sendResponse({ ok: false, error: String(e?.message ?? e) }));
+      return true;
+    }
+    if (msg?.type === 'SCROLL_TO_CONTINUE') {
+      scrollToApplicationContinue()
+        .then((res) => sendResponse(res))
+        .catch((e) => sendResponse({ ok: false, error: String(e?.message ?? e) }));
       return true;
     }
     return false;

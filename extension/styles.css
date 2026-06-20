@@ -306,6 +306,26 @@
   cursor: not-allowed;
   transform: none;
 }
+#jobradar-card .jr-continue-btn {
+  width: 100%;
+  margin-top: 8px;
+  padding: 9px 10px;
+  background: transparent;
+  color: #7cffb2;
+  border: 1px solid rgba(124, 255, 178, 0.45);
+  border-radius: 10px;
+  font: 600 12.5px/1 -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+#jobradar-card .jr-continue-btn:hover {
+  background: rgba(124, 255, 178, 0.08);
+  border-color: rgba(124, 255, 178, 0.65);
+}
+#jobradar-card .jr-continue-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 #jobradar-card .jr-card-hint {
   margin-top: 8px;
   font-size: 11px;
