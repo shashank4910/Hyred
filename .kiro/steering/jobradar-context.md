@@ -220,7 +220,7 @@ This file should be updated every 2-3 significant conversations. Add:
 - Changes to architecture
 - New "NEVER do" / "ALWAYS do" rules learned
 
-Last updated: May 30, 2026 (session 12: owner PII fixes PRs #75–76; Hyred rebrand #77; role-title PDF #78–79; repo **private**; Phase 3 pub/sub design + premium pricing floor in `CONTEXT.md`. Full log → `docs/context/session-log.md`.)
+Last updated: June 20, 2026 (session 26: doc bridge audit — `## Key Architecture Decisions`, `## Core App Features`, AGENTS Index gaps; ATS v9 session 25 PR #187/#188; Tier B session 24. Full log → `docs/context/session-log.md`.)
 
 _Earlier: session 11 (ATS keyword guarantee); session 7 (Phase 1 auth); session 6 (Groq migration)._
 

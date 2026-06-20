@@ -2,6 +2,25 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 26 — Doc system bridge audit (June 20, 2026)
+
+**Goal:** Fix broken grep targets and missing Index rows so multi-agent handoffs (Cursor, Claude, Kiro, Antigravity) find the right CONTEXT section without re-explaining the product.
+
+### Shipped
+
+| Change | What |
+|---|---|
+| **`## Key Architecture Decisions`** | Restored missing `##` heading above AI pipeline subsections (was orphan `### 1–4` — agents grepping the Index found nothing) |
+| **`## Core App Features`** | New section: job detail, onboarding, Top MNC, import, outreach, apply profile |
+| **`AGENTS.md` Index** | Rows for job detail, onboarding, Top MNC, import, outreach, cover letter, apply profile |
+| **Tier 3 Read Protocol** | Fixed stale pointer ("bottom of CONTEXT.md") → `docs/context/session-log.md` |
+| **File Map** | Added `lib/ats-checker*`, `lib/top-companies.ts`, onboarding/top-mnc/import/ats-checker routes, outreach + import-job APIs |
+| **Sessions 17–18** | Backfilled ATS Checker PR #129 history stubs in session-log |
+
+**Doc pointer:** `AGENTS.md` Index; `CONTEXT.md` → `## Key Architecture Decisions`, `## Core App Features`.
+
+---
+
 ## Session 25 — ATS Checker v9 accuracy + public widget parity (June 18, 2026)
 
 **Goal:** Raise free ATS Checker from ~7/10 to ~9/10 — fix keyword false positives, India contact gaps, length over-penalty, public widget feature drift.
@@ -18,7 +37,7 @@
 - **Public + logged-in share engine** — app page keeps radar/history; widget uses same API.
 - **Sample resume** — India perf engineer (`ATS_SAMPLE_RESUME`) scores ~78, JD match ~92% on bundled JD.
 
-**Doc pointer:** `CONTEXT.md` → `## ATS Resume Checker`; `AGENTS.md` Index row.
+**Doc pointer:** `CONTEXT.md` → `## ATS Resume Checker`; `AGENTS.md` Index row. Context docs for v9: **PR #188**.
 
 ---
 
@@ -341,6 +360,35 @@ A focused session resolving a critical HTML regex boundary mismatch in skill ana
 2. Omitted `fetched_at` from the upsert payload in `upsertJobs`. Now, PostgreSQL's `default now()` value is used for new inserts, while updating existing duplicate records on conflict updates metadata but preserves their original `fetched_at` discovery timestamp.
 
 **Files changed:** `lib/ingest.ts`.
+
+## Session 18 — ATS Checker scoring calibration (June 8, 2026)
+
+**Goal:** Tune deterministic ATS engine after synthetic resume batch analysis (PR #129 cont.).
+
+### Shipped
+
+- Length bands for entry-level resumes (200–300 word tier)
+- Skills contextualization thresholds lowered
+- Soft/Interpersonal Skills added to standard headers
+- Validated on 1,200 synthetic + 40 real resumes
+
+**Doc pointer:** `CONTEXT.md` → `## ATS Resume Checker` → Scoring Optimization; Session 17 for UI half of same PR.
+
+---
+
+## Session 17 — ATS Checker UI overhaul (June 8, 2026)
+
+**Goal:** Ship free logged-in ATS checker UX (PR #129).
+
+### Shipped
+
+- `/ats-checker` page: animated score ring, radar chart, JD keyword comparison
+- Sample resume, keyboard shortcuts, score history, copy results
+- Public landing `/free-tools/ats-score-checker` (PR #143) + engine `lib/ats-checker.ts`
+
+**Doc pointer:** `CONTEXT.md` → `## ATS Resume Checker`; `## Public SEO Pages & Free Tools`.
+
+---
 
 ## Session 19 — Seen/Unseen card indicators + Hallucinated-skills guardrail + Sort/filter fixes (June 14, 2026)
 
