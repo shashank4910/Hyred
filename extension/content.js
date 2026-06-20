@@ -5088,12 +5088,165 @@
   // -------------------------------------------------------------------
   // Inject cover letter into the cover-letter textarea.
   // -------------------------------------------------------------------
-  function injectCoverLetter(text) {
+  function injectCoverLetter(text, { force = false } = {}) {
     const el = findCoverLetterField();
     if (!el || !text) return false;
-    if (!isEmpty(el)) return false;
+    if (!force && !isEmpty(el)) return false;
     setNativeValue(el, text);
+    if (IS_TOP_FRAME && fillUi.active) fillUi.onField(el, 'Cover letter');
     return true;
+  }
+
+  let coverLetterCache = '';
+  let coverGenerating = false;
+  let coverFieldSeen = false;
+
+  function downloadCoverLetterText(text) {
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'cover-letter.txt';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function injectCoverLetterEverywhere(text, { force = false } = {}) {
+    if (injectCoverLetter(text, { force })) return true;
+    if (IS_TOP_FRAME) {
+      const res = await send('fanOutInjectCoverLetter', { text });
+      return !!res?.injected;
+    }
+    return false;
+  }
+
+  function notifyCoverFieldIfPresent() {
+    if (!findCoverLetterField()) return;
+    try {
+      if (window.top !== window) {
+        window.top.postMessage({ type: 'JR_COVER_LETTER_FIELD' }, '*');
+      }
+    } catch {
+      /* cross-origin top */
+    }
+    if (IS_TOP_FRAME) onCoverFieldSeen();
+  }
+
+  function onCoverFieldSeen() {
+    coverFieldSeen = true;
+    const card = document.getElementById('jobradar-card');
+    if (card) {
+      card.querySelector('.jr-cover-picker')?.classList.remove('jr-hidden');
+      refreshCoverLetterUi();
+    } else if (!cardDismissed && IS_TOP_FRAME) {
+      maybeMount();
+      setTimeout(onCoverFieldSeen, 120);
+    }
+  }
+
+  function refreshCoverLetterUi() {
+    const card = document.getElementById('jobradar-card');
+    if (!card) return;
+    const panel = card.querySelector('.jr-cover-picker');
+    if (!panel) return;
+
+    const matchId = card.dataset.matchId;
+    const showPanel = coverFieldSeen || !!findCoverLetterField();
+    panel.classList.toggle('jr-hidden', !showPanel);
+
+    const hasLetter = !!String(coverLetterCache || '').trim();
+    const preview = panel.querySelector('.jr-cover-preview');
+    const pre = panel.querySelector('.jr-cover-text');
+    const genBtn = panel.querySelector('.jr-cover-generate');
+    const useBtn = panel.querySelector('.jr-cover-use');
+    const dlBtn = panel.querySelector('.jr-cover-download');
+    const toggleBtn = panel.querySelector('.jr-cover-toggle');
+    const hint = panel.querySelector('.jr-cover-hint');
+
+    if (pre && hasLetter) pre.textContent = coverLetterCache;
+    if (preview) {
+      preview.classList.toggle('jr-hidden', !hasLetter);
+    }
+    useBtn?.classList.toggle('jr-hidden', !hasLetter);
+    dlBtn?.classList.toggle('jr-hidden', !hasLetter);
+    toggleBtn?.classList.toggle('jr-hidden', !hasLetter);
+
+    if (genBtn) {
+      genBtn.disabled = coverGenerating || !matchId;
+      genBtn.textContent = coverGenerating
+        ? 'Drafting…'
+        : hasLetter
+          ? 'Regenerate'
+          : 'Generate cover letter';
+    }
+
+    if (hint) {
+      if (!matchId) {
+        hint.textContent =
+          'Link this posting in Hyred first — open Apply from your job match, then generate here.';
+      } else if (coverGenerating) {
+        hint.textContent = 'Drafting your cover letter…';
+      } else if (hasLetter) {
+        hint.textContent = 'Ready — preview below, then use it on the form or download.';
+      } else {
+        hint.textContent = 'Generate a tailored cover letter for this job (same as Hyred app).';
+      }
+    }
+  }
+
+  async function generateCoverLetterForMatch(matchId) {
+    if (!matchId || coverGenerating) return;
+    coverGenerating = true;
+    refreshCoverLetterUi();
+    const res = await send('generateCoverLetter', { match_id: matchId });
+    coverGenerating = false;
+    if (!res?.ok || !res.cover_letter) {
+      toast(res?.error || 'Could not generate cover letter', 'err', 6500);
+      refreshCoverLetterUi();
+      return;
+    }
+    coverLetterCache = res.cover_letter;
+    refreshCoverLetterUi();
+    toast('Cover letter ready', 'ok');
+  }
+
+  function wireCoverLetterPanel(card) {
+    const panel = card.querySelector('.jr-cover-picker');
+    if (!panel || panel.dataset.wired) return;
+    panel.dataset.wired = '1';
+
+    panel.querySelector('.jr-cover-generate')?.addEventListener('click', async () => {
+      const matchId = card.dataset.matchId;
+      if (!matchId) {
+        toast('No Hyred match for this page — apply from Hyred first.', 'warn', 6000);
+        return;
+      }
+      await generateCoverLetterForMatch(matchId);
+    });
+
+    panel.querySelector('.jr-cover-use')?.addEventListener('click', async () => {
+      if (!coverLetterCache?.trim()) return;
+      const ok = await injectCoverLetterEverywhere(coverLetterCache, { force: true });
+      toast(
+        ok ? 'Cover letter applied to the form' : 'Cover letter field not found on this step',
+        ok ? 'ok' : 'warn',
+        5000,
+      );
+    });
+
+    panel.querySelector('.jr-cover-download')?.addEventListener('click', () => {
+      if (!coverLetterCache?.trim()) return;
+      downloadCoverLetterText(coverLetterCache);
+      toast('Downloaded cover-letter.txt', 'ok');
+    });
+
+    panel.querySelector('.jr-cover-toggle')?.addEventListener('click', () => {
+      const preview = panel.querySelector('.jr-cover-preview');
+      const btn = panel.querySelector('.jr-cover-toggle');
+      if (!preview || !btn) return;
+      const hidden = preview.classList.toggle('jr-collapsed');
+      btn.textContent = hidden ? 'Show preview' : 'Hide preview';
+    });
   }
 
   // -------------------------------------------------------------------
@@ -5311,6 +5464,10 @@
       }
       const profile = profileRes.profile;
       const match = matchRes?.match ?? null;
+      if (match?.cover_letter && IS_TOP_FRAME) {
+        coverLetterCache = match.cover_letter;
+        refreshCoverLetterUi();
+      }
       const resumeVariant = await resolveResumeVariant(match, options);
       log('resume variant:', resumeVariant, 'has_tailored=', !!match?.has_tailored_resume);
 
@@ -5371,8 +5528,16 @@
         resumeUploaded = await uploadResume(match?.id, resumeVariant);
       }
 
-      if (options.coverLetter && match?.cover_letter) {
-        coverInjected = injectCoverLetter(match.cover_letter);
+      if (options.coverLetter) {
+        const letter = coverLetterCache || match?.cover_letter || '';
+        if (letter) {
+          coverInjected = await injectCoverLetterEverywhere(letter);
+        } else if (findCoverLetterField()) {
+          onCoverFieldSeen();
+          if (!options.fromFanOut && IS_TOP_FRAME) {
+            toast('Cover letter step — generate one in Hyred Copilot, then Use on form.', 'warn', 7000);
+          }
+        }
       }
 
       if (options.aiQuestions) {
@@ -5533,6 +5698,19 @@
           <button type="button" class="jr-resume-preview" data-preview="default">Preview</button>
         </label>
       </div>
+      <div class="jr-cover-picker jr-hidden">
+        <div class="jr-cover-label">Cover letter</div>
+        <div class="jr-cover-hint"></div>
+        <div class="jr-cover-preview jr-hidden">
+          <pre class="jr-cover-text"></pre>
+        </div>
+        <div class="jr-cover-actions">
+          <button type="button" class="jr-cover-generate">Generate cover letter</button>
+          <button type="button" class="jr-cover-use jr-hidden">Use on form</button>
+          <button type="button" class="jr-cover-download jr-hidden">Download</button>
+          <button type="button" class="jr-cover-toggle jr-hidden">Hide preview</button>
+        </div>
+      </div>
       <div class="jr-card-opts">
         <label><input type="checkbox" data-opt="resume" checked /> Resume</label>
         <label><input type="checkbox" data-opt="coverLetter" checked /> Cover letter</label>
@@ -5601,6 +5779,7 @@
 
     requestAnimationFrame(() => card.classList.add('jr-show'));
     log('Copilot card mounted');
+    wireCoverLetterPanel(card);
     refreshCardState();
   }
 
@@ -5657,6 +5836,7 @@
       matchEl.querySelector('.jr-match-score').textContent = score;
       card.dataset.matchId = match.id || '';
       card.dataset.previewUrl = match.tailored_resume_url || '';
+      coverLetterCache = match.cover_letter || coverLetterCache || '';
       if (resumePicker) {
         resumePicker.classList.remove('jr-hidden');
         const hasTailored = !!match.has_tailored_resume;
@@ -5681,13 +5861,16 @@
         if (t) t.checked = variant === 'tailored';
         if (d) d.checked = variant === 'default';
       }
+      refreshCoverLetterUi();
     } else {
       matchEl.classList.add('jr-hidden');
       card.dataset.matchId = '';
       card.dataset.previewUrl = '';
+      coverLetterCache = '';
       resumePicker?.classList.add('jr-hidden');
       resumeHint?.classList.add('jr-hidden');
     }
+    refreshCoverLetterUi();
   }
 
   // -------------------------------------------------------------------
@@ -5698,6 +5881,11 @@
       runAutofill(msg.payload?.options || {})
         .then((res) => sendResponse({ ok: true, ...res }))
         .catch((e) => sendResponse({ ok: false, error: String(e?.message ?? e) }));
+      return true;
+    }
+    if (msg?.type === 'INJECT_COVER_LETTER') {
+      const injected = injectCoverLetter(msg.payload?.text, { force: true });
+      sendResponse({ ok: true, injected });
       return true;
     }
     return false;
@@ -5728,6 +5916,24 @@
 
   const EXT_VERSION = chrome.runtime?.getManifest?.().version || '?';
   log('content script loaded v' + EXT_VERSION, 'on', HOST, location.pathname);
+
+  if (IS_TOP_FRAME) {
+    window.addEventListener('message', (e) => {
+      if (e.data?.type === 'JR_COVER_LETTER_FIELD') onCoverFieldSeen();
+    });
+  }
+
+  function startCoverFieldWatcher() {
+    const tick = () => notifyCoverFieldIfPresent();
+    tick();
+    if (document.body) {
+      const coverObs = new MutationObserver(() => tick());
+      coverObs.observe(document.body, { childList: true, subtree: true });
+    }
+    setInterval(tick, 2500);
+  }
+  startCoverFieldWatcher();
+
   maybeMount();
   const obs = new MutationObserver(() => maybeMount());
   obs.observe(document.body, { childList: true, subtree: true });

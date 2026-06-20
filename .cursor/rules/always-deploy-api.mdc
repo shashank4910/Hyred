@@ -1,0 +1,32 @@
+---
+description: Always deploy API/backend changes — never ask the user to deploy
+alwaysApply: true
+---
+
+# Always deploy API changes
+
+When you add or change **backend/API code** (`app/api/**`, `lib/**` used by routes, Supabase migrations, server middleware), **deployment is part of the task** — not optional and not something to ask the user about.
+
+## Do automatically (no "say the word" / "deploy when ready")
+
+1. Branch off latest `main`.
+2. Run `npm run typecheck` (and `npm run build` for app-facing changes).
+3. Open a PR with a clear summary + test plan.
+4. **Merge when CI is green** (squash + delete branch).
+5. **Verify live** on `main` via `https://raw.githubusercontent.com/shashank4910/JobRadar/main/<path>`.
+
+## Do not
+
+- End a task with "deploy the API changes" or "say the word to ship" for backend work you wrote.
+- Leave API fixes only on a local branch or an open PR.
+- Ask "should I merge?" when CI is green.
+
+## Extension-only changes
+
+Extension JS/CSS still ships via the same PR to `main` (repo source of truth). Tell the user to reload the extension at `chrome://extensions` after merge — that is the one manual step they must do locally.
+
+## Pause before merge only when
+
+- CI is red (fix first).
+- User explicitly said "don't merge yet" or "PR only".
+- Merge would require force-push to `main`.
