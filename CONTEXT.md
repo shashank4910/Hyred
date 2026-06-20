@@ -59,7 +59,7 @@ JobRadar / Hyred is a personalized AI-powered job-search dashboard that:
 
 **Pages using Luminous tokens everywhere (PR #104):** Job detail, onboarding, Stats, Admin, Import, apply-profile, error/not-found — all inherit refreshed typography, cards, and form controls from `globals.css`. Dashboard-specific patterns (bento insights, 7-col status grid) live only on `/`.
 
-**ATS Checker page (PR #129):** `/ats-checker` page redesigned with animated score ring, radar chart, JD keyword comparison, sample data, keyboard shortcuts, score history, and copy results. Fully Luminous-compatible.
+**ATS Checker (PR #129 app UI; PR #187 v9 engine + public widget):** Logged-in `/ats-checker` — score ring, radar chart, JD comparison, sample, history. Public `/free-tools/ats-score-checker` — upload **or paste**, Try sample, JD match %, parse warnings (PR #187). Zero LLM.
 
 ### Design tokens
 
@@ -110,6 +110,10 @@ app/(app)/ats-checker/
 
 lib/
   ats-checker.ts         ← Pure deterministic ATS scoring engine (8 criteria, regex/heuristic, zero LLM)
+  ats-checker-samples.ts ← Shared sample resume + JD (India perf engineer) for app + public widget
+
+app/free-tools/ats-score-checker/
+  AtsCheckerWidget.tsx   ← Public widget: upload/paste, Try sample, JD match, parse warnings (PR #187)
 
 app/api/ats-checker/
   route.ts               ← POST /api/ats-checker (accepts file upload or pasted text + optional job_description)
@@ -142,6 +146,7 @@ lib/
 
 | Date | PR | Summary |
 |---|---|---|
+| June 18, 2026 | **#187** | **ATS Checker v9** — word-boundary keywords, JD aliases, India contact/location, length calibration, public widget paste/sample parity |
 | June 8, 2026 | **#129 (cont.)** | **ATS scoring optimized** — 3 fixes from 1200 synthetic resume analysis: Length bands for entry-level, Skills contextualization threshold lowered, Soft Skills header added |
 | June 8, 2026 | **#129** | **ATS Checker overhaul** — JD comparison, radar chart, animated UI, sample data, sample resume, keyboard shortcuts, score history, copy results |
 | May 31, 2026 | **#106** | **Status filter** — 7-column grid; all tabs on one line (no horizontal scroll) |
@@ -1201,6 +1206,7 @@ supabase/migrations/0009_llm_keys.sql ← (Session 16) llm_keys + llm_usage_log 
 | **Tier B tested before server deploy (Jun 2026)** | User ran Supabase migration 0014 but API routes were not on `main`/Vercel → extension got 404 on `/api/extension/form-template/*`; capture never persisted; second visit looked identical to first. | **Ship order:** migration 0014 → merge API + extension PR → Vercel live (401/200, not 404) → reload extension. See `### Tier B — custom career forms (beta)`. |
 | **GlobalLogic / WP custom dropdown `.trim()` crash (Jun 2026, PR #186)** | Tier B clicked visible div triggers; site `common.js` threw `Cannot read properties of undefined (reading 'trim')` — errors fire in site handlers **after** our click, so `safeFillOp` does not catch them. Gender / notice period missed. | Prefer hidden native `<select>` in field group via `findNativeSelectForControl` + `setSelectBySemantic`; discover `select` elements first in `tier-b-form.js`. Do **not** assume div-click listbox path for Tier B. |
 | **Tier B skeleton is not cross-user answer memory (Jun 2026)** | Expectation that manual submit teaches the next user's values. | Skeleton stores **structure + semantic keys + option labels** only. Values always from current user's apply profile via `resolveProfileSemanticValue`. Never store filled values in `domain_form_templates`. |
+| **ATS Checker JD keywords use word boundaries (PR #187)** | Substring `includes()` on tech keywords inflated JD match (`go` in "ago", `r` in "performance"). | Always use `keywordInText()` from `lib/ats-checker.ts` for keyword presence. JD compare uses `KEYWORD_EQUIVALENTS` for aliases — do not reintroduce naive substring matching. |
 
 ---
 
@@ -1239,7 +1245,7 @@ supabase/migrations/0009_llm_keys.sql ← (Session 16) llm_keys + llm_usage_log 
 | `app/explore/page.tsx` | Job listing page — SSR, dynamic, fetches from `jobs` table |
 | `app/explore/[id]/page.tsx` | Job detail page — SSR, `generateMetadata` for SEO, JobPosting schema |
 | `app/free-tools/ats-score-checker/page.tsx` | ATS landing page — SSR marketing page with WebApplication schema |
-| `app/free-tools/ats-score-checker/AtsCheckerWidget.tsx` | Client component — drag-drop upload, JD paste, instant scoring |
+| `app/free-tools/ats-score-checker/AtsCheckerWidget.tsx` | Client component — upload **or paste**, Try sample, JD match %, parse warnings (PR #187) |
 | `app/sitemap.ts` | Dynamic sitemap generator (Next.js App Router convention) |
 | `app/robots.ts` | Robots.txt generator (Next.js App Router convention) |
 | `middleware.ts` | Added `/explore` and `/free-tools` to `PUBLIC_PATHS` (no auth required) |
@@ -1255,47 +1261,54 @@ supabase/migrations/0009_llm_keys.sql ← (Session 16) llm_keys + llm_usage_log 
 
 ## ATS Resume Checker
 
-> **PR #129** — Complete overhaul of the free, instant, no-LLM ATS compatibility checker.
+> **PR #129** — Complete overhaul of the free, instant, no-LLM ATS compatibility checker.  
+> **PR #187 (Jun 2026)** — v9 accuracy pass: word-boundary keywords, India contact, length calibration, public widget parity.
 
 ### What it does
 
-Pastes or uploads a resume → analyses 8 ATS criteria → gives 0–100 score + improvement suggestions. Zero LLM calls, zero API costs, fully private (in-memory processing).
+Pastes or uploads a resume → analyses 8 ATS criteria → gives 0–100 score + improvement suggestions. Zero LLM calls, zero API costs, fully private (in-memory processing). Optional JD paste → keyword gap analysis (`jdMatch`).
 
 ### 8 criteria checked
 
 | # | Criterion | Weight | What it checks |
 |---|---|---|---|
 | 1 | Section Structure | 20% | Experience, Education, Skills headers present and correctly ordered |
-| 2 | Contact Info | 15% | Name, email, phone, LinkedIn, location at top |
+| 2 | Contact Info | 15% | Name, email, phone, LinkedIn, location at top (US **and** India patterns) |
 | 3 | Bullet Points | 15% | Consistent formatting, sufficient detail in experience bullets |
 | 4 | Quantified Impact | 15% | Numbers, percentages, metrics showing measurable results |
 | 5 | Skills Optimization | 15% | Concrete technical keywords, organized and contextualized |
-| 6 | Length & Density | 10% | 400–1000 words (1–2 pages) with good content density |
-| 7 | Format Cleanliness | 5% | Clean ASCII — no smart quotes, unicode bullets, or special chars |
+| 6 | Length & Density | 10% | Ideal ~350–1400 words; concise 180–349 OK when structure is strong |
+| 7 | Format Cleanliness | 5% | Clean ASCII — no smart quotes, unicode bullets, multi-column hints |
 | 8 | Date Formatting | 5% | Consistent month-level date ranges (Mon YYYY – Mon YYYY) |
 
 ### Key files
 
 | File | Purpose |
 |---|---|
-| `lib/ats-checker.ts` | Scoring engine — `checkAtsCompatibility()`, `extractKeywords()`, `compareWithJobDescription()` |
+| `lib/ats-checker.ts` | Scoring engine — `checkAtsCompatibility()`, `keywordInText()`, `extractKeywords()`, `compareWithJobDescription()` |
+| `lib/ats-checker-samples.ts` | Shared sample resume + JD (India perf engineer) for Try sample buttons |
 | `app/api/ats-checker/route.ts` | API endpoint — accepts file upload or JSON with optional `job_description` |
-| `app/(app)/ats-checker/page.tsx` | UI — input view, loading view, results view with radar chart, JD match, history |
+| `app/(app)/ats-checker/page.tsx` | Logged-in UI — score ring, radar chart, JD match, history, keyboard shortcuts |
+| `app/free-tools/ats-score-checker/AtsCheckerWidget.tsx` | Public widget — upload/paste, Try sample, JD match, parse warnings |
+| `tests/unit/ats-checker.test.ts` | Engine tests (55 total with API route tests) |
 
-### Features (PR #129)
+### Features (PR #129 + #187)
 
 | Feature | Details |
 |---|---|
-| **Score ring** | Animated SVG ring that counts up from 0 on mount |
-| **Radar chart** | SVG spider chart showing all 8 criteria at a glance |
-| **JD comparison** | Paste a job description → matched/missing/extra keyword analysis |
-| **Sample resume** | One-click "Try sample" button with realistic resume + JD |
-| **Score history** | Last 20 checks saved in localStorage with mini timeline |
-| **Keyboard shortcuts** | Cmd+Enter to check, Esc to reset |
-| **Copy results** | One-click copy of full analysis to clipboard (with execCommand fallback) |
-| **File upload** | Drag-and-drop or click-to-browse for .pdf, .doc, .docx, .txt |
+| **Score ring** | Animated SVG ring that counts up from 0 on mount (logged-in page) |
+| **Radar chart** | SVG spider chart showing all 8 criteria at a glance (logged-in page) |
+| **JD comparison** | Paste a job description → matched/missing/extra keyword analysis with alias matching (postgres↔postgresql, go↔golang, k8s↔kubernetes) |
+| **Sample resume** | One-click "Try sample" — India-focused perf engineer resume + JD (`ats-checker-samples.ts`) |
+| **Score history** | Last 20 checks saved in localStorage (logged-in page only) |
+| **Keyboard shortcuts** | Cmd+Enter to check, Esc to reset (logged-in page) |
+| **Copy results** | One-click copy of full analysis to clipboard |
+| **File upload** | `.pdf`, `.doc`, `.docx`, `.txt` — drag-drop or browse (app + public widget) |
+| **Paste text** | JSON API + public widget tab for pasted resume text |
+| **Parse quality** | `parseQuality` + `parseWarning` when PDF layout is degraded; adaptive down-weighting of layout criteria |
+| **India contact** | `+91` phone, major Indian cities/states, ALL-CAPS and pipe-separated names |
 
-### Scoring Optimization (session 18, same PR)
+### Scoring Optimization (session 18, PR #129)
 
 Validated and tuned the scoring engine using **1,200 synthetic resumes** across 6 industries × 4 experience levels.
 
@@ -1308,6 +1321,19 @@ Validated and tuned the scoring engine using **1,200 synthetic resumes** across 
 | **Density bonus** — +5 for 10+ skills + 2+ skill lines | — | +5 baseline | Rewards well-organized skills |
 
 **Validated on 40 real resumes:** Avg 64.0 → 64.5, Max 80 → 81. Synthetic resume generator saved at `scripts/synthetic-resume-generator.ts`.
+
+### v9 accuracy pass (PR #187, Jun 2026)
+
+| Fix | What changed |
+|---|---|
+| **Word-boundary keywords** | `keywordInText()` — no false matches (`go` in "ago", `r` in "performance", `java` in "javascript") |
+| **JD alias matching** | postgres↔postgresql, go↔golang, k8s↔kubernetes in `compareWithJobDescription` |
+| **India contact/location** | +91 phones, Indian cities/states, ALL-CAPS names, pipe-separated contact lines |
+| **Length calibration** | Concise 180–349 word resumes with 5+ bullets + 4+ sections no longer scored as "very short" |
+| **Header colons** | `TECHNICAL SKILLS:` trailing colon tolerated in section detection |
+| **Public widget parity** | Paste tab, Try sample, all file types, JD match display, parse warnings |
+
+**55 unit/API tests passing.** Sample resume scores ~78 overall, ~92% JD match on bundled sample JD.
 
 ## Debugging Protocol
 
@@ -1352,6 +1378,8 @@ When a feature seems broken:
 - New "pitfalls" or rules learned
 - Changes to the file map
 - **Keep the `AGENTS.md` Index in sync** when you add/rename a `##` section here, and append new dated session logs to `docs/context/session-log.md` (not here).
+
+**Last updated:** June 18, 2026 — **ATS Checker v9 (PR #187)** documented: word-boundary keywords, India contact, length calibration, public widget paste/sample parity; `AGENTS.md` Index row for ATS Checker.
 
 **Last updated:** June 20, 2026 — **Tier B custom career autofill (beta)** documented: domain form skeleton (PRs #185–#186, extension v0.16.1+, migration 0014). Partial fill on GlobalLogic-style sites; structure-only Supabase capture; `AGENTS.md` Index rows for Tier B. Workday end-to-end remains Tier A (v0.13.0+).
 

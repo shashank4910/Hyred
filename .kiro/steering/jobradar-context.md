@@ -142,8 +142,12 @@ lib/ingest.ts              ← Main cron pipeline
 lib/sources/adzuna.ts      ← Adzuna fetcher (multi-query, multi-page)
 lib/sources/index.ts       ← Source dispatcher
 lib/pdf-resume.ts          ← Beautiful PDF generator
+lib/ats-checker.ts         ← Free ATS score engine (zero LLM, PR #129 + v9 #187)
+lib/ats-checker-samples.ts ← Shared Try sample resume + JD
 
 app/(app)/jobs/[id]/JobActions.tsx  ← Skill match + ATS resume + cover letter UI
+app/(app)/ats-checker/page.tsx      ← Logged-in ATS checker (radar, history)
+app/free-tools/ats-score-checker/   ← Public ATS landing + widget (PR #143, #187)
 app/api/match/[id]/skills/route.ts  ← Skill match API
 app/api/match/[id]/resume/route.ts  ← ATS resume API
 app/api/coverletter/route.ts        ← Cover letter API

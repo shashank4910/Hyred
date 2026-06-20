@@ -52,6 +52,7 @@ How to open one section cheaply: `grep -n "<heading text>" CONTEXT.md` to get th
 | Admin-only job sources (data lake) | `CONTEXT.md` → Known Pitfalls (source visibility row) | `MatchFilters`, Stats by-source, `MatchCard` badges |
 | Delete user / re-signup data reset | `CONTEXT.md` → Known Pitfalls (0006/0008 FK rows) + migration **0008** | auth delete, orphan profiles |
 | **Public SEO pages + free tools** | `CONTEXT.md` → `## Public SEO Pages & Free Tools (PR #143)` | editing /explore, /free-tools, sitemap, robots.txt, or adding new public pages |
+| **ATS Resume Checker (free tool + engine)** | `CONTEXT.md` → `## ATS Resume Checker` + Known Pitfalls (ATS keyword row) + `lib/ats-checker-samples.ts` | tuning scoring, JD keyword match, public widget, India contact/location |
 | **Extension auto-login & autofill** | `CONTEXT.md` → `## ⭐ EXTENSION AUTO-LOGIN & AUTOFILL — Handoff (Sessions 22-23)` | extension auth, popup, content script, autofill |
 | **Extension Workday end-to-end status** | `CONTEXT.md` → `### Workday autofill — end-to-end (extension v0.13.0+)` | all 5 wizard pages, PR table, profile pipeline |
 | **Extension Workday Page 1 autofill** | `CONTEXT.md` → `### Workday autofill — Page 1 "My Information"` | multiSelect, promptIcon, LinkedIn source, `dumpWorkdayUnfilled` |
