@@ -1,0 +1,44 @@
+---
+description: Extension autofill — evidence gate before shipping; no silent DOM failures
+globs: extension/**/*
+alwaysApply: false
+---
+
+# Extension autofill ship gate
+
+`node --check` and architecture review are **not** sufficient to call autofill work done.
+
+## Before saying "ready to test" or opening a PR
+
+1. **Trace data → fill** for every new/changed field:
+   `resume-structure.ts` / `profile.ts` → `profile.*` key → resolver → DOM selector → fill primitive.
+   If parser output can be wrong (city in `education.field`), add a guard **at fill time**.
+
+2. **Reuse proven primitives** for the same ATS control type:
+   Workday typeahead/search (school, major, company) → `openWorkdayPrompt` + type + option click (same as skills).
+   Do **not** use generic `setFieldValue` or naive `searchEnter` when skills already have a working path.
+
+3. **No silent array failures**: `ensureRowCount`, Add-button click, typeahead commit must log on failure:
+   `workday:experience add button not found`, `ats:array X skipped: add button not found`, etc.
+   Empty section + non-empty profile = **ship blocker**, not "expected tuning".
+
+4. **One owner per section** on a page: if `ats-fill` and `content.js` both touch experience/education, document which wins or remove duplicate config.
+
+5. **Console acceptance criteria** (must appear in test plan for Workday My Experience):
+   - `work= N` with N≥1 → must log experience rows filled OR explicit skip reason
+   - No wrong values (`ats:search major = <city>`)
+   - `workday:UNFILLED` reviewed — new required fields get selectors or documented skip
+
+6. **Selectors need evidence**: copied/GH patterns are hypotheses. Validate against real `data-automation-id` / UNFILLED dump from a tenant (e.g. Alight `*.wd5.myworkdayjobs.com`) or mark **UNVERIFIED** in PR test plan.
+
+7. **Tier B (beta) custom sites** — grep `[JobRadar] tierB:`; verify `POST .../form-template/capture` ≠ 404 before claiming skeleton works. Partial fill is OK product-wise; document failures. See `CONTEXT.md` → `### Tier B — custom career forms (beta)`.
+
+## Review anti-patterns (do not do)
+
+- List a bug under "high-risk / still open" and ship without fix or gate.
+- Say "65–72% accuracy expected" when a whole section is 0% with data present.
+- Review only `ats-fill.js` without `content.js` legacy path + profile parser.
+
+## Done means
+
+Syntax clean **and** test plan lists required `[JobRadar]` log lines **and** known UNVERIFIED selectors.

@@ -2,6 +2,33 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 24 — Extension Tier B custom forms (beta) + GlobalLogic (June 20, 2026)
+
+**Goal:** Long-tail custom career pages (WordPress/jQuery, e.g. GlobalLogic) — partial autofill with shared **form skeleton** (structure only, no cross-user PII). Simplify skips these sites; Hyred tries with **Autofill (beta)** UX.
+
+### Shipped
+
+| PR | What |
+|---|---|
+| **#185** | Migration **0014** (`domain_form_templates`, `domain_form_captures`); APIs `GET/POST /api/extension/form-template/*`; `mapFormFieldsSemantic`; `extension/tier-b-form.js`; `fillCustomFormTierB`; extension **v0.16.0**; bundles structural RCA **v0.15.0** |
+| **#186** | GlobalLogic fix: `findNativeSelectForControl`, discover selects first, experience bucket matching; **v0.16.1** |
+
+### Design decisions (keep)
+
+- **Passive capture on form load** — not on submit; stores labels, widget kinds, dropdown option text only.
+- **LLM once per layout** — semantic keys only (`mode: 'semantic'`); profile values resolved in extension via `lib/extension/form-template.ts`.
+- **Quorum 3 reporters** before `active` template; `draft` OK for single user.
+- **Beta product stance** — partial fill acceptable; copilot shows "Autofill (beta)"; no auto-submit.
+
+### RCA notes (GlobalLogic IRC289549)
+
+- Test before API deploy → 404, empty DB — fixed by shipping #185 first.
+- Gender/notice failed: div-click triggered `common.js` `.trim()` on undefined — fixed by setting hidden `<select>.value` (#186).
+
+**Doc pointer:** `CONTEXT.md` → `### Tier B — custom career forms (beta)`; `AGENTS.md` Index rows.
+
+---
+
 ## Session 23 — Extension Auth Flow Overhaul: Auth Tab Flow + Cookie Fallback + Popup Redesign (June 15, 2026)
 
 A debugging session focused on getting the Chrome extension popup to auto-connect when the user is logged into hyred.in. The popup kept falling back to the APP_PASSWORD setup form. Built a multi-pronged auto-connect pipeline and a proper Connect-to-Hyred button flow.

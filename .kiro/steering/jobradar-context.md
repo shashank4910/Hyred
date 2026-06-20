@@ -266,3 +266,10 @@ _Earlier: session 11 (ATS keyword guarantee); session 7 (Phase 1 auth); session 
 - Adzuna → `j.created` (weakest — Adzuna index date, not company post date)
 - Remotive → `j.publication_date`, RemoteOK → `j.date`, Arbeitnow → `j.created_at × 1000`, HN → `it.created_at`
 - Display: `date-fns formatDistanceToNow(posted_at)` vs current time
+
+### Extension Tier B custom forms (beta, Jun 2026)
+
+- **Partial autofill** on generic career sites (GlobalLogic, WordPress/jQuery) — Copilot **Autofill (beta)**; Simplify-style sites Hyred still tries.
+- Shared **form skeleton** in Supabase (migration **0014**) — structure only, no cross-user PII.
+- **Open:** `AGENTS.md` Index → Tier B rows → `CONTEXT.md` → `### Tier B — custom career forms (beta)`.
+- **Shipped:** PRs #185–#186, extension v0.16.1+.

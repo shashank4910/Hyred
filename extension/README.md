@@ -33,6 +33,30 @@ You should see "Connected to ..." with your name + email.
 4. Review what got filled, manually upload your resume PDF, hit **Submit**.
 5. The extension auto-marks the JobRadar match as **"applied"** when you click Submit.
 
+## Architecture (v0.11.0+)
+
+Config-driven ATS fill engine (`ats-fill.js` + `ats-config/`):
+
+| Config | Platforms |
+|--------|-----------|
+| `workday.js` | Workday — fields, dropdowns, experience/education/websites arrays |
+| `greenhouse.js` | Greenhouse boards |
+| `lever.js` | Lever postings |
+| `ashby.js` | Ashby jobs |
+| `universal.js` | Long-tail career sites (Phenom, custom domains, unknown ATS) |
+
+Fill order: **ATS config recipes → platform adapter (Workday) → vendor attrs → autofill-engine → regex → Tier B skeleton (beta) → AI mapFields**.
+
+### Tier B — custom career forms (beta, v0.16.1+)
+
+For **generic** hosts (not Workday/Lever/GH/Ashby/Phenom): Copilot shows **Autofill (beta)**. Partial fill is expected.
+
+- Discovers form structure → optional Supabase skeleton (migration **0014** + live API)
+- Maps labels to semantic keys without sending profile to LLM
+- Fills from your Hyred apply profile locally (notice buckets, gender, CTC ranges)
+
+**Does not** remember what you typed manually for other users. Full doc: `CONTEXT.md` → `### Tier B — custom career forms (beta)`.
+
 ## Supported sites
 
 **Auto-detected:** Greenhouse, Lever, Ashby, Workable, **Workday** (`*.myworkdayjobs.com`), iCIMS, BambooHR, SmartRecruiters, Recruitee, TeamTailor, Jobvite, Taleo, Naukri, LinkedIn, Wellfound, Indeed, plus generic fallback.

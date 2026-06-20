@@ -741,11 +741,29 @@ Extension popup opens
 6. **Fix any autofill issues** — the extension fills fields by regex matching on common field labels. Some platforms may need additional field patterns added to `content.js`.
 7. **Add resume upload capability** — the extension currently relies on Hyred's stored resume PDF.
 
+### Workday autofill — end-to-end (extension v0.13.0+)
+
+> **Status (Jun 2026):** **Verified end-to-end** on Alight `*.myworkdayjobs.com` (Pages 1–5 wizard) and Cohesity Workday. Current extension **v0.13.0**. All five wizard steps autofill; user clicks **Save and Continue** / **Review** manually (no auto-submit).
+
+| Page | Status | PRs / version |
+|---|---|---|
+| 1 My Information | ✅ | v0.8.9+ (Cohesity, custom-domain) |
+| 2 My Experience | ✅ | #168–#172 — work/edu/languages/skills |
+| 3 Application Questions | ✅ | #173 v0.12.9 — universal screening taxonomy |
+| 4 Voluntary Disclosures | ✅ | #174 v0.13.0 — EEO + terms consent (Alight) |
+| 5 Review | — | No fields; user submits |
+
+**Profile pipeline (required before autofill):** Extension **Profile** tab → **Refresh from resume** (AI) → edit rows → **Save edits** → **Mark as reviewed**. Uses `POST /api/extension/refresh-structure`, `POST /api/extension/structure`, migrations **0011** (structured work/edu), **0012** (`languages`), **0013** (`work_permit_type`). See `#### Extension structured profile` below.
+
 ### Workday autofill — Page 1 "My Information" (extension v0.8.9+)
 
-> **Status (Jun 2026):** Verified on Cohesity `*.myworkdayjobs.com` — Page 1 ("My Information") fills fully. Page 2+ not yet covered.
+> **Also verified:** Cohesity `*.myworkdayjobs.com` and **custom-domain Workday** (e.g. Mastercard careers). **v0.10.0:** DOM-based Workday detection (`isWorkdayDom`) — not only `myworkdayjobs.com` hostname.
 
 Workday is React-controlled and **does not** use standard `name`/`label` heuristics. It needs a dedicated adapter in `extension/content.js` (`fillWorkday`, `fillWorkdayMultiSelects`, etc.), inspired by Simplify/Jotofiller patterns (scroll into view → open prompt → type → confirm selection).
+
+**After every extension reload:** hard-refresh the Workday tab (`Ctrl+Shift+R`). Otherwise `Extension context invalidated` — Copilot shows "Not connected" until refresh (v0.9.6+ shows explicit refresh hint).
+
+**Custom-domain Workday (v0.10.0+):** Many employers (Mastercard, etc.) host Workday on `careers.company.com` — same `formField-*` DOM. `isWorkdayDom()` detects by DOM + page text. **v0.10.1:** `fanOutAutofill` in `background.js` sends autofill to **every frame** via `chrome.webNavigation.getAllFrames` + `tabs.sendMessage({ frameId })` — required when apply form lives in cross-origin Workday iframe (top-frame-only fill is a no-op).
 
 #### What fills on Page 1
 
@@ -786,10 +804,15 @@ Workday is React-controlled and **does not** use standard `name`/`label` heurist
 
 | File | Role |
 |---|---|
-| `extension/content.js` | `fillWorkday`, `findWorkdayMultiSelectInputs`, `setWorkdayMultiSelect`, `fillWorkdaySourceLinkedIn`, `fillWorkdayScreeningRadios`, `dumpWorkdayUnfilled` |
+| `extension/content.js` | `fillWorkday`, `fillWorkdayExperiencePage`, `fillWorkdayWorkExperience`, `fillWorkdayEducation`, `fillWorkdayLanguages`, `fillWorkdayApplicationQuestionsPage`, `fillWorkdayVoluntaryDisclosuresPage`, `workdayScreeningPrefsForQuestion`, `findWorkdayEmptyDropdownTriggers`, `setWorkdayDropdownStrict`, `dumpWorkdayUnfilled` |
+| `extension/ATS_ADAPTERS.md` | Target layout: one adapter per ATS; Workday still migrating out of `content.js` |
+| `extension/ats-fill.js` + `extension/ats-config/workday.js` | Declarative Page 1 recipes + generic engine |
 | `extension/autofill-engine.js` | Generic field catalog + `buildFillPlan` (runs after Workday pass) |
-| `extension/background.js` | Optimistic `ping()` (stored token = connected unless 401/403) |
-| `lib/extension/profile.ts` | `buildAutofillProfile` — Application Profile + resume structure |
+| `extension/background.js` | `fanOutAutofill` (all frames), session auth, optimistic `ping()` |
+| `lib/extension/profile.ts` | `buildAutofillProfile` — Application Profile + structured work/edu/languages |
+| `lib/structured-profile-service.ts` | AI extract + merge same-company work history |
+| `app/api/extension/refresh-structure/route.ts` | Resume → structured profile (extension Profile tab) |
+| `app/api/extension/structure/route.ts` | Save user edits to `apply_profiles` structured columns |
 
 #### Debug console (page context, not `background.js`)
 
@@ -804,20 +827,193 @@ Workday is React-controlled and **does not** use standard `name`/`label` heurist
 
 Reload extension after every update; hard-refresh Workday tab (`Ctrl+Shift+R`) to avoid `Extension context invalidated`.
 
-#### Page 2 "My Experience" (extension v0.9.0+)
+#### Page 2 "My Experience" (extension v0.12.x+, verified Alight Jun 2026)
 
-| Field | How |
+**Detection:** `isWorkdayExperienceStep()` — resume upload, skills multiselect, or body text `My Experience` + skills/social/websites.
+
+| Field | How | Source |
+|---|---|---|
+| **Work history rows** | `fillWorkdayWorkExperience` — click **Add**, fill each row via `fillWorkdayWorkExperienceRow` (company, title, dates spinbuttons, role description) | `profile.structured_work_history[]` |
+| **I currently work here** | Checkbox only on **job index 0** when `end = Present`; past jobs **unchecked** | PR #171 |
+| **Education** | `fillWorkdayEducation` — school typeahead, degree, field of study, **Overall Result (GPA)** | `profile.structured_education[]` |
+| **Languages** | **Panel mode** (Alight): `languages-1` → Language dropdown + fluent checkbox + Comprehension/Overall/Reading/Speaking/Writing → `4 - Fluent`; click **Add** for row 2+. **Fallback:** chip multiselect | `profile.languages[]` (migration **0012**, default `["English","Hindi"]`) |
+| **Skills** | multiSelect — `fillWorkdaySkills` / `addWorkdaySkill()` per skill; **once per autofill** (`workdaySkillsPassDone`) | `profile.skills[]` + match missing skills |
+| **Resume/CV** | `input[data-automation-id="file-upload-input-ref"]` — PDF via `uploadResume` (DataTransfer) | Hyred storage |
+| **LinkedIn / GitHub / social** | `fillWorkdaySocialUrls` + profile-consent radios | `profile.links` |
+| **Screening radios on page** | `fillWorkdayScreeningRadios` (share-profile yes/no) | profile links |
+
+**Languages panel (v0.12.8 — do not regress to multiselect-only):** Many tenants (Alight) use **Languages 1** panel, not chip multiselect. `findWorkdayLanguageRows()` detects `languages-N`, heading `Languages 1`, or Language + Comprehension/Speaking block. Simplify-style: English + all proficiency = Fluent.
+
+**Work history gotchas:**
+
+| Gotcha | Fix |
 |---|---|
-| **Skills** | multiSelect "Type to Add Skills" — each `profile.skills[]` chip via `fillWorkdaySkills` (same promptIcon flow as Page 1) |
-| **Resume/CV** | Hidden `input[data-automation-id="file-upload-input-ref"]` — PDF from Hyred storage via `uploadResume` (DataTransfer) |
-| **LinkedIn / GitHub URL** | `fillWorkdaySocialUrls` — automation-id / label match on social-network fields |
-| Work history rows | **Not yet** — Workday "Add" work-experience modals need a separate adapter (Simplify often uses saved answers or manual profile copy) |
+| Same employer twice in resume (client projects) | AI extract merges via `mergeSameCompanyWorkHistory` before save (PR #169) |
+| All jobs get "currently work here" checked | Only index 0 + Present end date (PR #171) |
+| Date fields are spinbuttons | `setWorkdayDatePart` on `datesSectionMonth/Year` automation ids |
 
-**Hyred vs Simplify:** Simplify records your answers per site and offers a copy-paste Profile panel. Hyred builds a **structured autofill profile** from resume + Application Profile and uses **ATS-specific DOM adapters** (Workday `promptIcon`, chip verify, wrapper ids) plus LLM `mapFields` fallback — fully automated where adapters exist, no per-field recording step.
+**Skills flow (v0.9.3 — do not regress):** Cohesity Workday skills taxonomy is **server-side search**, not client filter. type keyword → **Enter** → wait options → click exact match (never `opts[0]` fallback). `workdaySkillsPassDone` guard.
+
+**Debug logs:** `workday:experience page`, `workday:experience row`, `workday:languages panel rows found`, `workday:language name`, `workday:education`, `workday:UNFILLED`.
+
+#### Page 3 "Application Questions" (extension v0.12.9+, verified Alight Jun 2026)
+
+**Detection:** `isWorkdayApplicationQuestionsStep()` — wizard text `Application Questions` + sponsorship/auth/employer/non-compete markers.
+
+**Strategy:** Universal **question-type taxonomy** — not per-company code. `workdayScreeningPrefsForQuestion(q, profile)` classifies each empty dropdown; company name in text is ignored.
+
+| Question type (regex on label) | Answer | Profile / default |
+|---|---|---|
+| Legally authorized to work | Yes/No | `authorized_to_work` |
+| Visa / sponsorship | Yes/No | `require_sponsorship` |
+| **Permit type** (textarea) | Free text | `work_permit_type` or `Citizen of {work_auth_country}` (migration **0013**) |
+| Restricted-nation list | Does Not Apply | never `profile.country` (v0.9.5) |
+| Dual citizenship | Does Not Apply / No | safe default |
+| Prior employment at **this** company | No | taxonomy — any employer name |
+| Interviewed in last 6–12 months | No | taxonomy |
+| Non-compete clause | No | taxonomy |
+| Conflict / family at company | No | taxonomy |
+| Accreditations / certifications | No / N/A | taxonomy |
+| Current employer / title | text | `latest_company`, `current_title` |
+| Saved answers | — | `custom_qa` checked first |
+
+**DOM:** Dropdowns are `button[data-automation-id^="formField"]`. Use `findWorkdayEmptyDropdownTriggers()` + `workdayQuestionForControl()`. `setWorkdayDropdownStrict` on yes/no screening — no first-option fallback.
+
+**Debug logs:** `workday:application-questions page`, `workday:appq-text`, `workday:appq-dd`, `workday:appq-dd failed`.
+
+#### Page 4 "Voluntary Disclosures" (extension v0.13.0+, verified Alight Jun 2026)
+
+**Two tenant shapes:**
+
+| Shape | Example | What fills |
+|---|---|---|
+| **Terms-only** | Alight — "Terms and Conditions" + one checkbox | `fillWorkdayConsentCheckboxes` — `read and accept`, `terms & conditions`, `privacy policy` |
+| **EEO + consent** | Cohesity, many US employers | Gender / veteran / disability dropdowns + consent checkbox |
+
+**Detection:** `isWorkdayVoluntaryDisclosuresStep()` — `Voluntary Disclosures` in wizard + main content has terms **or** EEO markers (`aria-current="step"` preferred when present).
+
+| Field | Profile source | Default if empty |
+|---|---|---|
+| Gender | `profile.gender` | **Decline to Declare** |
+| Veteran status | `profile.veteran_status` | **I am not a protected veteran** |
+| Disability status | `profile.disability_status` | **No, I don't have a disability** |
+| Race / ethnicity (if shown) | — | Decline / prefer not |
+| Terms / privacy consent | — | **checked** — scans `formField` labels + `input[type=checkbox]` + `[role=checkbox]` |
+
+**How:** `fillWorkdayVoluntaryDropdowns` (EEO) then `fillWorkdayConsentCheckboxes` (terms). Set gender/veteran/disability on hyred.in **Application Profile** for exact EEO values.
+
+**Debug logs:** `workday:voluntary-disclosures page`, `workday:voluntary-dd`, `workday:consent checked`.
+
+#### Page 5 "Review"
+
+No fields to fill — user reviews and submits. Optional: `markApplied` on submit (future).
+
+#### Extension structured profile (extension v0.12.x+, PRs #168–#171)
+
+AI-only resume extraction (no regex job parsing). Powers Page 2 autofill after user review.
+
+| Piece | Location |
+|---|---|
+| AI extract | `lib/gemini.ts` → `extractStructuredApplicationProfile` |
+| Same-company merge | `mergeSameCompanyWorkHistory` in `lib/structured-profile-service.ts` |
+| DB columns | migration **0011** `structured_work_history`, `structured_education`, `structure_*` timestamps |
+| Languages default | migration **0012** `languages jsonb` |
+| Work permit text | migration **0013** `work_permit_type` |
+| Extension UI | `extension/popup.js` Profile tab — edit rows, GPA, languages, **Save edits**, **Mark as reviewed** |
+| Refresh API | `POST /api/extension/refresh-structure` |
+| Save API | `POST /api/extension/structure` |
+
+**Gating:** Autofill prefers `structured_*` when `profile_structure.reviewed === true`.
+
+**Hyred vs Simplify:** Simplify records per-site answers + paid AI for essays. Hyred = structured Application Profile + universal question taxonomy + `custom_qa` reuse. Use `/api/extension/answer` only for long open-ended text when heuristics miss — not for EEO or yes/no screening.
+
+### Tier B — custom career forms (beta) — domain form skeleton (extension v0.16.0+)
+
+> **Status (Jun 2026):** **Beta — partial fill expected.** Unlike Simplify (which skips unknown custom sites), Hyred **attempts** long-tail career pages (WordPress/jQuery, custom domains like GlobalLogic). Copilot shows **Autofill (beta)**; user must review all fields; **no auto-submit**. Owner accepts partial success for now; promote to stable only after broader validation.
+
+**Shipped:** PR **#185** (Tier B skeleton + semantic map), PR **#186** (GlobalLogic hidden-`<select>` fill). Extension **v0.16.1+**.
+
+#### Tier A vs Tier B (extension autofill)
+
+| Tier | Sites | Approach | Expectation |
+|---|---|---|---|
+| **A** | Workday, Lever, Greenhouse, Ashby, Phenom/universal | Dedicated adapters + `ats-config/*` | ~90% fill when profile reviewed |
+| **B (beta)** | `detectAts() === 'generic'` and **not** Workday/Phenom | Domain skeleton + semantic keys + local value resolver | Partial fill; improves as skeleton matures |
+
+`isCustomFormMode()` in `extension/content.js` gates Tier B.
+
+#### What gets stored (Supabase) — structure only, no PII
+
+Migration **0014** → `domain_form_templates`, `domain_form_captures`.
+
+| Stored (shared across users) | **Never** stored |
+|---|---|
+| Domain, `structure_hash`, field labels, widget kind, dropdown **option labels** | Salary, notice period **values**, phone, gender **selection**, free-text answers |
+| Semantic keys (`notice_period_days`, `gender`, …) after LLM map once per layout | User submit payload or manual typing |
+
+Capture is **passive on form load** (debounced), **not** on submit. Quorum: **3 distinct reporters** → template `status = active`. Single-user capture still works (`draft`, lower confidence).
+
+#### Pipeline (Tier B fill order)
+
+1. Heuristics — `fillKnownFields` (email, phone, name, LinkedIn…)
+2. **`fillCustomFormTierB`** — discover fields → `GET /api/extension/form-template` → semantic map gaps → `resolveProfileSemanticValue` + `pickDropdownOption` locally
+3. Generic choices + screening radios + legacy `mapFields` (profile in prompt) as fallback
+
+**LLM for Tier B:** `mapFormFieldsSemantic` in `lib/gemini.ts` — labels → semantic keys **only** (`POST /api/extension/map-fields` with `mode: 'semantic'`). Profile JSON is **not** sent.
+
+#### Key files
+
+| Piece | Location |
+|---|---|
+| Field discovery + passive capture | `extension/tier-b-form.js` → `window.__HyredTierBForm` |
+| Tier B fill + `isCustomFormMode` | `extension/content.js` → `fillCustomFormTierB`, `applyTierBField`, `findNativeSelectForControl` |
+| BG handlers | `extension/background.js` → `getFormTemplate`, `captureFormTemplate`, `mapFieldsSemantic` |
+| Structure hash, value resolver, merge | `lib/extension/form-template.ts` |
+| Load skeleton | `GET /api/extension/form-template?domain=&structure_hash=` |
+| Capture skeleton | `POST /api/extension/form-template/capture` |
+| Semantic map API | `POST /api/extension/map-fields` `{ mode: 'semantic', domain, fields[] }` |
+
+#### Deploy checklist (required before Tier B works)
+
+1. Migration **0014** applied in Supabase (tables exist)
+2. API routes merged to `main` + Vercel live (404 = not deployed)
+3. Extension reloaded from `extension/` — confirm manifest version **≥ 0.16.1**
+
+#### Known limitations (beta)
+
+- **Partial fill is normal** — custom jQuery dropdowns (GlobalLogic `common.js`) break if extension clicks visible div instead of hidden `<select>`; v0.16.1 prefers `select.value`.
+- **Second visit does not replay manual values** — only structure is shared; values always come from the **current user's** Hyred apply profile.
+- **`structure_hash` changes** when field discovery logic changes → new template row; old captures may not match.
+- **Reference site:** GlobalLogic careers (e.g. IRC289549) — gender, notice period, experience buckets, expected salary.
+
+#### Debug logs (acceptance)
+
+Filter console `[JobRadar]`:
+
+- `tierB:capture <domain> <hash> <capture_count>` — passive capture OK
+- `tierB: loaded template draft|active conf=` — skeleton loaded
+- `tierB: semantic map N keys` — first-time mapping
+- `tierB:fill <semantic_key> <= <label>` — per-field success
+- `tierB: filled N of M` — summary
+- **Avoid:** `common.js … trim` on GlobalLogic — indicates div-click path; should use native select (v0.16.1+)
+
+Verify Supabase:
+
+```sql
+SELECT domain, structure_hash, status, capture_count,
+       jsonb_array_length(fields) AS field_count
+FROM domain_form_templates
+WHERE domain LIKE '%globallogic%';
+```
+
+#### Future upgrades (not started)
+
+- Post-submit **structure-only** learning (multi-step forms)
+- Per-domain widget executors in skeleton (not just semantic keys)
+- Promote beta → stable UX when fill rate consistently high across top N domains
 
 ---
 
-## Key Architecture Decisions
 
 ### 1. AI-First Job Search (not keyword regex)
 
@@ -909,6 +1105,20 @@ browser_agent/main.py       ← Python FastAPI auto-apply agent (browser-use + G
 browser_agent/Dockerfile    ← Docker config for Render
 browser_agent/requirements.txt ← Pinned: browser-use==0.1.40
 
+extension/content.js          ← Main autofill: Workday adapter, Tier B fillCustomFormTierB, heuristics, copilot card
+extension/tier-b-form.js        ← Tier B (beta): field discovery, structure hash, passive capture scheduler
+extension/background.js         ← Extension API hub: profile, mapFields, form-template, fanOutAutofill
+extension/bg-messaging.js       ← MV3 worker wake + retry for chrome.runtime.sendMessage
+extension/autofill-engine.js    ← Generic fill plan (after Workday / ATS config)
+extension/ats-fill.js           ← Config-driven ATS fill runner
+extension/ats-config/*.js       ← workday, greenhouse, lever, ashby, universal recipes
+lib/extension/form-template.ts  ← Tier B domain skeleton: hash, merge, pickDropdownOption, resolveProfileSemanticValue
+lib/extension/profile.ts        ← buildAutofillProfile shape for extension
+app/api/extension/form-template/route.ts       ← GET load domain skeleton
+app/api/extension/form-template/capture/route.ts ← POST passive structure capture
+app/api/extension/map-fields/route.ts            ← legacy map (profile in prompt) + mode: semantic (Tier B)
+supabase/migrations/0014_domain_form_templates.sql ← Tier B tables (manual run if not applied)
+
 scripts/ingest.ts                    ← Cron entry point
 scripts/backfill-jds.ts             ← Backfill: fetch full JDs + re-embed + re-score existing jobs
 scripts/clean-hallucinated-skills.ts ← (Session 19) One-time DB cleanup: reads all matches, runs isSkillPresentInJd(), upserts clean matched_skills/missing_skills arrays
@@ -988,6 +1198,9 @@ supabase/migrations/0009_llm_keys.sql ← (Session 16) llm_keys + llm_usage_log 
 | **Vercel Hobby Serverless timeouts hard-kill scans (session 20)** | Vercel Hobby/Free tier limits serverless execution to 60s. If the fetch/embed/score pipeline exceeds 60s, Vercel hard-kills it. The `ingest_runs` status remains stuck at `'running'` with 0 counters, showing a massive false duration (e.g., `1947s`) once the stale cleanup runs. | Default `INGEST_WALL_BUDGET_MS` to `50000` (50s) in `lib/ingest.ts` so the loop checks the wall clock, halts scoring/embedding early, and calls `finalizeRun()` to cleanly commit the current progress and exit before the hard kill. |
 | **HTML tags in job descriptions corrupt skills-matching (session 20)** | `isSkillPresentInJd` word-boundary checks (`\b`) were matching raw HTML description strings (e.g. `<li>JMeter</li>`). Because of this, HTML tags interfered with boundary checks, causing valid matches to fail or missing skills to be incorrectly dropped during cleanup. | Strip HTML tags via `sanitizeJobDescriptionForAI` before performing regex skill matching in `lib/gemini.ts`. Modify `cleanSkills()` to only run the JD presence filter on `matchedSkills` (LLM-returned `missingSkills` are authoritative and should not be re-verified). |
 | **`ignoreDuplicates: true` hides duplicate job counts (session 20)** | Setting `ignoreDuplicates: true` on `upsertJobs` caused Supabase to ignore conflicts, returning only newly inserted job IDs. This made it look like only a couple of jobs were fetched on scans, even when the scraping fetched hundreds. | Set `ignoreDuplicates: false` to return all IDs. To prevent overwriting the original discovery time (the "today's date" issue where every job shows the scan date), omit `fetched_at` from the upsert payload so the database default `now()` only fires on brand new inserts. |
+| **Tier B tested before server deploy (Jun 2026)** | User ran Supabase migration 0014 but API routes were not on `main`/Vercel → extension got 404 on `/api/extension/form-template/*`; capture never persisted; second visit looked identical to first. | **Ship order:** migration 0014 → merge API + extension PR → Vercel live (401/200, not 404) → reload extension. See `### Tier B — custom career forms (beta)`. |
+| **GlobalLogic / WP custom dropdown `.trim()` crash (Jun 2026, PR #186)** | Tier B clicked visible div triggers; site `common.js` threw `Cannot read properties of undefined (reading 'trim')` — errors fire in site handlers **after** our click, so `safeFillOp` does not catch them. Gender / notice period missed. | Prefer hidden native `<select>` in field group via `findNativeSelectForControl` + `setSelectBySemantic`; discover `select` elements first in `tier-b-form.js`. Do **not** assume div-click listbox path for Tier B. |
+| **Tier B skeleton is not cross-user answer memory (Jun 2026)** | Expectation that manual submit teaches the next user's values. | Skeleton stores **structure + semantic keys + option labels** only. Values always from current user's apply profile via `resolveProfileSemanticValue`. Never store filled values in `domain_form_templates`. |
 
 ---
 
@@ -1139,6 +1352,10 @@ When a feature seems broken:
 - New "pitfalls" or rules learned
 - Changes to the file map
 - **Keep the `AGENTS.md` Index in sync** when you add/rename a `##` section here, and append new dated session logs to `docs/context/session-log.md` (not here).
+
+**Last updated:** June 20, 2026 — **Tier B custom career autofill (beta)** documented: domain form skeleton (PRs #185–#186, extension v0.16.1+, migration 0014). Partial fill on GlobalLogic-style sites; structure-only Supabase capture; `AGENTS.md` Index rows for Tier B. Workday end-to-end remains Tier A (v0.13.0+).
+
+**Last updated:** June 18, 2026 — **Workday extension autofill end-to-end verified** (Alight, v0.13.0). Pages 1–5 documented: structured profile pipeline (PRs #168–#171, migrations 0011–0013), languages panel (#172), universal Application Questions taxonomy (#173), Voluntary Disclosures terms consent (#174). `AGENTS.md` Index split into per-page Workday rows.
 
 **Last updated:** June 15, 2026 (session 20 — **Global HTML Skill-boundary Fix & Admin Database Controls**). Added default 50s wall-clock timeout budget to `lib/ingest.ts` to prevent Vercel Hobby serverless timeouts; changed `ignoreDuplicates` to `false` and omitted `fetched_at` from payload in `upsertJobs` to preserve original discovery dates ("today's date" issue) while returning full scan counts. Implemented `app/api/admin/jobs-control/route.ts` API and `JobsControlPanel.tsx` UI on Admin Dashboard for backup, delete, and restore database lifecycle operations.
 

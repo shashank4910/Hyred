@@ -53,9 +53,17 @@ How to open one section cheaply: `grep -n "<heading text>" CONTEXT.md` to get th
 | Delete user / re-signup data reset | `CONTEXT.md` → Known Pitfalls (0006/0008 FK rows) + migration **0008** | auth delete, orphan profiles |
 | **Public SEO pages + free tools** | `CONTEXT.md` → `## Public SEO Pages & Free Tools (PR #143)` | editing /explore, /free-tools, sitemap, robots.txt, or adding new public pages |
 | **Extension auto-login & autofill** | `CONTEXT.md` → `## ⭐ EXTENSION AUTO-LOGIN & AUTOFILL — Handoff (Sessions 22-23)` | extension auth, popup, content script, autofill |
-| **Extension Workday Page 1 autofill** | `CONTEXT.md` → `### Workday autofill — Page 1 "My Information" (extension v0.8.9+)` | Workday multiSelect, promptIcon, LinkedIn source, `dumpWorkdayUnfilled` |
+| **Extension Workday end-to-end status** | `CONTEXT.md` → `### Workday autofill — end-to-end (extension v0.13.0+)` | all 5 wizard pages, PR table, profile pipeline |
+| **Extension Workday Page 1 autofill** | `CONTEXT.md` → `### Workday autofill — Page 1 "My Information"` | multiSelect, promptIcon, LinkedIn source, `dumpWorkdayUnfilled` |
+| **Extension Workday Page 2 My Experience** | `CONTEXT.md` → `#### Page 2 "My Experience"` | work/edu rows, languages panel, skills, GPA, currentlyWorkHere |
+| **Extension Workday Page 3 Application Questions** | `CONTEXT.md` → `#### Page 3 "Application Questions"` | `workdayScreeningPrefsForQuestion`, work_permit_type, screening taxonomy |
+| **Extension Workday Page 4 Voluntary Disclosures** | `CONTEXT.md` → `#### Page 4 "Voluntary Disclosures"` | EEO dropdowns, terms/privacy consent checkbox (Alight) |
+| **Extension structured profile (Profile tab)** | `CONTEXT.md` → `#### Extension structured profile` | refresh-structure, structure API, migrations 0011–0013, AI extract |
+| **Extension Tier B custom forms (beta)** | `CONTEXT.md` → `### Tier B — custom career forms (beta)` | GlobalLogic, domain skeleton, passive capture, semantic map, partial fill |
+| **Extension Tier B deploy / debug** | `CONTEXT.md` → Tier B section + Known Pitfalls (Tier B rows) + File Map (`form-template`, `tier-b-form.js`) | 404 capture, common.js trim, migration 0014, second-visit expectations |
 | **AI Auto-Apply Plan** (NEW) | `CONTEXT.md` → `## ⭐ ACTIVE INITIATIVE — AI Auto-Apply` | building / shipping the auto-apply agent |
 | Kiro-specific steering | `.kiro/steering/jobradar-context.md` | Kiro auto-loads it |
+| **Superpowers workflow (big tasks only)** | `.cursor/rules/superpowers-gate.mdc` | multi-phase features, new subsystems; skip for surgical fixes |
 | Past session history | `docs/context/session-log.md` (newest first) | Tier 3 only |
 
 > Keep this Index in sync when you add/rename a `##` section in `CONTEXT.md`. It is the single source of the map.
