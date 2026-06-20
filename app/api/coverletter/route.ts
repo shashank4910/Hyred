@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { getCurrentProfile } from '@/lib/current-user';
-import { generateCoverLetter } from '@/lib/gemini';
-import { ensureFullDescription } from '@/lib/jd-fetcher';
+import { generateAndSaveCoverLetterForMatch } from '@/lib/generate-match-cover-letter';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -21,70 +20,17 @@ export async function POST(req: NextRequest) {
   const profile0 = await getCurrentProfile();
   if (!profile0) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
-  const sb = supabaseAdmin();
-
-  const { data: match, error: matchErr } = await sb
-    .from('matches')
-    .select(
-      `id, profile_id, job_id,
-       profile:profiles(full_name, resume_text),
-       job:jobs(id, title, company, description, url)`,
-    )
-    .eq('id', body.match_id)
-    .eq('profile_id', profile0.id)
-    .single();
-
-  if (matchErr || !match) {
-    return NextResponse.json(
-      { error: matchErr?.message || 'Match not found' },
-      { status: 404 },
-    );
-  }
-
-  const profile = match.profile as unknown as {
-    full_name: string | null;
-    resume_text: string | null;
-  };
-  const job = match.job as unknown as {
-    id: string;
-    title: string;
-    company: string | null;
-    description: string | null;
-    url: string | null;
-  };
-
-  if (!profile?.resume_text) {
-    return NextResponse.json(
-      { error: 'Profile has no resume_text' },
-      { status: 400 },
-    );
-  }
-
-  // Ensure we have the full JD before drafting the cover letter — without
-  // it, the cover letter would only reference the first ~500 chars of the
-  // job intro and miss the actual responsibilities/requirements.
-  const fullDescription = await ensureFullDescription({
-    jobId: job.id,
-    currentDescription: job.description,
-    url: job.url,
-  });
-
   try {
-    const coverLetter = await generateCoverLetter({
-      resume: profile.resume_text,
-      candidateName: profile.full_name,
-      jobTitle: job.title,
-      jobCompany: job.company,
-      jobDescription: fullDescription,
-    });
-
-    await sb
-      .from('matches')
-      .update({ cover_letter: coverLetter })
-      .eq('id', match.id);
-
+    const coverLetter = await generateAndSaveCoverLetterForMatch(
+      supabaseAdmin(),
+      body.match_id,
+      profile0.id,
+    );
     return NextResponse.json({ ok: true, cover_letter: coverLetter });
   } catch (e) {
-    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+    const msg = (e as Error).message;
+    const status =
+      msg === 'Match not found' ? 404 : msg === 'Profile has no resume_text' ? 400 : 500;
+    return NextResponse.json({ error: msg }, { status });
   }
 }

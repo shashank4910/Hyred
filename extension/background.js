@@ -601,6 +601,42 @@ const handlers = {
     };
   },
 
+  async generateCoverLetter({ match_id } = {}) {
+    if (!match_id) return { ok: false, error: 'match_id required' };
+    const r = await api('/api/extension/coverletter', {
+      method: 'POST',
+      body: JSON.stringify({ match_id }),
+    });
+    if (!r.ok) return { ok: false, error: r.data?.error ?? `HTTP ${r.status}` };
+    return { ok: true, cover_letter: r.data.cover_letter };
+  },
+
+  async fanOutInjectCoverLetter(payload = {}, sender = {}) {
+    const tabId = payload.tabId || sender.tab?.id;
+    const text = payload.text;
+    if (!tabId || !text) return { ok: false, error: 'tabId and text required' };
+    let frames = [];
+    try {
+      frames = await chrome.webNavigation.getAllFrames({ tabId });
+    } catch (e) {
+      return { ok: false, error: String(e?.message ?? e) };
+    }
+    let injected = false;
+    for (const frame of frames) {
+      try {
+        const res = await chrome.tabs.sendMessage(
+          tabId,
+          { type: 'INJECT_COVER_LETTER', payload: { text } },
+          { frameId: frame.frameId },
+        );
+        if (res?.injected) injected = true;
+      } catch {
+        /* frame has no content script */
+      }
+    }
+    return { ok: true, injected };
+  },
+
   async previewResume({ match_id, variant, preview_url } = {}) {
     if (preview_url && variant === 'tailored' && /^https?:\/\//i.test(preview_url)) {
       try {
