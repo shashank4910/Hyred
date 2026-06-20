@@ -251,6 +251,7 @@
     if (isConfirmationOrPostApplyPage()) return false;
     const empty = countEmptyFillableFields();
     if (empty >= 1) return true;
+    if (isCoverLetterStep()) return true;
     const resumeIn = findResumeFileInput();
     if (resumeIn && !resumeIn.files?.length) return true;
     if ((isWorkdayDom() || isUniversalCareerSite()) && empty >= 1) return true;
@@ -1397,6 +1398,66 @@
     if (/resume|cover[_\s]?letter|additional[_\s]?info|paste|upload/.test(sig))
       return false;
     return sig.length > 20 && /\?|why|describe|tell|explain|what|how/.test(sig);
+  }
+
+  function fileUploadZoneSignature(input) {
+    if (!input) return '';
+    const field = input.closest('[data-automation-id^="formField"]');
+    const label = field ? workdayFieldLabel(field) : labelForControl(input);
+    const zone = input.closest(
+      'section, [role="group"], [data-automation-id*="upload" i], [class*="upload"], [class*="file"]',
+    );
+    const zoneText = (zone?.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 600);
+    return `${label} ${zoneText} ${fieldSignature(input)}`.toLowerCase();
+  }
+
+  function isCoverLetterUploadSignature(sig) {
+    return /cover[_\s-]?letter|motivation[_\s-]?letter|letter of interest|supporting document|coverletter/.test(
+      sig,
+    );
+  }
+
+  function isResumeUploadSignature(sig) {
+    if (isCoverLetterUploadSignature(sig)) return false;
+    return /resume|résumé|curriculum|vitae|\bcv\b|cv\s*\/|\/\s*cv/.test(sig);
+  }
+
+  function workdayCoverLetterPageHints() {
+    if (!isWorkdaySite()) return false;
+    for (const el of document.querySelectorAll('[aria-current="step"]')) {
+      if (/cover[_\s-]?letter/i.test(el.textContent || '')) return true;
+    }
+    const hay = document.body.innerText.slice(0, 12000).toLowerCase();
+    if (!/cover[_\s-]?letter/.test(hay)) return false;
+    if (/my experience|resume\s*\/\s*cv|upload resume|type to add skills/.test(hay)) return false;
+    return (
+      /upload.*cover|cover.*upload|attach.*cover|cover letter.*required|supporting documents/.test(
+        hay,
+      ) || !!document.querySelector('input[data-automation-id="file-upload-input-ref"]')
+    );
+  }
+
+  function findCoverLetterFileInput() {
+    const root = applicationFormRoot();
+    const inputs = [...root.querySelectorAll('input[type="file"]')].filter(isVisible);
+    for (const inp of inputs) {
+      const sig = fileUploadZoneSignature(inp);
+      if (isCoverLetterUploadSignature(sig)) return inp;
+    }
+    if (!workdayCoverLetterPageHints()) return null;
+    if (!inputs.length) return null;
+    return (
+      inputs.find((i) => i.matches('[data-automation-id="file-upload-input-ref"]')) || inputs[0]
+    );
+  }
+
+  function isWorkdayCoverLetterStep() {
+    if (!isWorkdaySite()) return false;
+    return !!findCoverLetterField() || !!findCoverLetterFileInput() || workdayCoverLetterPageHints();
+  }
+
+  function isCoverLetterStep() {
+    return !!findCoverLetterField() || !!findCoverLetterFileInput() || workdayCoverLetterPageHints();
   }
 
   function findCoverLetterField() {
@@ -2761,8 +2822,13 @@
 
   function isWorkdayExperienceStep() {
     if (!isWorkdaySite()) return false;
-    if (document.querySelector('input[data-automation-id="file-upload-input-ref"]'))
+    if (isWorkdayCoverLetterStep()) return false;
+    const fileIn = document.querySelector('input[data-automation-id="file-upload-input-ref"]');
+    if (fileIn) {
+      const sig = fileUploadZoneSignature(fileIn);
+      if (isCoverLetterUploadSignature(sig)) return false;
       return true;
+    }
     if (document.querySelector('[data-automation-id*="skills" i]')) return true;
     const hay = document.body.innerText.slice(0, 10000).toLowerCase();
     return (
@@ -5057,24 +5123,35 @@
   // Resume file upload (Simplify-style — inject PDF into <input type="file">).
   // -------------------------------------------------------------------
   function findResumeFileInput() {
+    if (isCoverLetterStep()) return null;
     const wd = document.querySelector(
       'input[data-automation-id="file-upload-input-ref"], input[data-automation-id*="file-upload" i][type="file"]',
     );
-    if (wd) return wd;
+    if (wd) {
+      const sig = fileUploadZoneSignature(wd);
+      if (isCoverLetterUploadSignature(sig)) return null;
+      if (isResumeUploadSignature(sig) || isWorkdayExperienceStep()) return wd;
+    }
     const root = applicationFormRoot();
     const inputs = [...root.querySelectorAll('input[type="file"]')];
     for (const inp of inputs) {
-      const sig = fieldSignature(inp);
-      if (/resume|cv|curriculum|vitae|attachment|drag|drop|upload/i.test(sig)) return inp;
+      const sig = fileUploadZoneSignature(inp);
+      if (isCoverLetterUploadSignature(sig)) continue;
+      if (isResumeUploadSignature(sig)) return inp;
+      const zoneSig = fieldSignature(inp);
+      if (/resume|cv|curriculum|vitae|attachment|drag|drop|upload/i.test(zoneSig)) return inp;
       const zone = inp.closest(
         '[class*="upload"], [class*="resume"], [class*="file"], [class*="drop"], [data-ph-at-id*="resume" i], [data-ph-at-id*="cv" i]',
       );
       if (zone && /resume|cv|drag|drop|upload|attach/i.test(zone.textContent || '')) return inp;
     }
     for (const inp of inputs) {
-      if (isVisible(inp)) return inp;
+      if (!isVisible(inp)) continue;
+      const sig = fileUploadZoneSignature(inp);
+      if (isCoverLetterUploadSignature(sig)) continue;
+      return inp;
     }
-    return inputs[0] || null;
+    return null;
   }
 
   async function uploadResume(matchId, resumeVariant = 'default') {
@@ -5136,7 +5213,7 @@
   }
 
   // -------------------------------------------------------------------
-  // Inject cover letter into the cover-letter textarea.
+  // Inject cover letter into textarea or file upload on cover-letter step.
   // -------------------------------------------------------------------
   function injectCoverLetter(text, { force = false } = {}) {
     const el = findCoverLetterField();
@@ -5145,6 +5222,52 @@
     setNativeValue(el, text);
     if (IS_TOP_FRAME && fillUi.active) fillUi.onField(el, 'Cover letter');
     return true;
+  }
+
+  async function uploadCoverLetterFile(text) {
+    const input = findCoverLetterFileInput();
+    if (!input || !text?.trim()) return false;
+    if (input.files?.length) {
+      log('uploadCoverLetter: input already has a file');
+      return false;
+    }
+    try {
+      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+      const file = new File([blob], 'cover-letter.txt', { type: 'text/plain' });
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      try {
+        input.files = dt.files;
+      } catch {
+        const visible = input.closest('[class*="upload"], [class*="drop"]')?.querySelector(
+          'input[type="file"]',
+        );
+        if (visible && visible !== input) visible.files = dt.files;
+      }
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      const zone = input.closest('[class*="upload"], [class*="drop"], [class*="file"]');
+      if (zone) {
+        zone.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true }));
+      }
+      log('uploadCoverLetter: attached', file.name);
+      if (IS_TOP_FRAME && fillUi.active) fillUi.onField(input, 'Cover letter file');
+      return true;
+    } catch (e) {
+      log('uploadCoverLetter error:', e);
+      return false;
+    }
+  }
+
+  async function applyCoverLetterEverywhere(text, { force = false } = {}) {
+    if (!text?.trim()) return false;
+    if (injectCoverLetter(text, { force })) return true;
+    if (await uploadCoverLetterFile(text)) return true;
+    if (IS_TOP_FRAME) {
+      const res = await send('fanOutInjectCoverLetter', { text });
+      return !!res?.injected;
+    }
+    return false;
   }
 
   let coverLetterCache = '';
@@ -5162,16 +5285,11 @@
   }
 
   async function injectCoverLetterEverywhere(text, { force = false } = {}) {
-    if (injectCoverLetter(text, { force })) return true;
-    if (IS_TOP_FRAME) {
-      const res = await send('fanOutInjectCoverLetter', { text });
-      return !!res?.injected;
-    }
-    return false;
+    return applyCoverLetterEverywhere(text, { force });
   }
 
   function notifyCoverFieldIfPresent() {
-    if (!findCoverLetterField()) return;
+    if (!isCoverLetterStep()) return;
     try {
       if (window.top !== window) {
         window.top.postMessage({ type: 'JR_COVER_LETTER_FIELD' }, '*');
@@ -5187,6 +5305,7 @@
     const card = document.getElementById('jobradar-card');
     if (card) {
       card.querySelector('.jr-cover-picker')?.classList.remove('jr-hidden');
+      card.querySelector('.jr-resume-picker')?.classList.toggle('jr-hidden', isCoverLetterStep());
       refreshCoverLetterUi();
     } else if (!cardDismissed && IS_TOP_FRAME) {
       maybeMount();
@@ -5201,10 +5320,11 @@
     if (!panel) return;
 
     const matchId = card.dataset.matchId;
-    const showPanel = coverFieldSeen || !!findCoverLetterField();
+    const showPanel = coverFieldSeen || isCoverLetterStep();
     panel.classList.toggle('jr-hidden', !showPanel);
 
     const hasLetter = !!String(coverLetterCache || '').trim();
+    const isFileStep = !!findCoverLetterFileInput();
     const preview = panel.querySelector('.jr-cover-preview');
     const pre = panel.querySelector('.jr-cover-text');
     const genBtn = panel.querySelector('.jr-cover-generate');
@@ -5218,6 +5338,9 @@
       preview.classList.toggle('jr-hidden', !hasLetter);
     }
     useBtn?.classList.toggle('jr-hidden', !hasLetter);
+    if (useBtn) {
+      useBtn.textContent = isFileStep ? 'Upload to form' : 'Use on form';
+    }
     dlBtn?.classList.toggle('jr-hidden', !hasLetter);
     toggleBtn?.classList.toggle('jr-hidden', !hasLetter);
 
@@ -5237,9 +5360,13 @@
       } else if (coverGenerating) {
         hint.textContent = 'Drafting your cover letter…';
       } else if (hasLetter) {
-        hint.textContent = 'Ready — preview below, then use it on the form or download.';
+        hint.textContent = isFileStep
+          ? 'Ready — preview below, then upload to the cover letter field.'
+          : 'Ready — preview below, then use it on the form or download.';
       } else {
-        hint.textContent = 'Generate a tailored cover letter for this job (same as Hyred app).';
+        hint.textContent = isFileStep
+          ? 'This step needs a cover letter file — generate one here, then upload to form.'
+          : 'Generate a tailored cover letter for this job (same as Hyred app).';
       }
     }
   }
@@ -5276,9 +5403,14 @@
 
     panel.querySelector('.jr-cover-use')?.addEventListener('click', async () => {
       if (!coverLetterCache?.trim()) return;
-      const ok = await injectCoverLetterEverywhere(coverLetterCache, { force: true });
+      const ok = await applyCoverLetterEverywhere(coverLetterCache, { force: true });
+      const isFile = !!findCoverLetterFileInput();
       toast(
-        ok ? 'Cover letter applied to the form' : 'Cover letter field not found on this step',
+        ok
+          ? isFile
+            ? 'Cover letter uploaded to the form'
+            : 'Cover letter applied to the form'
+          : 'Cover letter field not found on this step',
         ok ? 'ok' : 'warn',
         5000,
       );
@@ -5720,7 +5852,10 @@
       );
 
       resumeUploaded = false;
-      if (options.resume) {
+      const onCoverStep = isCoverLetterStep();
+      if (onCoverStep && IS_TOP_FRAME) onCoverFieldSeen();
+
+      if (options.resume && !onCoverStep) {
         const fileInput = findResumeFileInput();
         if (fileInput && !fileInput.files?.length) {
           resumeUploaded = await uploadResume(match?.id, resumeVariant);
@@ -5730,14 +5865,25 @@
 
       filled = options.commonFields ? await fillAllFields(profile, match) : 0;
 
-      if (options.resume && !resumeUploaded && findResumeFileInput() && !findResumeFileInput().files?.length) {
+      if (options.resume && !onCoverStep && !resumeUploaded && findResumeFileInput() && !findResumeFileInput().files?.length) {
         resumeUploaded = await uploadResume(match?.id, resumeVariant);
       }
 
       if (options.coverLetter) {
         const letter = coverLetterCache || match?.cover_letter || '';
-        if (letter) {
-          coverInjected = await injectCoverLetterEverywhere(letter);
+        if (onCoverStep) {
+          onCoverFieldSeen();
+          if (letter && findCoverLetterField() && !findCoverLetterFileInput()) {
+            coverInjected = await applyCoverLetterEverywhere(letter);
+          } else if (!letter && !options.fromFanOut && IS_TOP_FRAME) {
+            toast(
+              'Cover letter step — generate one in Hyred Copilot, then Upload to form.',
+              'warn',
+              7000,
+            );
+          }
+        } else if (letter) {
+          coverInjected = await applyCoverLetterEverywhere(letter);
         } else if (findCoverLetterField()) {
           onCoverFieldSeen();
           if (!options.fromFanOut && IS_TOP_FRAME) {
@@ -6052,7 +6198,7 @@
       card.dataset.previewUrl = match.tailored_resume_url || '';
       coverLetterCache = match.cover_letter || coverLetterCache || '';
       if (resumePicker) {
-        resumePicker.classList.remove('jr-hidden');
+        resumePicker.classList.toggle('jr-hidden', isCoverLetterStep());
         const hasTailored = !!match.has_tailored_resume;
         const tailoredRow = resumePicker.querySelector('[data-row="tailored"]');
         if (tailoredRow) tailoredRow.classList.toggle('jr-hidden', !hasTailored);
@@ -6100,8 +6246,9 @@
       return true;
     }
     if (msg?.type === 'INJECT_COVER_LETTER') {
-      const injected = injectCoverLetter(msg.payload?.text, { force: true });
-      sendResponse({ ok: true, injected });
+      applyCoverLetterEverywhere(msg.payload?.text, { force: true })
+        .then((injected) => sendResponse({ ok: true, injected }))
+        .catch((e) => sendResponse({ ok: false, error: String(e?.message ?? e) }));
       return true;
     }
     if (msg?.type === 'CLICK_SAVE_CONTINUE') {
