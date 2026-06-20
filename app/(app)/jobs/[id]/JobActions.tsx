@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition, useEffect } from 'react';
+import { useState, useTransition, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
@@ -72,6 +72,9 @@ export function JobActions({
   const [jdKeywords, setJdKeywords] = useState<string[]>([]);
   const [alreadyHaveKeywords, setAlreadyHaveKeywords] = useState<string[]>([]);
   const [selectedKeywords, setSelectedKeywords] = useState<string[]>([]);
+  // Synchronous mirror — optimize() reads this so Add-all → Optimize never
+  // posts a stale selectedKeywords snapshot before React re-renders.
+  const selectedKeywordsRef = useRef<string[]>([]);
   // LLM-decided keyword types (tool vs activity), keyed by keyword. Ferried back
   // to the POST so placement is driven by the model's judgement, not a heuristic.
   const [keywordTypes, setKeywordTypes] = useState<Record<string, string>>({});
@@ -91,6 +94,7 @@ export function JobActions({
           setAlreadyHaveKeywords(d.alreadyHave ?? []);
           setKeywordTypes(d.keywordTypes ?? {});
           setSelectedKeywords([]);
+          selectedKeywordsRef.current = [];
           setKeywordsLoaded(true);
         }
       })
@@ -206,17 +210,34 @@ export function JobActions({
   // The single action. Generates (or regenerates in-place) the resume, weaving
   // in exactly the staged keywords. Keeps the current resume visible while it
   // runs, and reports the score change.
-  async function optimize() {
+  function mergeKeywordLists(base: string[], add: string[]): string[] {
+    const have = new Set(base.map((k) => k.toLowerCase()));
+    const next = [...base];
+    for (const kw of add) {
+      const lc = kw.toLowerCase();
+      if (!have.has(lc)) {
+        have.add(lc);
+        next.push(kw);
+      }
+    }
+    return next;
+  }
+
+  async function optimize(keywordsOverride?: string[]) {
     setGeneratingResume(true);
     const firstRun = !atsResume;
     const id = toast.loading(firstRun ? 'Optimizing your resume...' : 'Re-optimizing...');
     const oldScore = keywords?.ats_match_score ?? null;
+    const keywordsToWeave =
+      keywordsOverride && keywordsOverride.length > 0
+        ? keywordsOverride
+        : selectedKeywordsRef.current;
     try {
       const res = await fetch(`/api/match/${matchId}/resume`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          selectedKeywords: selectedKeywords.length > 0 ? selectedKeywords : undefined,
+          selectedKeywords: keywordsToWeave.length > 0 ? keywordsToWeave : undefined,
           jdKeywords: jdKeywords.length > 0 ? jdKeywords : undefined,
           keywordTypes: Object.keys(keywordTypes).length > 0 ? keywordTypes : undefined,
         }),
@@ -245,31 +266,30 @@ export function JobActions({
 
   // Stage a keyword to be woven in on the next optimize (case-insensitive).
   function onStage(kw: string) {
-    setSelectedKeywords(prev =>
-      prev.some(k => k.toLowerCase() === kw.toLowerCase()) ? prev : [...prev, kw],
-    );
+    setSelectedKeywords((prev) => {
+      if (prev.some((k) => k.toLowerCase() === kw.toLowerCase())) return prev;
+      const next = [...prev, kw];
+      selectedKeywordsRef.current = next;
+      return next;
+    });
   }
 
   // Un-stage a keyword. Because every optimize regenerates from the MASTER
   // resume, dropping a keyword from the staged set is all that's needed to
   // remove it on the next optimize — no separate "exclude" list required.
   function onUnstage(kw: string) {
-    setSelectedKeywords(prev => prev.filter(k => k.toLowerCase() !== kw.toLowerCase()));
+    setSelectedKeywords((prev) => {
+      const next = prev.filter((k) => k.toLowerCase() !== kw.toLowerCase());
+      selectedKeywordsRef.current = next;
+      return next;
+    });
   }
 
   // Stage every keyword in a list (used by "Add all" on the Missing bucket).
   function onStageMany(kws: string[]) {
-    setSelectedKeywords(prev => {
-      const have = new Set(prev.map(k => k.toLowerCase()));
-      const next = [...prev];
-      for (const kw of kws) {
-        if (!have.has(kw.toLowerCase())) {
-          have.add(kw.toLowerCase());
-          next.push(kw);
-        }
-      }
-      return next;
-    });
+    const next = mergeKeywordLists(selectedKeywordsRef.current, kws);
+    selectedKeywordsRef.current = next;
+    setSelectedKeywords(next);
   }
 
   async function copyResume() {

@@ -1434,6 +1434,30 @@ function resolveTargetCurrentRoleTitle(
 export function keywordInText(keyword: string, text: string): boolean {
   const kw = keyword.trim();
   if (!kw) return false;
+  if (keywordLiteralInText(kw, text)) return true;
+
+  // Multi-word JD phrases often appear in singular/plural in prose
+  // ("performance bottleneck" vs "performance bottlenecks"). Accept a single
+  // trailing s toggle on the last token so we don't mark a woven keyword missing.
+  const parts = kw.split(/\s+/);
+  if (parts.length >= 2) {
+    const last = parts[parts.length - 1];
+    if (last.length > 3 && /[a-z]/i.test(last)) {
+      if (last.endsWith('s')) {
+        const singular = [...parts.slice(0, -1), last.slice(0, -1)].join(' ');
+        if (keywordLiteralInText(singular, text)) return true;
+      } else {
+        const plural = [...parts.slice(0, -1), `${last}s`].join(' ');
+        if (keywordLiteralInText(plural, text)) return true;
+      }
+    }
+  }
+  return false;
+}
+
+function keywordLiteralInText(keyword: string, text: string): boolean {
+  const kw = keyword.trim();
+  if (!kw) return false;
   const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const re = new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i');
   return re.test(text);
@@ -2240,6 +2264,18 @@ CRITICAL: do NOT prefix the output with any header label like "Resume", "RESUME"
           resume = comp.text;
           ({ added, alreadyHad, missing } = scoreResume(resume));
           console.log('[generateAtsResume] guaranteed activity/metric keywords via CORE COMPETENCIES',
+            JSON.stringify({ added: comp.added }));
+        }
+      }
+
+      // Last-resort: append any selected keyword still absent verbatim.
+      stillMissing = keywordsToAdd.filter(kw => !keywordInText(kw, resume));
+      if (stillMissing.length > 0) {
+        const comp = ensureCompetencyKeywordsPresent(resume, stillMissing);
+        if (comp.added.length > 0) {
+          resume = comp.text;
+          ({ added, alreadyHad, missing } = scoreResume(resume));
+          console.log('[generateAtsResume] last-resort CORE COMPETENCIES append',
             JSON.stringify({ added: comp.added }));
         }
       }
