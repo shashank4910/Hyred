@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import {
   CheckCircle2,
   Plus,
@@ -10,8 +10,6 @@ import {
   Zap,
   TrendingUp,
   TrendingDown,
-  ChevronDown,
-  ChevronUp,
 } from 'lucide-react';
 
 export type GenResult = {
@@ -51,7 +49,6 @@ export function KeywordManager({
   onUnstage,
   onStageMany,
   onOptimize,
-  defaultChipsCollapsed = true,
 }: {
   jdKeywords: string[];
   originalPresent: string[];
@@ -64,9 +61,7 @@ export function KeywordManager({
   onUnstage: (kw: string) => void;
   onStageMany: (kws: string[]) => void;
   onOptimize: (keywordsToWeave?: string[]) => void;
-  defaultChipsCollapsed?: boolean;
 }) {
-  const [chipsOpen, setChipsOpen] = useState(!defaultChipsCollapsed);
   const originalSet = useMemo(
     () => new Set(originalPresent.map((k) => k.toLowerCase())),
     [originalPresent],
@@ -200,26 +195,6 @@ export function KeywordManager({
         </div>
       )}
 
-      {(inResume.length > 0 || added.length > 0 || willAdd.length > 0 || missing.length > 0) && (
-        <button
-          type="button"
-          onClick={() => setChipsOpen((v) => !v)}
-          className="flex w-full items-center justify-between rounded-xl border border-outline-variant/60 bg-surface-container-low/40 px-3 py-2 text-xs font-medium text-on-surface-variant hover:text-on-surface"
-        >
-          <span>
-            {chipsOpen ? 'Hide keyword tags' : 'Show keyword tags'}
-            {!chipsOpen && (
-              <span className="ml-1 text-on-surface">
-                ({missing.length} missing · {inResume.length + added.length} in resume)
-              </span>
-            )}
-          </span>
-          {chipsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-        </button>
-      )}
-
-      {chipsOpen && (
-        <>
       {/* IN YOUR RESUME (green, read-only) */}
       {inResume.length > 0 && (
         <div>
@@ -322,8 +297,6 @@ export function KeywordManager({
             ))}
           </div>
         </div>
-      )}
-        </>
       )}
 
       {/* All-matched celebratory empty state */}
