@@ -9,6 +9,8 @@ import {
   Bookmark,
   Crown,
   Zap,
+  Brain,
+  ClipboardList,
 } from 'lucide-react';
 import { relativeTime, formatShortDate, formatFullDate, SOURCE_LABELS } from '@/lib/ui';
 import { MatchScoreRing } from './MatchScoreRing';
@@ -87,9 +89,12 @@ export function MatchCard({
     ? `/jobs/${matchId}?return=${encodeURIComponent(returnHref)}`
     : `/jobs/${matchId}`;
 
+  const returnQuery = returnHref ? `?return=${encodeURIComponent(returnHref)}` : '';
+  const verdictHref = `/jobs/${matchId}/verdict${returnQuery}`;
+  const prepHref = `/jobs/${matchId}/prep${returnQuery}`;
+
   return (
-    <Link
-      href={jobHref}
+    <div
       className={[
         'group block min-w-0 animate-fade-in rounded-2xl p-6 shadow-card transition-all hover:-translate-y-1 hover:border-primary/10 hover:shadow-elevated border-l-4',
         isViewed
@@ -104,12 +109,15 @@ export function MatchCard({
           </div>
           <div className="min-w-0">
             <div className="mb-1 flex flex-wrap items-center gap-2">
-              <h3 className={[
-                'text-headline-md leading-tight group-hover:text-primary transition-colors',
-                isViewed ? 'text-on-surface-variant font-medium' : 'text-on-surface font-bold'
-              ].join(' ')}>
+              <Link
+                href={jobHref}
+                className={[
+                  'text-headline-md leading-tight hover:text-primary transition-colors',
+                  isViewed ? 'text-on-surface-variant font-medium' : 'text-on-surface font-bold',
+                ].join(' ')}
+              >
                 {job.title}
-              </h3>
+              </Link>
               {!isViewed && (
                 <span className="inline-flex rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">
                   New
@@ -180,14 +188,30 @@ export function MatchCard({
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <div onClick={(e) => e.stopPropagation()}>
+        <div>
           <MatchSkillPills
             matchedSkills={matchedSkills}
             missingSkills={missingSkills}
             resumeHref={`/jobs/${matchId}#ats-resume`}
           />
         </div>
-        <div className="flex gap-2" onClick={(e) => e.preventDefault()}>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href={verdictHref}
+            className="btn inline-flex gap-1.5 px-3 py-2 text-label-md"
+            title="Match Intelligence — Apply / Stretch / Skip"
+          >
+            <Brain className="h-4 w-4" />
+            Verdict
+          </Link>
+          <Link
+            href={prepHref}
+            className="btn inline-flex gap-1.5 px-3 py-2 text-label-md"
+            title="Interview Prep Pack"
+          >
+            <ClipboardList className="h-4 w-4" />
+            Interview prep
+          </Link>
           <button
             type="button"
             onClick={toggleBookmark}
@@ -197,17 +221,17 @@ export function MatchCard({
               'rounded-2xl border border-outline-variant p-3 transition-all',
               bookmarked
                 ? 'bg-primary/10 text-primary'
-                : 'text-primary opacity-0 group-hover:opacity-100 hover:bg-surface-container',
+                : 'text-primary opacity-100 sm:opacity-0 sm:group-hover:opacity-100 hover:bg-surface-container',
             ].join(' ')}
           >
             <Bookmark className="h-4 w-4" fill={bookmarked ? 'currentColor' : 'none'} />
           </button>
-          <span className="btn-primary pointer-events-none inline-flex gap-2 px-5 py-3 text-label-md">
+          <Link href={jobHref} className="btn-primary inline-flex gap-2 px-5 py-3 text-label-md">
             <Zap className="h-4 w-4" />
             View job
-          </span>
+          </Link>
         </div>
       </div>
-    </Link>
+    </div>
   );
 }
