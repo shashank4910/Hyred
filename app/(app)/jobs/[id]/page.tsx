@@ -7,7 +7,7 @@ import { ensureFullDescription } from '@/lib/jd-fetcher';
 import { isSkillPresentInJd } from '@/lib/gemini';
 import { JobActions } from './JobActions';
 import { AutoApplyButton } from './AutoApplyButton';
-import { CollapsibleMatchSkills } from './CollapsibleMatchSkills';
+import { MatchSkillPills } from '../../_components/MatchSkillPills';
 import { CollapsibleCard } from '../../_components/CollapsibleCard';
 import { relativeTime, scoreColorClass, scoreLabel, SOURCE_LABELS } from '@/lib/ui';
 import { ReferralRadar } from './ReferralRadar';
@@ -181,11 +181,16 @@ export default async function JobMatchPage({
           </div>
         )}
 
-        <CollapsibleMatchSkills
-          matchedSkills={(match as unknown as { matched_skills: string[] | null }).matched_skills ?? []}
-          missingSkills={(match as unknown as { missing_skills: string[] | null }).missing_skills ?? []}
-          resumeHref="#ats-resume"
-        />
+        <div className="mt-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant mb-2">
+            Skill match
+          </p>
+          <MatchSkillPills
+            matchedSkills={(match as unknown as { matched_skills: string[] | null }).matched_skills ?? []}
+            missingSkills={(match as unknown as { missing_skills: string[] | null }).missing_skills ?? []}
+            resumeHref="#ats-resume"
+          />
+        </div>
       </div>
 
       <JobActions

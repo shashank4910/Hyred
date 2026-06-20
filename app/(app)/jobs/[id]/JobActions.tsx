@@ -501,31 +501,46 @@ export function JobActions({
 
       {/* Resume Studio */}
       <div id="ats-resume" className="card">
-        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-          <h2 className="font-semibold text-on-surface flex items-center gap-2">
-            <FileText className="h-4 w-4 text-primary" /> Resume Studio
-          </h2>
+        <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
+          <div>
+            <h2 className="font-semibold text-on-surface flex items-center gap-2">
+              <FileText className="h-4 w-4 text-primary" /> Resume Studio
+            </h2>
+            <p className="text-xs text-on-surface-variant mt-0.5">
+              Tailor keywords, pick a template, preview, then export PDF.
+            </p>
+          </div>
           <div className="flex gap-2 flex-wrap">
-            {atsResume && (
+            <button
+              type="button"
+              onClick={() => {
+                if (!atsResume.trim()) {
+                  toast.message('Optimize your resume first, then preview here.');
+                  return;
+                }
+                setPreviewMode('preview');
+                setPreviewOpen(true);
+              }}
+              className={[
+                'inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-xl transition-colors',
+                atsResume.trim()
+                  ? 'btn-primary shadow-sm'
+                  : 'border border-outline-variant bg-surface-container-low text-on-surface-variant',
+              ].join(' ')}
+              title={atsResume.trim() ? 'Preview tailored resume' : 'Generate a resume first'}
+            >
+              <Eye className="h-4 w-4" />
+              Preview
+            </button>
+            {atsResume.trim() && (
               <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPreviewMode('preview');
-                    setPreviewOpen(true);
-                  }}
-                  className="btn"
-                  title="Preview resume"
-                >
-                  <Eye className="h-3.5 w-3.5" /> Preview
-                </button>
                 <button onClick={copyResume} className="btn">
                   <Copy className="h-3.5 w-3.5" /> {resumeCopied ? 'Copied!' : 'Copy'}
                 </button>
                 <button onClick={downloadResumeTxt} className="btn">
                   <Download className="h-3.5 w-3.5" /> .txt
                 </button>
-                <button onClick={downloadResumePdf} className="btn-primary">
+                <button onClick={downloadResumePdf} className="btn">
                   <Download className="h-3.5 w-3.5" /> PDF
                 </button>
               </>
@@ -533,8 +548,13 @@ export function JobActions({
           </div>
         </div>
 
-        {/* Keyword manager — the single keyword surface, shown before AND after
-            generation. The Optimize button inside it is the one CTA. */}
+        <ResumeTemplatePicker
+          selectedId={resumeTemplateId}
+          onSelect={setResumeTemplateId}
+          isPremium={isPremium}
+        />
+
+        {/* Keyword manager */}
         {loadingKeywords && !keywordsLoaded && (
           <div className="space-y-2">
             <div className="skeleton h-4 w-1/3" />
@@ -560,15 +580,8 @@ export function JobActions({
             onUnstage={onUnstage}
             onStageMany={onStageMany}
             onOptimize={optimize}
-            defaultChipsCollapsed
           />
         )}
-
-        <ResumeTemplatePicker
-          selectedId={resumeTemplateId}
-          onSelect={setResumeTemplateId}
-          isPremium={isPremium}
-        />
 
         {/* Resume Studio Pro — saved version history */}
         {resumeVersions.length > 0 && (
@@ -612,10 +625,10 @@ export function JobActions({
           </div>
         )}
 
-        {atsResume && !generatingResume && (
+        {atsResume.trim() && !generatingResume && (
           <p className="mt-3 flex items-center gap-1.5 text-xs text-on-surface-variant border-t border-outline-variant pt-3">
             <CheckCircle2 className="h-3.5 w-3.5 text-match-success shrink-0" />
-            Tailored for this job — use <span className="font-medium text-on-surface">Preview</span> to read or edit without cluttering this page.
+            Resume ready — use the teal <span className="font-semibold text-primary">Preview</span> button above to read or edit.
           </p>
         )}
       </div>

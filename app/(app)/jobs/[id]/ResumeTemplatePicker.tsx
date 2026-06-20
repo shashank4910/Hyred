@@ -1,7 +1,6 @@
 'use client';
 
-import { useState } from 'react';
-import { Lock, Check } from 'lucide-react';
+import { Lock, Check, LayoutTemplate } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   DEFAULT_RESUME_TEMPLATE_ID,
@@ -16,8 +15,6 @@ type Props = {
 };
 
 export function ResumeTemplatePicker({ selectedId, onSelect, isPremium = false }: Props) {
-  const [expanded, setExpanded] = useState(false);
-
   function handlePick(template: ResumeTemplateMeta) {
     if (!template.available) {
       toast.message(`${template.name} is coming soon`);
@@ -33,57 +30,59 @@ export function ResumeTemplatePicker({ selectedId, onSelect, isPremium = false }
   const selected = RESUME_TEMPLATES.find((t) => t.id === selectedId);
 
   return (
-    <div className="mt-3 border-t border-outline-variant pt-3">
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className="flex w-full items-center justify-between text-xs font-medium text-on-surface-variant hover:text-on-surface"
-      >
-        <span>
-          Template: <span className="text-on-surface">{selected?.name ?? 'Classic Navy'}</span>
+    <div className="mb-4 rounded-2xl border border-primary/25 bg-primary/5 p-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <LayoutTemplate className="h-4 w-4 text-primary shrink-0" />
+          <div>
+            <p className="text-sm font-semibold text-on-surface">PDF template</p>
+            <p className="text-xs text-on-surface-variant">
+              Selected: <span className="font-medium text-primary">{selected?.name ?? 'Classic Navy'}</span>
+            </p>
+          </div>
+        </div>
+        <span className="rounded-full bg-surface-container-lowest border border-outline-variant px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-on-surface-variant">
+          Tap to switch
         </span>
-        <span className="text-primary">{expanded ? 'Hide' : 'Choose template'}</span>
-      </button>
-      {expanded && (
-        <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {RESUME_TEMPLATES.map((t) => {
-            const locked = t.tier === 'premium' && !isPremium;
-            const inactive = !t.available || locked;
-            const isSelected = selectedId === t.id;
-            return (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => handlePick(t)}
-                className={[
-                  'relative rounded-xl border px-3 py-2.5 text-left transition-colors',
-                  isSelected
-                    ? 'border-primary bg-primary/10'
-                    : 'border-outline-variant hover:border-primary/40 hover:bg-surface-container-low',
-                  inactive ? 'opacity-75' : '',
-                ].join(' ')}
-              >
-                <div className="flex items-start justify-between gap-1">
-                  <span className="text-xs font-semibold text-on-surface leading-tight">{t.name}</span>
-                  {isSelected && <Check className="h-3.5 w-3.5 text-primary shrink-0" />}
-                  {locked && <Lock className="h-3.5 w-3.5 text-on-surface-variant shrink-0" />}
-                </div>
-                <p className="mt-1 text-[10px] text-on-surface-variant leading-snug">{t.blurb}</p>
+      </div>
+      <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 snap-x snap-mandatory">
+        {RESUME_TEMPLATES.map((t) => {
+          const locked = t.tier === 'premium' && !isPremium;
+          const inactive = !t.available || locked;
+          const isSelected = selectedId === t.id;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => handlePick(t)}
+              className={[
+                'snap-start shrink-0 w-[132px] rounded-xl border px-3 py-2.5 text-left transition-all',
+                isSelected
+                  ? 'border-primary bg-primary/15 ring-2 ring-primary/30 shadow-sm'
+                  : 'border-outline-variant bg-surface-container-lowest hover:border-primary/50 hover:bg-surface-container-low',
+                inactive ? 'opacity-80' : '',
+              ].join(' ')}
+            >
+              <div className="flex items-start justify-between gap-1 mb-1">
+                <span className="text-xs font-bold text-on-surface leading-tight line-clamp-2">{t.name}</span>
+                {isSelected && <Check className="h-3.5 w-3.5 text-primary shrink-0" />}
+                {locked && !isSelected && <Lock className="h-3.5 w-3.5 text-on-surface-variant shrink-0" />}
+              </div>
+              <p className="text-[10px] text-on-surface-variant leading-snug line-clamp-2">{t.blurb}</p>
+              <div className="mt-2 flex flex-wrap gap-1">
                 {t.tier === 'premium' && (
-                  <span className="mt-1.5 inline-block rounded-full bg-secondary-container/40 px-1.5 py-0.5 text-[9px] font-bold uppercase text-secondary">
-                    Premium
+                  <span className="rounded-full bg-secondary-container/50 px-1.5 py-0.5 text-[8px] font-bold uppercase text-secondary">
+                    Pro
                   </span>
                 )}
                 {!t.available && (
-                  <span className="mt-1.5 inline-block text-[9px] font-medium text-on-surface-variant/80">
-                    Soon
-                  </span>
+                  <span className="text-[8px] font-semibold text-on-surface-variant">Soon</span>
                 )}
-              </button>
-            );
-          })}
-        </div>
-      )}
+              </div>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
