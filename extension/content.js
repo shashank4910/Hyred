@@ -1508,12 +1508,69 @@
     return inputs.some((inp) => isOptionalDocumentUploadSignature(fileUploadZoneSignature(inp)));
   }
 
+  /** Cover letter is the primary action on this Workday step — hide resume picker. */
+  function isCoverLetterFocusStep() {
+    if (findCoverLetterField()) return true;
+    if (isDedicatedCoverLetterStep()) return true;
+    if (hasOptionalCoverLetterUpload()) return true;
+    if (findCoverLetterFileInput()) return true;
+    const hay = workdayApplicationMainText();
+    if (
+      /upload additional application document|cover letter, references|certificates or similar/.test(
+        hay,
+      )
+    ) {
+      return true;
+    }
+    if (isCoverLetterUploadedOnPage()) return true;
+    return false;
+  }
+
+  function isCoverLetterUploadedOnPage() {
+    const hay = workdayApplicationMainText();
+    if (!/successfully uploaded/i.test(hay)) {
+      const inp = findCoverLetterFileInput();
+      return !!(inp?.files?.length);
+    }
+    if (/cover[-_ ]?letter|cover-letter\.(pdf|txt)/i.test(hay)) return true;
+    if (isDedicatedCoverLetterStep() || hasOptionalCoverLetterUpload()) return true;
+    const inp = findCoverLetterFileInput();
+    return !!(inp?.files?.length);
+  }
+
+  function coverLetterSnippet(text, maxLen = 220) {
+    const flat = String(text || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!flat) return '';
+    return flat.length <= maxLen ? flat : `${flat.slice(0, maxLen)}…`;
+  }
+
+  function syncCopilotContextPanels() {
+    const card = document.getElementById('jobradar-card');
+    if (!card) return;
+    const coverFocus = isCoverLetterFocusStep();
+    const resumePicker = card.querySelector('.jr-resume-picker');
+    const coverPicker = card.querySelector('.jr-cover-picker');
+    const resumeHint = card.querySelector('.jr-resume-hint');
+    if (resumePicker) {
+      resumePicker.classList.toggle('jr-hidden', coverFocus);
+      if (coverFocus) resumeHint?.classList.add('jr-hidden');
+    }
+    if (coverPicker && coverFocus) {
+      coverPicker.classList.remove('jr-hidden');
+      coverFieldSeen = true;
+    }
+  }
+
   function shouldShowCoverLetterPanel() {
     return (
+      isCoverLetterFocusStep() ||
       isDedicatedCoverLetterStep() ||
       hasOptionalCoverLetterUpload() ||
       coverFieldSeen ||
-      !!findCoverLetterField()
+      !!findCoverLetterField() ||
+      !!String(coverLetterCache || '').trim()
     );
   }
 
@@ -5495,9 +5552,8 @@ startxref
       const file = new File([pdfBlob], 'cover-letter.pdf', { type: 'application/pdf' });
       const ok = await attachFileToInput(input, file);
       if (!ok) {
-        const txtBlob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-        const txtFile = new File([txtBlob], 'cover-letter.txt', { type: 'text/plain' });
-        await attachFileToInput(input, txtFile);
+        log('uploadCoverLetter: PDF attach failed');
+        return false;
       }
       log('uploadCoverLetter: attached', file.name);
       if (IS_TOP_FRAME && fillUi.active) fillUi.onField(input, 'Cover letter file');
@@ -5553,12 +5609,7 @@ startxref
     coverFieldSeen = true;
     const card = document.getElementById('jobradar-card');
     if (card) {
-      card.querySelector('.jr-cover-picker')?.classList.remove('jr-hidden');
-      card.querySelector('.jr-resume-picker')?.classList.toggle('jr-hidden', isDedicatedCoverLetterStep());
-      card.querySelector('.jr-cover-picker')?.classList.toggle(
-        'jr-cover-compact',
-        hasOptionalCoverLetterUpload() && !isDedicatedCoverLetterStep(),
-      );
+      syncCopilotContextPanels();
       refreshCoverLetterUi();
     } else if (!cardDismissed && IS_TOP_FRAME) {
       maybeMount();
@@ -5572,37 +5623,55 @@ startxref
     const panel = card.querySelector('.jr-cover-picker');
     if (!panel) return;
 
+    syncCopilotContextPanels();
+
     const matchId = card.dataset.matchId;
+    const coverFocus = isCoverLetterFocusStep();
     const optionalUpload = hasOptionalCoverLetterUpload() && !isDedicatedCoverLetterStep();
     const showPanel = shouldShowCoverLetterPanel();
     panel.classList.toggle('jr-hidden', !showPanel);
-    panel.classList.toggle('jr-cover-compact', optionalUpload);
+    panel.classList.toggle('jr-cover-focus', coverFocus);
+    panel.classList.toggle('jr-cover-compact', optionalUpload && !coverFocus);
 
     const hasLetter = !!String(coverLetterCache || '').trim();
+    const uploadedOnPage = isCoverLetterUploadedOnPage();
     const isFileStep = !!findCoverLetterFileInput();
+    const ready = panel.querySelector('.jr-cover-ready');
+    const empty = panel.querySelector('.jr-cover-empty');
+    const snippet = panel.querySelector('.jr-cover-snippet');
+    const onPage = panel.querySelector('.jr-cover-onpage');
     const preview = panel.querySelector('.jr-cover-preview');
     const pre = panel.querySelector('.jr-cover-text');
     const genBtn = panel.querySelector('.jr-cover-generate');
     const useBtn = panel.querySelector('.jr-cover-use');
     const dlBtn = panel.querySelector('.jr-cover-download');
-    const toggleBtn = panel.querySelector('.jr-cover-toggle');
+    const previewTabBtn = panel.querySelector('.jr-cover-preview-tab');
+    const editBtn = panel.querySelector('.jr-cover-edit');
     const hint = panel.querySelector('.jr-cover-hint');
     const label = panel.querySelector('.jr-cover-label');
 
     if (label) {
-      label.textContent = optionalUpload ? 'Optional cover letter' : 'Cover letter';
+      label.textContent = coverFocus
+        ? 'Cover letter for this application'
+        : optionalUpload
+          ? 'Optional cover letter'
+          : 'Cover letter';
     }
 
+    ready?.classList.toggle('jr-hidden', !hasLetter);
+    empty?.classList.toggle('jr-hidden', hasLetter || coverGenerating);
+    if (snippet) snippet.textContent = hasLetter ? coverLetterSnippet(coverLetterCache) : '';
     if (pre && hasLetter) pre.textContent = coverLetterCache;
-    if (preview) {
-      preview.classList.toggle('jr-hidden', !hasLetter);
-      preview.classList.toggle('jr-collapsed', optionalUpload && hasLetter);
-    }
-    useBtn?.classList.toggle('jr-hidden', !hasLetter);
+    if (preview) preview.classList.toggle('jr-hidden', true);
+    onPage?.classList.toggle('jr-hidden', !uploadedOnPage);
+
+    useBtn?.classList.toggle('jr-hidden', !hasLetter || uploadedOnPage);
     if (useBtn) {
       useBtn.textContent = isFileStep ? 'Upload to form' : 'Use on form';
     }
     dlBtn?.classList.toggle('jr-hidden', !hasLetter);
+    previewTabBtn?.classList.toggle('jr-hidden', !hasLetter);
+    editBtn?.classList.toggle('jr-hidden', !matchId);
 
     if (genBtn) {
       genBtn.disabled = coverGenerating || !matchId;
@@ -5613,31 +5682,25 @@ startxref
           : 'Generate cover letter';
     }
 
-    if (toggleBtn) {
-      toggleBtn.classList.toggle('jr-hidden', !hasLetter);
-      toggleBtn.textContent = preview?.classList.contains('jr-collapsed')
-        ? 'Show preview'
-        : 'Hide preview';
-    }
-
     if (hint) {
       if (!matchId) {
         hint.textContent =
-          'Link this posting in Hyred first — open Apply from your job match, then generate here.';
+          'Apply from Hyred first to link this job, then generate your cover letter here.';
       } else if (coverGenerating) {
         hint.textContent = 'Drafting your cover letter…';
+      } else if (uploadedOnPage && hasLetter) {
+        hint.textContent =
+          'Cover letter is on the form. Preview below or edit on Hyred before continuing.';
       } else if (hasLetter) {
-        hint.textContent = optionalUpload
-          ? 'Ready — click Upload to attach your cover letter (optional).'
-          : isFileStep
-            ? 'Ready — preview below, then upload to the cover letter field.'
-            : 'Ready — preview below, then use it on the form or download.';
+        hint.textContent = coverFocus
+          ? 'Review below, then upload to the form. Preview opens full letter in a new tab.'
+          : optionalUpload
+            ? 'Optional — preview, then upload if you want to attach it.'
+            : 'Ready — preview in a new tab, then upload to the form.';
       } else {
-        hint.textContent = optionalUpload
-          ? 'Optional — generate a cover letter, then upload it with the button below.'
-          : isFileStep
-            ? 'This step needs a cover letter file — generate one here, then upload to form.'
-            : 'Generate a tailored cover letter for this job (same as Hyred app).';
+        hint.textContent = coverFocus
+          ? 'Generate a tailored cover letter for this job, then upload it here.'
+          : 'Generate a tailored cover letter (same as Hyred app).';
       }
     }
   }
@@ -5655,6 +5718,7 @@ startxref
     }
     coverLetterCache = res.cover_letter;
     refreshCoverLetterUi();
+    syncCopilotContextPanels();
     toast('Cover letter ready', 'ok');
   }
 
@@ -5676,6 +5740,7 @@ startxref
       if (!coverLetterCache?.trim()) return;
       const ok = await applyCoverLetterEverywhere(coverLetterCache, { force: true });
       const isFile = !!findCoverLetterFileInput();
+      refreshCoverLetterUi();
       toast(
         ok
           ? isFile
@@ -5691,6 +5756,25 @@ startxref
       if (!coverLetterCache?.trim()) return;
       downloadCoverLetterText(coverLetterCache);
       toast('Downloaded cover-letter.txt', 'ok');
+    });
+
+    panel.querySelector('.jr-cover-preview-tab')?.addEventListener('click', async () => {
+      if (!coverLetterCache?.trim()) {
+        toast('Generate a cover letter first', 'warn', 5000);
+        return;
+      }
+      const res = await send('previewCoverLetter', {
+        text: coverLetterCache,
+        match_id: card.dataset.matchId || null,
+      });
+      if (!res?.ok) toast(res?.error || 'Could not open preview', 'err', 6000);
+    });
+
+    panel.querySelector('.jr-cover-edit')?.addEventListener('click', async () => {
+      const matchId = card.dataset.matchId;
+      const res = await send('openHyredJobEdit', { match_id: matchId || null });
+      if (!res?.ok) toast(res?.error || 'Could not open Hyred', 'warn', 6500);
+      else if (res.login) toast('Log in on Hyred to edit your cover letter', 'ok', 5000);
     });
 
     panel.querySelector('.jr-cover-toggle')?.addEventListener('click', () => {
@@ -6375,14 +6459,25 @@ startxref
         </label>
       </div>
       <div class="jr-cover-picker jr-hidden">
-        <div class="jr-cover-label">Cover letter</div>
+        <div class="jr-cover-label">Cover letter for this application</div>
         <div class="jr-cover-hint"></div>
+        <div class="jr-cover-ready jr-hidden">
+          <div class="jr-cover-snippet"></div>
+          <div class="jr-cover-toolbar">
+            <button type="button" class="jr-cover-preview-tab">Preview</button>
+            <button type="button" class="jr-cover-edit">Edit on Hyred</button>
+          </div>
+        </div>
+        <div class="jr-cover-empty jr-hidden">
+          <span class="jr-cover-empty-note">No cover letter generated yet for this job.</span>
+        </div>
+        <div class="jr-cover-onpage jr-hidden">✓ Cover letter uploaded on this page</div>
         <div class="jr-cover-preview jr-hidden">
           <pre class="jr-cover-text"></pre>
         </div>
         <div class="jr-cover-actions">
           <button type="button" class="jr-cover-generate">Generate cover letter</button>
-          <button type="button" class="jr-cover-use jr-hidden">Use on form</button>
+          <button type="button" class="jr-cover-use jr-hidden">Upload to form</button>
           <button type="button" class="jr-cover-download jr-hidden">Download</button>
           <button type="button" class="jr-cover-toggle jr-hidden">Hide preview</button>
         </div>
@@ -6519,30 +6614,33 @@ startxref
       card.dataset.previewUrl = match.tailored_resume_url || '';
       coverLetterCache = match.cover_letter || coverLetterCache || '';
       if (resumePicker) {
-        resumePicker.classList.toggle('jr-hidden', isDedicatedCoverLetterStep());
-        const hasTailored = !!match.has_tailored_resume;
-        const tailoredRow = resumePicker.querySelector('[data-row="tailored"]');
-        if (tailoredRow) tailoredRow.classList.toggle('jr-hidden', !hasTailored);
-        if (resumeHint) {
-          resumeHint.textContent = hasTailored
-            ? 'Choose which PDF to upload. Optimized is tailored for this job in Hyred.'
-            : 'No optimized resume yet — using default. Optimize on Hyred first for a tailored version.';
-          resumeHint.classList.remove('jr-hidden');
-        }
-        const choice = await send('getResumeChoice', {
-          match_id: match.id,
-          has_tailored_resume: hasTailored,
-        });
-        const variant =
-          hasTailored && choice?.ok && choice.variant === 'tailored'
-            ? 'tailored'
-            : hasTailored && (!choice?.ok || choice.variant !== 'default')
+        const coverFocus = isCoverLetterFocusStep();
+        resumePicker.classList.toggle('jr-hidden', coverFocus);
+        if (!coverFocus) {
+          const hasTailored = !!match.has_tailored_resume;
+          const tailoredRow = resumePicker.querySelector('[data-row="tailored"]');
+          if (tailoredRow) tailoredRow.classList.toggle('jr-hidden', !hasTailored);
+          if (resumeHint) {
+            resumeHint.textContent = hasTailored
+              ? 'Choose which PDF to upload. Optimized is tailored for this job in Hyred.'
+              : 'No optimized resume yet — using default. Optimize on Hyred first for a tailored version.';
+            resumeHint.classList.remove('jr-hidden');
+          }
+          const choice = await send('getResumeChoice', {
+            match_id: match.id,
+            has_tailored_resume: hasTailored,
+          });
+          const variant =
+            hasTailored && choice?.ok && choice.variant === 'tailored'
               ? 'tailored'
-              : 'default';
-        const t = resumePicker.querySelector('input[value="tailored"]');
-        const d = resumePicker.querySelector('input[value="default"]');
-        if (t) t.checked = variant === 'tailored';
-        if (d) d.checked = variant === 'default';
+              : hasTailored && (!choice?.ok || choice.variant !== 'default')
+                ? 'tailored'
+                : 'default';
+          const t = resumePicker.querySelector('input[value="tailored"]');
+          const d = resumePicker.querySelector('input[value="default"]');
+          if (t) t.checked = variant === 'tailored';
+          if (d) d.checked = variant === 'default';
+        }
       }
       refreshCoverLetterUi();
     } else {
