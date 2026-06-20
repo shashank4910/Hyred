@@ -197,31 +197,60 @@
     const out = [];
     let order = 0;
 
+    const addField = async (el, widget_kind) => {
+      if (!el || seen.has(el)) return;
+      seen.add(el);
+      const label = (ctx.labelForControl?.(el) || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+      if (!label || label.length < 2) return;
+      if (/captcha|recaptcha|hcaptcha/i.test(label)) return;
+      if (widget_kind === 'file') return;
+      const dom_order = order++;
+      const field_fp = stableFieldFingerprint({ label, widget_kind, dom_order });
+      const field = { field_fp, dom_order, label, widget_kind, el, options: [] };
+      if (widget_kind === 'native_select' || widget_kind === 'custom_dropdown') {
+        field.options = await scrapeFieldOptions(field, ctx);
+      }
+      out.push(field);
+    };
+
+    // Pass 1: native selects (GlobalLogic hides these behind div UI — fill via select.value)
+    for (const el of root.querySelectorAll('select')) {
+      if (el.type === 'hidden') continue;
+      await addField(el, 'native_select');
+    }
+
+    // Pass 2: radio groups (Gender on some career sites)
+    const radioNames = new Set();
+    for (const el of root.querySelectorAll('input[type="radio"]')) {
+      if (!ctx.isVisible?.(el) || !el.name || radioNames.has(el.name)) continue;
+      radioNames.add(el.name);
+      await addField(el, 'radio');
+    }
+
+    // Pass 3: text inputs and custom dropdown triggers
     const candidates = root.querySelectorAll(
-      'input:not([type=hidden]):not([type=submit]):not([type=button]), textarea, select, [role="combobox"], button[aria-haspopup="listbox"]',
+      'input:not([type=hidden]):not([type=submit]):not([type=button]):not([type=radio]), textarea, [role="combobox"], button[aria-haspopup="listbox"]',
     );
 
     for (const el of candidates) {
       if (!ctx.isVisible?.(el)) continue;
       if (el.type === 'hidden' || el.type === 'submit' || el.type === 'button') continue;
       if (seen.has(el)) continue;
-      seen.add(el);
-
-      const label = (ctx.labelForControl?.(el) || '').replace(/\s+/g, ' ').trim().slice(0, 200);
-      if (!label || label.length < 2) continue;
-      if (/captcha|recaptcha|hcaptcha/i.test(label)) continue;
+      // Skip if a select in the same field group is already tracked
+      let parent = el.parentElement;
+      let skip = false;
+      for (let i = 0; i < 6 && parent; i++) {
+        const sel = parent.querySelector('select');
+        if (sel && seen.has(sel)) {
+          skip = true;
+          break;
+        }
+        parent = parent.parentElement;
+      }
+      if (skip) continue;
 
       const widget_kind = classifyWidgetKind(el, ctx);
-      if (widget_kind === 'file') continue;
-
-      const dom_order = order++;
-      const field_fp = stableFieldFingerprint({ label, widget_kind, dom_order });
-      const field = { field_fp, dom_order, label, widget_kind, el, options: [] };
-
-      if (widget_kind === 'native_select' || widget_kind === 'custom_dropdown') {
-        field.options = await scrapeFieldOptions(field, ctx);
-      }
-      out.push(field);
+      await addField(el, widget_kind);
     }
 
     return out;

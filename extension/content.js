@@ -874,10 +874,77 @@
 
   function setSelectExperienceYears(el, years) {
     if (!el || el.tagName !== 'SELECT') return false;
+    const y = parseInt(String(years).match(/\d+/)?.[0] || '', 10);
+    if (Number.isFinite(y)) {
+      let best = null;
+      let bestScore = 0;
+      for (const opt of el.options) {
+        const t = (opt.textContent || '').toLowerCase();
+        const range = t.match(/(\d+)\s*[-–to]+\s*(\d+)/);
+        if (range) {
+          const min = parseInt(range[1], 10);
+          const max = parseInt(range[2], 10);
+          if (y >= min && y <= max) {
+            const score = 100 - (max - min);
+            if (score > bestScore) {
+              bestScore = score;
+              best = opt;
+            }
+          }
+        } else if ((/\b15\+|\b15\s*and|more than 15/.test(t) && y >= 15) ||
+          (/\b0\s*[-–]\s*5/.test(t) && y <= 5)) {
+          if (90 > bestScore) {
+            bestScore = 90;
+            best = opt;
+          }
+        }
+      }
+      if (best) {
+        el.value = best.value;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.dispatchEvent(new Event('blur', { bubbles: true }));
+        return true;
+      }
+    }
     for (const pref of experienceDropdownPrefs(years)) {
       if (setSelectValue(el, pref)) return true;
     }
     return false;
+  }
+
+  /** Hidden/styled native select behind custom div dropdowns (GlobalLogic, WP). */
+  function findNativeSelectForControl(el) {
+    if (!el) return null;
+    if (el.tagName === 'SELECT') return el;
+    let node = el.parentElement;
+    for (let i = 0; i < 8 && node; i++) {
+      const selects = [...node.querySelectorAll('select')];
+      if (selects.length === 1) return selects[0];
+      if (selects.length > 1) {
+        const label = labelForControl(el).toLowerCase();
+        const byLabel = selects.find((s) => labelForControl(s).toLowerCase() === label);
+        if (byLabel) return byLabel;
+        return selects[0];
+      }
+      node = node.parentElement;
+    }
+    return null;
+  }
+
+  async function setSelectBySemantic(el, value, semanticKey) {
+    const sel = findNativeSelectForControl(el) || (el.tagName === 'SELECT' ? el : null);
+    if (!sel) return false;
+    const val = String(value ?? '').trim();
+    if (!val) return false;
+    if (semanticKey === 'notice_period_days') return setSelectNoticePeriod(sel, val);
+    if (semanticKey === 'total_experience_years') {
+      return setSelectExperienceYears(sel, Number.parseFloat(val));
+    }
+    const picked =
+      window.__HyredTierBForm?.pickDropdownOption(val, [...sel.options].map((o) => o.textContent || ''), semanticKey || '') ||
+      val;
+    return setSelectValue(sel, picked);
   }
 
   function isDropdownWidget(el) {
@@ -1580,6 +1647,12 @@
   async function setGenericDropdownByPrefs(trigger, prefs) {
     if (!trigger || !prefs?.length) return false;
     if (detectAts() === 'workday') return setWorkdayDropdownByPrefs(trigger, prefs);
+    const nativeSel = findNativeSelectForControl(trigger);
+    if (nativeSel) {
+      for (const pref of prefs) {
+        if (setSelectValue(nativeSel, pref)) return true;
+      }
+    }
     const options = await openGenericListbox(trigger);
     if (!options.length) return false;
     let hit = null;
@@ -1588,9 +1661,13 @@
       if (hit) break;
     }
     if (!hit) return false;
-    hit.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-    hit.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
-    hit.click?.();
+    try {
+      hit.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      hit.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+      hit.click?.();
+    } catch (e) {
+      log('dropdown:option click err', e?.message || e);
+    }
     await sleep(200);
     return true;
   }
@@ -4400,54 +4477,62 @@
     const val = String(value ?? '').trim();
     if (!val || !field?.el) return false;
     const el = field.el;
-    if (!isVisible(el) || filledSet.has(el)) return false;
-    if (!isEmpty(el)) return false;
+    if (!isVisible(el) && !findNativeSelectForControl(el)) return false;
+    if (filledSet.has(el)) return false;
+    if (!isEmpty(el) && !findNativeSelectForControl(el)) return false;
 
-    if (field.widget_kind === 'radio') {
-      const group = el.closest('fieldset, [role="radiogroup"], form') || document;
-      const radios = [...group.querySelectorAll(`input[type="radio"][name="${CSS.escape(el.name)}"]`)].filter(
-        isVisible,
-      );
+    const nativeSel = findNativeSelectForControl(el);
+
+    if (field.widget_kind === 'radio' || el.type === 'radio') {
+      const name = el.name || field.label;
+      const radios = [...document.querySelectorAll(`input[type="radio"]`)].filter(
+        (r) => r.name === el.name || labelForControl(r.closest('fieldset, div, p') || r).toLowerCase().includes(field.label.toLowerCase().slice(0, 20)),
+      ).filter(isVisible);
       const want = val.toLowerCase();
       const opt =
         radios.find((r) => (r.value || '').toLowerCase() === want) ||
         radios.find((r) => {
           const lbl = labelForControl(r).toLowerCase();
-          return lbl === want || lbl.startsWith(want);
+          return lbl === want || lbl.startsWith(want) || want.startsWith(lbl);
+        }) ||
+        radios.find((r) => {
+          const lbl = (r.closest('label')?.textContent || '').toLowerCase();
+          return lbl.includes(want) || want.includes(lbl.trim());
         });
       if (opt && !opt.checked) {
         opt.click();
         filledSet.add(opt);
+        if (nativeSel) filledSet.add(nativeSel);
         return true;
       }
       return false;
     }
 
-    if (field.widget_kind === 'native_select' || el.tagName === 'SELECT') {
-      if (field.semantic_key === 'notice_period_days') {
-        if (setSelectNoticePeriod(el, val)) {
-          filledSet.add(el);
-          return true;
-        }
-      }
-      if (field.semantic_key === 'total_experience_years') {
-        if (setSelectExperienceYears(el, Number.parseFloat(val))) {
-          filledSet.add(el);
-          return true;
-        }
+    if (nativeSel || field.widget_kind === 'native_select' || el.tagName === 'SELECT') {
+      const target = nativeSel || el;
+      if (await setSelectBySemantic(target, val, field.semantic_key || '')) {
+        filledSet.add(target);
+        if (el !== target) filledSet.add(el);
+        return true;
       }
       const picked =
         (field.options?.length
           ? window.__HyredTierBForm?.pickDropdownOption(val, field.options, field.semantic_key || '')
           : null) || val;
-      if ((await setGenericDropdownByPrefs(el, [picked])) || setSelectValue(el, picked)) {
-        filledSet.add(el);
+      if ((await setGenericDropdownByPrefs(target, [picked])) || setSelectValue(target, picked)) {
+        filledSet.add(target);
+        if (el !== target) filledSet.add(el);
         return true;
       }
       return false;
     }
 
     if (field.widget_kind === 'custom_dropdown' || isDropdownWidget(el)) {
+      if (nativeSel && (await setSelectBySemantic(nativeSel, val, field.semantic_key || ''))) {
+        filledSet.add(nativeSel);
+        filledSet.add(el);
+        return true;
+      }
       const picked =
         (field.options?.length
           ? window.__HyredTierBForm?.pickDropdownOption(val, field.options, field.semantic_key || '')
