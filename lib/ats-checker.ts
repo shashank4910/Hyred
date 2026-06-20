@@ -28,6 +28,14 @@ export interface AtsCheckResult {
   goodPractices: string[];
   /** Resume stats */
   stats: ResumeStats;
+  /**
+   * How well the engine could read the resume's structure. When 'degraded',
+   * layout-dependent criteria are down-weighted and a warning is surfaced —
+   * the low-level scores reflect the extractor, not necessarily the resume.
+   */
+  parseQuality: ParseQuality;
+  /** Human-readable note when parseQuality is not 'good'. */
+  parseWarning?: string;
   /** JD keyword match (only if jobDescription was provided) */
   jdMatch?: JdMatchResult;
   /** File-level hints only available when the raw file is provided */
@@ -140,7 +148,7 @@ const STRONGLY_RECOMMENDED_HEADERS = [
 function findSectionHeaders(lines: string[]): string[] {
   const headers: string[] = [];
   for (let i = 0; i < lines.length; i++) {
-    const t = lines[i].trim();
+    const t = normalizeHeaderLine(lines[i]);
     if (!t) continue;
     // ALL-CAPS header (2+ words or 5+ chars): "PROFESSIONAL EXPERIENCE", "EDUCATION"
     if (/^[A-Z][A-Z\s&/.-]+$/.test(t) && t.length >= 5) {
@@ -166,20 +174,52 @@ function isStandardHeader(header: string, patterns: RegExp[]): boolean {
   return patterns.some((re) => re.test(header.trim()));
 }
 
+function normalizeHeaderLine(line: string): string {
+  return line.trim().replace(/[:：]\s*$/, '');
+}
+
+/** Strip trailing colon/em-dash from a section header line. */
+function lineMatchesHeader(line: string, header: string): boolean {
+  const t = normalizeHeaderLine(line);
+  const h = normalizeHeaderLine(header);
+  return t === h || t.startsWith(`${h}:`) || t.startsWith(`${h} —`) || t.startsWith(`${h} -`);
+}
+
+function looksLikePersonName(t: string): boolean {
+  if (t.length < 3 || t.length > 60) return false;
+  // ALL CAPS: JOHN SMITH, RAJESH KUMAR
+  if (/^[A-Z]{2,}(?:\s+[A-Z]{2,})+$/.test(t)) return true;
+  // Title Case with optional honorific: Dr. Priya Sharma, John A. Smith
+  return /^(?:Dr\.|Mr\.|Ms\.|Mrs\.)?\s*[A-Z][a-zA-Z'.\-]+(?:\s+[A-Z][a-zA-Z'.\-]+)+$/.test(t);
+}
+
 /** Find the first line that looks like a candidate name (top of resume, non-empty, not a header). */
 function findNameLine(lines: string[]): string | null {
   for (let i = 0; i < Math.min(lines.length, 10); i++) {
-    const t = lines[i].trim();
+    let t = lines[i].trim();
     if (!t) continue;
     // Skip header labels like "RESUME", "CV", "CURRICULUM VITAE"
     if (/^(resume|cv|curriculum\s+vitae|profile)$/i.test(t)) continue;
-    // Skip contact-looking lines
-    if (/@/.test(t)) continue;
-    if (/^\+?\d[\d\s().-]{6,}/.test(t)) continue;
-    // Match names like "John Smith", "John A. Smith", "Mary-Jane Watson", "O'Brien"
-    if (t.length >= 3 && t.length <= 50 && /^[A-Z][a-zA-Z'.\-]+(\s+[A-Z][a-zA-Z'.\-]+)+$/.test(t)) {
-      return t;
+
+    // Pipe-separated contact line: "Rajesh Kumar | raj@email.com | +91..."
+    if (t.includes('|')) {
+      const nameSeg = t.split('|').map((s) => s.trim()).find(
+        (seg) => !/@/.test(seg) && !/^\+?\d/.test(seg) && !/linkedin/i.test(seg) && looksLikePersonName(seg),
+      );
+      if (nameSeg) return nameSeg;
+      continue;
     }
+
+    // Name before email on same line: "John Smith john@email.com"
+    if (/@/.test(t)) {
+      const beforeEmail = t.replace(/\s+[a-zA-Z0-9._%+-]+@[^\s]+.*$/, '').trim();
+      if (beforeEmail && looksLikePersonName(beforeEmail)) return beforeEmail;
+      continue;
+    }
+
+    if (/^\+?\d[\d\s().-]{6,}/.test(t)) continue;
+
+    if (looksLikePersonName(t)) return t;
   }
   return null;
 }
@@ -203,6 +243,81 @@ function findBulletLines(lines: string[]): string[] {
     if (/^[\[|]/.test(t) && t.length > 10) return true;
     return false;
   });
+}
+
+/* ------------------------------------------------------------------ */
+/*  Input normalization — reflow flattened resume text                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Known section-header words. Used to re-insert line breaks when a resume
+ * has been flattened to few/no newlines (a common PDF-extraction artifact).
+ */
+const SECTION_WORDS =
+  '(?:professional\\s+summary|summary\\s+of\\s+qualifications|career\\s+objective|' +
+  'professional\\s+profile|professional\\s+experience|work\\s+experience|work\\s+history|' +
+  'career\\s+history|relevant\\s+experience|employment|education\\s+and\\s+training|' +
+  'education|academic\\s+background|technical\\s+skills|technical\\s+competencies|' +
+  'core\\s+competencies|areas?\\s+of\\s+expertise|key\\s+skills|professional\\s+certifications|' +
+  'certifications?|licenses?|key\\s+projects|projects?|publications|research|languages|' +
+  'awards?|achievements?|accomplishments?|interests|references|volunteer\\s+experience|' +
+  'summary|profile|skills|experience)';
+
+/**
+ * Detects whether parsed text has lost its line structure and, if so, reflows
+ * it into lines by re-inserting breaks before section headers and bullet markers.
+ *
+ * This is the single biggest source of bogus low scores: when a PDF/text dump
+ * collapses to one giant line, every line-based detector (headers, bullets,
+ * multi-column) reads near-zero through no fault of the resume.
+ */
+function reflowFlattenedText(text: string): { text: string; wasReflowed: boolean } {
+  const lines = text.split('\n');
+  const nonEmpty = lines.filter((l) => l.trim().length > 0);
+  const wordCount = text.split(/\s+/).filter(Boolean).length;
+  const avgWordsPerLine = nonEmpty.length > 0 ? wordCount / nonEmpty.length : wordCount;
+
+  // Heuristic: substantial content but very few lines, OR lines are huge on
+  // average (>25 words/line) — both indicate lost line structure.
+  const looksFlattened =
+    wordCount >= 80 && (nonEmpty.length <= 3 || avgWordsPerLine > 25);
+
+  if (!looksFlattened) {
+    return { text, wasReflowed: false };
+  }
+
+  let out = text;
+
+  // 1. Break before inline section headers ("...experience. PROFESSIONAL EXPERIENCE Led...")
+  const headerRe = new RegExp(`\\s+(?=${SECTION_WORDS}\\b\\s*[:•*-]?)`, 'gi');
+  out = out.replace(headerRe, '\n');
+
+  // 2. Break before common inline bullet markers (" * ", " • ", " - " between words)
+  out = out.replace(/\s+(?=[•▪▸‣◦*]\s)/g, '\n');
+  out = out.replace(/\s+-\s+(?=[A-Z])/g, '\n- ');
+
+  // 3. Break before a date range that starts an entry ("... 2018 - 2021 ...")
+  out = out.replace(/\s+(?=(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}\b)/gi, '\n');
+
+  return { text: out, wasReflowed: true };
+}
+
+/**
+ * Parse-quality assessment. Tells the caller whether the engine could read
+ * the resume's structure well enough to trust the layout-dependent criteria.
+ */
+export type ParseQuality = 'good' | 'degraded' | 'unreadable';
+
+function assessParseQuality(text: string): ParseQuality {
+  const nonEmpty = text.split('\n').filter((l) => l.trim().length > 0);
+  const wordCount = text.split(/\s+/).filter(Boolean).length;
+  const headers = findSectionHeaders(text.split('\n'));
+
+  if (wordCount < 50) return 'unreadable';
+  // No detectable headers AND content crammed into very few lines → degraded.
+  if (headers.length === 0 && nonEmpty.length <= 5 && wordCount > 120) return 'degraded';
+  if (headers.length === 0 && nonEmpty.length <= 8) return 'degraded';
+  return 'good';
 }
 
 /* ------------------------------------------------------------------ */
@@ -301,10 +416,17 @@ function scoreContactInfo(text: string): CriterionResult {
   const first20Lines = text.split('\n').slice(0, 20).join('\n');
 
   const hasEmail = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/.test(first20Lines);
-  const hasPhone = /(\+?\d[\d\s().-]{7,})/.test(first20Lines);
+  const hasPhone =
+    /(\+?\d[\d\s().-]{7,})/.test(first20Lines)
+    || /\+91[\s-]?\d{10}\b/.test(first20Lines)
+    || /\b[6-9]\d{9}\b/.test(first20Lines);
   const hasLinkedIn = /linkedin\.com\/in\//i.test(first20Lines);
   const hasGithub = /github\.com\//i.test(first20Lines);
-  const hasLocation = /\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*,\s*[A-Z]{2}\b/.test(first20Lines)
+  const hasUSLocation = /\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*,\s*[A-Z]{2}\b/.test(first20Lines);
+  const hasIndiaLocation =
+    /\b(?:Bangalore|Bengaluru|Mumbai|Delhi|Noida|Gurgaon|Gurugram|Pune|Chennai|Hyderabad|Kolkata|Ahmedabad|Jaipur|Indore|Kochi|Coimbatore|Chandigarh|Visakhapatnam|Lucknow|Bhopal)\b/i.test(first20Lines)
+    || /\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*,\s*(?:Karnataka|Maharashtra|Telangana|Tamil Nadu|Uttar Pradesh|Haryana|Gujarat|Rajasthan|Madhya Pradesh|Kerala|West Bengal|India|NCR)\b/i.test(first20Lines);
+  const hasLocation = hasUSLocation || hasIndiaLocation
     || /\b(city|town|village)\s+of\b/i.test(first20Lines);
 
   // Check name at top
@@ -372,9 +494,9 @@ function scoreContactInfo(text: string): CriterionResult {
   // Location: -10 if missing
   if (hasLocation) {
     score += 10;
-    good.push('Location (city, state) present.');
+    good.push('Location (city, region) present.');
   } else {
-    issues.push('Location not clearly found. Add City, State near the top.');
+    issues.push('Location not clearly found. Add City, State/Country near the top.');
   }
 
   // Bonus for GitHub (tech roles)
@@ -604,7 +726,7 @@ function scoreSkillsOptimization(text: string): CriterionResult {
 
   // Find the skills header in the original lines, then scan forward to the next section
   const skillHeaderName = headers[skillsHeaderIdx];
-  const startLine = lines.findIndex((l) => l.trim() === skillHeaderName);
+  const startLine = lines.findIndex((l) => lineMatchesHeader(l, skillHeaderName));
   let endLine = lines.length;
   // Scan forward from skills section until we hit another ALL-CAPS header
   for (let i = startLine + 1; i < lines.length; i++) {
@@ -692,15 +814,12 @@ function scoreSkillsOptimization(text: string): CriterionResult {
 
   const skillContextualized = concreteSkills.filter((skill) => {
     const lower = skill.toLowerCase();
-    // Check bullets first (most reliable)
-    if (bulletText.includes(lower)) return true;
-    // Fallback: check if skill appears in any non-skills-section line
-    // This catches paragraph-formatted resumes where skills are mentioned in experience descriptions
+    if (keywordInText(bulletText, lower)) return true;
     return lines.some((line) => {
-      const trimmed = line.trim().toLowerCase();
-      if (!trimmed.includes(lower)) return false;
-      if (trimmed.length <= 20) return false;          // Skip short/list lines
-      if (skillSectionPattern.test(trimmed)) return false; // Skip skills section
+      const trimmed = line.trim();
+      if (!keywordInText(trimmed, lower)) return false;
+      if (trimmed.length <= 20) return false;
+      if (skillSectionPattern.test(trimmed)) return false;
       return true;
     });
   });
@@ -771,38 +890,50 @@ function scoreSkillsOptimization(text: string): CriterionResult {
 }
 
 function scoreLengthReadability(text: string): CriterionResult {
+  const lines = text.split('\n');
   const wordCount = text.split(/\s+/).filter(Boolean).length;
-  const lineCount = text.split('\n').filter((l) => l.trim()).length;
+  const lineCount = lines.filter((l) => l.trim()).length;
+  const bulletCount = findBulletLines(lines).length;
+  const sectionCount = findSectionHeaders(lines).length;
+  const conciseButComplete =
+    wordCount >= 180 && wordCount < 400 && bulletCount >= 5 && sectionCount >= 4;
 
   let score = 0;
   const issues: string[] = [];
   const good: string[] = [];
 
-  // Word count: calibrated for experience levels — entry-level (200-400),
-  // mid (400-800), senior (800-1200), lead (1000-1500)
-  if (wordCount >= 400 && wordCount <= 1200) {
+  // Word count bands — ideal 350–1400; concise 180–349 OK when structure is strong.
+  if (wordCount >= 350 && wordCount <= 1400) {
     score += 50;
     good.push(`Resume length is ideal (~${wordCount} words, ~1-2 pages).`);
-  } else if (wordCount >= 300 && wordCount < 400) {
-    score += 40;
-    issues.push(`A bit short (~${wordCount} words). Consider adding more detail.`);
-  } else if (wordCount >= 200 && wordCount < 300) {
-    score += 25;
-    issues.push(`On the shorter side (~${wordCount} words) but acceptable for early-career.`);
-  } else if (wordCount > 1200 && wordCount <= 1500) {
-    score += 30;
+  } else if (wordCount >= 250 && wordCount < 350) {
+    score += conciseButComplete ? 45 : 38;
+    if (conciseButComplete) {
+      good.push(`Concise resume (~${wordCount} words) with solid structure — length is fine.`);
+    } else {
+      issues.push(`A bit short (~${wordCount} words). Consider adding one more role or project.`);
+    }
+  } else if (wordCount >= 180 && wordCount < 250) {
+    score += conciseButComplete ? 42 : 32;
+    if (conciseButComplete) {
+      good.push(`Concise resume (~${wordCount} words) with solid structure — length is fine.`);
+    } else {
+      issues.push(`On the shorter side (~${wordCount} words) but acceptable for early-career.`);
+    }
+  } else if (wordCount > 1400 && wordCount <= 1700) {
+    score += 35;
     issues.push(`Slightly long (~${wordCount} words). Consider tightening to 2 pages if possible.`);
-  } else if (wordCount < 200) {
+  } else if (wordCount < 180) {
     score += 15;
     issues.push(`Very short (~${wordCount} words). ATS needs more content to match against.`);
   } else {
-    score += 10;
+    score += 15;
     issues.push(`Very long (~${wordCount} words). Over 2 pages may cause ATS truncation.`);
   }
 
   // Line density: too many short lines = sparse content
-  // Exception: entry-level resumes (<400 words) naturally have sparse sections
-  const shortLines = text.split('\n').filter((l) => l.trim() && l.trim().split(/\s+/).length < 3);
+  // Exception: entry-level / concise resumes (<400 words) naturally have sparse sections
+  const shortLines = lines.filter((l) => l.trim() && l.trim().split(/\s+/).length < 3);
   const shortLineRatio = lineCount > 0 ? shortLines.length / lineCount : 0;
 
   if (wordCount >= 400 && shortLineRatio > 0.4) {
@@ -1155,58 +1286,109 @@ function analyzeFileHints(
 /*  Keyword extraction & JD comparison                                  */
 /* ------------------------------------------------------------------ */
 
-/** Tech/domain keywords to look for in resumes and JDs */
-const TECH_KEYWORDS = new Set([
+/** Tech/domain keywords to look for in resumes and JDs (longest phrases matched first). */
+const TECH_KEYWORDS = [
   // Languages
-  'javascript', 'typescript', 'python', 'java', 'c#', 'c++', 'ruby', 'go', 'golang', 'rust',
-  'swift', 'kotlin', 'php', 'scala', 'r', 'perl', 'bash', 'shell', 'sql', 'graphql',
+  'javascript', 'typescript', 'python', 'java', 'c#', 'c++', 'ruby', 'golang', 'rust',
+  'swift', 'kotlin', 'php', 'scala', 'perl', 'bash', 'shell', 'sql', 'graphql',
   // Frameworks & Libraries
   'react', 'angular', 'vue', 'svelte', 'next.js', 'nuxt', 'node.js', 'express',
-  'django', 'flask', 'spring', 'spring boot', 'rails', 'laravel', 'asp.net',
-  '.net', 'flutter', 'react native', 'tensorflow', 'pytorch',  'jquery',
+  'django', 'flask', 'spring boot', 'spring', 'rails', 'laravel', 'asp.net',
+  '.net', 'flutter', 'react native', 'tensorflow', 'pytorch', 'jquery',
   // Databases
   'postgresql', 'postgres', 'mysql', 'mongodb', 'redis', 'elasticsearch',
   'cassandra', 'dynamodb', 'sqlite', 'mariadb', 'oracle', 'sql server',
   'bigquery', 'firestore', 'supabase', 'prisma', 'drizzle',
   // Cloud & DevOps
-  'aws', 'azure', 'gcp', 'google cloud', 'docker', 'kubernetes', 'k8s',
+  'google cloud', 'aws', 'azure', 'gcp', 'docker', 'kubernetes', 'k8s',
   'terraform', 'ansible', 'jenkins', 'circleci', 'github actions', 'gitlab ci',
   'ci/cd', 'helm', 'prometheus', 'grafana', 'datadog',
   // Tools & Platforms
-  'git', 'linux', 'nginx', 'webpack', 'vite', 'babel', 'jest', 'vitest',
-  'cypress', 'playwright', 'selenium', 'kafka', 'rabbitmq', 'grpc',
+  'linux', 'nginx', 'webpack', 'vite', 'babel', 'jest', 'vitest',
+  'cypress', 'playwright', 'selenium', 'kafka', 'rabbitmq', 'grpc', 'git',
   // AI/ML
-  'machine learning', 'deep learning', 'nlp', 'llm', 'openai', 'langchain',
-  'artificial intelligence', 'computer vision', 'data science',
+  'machine learning', 'deep learning', 'artificial intelligence', 'computer vision',
+  'data science', 'langchain', 'openai', 'nlp', 'llm',
   // Methodologies
   'agile', 'scrum', 'kanban', 'waterfall', 'tdd', 'bdd',
   // Testing & Performance
-  'load testing', 'performance testing', 'jmeter', 'gatling', 'k6',
-  'unit testing', 'integration testing', 'e2e testing',
+  'load testing', 'performance testing', 'integration testing', 'unit testing',
+  'e2e testing', 'jmeter', 'gatling', 'k6',
+  // Short tokens — only matched with strict word boundaries (see keywordInText)
+  'go', 'r',
+];
+
+/** Sorted longest-first so "spring boot" wins over "spring". */
+const TECH_KEYWORDS_SORTED = [...TECH_KEYWORDS].sort((a, b) => b.length - a.length);
+
+/** Treat JD/resume keyword pairs as equivalent for match scoring. */
+const KEYWORD_EQUIVALENTS: Record<string, string[]> = {
+  postgresql: ['postgres'],
+  postgres: ['postgresql'],
+  golang: ['go'],
+  go: ['golang'],
+  k8s: ['kubernetes'],
+  kubernetes: ['k8s'],
+  'node.js': ['nodejs', 'node'],
+  'next.js': ['nextjs', 'next'],
+  'react native': ['react-native', 'reactnative'],
+};
+
+const STOP_ACRONYMS = new Set([
+  'the', 'and', 'for', 'are', 'you', 'all', 'can', 'has', 'had', 'but', 'not',
+  'our', 'its', 'per', 'via', 'pdf', 'doc', 'cv', 'usa', 'ind', 'inc', 'llc',
 ]);
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * True when `keyword` appears as a whole token in `text` — not as a substring
+ * inside another word (e.g. "go" in "ago", "r" in "performance").
+ */
+export function keywordInText(text: string, keyword: string): boolean {
+  const trimmed = keyword.trim();
+  if (!trimmed) return false;
+  const parts = trimmed.split(/\s+/).map(escapeRegex);
+  const core = parts.join('\\s+');
+  const pattern = `(?<![a-z0-9#])${core}(?![a-z0-9#])`;
+  return new RegExp(pattern, 'i').test(text);
+}
+
+function resumeHasKeyword(resumeKeywords: Set<string>, jdKeyword: string): boolean {
+  const lower = jdKeyword.toLowerCase();
+  if (resumeKeywords.has(lower)) return true;
+  const aliases = KEYWORD_EQUIVALENTS[lower] ?? [];
+  return aliases.some((alias) => resumeKeywords.has(alias.toLowerCase()));
+}
+
+function jdHasKeyword(jdKeywords: Set<string>, resumeKeyword: string): boolean {
+  const lower = resumeKeyword.toLowerCase();
+  if (jdKeywords.has(lower)) return true;
+  const aliases = KEYWORD_EQUIVALENTS[lower] ?? [];
+  return aliases.some((alias) => jdKeywords.has(alias.toLowerCase()));
+}
 
 /**
  * Extract concrete technical keywords from a text blob.
  */
 export function extractKeywords(text: string): string[] {
-  const lower = text.toLowerCase();
   const found = new Set<string>();
 
-  // Check against known tech keywords
-  for (const kw of TECH_KEYWORDS) {
-    if (kw.endsWith(',')) continue; // skip comma artifact
-    if (lower.includes(kw)) {
+  for (const kw of TECH_KEYWORDS_SORTED) {
+    if (keywordInText(text, kw)) {
       found.add(kw);
     }
   }
 
-  // Also grab single capitalized words that look like tools/products
-  // e.g., "Datadog", "Sentry", "New Relic", "Tableau", etc.
+  // Capitalized product/tool names: Datadog, Sentry, Tableau
+  const lower = text.toLowerCase();
   const words = lower.split(/[\s,;()]+/);
   for (const w of words) {
     if (w.length >= 4 && w.length <= 20 && /^[a-z][a-z0-9]+$/.test(w)) {
-      // Check if it looks like a proper noun (starts with uppercase in original)
-      const regex = new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+      if (found.has(w)) continue;
+      const regex = new RegExp(`\\b${escapeRegex(w)}\\b`, 'i');
       const originalMatch = text.match(regex);
       if (originalMatch && /^[A-Z]/.test(originalMatch[0])) {
         found.add(w);
@@ -1214,12 +1396,11 @@ export function extractKeywords(text: string): string[] {
     }
   }
 
-  // Extract acronyms (2-5 uppercase letters)
   const acronyms = text.match(/\b[A-Z]{2,5}\b/g) || [];
   for (const acro of acronyms) {
-    const lower = acro.toLowerCase();
-    if (lower.length >= 2 && !['the', 'and', 'for', 'are', 'you', 'all', 'can', 'has', 'had', 'but', 'not', 'our', 'its', 'per', 'via'].includes(lower)) {
-      found.add(acro);
+    const acroLower = acro.toLowerCase();
+    if (!STOP_ACRONYMS.has(acroLower)) {
+      found.add(acroLower);
     }
   }
 
@@ -1241,7 +1422,7 @@ export function compareWithJobDescription(
   const extra: string[] = [];
 
   for (const kw of jdKeywords) {
-    if (resumeKeywords.has(kw)) {
+    if (resumeHasKeyword(resumeKeywords, kw)) {
       matched.push(kw);
     } else {
       missing.push(kw);
@@ -1249,7 +1430,7 @@ export function compareWithJobDescription(
   }
 
   for (const kw of resumeKeywords) {
-    if (!jdKeywords.has(kw)) {
+    if (!jdHasKeyword(jdKeywords, kw)) {
       extra.push(kw);
     }
   }
@@ -1283,7 +1464,12 @@ export function checkAtsCompatibility(
   filename?: string,
   jobDescription?: string,
 ): AtsCheckResult {
-  const text = resumeText.trim().replace(/\r\n/g, '\n');
+  const normalized = resumeText.trim().replace(/\r\n/g, '\n');
+
+  // Reflow flattened text (lost line structure) so layout detectors get a fair
+  // shot, then judge how trustworthy the resulting structure is.
+  const { text, wasReflowed } = reflowFlattenedText(normalized);
+  const parseQuality = assessParseQuality(text);
   const textLines = text.split(String.fromCharCode(10));
 
   // Run all criteria
@@ -1308,9 +1494,22 @@ export function checkAtsCompatibility(
     dateConsistency,
   ];
 
-  const totalWeight = allCriteria.reduce((sum, c) => sum + c.weight, 0);
+  // Adaptive weighting: when the extractor mangled the layout we cannot trust
+  // the layout-dependent criteria (structure, bullets, format). Halve their
+  // influence so a parsing failure doesn't masquerade as a bad resume. The
+  // remaining criteria (contact, skills, achievements, length, dates) carry
+  // the score, and the renormalization below keeps it on a 0-100 scale.
+  const LAYOUT_DEPENDENT = new Set([
+    sectionStructure,
+    bulletQuality,
+    formatCleanliness,
+  ]);
+  const effectiveWeight = (c: CriterionResult): number =>
+    parseQuality === 'degraded' && LAYOUT_DEPENDENT.has(c) ? c.weight * 0.5 : c.weight;
+
+  const totalWeight = allCriteria.reduce((sum, c) => sum + effectiveWeight(c), 0);
   const overallScore = Math.round(
-    allCriteria.reduce((sum, c) => sum + c.score * (c.weight / totalWeight), 0),
+    allCriteria.reduce((sum, c) => sum + c.score * (effectiveWeight(c) / totalWeight), 0),
   );
 
   // File hints (needed before issue collection for format recommendations)
@@ -1394,6 +1593,16 @@ export function checkAtsCompatibility(
     sectionCount: sectionHeaders.length,
   };
 
+  let parseWarning: string | undefined;
+  if (parseQuality === 'unreadable') {
+    parseWarning =
+      'Very little readable text was extracted. This is usually a scanned/image PDF — export a text-based PDF or .docx and re-check.';
+  } else if (parseQuality === 'degraded') {
+    parseWarning = wasReflowed
+      ? 'Your resume\'s line structure was hard to read (often from a multi-column or image-heavy layout). We reconstructed it as best we could; structure/bullet/format scores are approximate. For an accurate read, upload a single-column .docx.'
+      : 'Section structure could not be clearly detected. Structure, bullet, and formatting scores are approximate — a single-column .docx gives the most accurate result.';
+  }
+
   return {
     overallScore,
     breakdown: {
@@ -1407,6 +1616,8 @@ export function checkAtsCompatibility(
       dateConsistency,
     },
     stats,
+    parseQuality,
+    parseWarning,
     topImprovements: [...new Set(topImprovements)].slice(0, 5),
     detectedIssues: [...new Set(allIssues)].slice(0, 8),
     goodPractices: [...new Set(allGood)].slice(0, 5),
