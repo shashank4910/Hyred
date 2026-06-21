@@ -9,6 +9,7 @@ import { embed, scoreJob } from './gemini';
 import { mergeInsightsForScoring } from './experience-match';
 import { cosineSimilarity, jobToEmbeddingText } from './matcher';
 import { isTopCompany } from './top-companies';
+import { loadDreamPicksForProfile, processDreamCompanyAlertsForJob } from './dream-company-alerts';
 import {
   generateSearchProfile,
   isProfileFresh,
@@ -526,6 +527,7 @@ export async function runIngest(opts?: {
     }
     const prefsStr = formatPreferences(p.preferences);
     let budgetStopped = false;
+    const dreamPicks = await loadDreamPicksForProfile(p.id);
 
     for (let i = 0; i < ranked.length; i += SCORE_CONCURRENCY) {
       if (Date.now() - startedAt > INGEST_WALL_BUDGET_MS) {
@@ -581,19 +583,34 @@ export async function runIngest(opts?: {
               return { scored: 1, kept: 0 };
             }
 
-            const { error } = await sb.from('matches').upsert(
-              {
-                profile_id: p.id,
-                job_id: c.id,
-                similarity: c.similarity,
-                llm_score: finalScore,
-                reason: finalReason,
-                matched_skills: matchedSkills,
-                missing_skills: missingSkills,
-                // Omit status — new rows default to 'new'; updates keep viewed/saved/applied.
-              },
-              { onConflict: 'profile_id,job_id' },
-            );
+            const { data: matchRow, error } = await sb
+              .from('matches')
+              .upsert(
+                {
+                  profile_id: p.id,
+                  job_id: c.id,
+                  similarity: c.similarity,
+                  llm_score: finalScore,
+                  reason: finalReason,
+                  matched_skills: matchedSkills,
+                  missing_skills: missingSkills,
+                },
+                { onConflict: 'profile_id,job_id' },
+              )
+              .select('id')
+              .single();
+            if (!error && matchRow?.id) {
+              processDreamCompanyAlertsForJob({
+                profileId: p.id,
+                jobId: c.id,
+                company: c.company,
+                jobTitle: c.title,
+                matchId: matchRow.id,
+                dreamPicks,
+              }).catch((e) =>
+                console.error('[dream-alerts] ingest hook failed:', (e as Error).message),
+              );
+            }
             return { scored: 1, kept: !error ? 1 : 0 };
           } catch (e) {
             runErrors.push({

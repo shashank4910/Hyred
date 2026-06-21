@@ -5,6 +5,7 @@ import { embed, scoreJob } from '@/lib/gemini';
 import { mergeInsightsForScoring } from '@/lib/experience-match';
 import { jobToEmbeddingText } from '@/lib/matcher';
 import { verifyWithHermes } from '@/lib/hermes-verifier';
+import { processDreamCompanyAlertsForJob } from '@/lib/dream-company-alerts';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -571,6 +572,14 @@ export async function POST(req: NextRequest) {
       { status: 500 },
     );
   }
+
+  await processDreamCompanyAlertsForJob({
+    profileId: profile.id,
+    jobId: jobRow.id,
+    company,
+    jobTitle: title,
+    matchId: match.id,
+  }).catch((e) => console.error('[dream-alerts] import hook:', (e as Error).message));
 
   return NextResponse.json({
     ok: true,
