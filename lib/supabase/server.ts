@@ -1,24 +1,8 @@
-import { createClient } from '@supabase/supabase-js';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { supabaseAdmin } from './admin';
 
-/**
- * Server-side client using the service-role key.
- * Bypasses Row Level Security — use for privileged server work (ingest,
- * scoring, cron). NEVER import this from client components.
- */
-export function supabaseAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !serviceKey) {
-    throw new Error(
-      'Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY env vars',
-    );
-  }
-  return createClient(url, serviceKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-}
+export { supabaseAdmin } from './admin';
 
 /**
  * Cookie-bound server client (anon key) tied to the current user's Supabase

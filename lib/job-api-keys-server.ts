@@ -3,7 +3,9 @@
  * Do not import from client components — use @/lib/job-api-keys for constants.
  */
 
-import { supabaseAdmin } from './supabase/server';
+import 'server-only';
+
+import { supabaseAdmin } from './supabase/admin';
 import {
   jobApiKeyIdentifier,
   type JobApiSource,
