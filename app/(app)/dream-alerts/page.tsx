@@ -3,7 +3,10 @@ import { supabaseAdmin } from '@/lib/supabase/server';
 import { getCurrentProfile } from '@/lib/current-user';
 import { dreamCompanyLimitForProfile, type DreamCompanyRow } from '@/lib/dream-companies';
 import { countUnreadDreamAlerts } from '@/lib/dream-company-alerts';
-import { ensureCompanyCatalogSeeded } from '@/lib/company-catalog/db';
+import {
+  getCatalogRegionOptions,
+  getCatalogSnapshot,
+} from '@/lib/company-catalog/catalog-snapshot';
 import { DreamAlertsClient } from './DreamAlertsClient';
 import { BellRing } from 'lucide-react';
 
@@ -25,8 +28,11 @@ export default async function DreamAlertsPage() {
     );
   }
 
+  const catalog = getCatalogSnapshot();
+  const regions = getCatalogRegionOptions();
+
   const sb = supabaseAdmin();
-  const [picksRes, alertsRes, limit, unread, seedInfo] = await Promise.all([
+  const [picksRes, alertsRes, limit, unread] = await Promise.all([
     sb
       .from('dream_companies')
       .select('*')
@@ -43,7 +49,6 @@ export default async function DreamAlertsPage() {
       .limit(30),
     dreamCompanyLimitForProfile(profile.id),
     countUnreadDreamAlerts(profile.id),
-    ensureCompanyCatalogSeeded(),
   ]);
 
   const rawAlerts = alertsRes.data ?? [];
@@ -68,7 +73,9 @@ export default async function DreamAlertsPage() {
     <DreamAlertsClient
       initialPicks={(picksRes.data ?? []) as DreamCompanyRow[]}
       initialAlerts={alerts}
-      catalogTotal={seedInfo.total}
+      catalog={catalog}
+      regions={regions}
+      catalogTotal={catalog.length}
       limit={limit}
       used={picksRes.data?.length ?? 0}
       unread={unread}

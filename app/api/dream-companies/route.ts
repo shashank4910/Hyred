@@ -128,6 +128,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const catalogId =
+    catalogRow.id && catalogRow.id !== catalogRow.slug ? catalogRow.id : null;
+
   const { data, error } = await sb
     .from('dream_companies')
     .insert({
@@ -135,7 +138,7 @@ export async function POST(req: NextRequest) {
       company_key: catalogRow.slug,
       company_display_name: catalogRow.display_name,
       source: 'catalog',
-      catalog_id: catalogRow.id,
+      catalog_id: catalogId,
       custom_patterns: null,
       notify_email: notifyEmail,
       notify_sms: notifySms,
