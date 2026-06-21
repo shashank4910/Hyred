@@ -4,6 +4,7 @@ import { getCurrentProfile, isCurrentUserAdmin } from '@/lib/current-user';
 import { MatchCard } from '../_components/MatchCard';
 import { Crown, Building2, Sparkles } from 'lucide-react';
 import { matchTopCompany, CATEGORY_LABELS, type CompanyEntry } from '@/lib/top-companies';
+import { enrichMatchListSkills } from '@/lib/match-skill-enrich';
 // Keep in sync with MATCH_LIST_SELECT_WITH_META in lib/match-list-select.ts
 
 export const dynamic = 'force-dynamic';
@@ -89,6 +90,9 @@ export default async function TopMncPage({
   }
 
   const totalMncJobs = Object.values(categoryCounts).reduce((a, b) => a + b, 0);
+  const topSkills: string[] = Array.isArray((profile.insights as { top_skills?: string[] } | null)?.top_skills)
+    ? (profile.insights as { top_skills: string[] }).top_skills
+    : [];
 
   return (
     <div className="space-y-8">
@@ -182,6 +186,17 @@ export default async function TopMncPage({
             const returnHref = categoryFilter
               ? `/top-mnc?category=${categoryFilter}&from=${m.id}`
               : `/top-mnc?from=${m.id}`;
+            const jobRow = m.job as unknown as {
+              title: string;
+              description: string | null;
+            };
+            const skills = enrichMatchListSkills(
+              (m as unknown as { matched_skills: string[] | null }).matched_skills,
+              (m as unknown as { missing_skills: string[] | null }).missing_skills,
+              topSkills,
+              jobRow.title,
+              jobRow.description,
+            );
             return (
               <li
                 key={m.id}
@@ -197,8 +212,8 @@ export default async function TopMncPage({
                   reason={m.reason}
                   status={m.status}
                   bookmarked={(m as unknown as { bookmarked: boolean }).bookmarked ?? false}
-                  matchedSkills={(m as unknown as { matched_skills: string[] | null }).matched_skills ?? []}
-                  missingSkills={(m as unknown as { missing_skills: string[] | null }).missing_skills ?? []}
+                  matchedSkills={skills.matched_skills}
+                  missingSkills={skills.missing_skills}
                   job={job}
                   showSource={isAdmin}
                   mncCategory={CATEGORY_LABELS[mnc.category]}

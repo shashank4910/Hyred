@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase/server';
 import { getCurrentProfile, isCurrentUserAdmin } from '@/lib/current-user';
 import { applyMatchSort } from '@/lib/apply-match-sort';
 import { resolveMatchSort } from '@/lib/ui';
+import { enrichMatchListSkills } from '@/lib/match-skill-enrich';
 // Keep in sync with MATCH_LIST_SELECT in lib/match-list-select.ts
 
 export const runtime = 'nodejs';
@@ -40,7 +41,7 @@ export async function GET(req: NextRequest) {
     .from('matches')
     .select(
       `id, llm_score, similarity, reason, status, bookmarked, matched_skills, missing_skills, applied_at, created_at, updated_at,
-       job:jobs!inner(id, title, company, location, remote, url, source, salary, posted_at, fetched_at)`,
+       job:jobs!inner(id, title, company, location, remote, url, source, salary, posted_at, fetched_at, description)`,
       { count: 'exact' },
     )
     .eq('profile_id', profile.id)
@@ -73,11 +74,31 @@ export async function GET(req: NextRequest) {
 
   const { data: matches, count } = await query.range(offset, offset + PAGE_SIZE - 1);
 
+  const topSkills: string[] = Array.isArray((profile.insights as { top_skills?: string[] } | null)?.top_skills)
+    ? (profile.insights as { top_skills: string[] }).top_skills
+    : [];
+
+  const enriched = (matches ?? []).map((m) => {
+    const raw = m as unknown as {
+      matched_skills: string[] | null;
+      missing_skills: string[] | null;
+      job: { title: string; description: string | null };
+    };
+    const skills = enrichMatchListSkills(
+      raw.matched_skills,
+      raw.missing_skills,
+      topSkills,
+      raw.job?.title ?? '',
+      raw.job?.description,
+    );
+    return { ...m, matched_skills: skills.matched_skills, missing_skills: skills.missing_skills };
+  });
+
   const total = count ?? 0;
   const hasMore = offset + PAGE_SIZE < total;
 
   return NextResponse.json(
-    { matches: matches ?? [], total, page, pageSize: PAGE_SIZE, hasMore },
+    { matches: enriched, total, page, pageSize: PAGE_SIZE, hasMore },
     { headers: { 'Cache-Control': 'private, s-maxage=30, stale-while-revalidate=60' } },
   );
 }

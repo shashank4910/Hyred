@@ -41,6 +41,12 @@
 import OpenAI from 'openai';
 import type { ResumeInsights } from './types';
 import { sanitizeJobDescriptionForAI } from './jd-fetcher';
+import { isSkillPresentInJd } from './jd-skill-match';
+import {
+  enrichScoreJobSkills,
+  supplementMatchedFromProfile,
+  filterMissingSkillsForJd,
+} from './match-skill-enrich';
 import {
   computeExperienceScoreCap,
   experienceIneligibilityReason,
@@ -882,17 +888,32 @@ matchedSkills/missingSkills RULES:
     // Do NOT re-filter through isSkillPresentInJd (that check is for matched skills only).
     const cleanMissingSkills = (arr: unknown): string[] => {
       if (!Array.isArray(arr)) return [];
-      return arr
-        .map((s) => String(s).trim())
-        .filter((s) => s.length > 0 && s.length <= 40)
-        .slice(0, 5);
+      return filterMissingSkillsForJd(
+        arr.map((s) => String(s).trim()).filter((s) => s.length > 0 && s.length <= 40),
+        args.jobDescription,
+        args.jobTitle,
+      );
     };
+
+    const baseMatched = cleanMatchedSkills(parsed.matchedSkills);
+    const baseMissing = cleanMissingSkills(parsed.missingSkills);
+
+    const enriched = await enrichScoreJobSkills({
+      matchedSkills: baseMatched,
+      missingSkills: baseMissing,
+      score,
+      resume: args.resume,
+      topSkills: args.insights?.top_skills,
+      jobTitle: args.jobTitle,
+      jobDescription: args.jobDescription,
+      profileId: args.profileId,
+    });
 
     return {
       score,
       reason,
-      matchedSkills: cleanMatchedSkills(parsed.matchedSkills),
-      missingSkills: cleanMissingSkills(parsed.missingSkills),
+      matchedSkills: enriched.matchedSkills,
+      missingSkills: enriched.missingSkills,
     };
   } catch {
     return { score: 0, reason: 'Failed to parse model response', matchedSkills: [], missingSkills: [] };
@@ -2428,93 +2449,9 @@ CRITICAL: do NOT prefix the output with any header label like "Resume", "RESUME"
 
 /**
  * Programmatically check if a skill keyword is present in the job description or title.
- * It enforces case-insensitive whole-word matching.
- * Handles boundary conditions for special characters (e.g., C++, .NET) and simple plurals (trailing 's').
+ * @deprecated import from `./jd-skill-match` — re-export kept for existing callers.
  */
-export function isSkillPresentInJd(skill: string, jdText: string | null, jobTitle: string | null): boolean {
-  if (!skill) return false;
-  const normalizedSkill = skill.trim().toLowerCase();
-  if (!normalizedSkill) return false;
-
-  // Strip HTML tags so angle-bracket characters don't break word-boundary checks.
-  // e.g. "<li>JMeter</li>" must match "jmeter" cleanly.
-  const stripHtml = (s: string) => s.replace(/<[^>]*>/g, ' ').replace(/&[a-z]+;/gi, ' ');
-  const textToCheck = `${jobTitle ?? ''}\n${stripHtml(jdText ?? '')}`.toLowerCase();
-  if (!textToCheck) return false;
-
-  // Helper function for strict whole-word check of a specific string
-  const hasExactWord = (word: string): boolean => {
-    const firstCharAlpha = /[a-zA-Z0-9]/.test(word[0]);
-    const lastCharAlpha = /[a-zA-Z0-9]/.test(word[word.length - 1]);
-
-    let index = 0;
-    while (true) {
-      const foundIdx = textToCheck.indexOf(word, index);
-      if (foundIdx === -1) break;
-
-      let isMatch = true;
-
-      if (firstCharAlpha && foundIdx > 0) {
-        const charBefore = textToCheck[foundIdx - 1];
-        if (/[a-zA-Z0-9]/.test(charBefore)) {
-          isMatch = false;
-        }
-      }
-
-      if (lastCharAlpha && foundIdx + word.length < textToCheck.length) {
-        const charAfter = textToCheck[foundIdx + word.length];
-        if (/[a-zA-Z0-9]/.test(charAfter)) {
-          // Check if it's just a plural 's'
-          if (charAfter === 's') {
-            const charAfterS = foundIdx + word.length + 1 < textToCheck.length
-              ? textToCheck[foundIdx + word.length + 1]
-              : '';
-            if (/[a-zA-Z0-9]/.test(charAfterS)) {
-              isMatch = false;
-            }
-          } else {
-            isMatch = false;
-          }
-        }
-      }
-
-      if (isMatch) return true;
-      index = foundIdx + 1;
-    }
-    return false;
-  };
-
-  // 1. Direct exact word check
-  if (hasExactWord(normalizedSkill)) return true;
-
-  // 2. Singular / Plural fallbacks
-  if (normalizedSkill.endsWith('s') && normalizedSkill.length > 3) {
-    const singular = normalizedSkill.slice(0, -1);
-    if (hasExactWord(singular)) return true;
-  } else {
-    const plural = normalizedSkill + 's';
-    if (hasExactWord(plural)) return true;
-  }
-
-  // 3. Multi-word / Separator fallback (e.g. "CI/CD pipelines", "Python scripting", "JMeter/Gatling")
-  const words = normalizedSkill.split(/[\s\-\/]+/);
-  if (words.length > 1) {
-    const stopWords = new Set([
-      'and', 'the', 'for', 'with', 'use', 'using', 'dev', 'developer', 'engineer',
-      'engineering', 'development', 'programming', 'scripting', 'testing', 'automation',
-      'systems', 'platform', 'framework', 'tools', 'tool', 'cloud', 'architecture', 'services'
-    ]);
-
-    for (const w of words) {
-      // If we find a significant word (length >= 3 and not a common stop word) that is in the JD, count it as a match
-      if (w.length >= 3 && !stopWords.has(w)) {
-        if (hasExactWord(w)) return true;
-      }
-    }
-  }
-
-  return false;
-}
+export { isSkillPresentInJd } from './jd-skill-match';
 
 /**
  * Generate a hyper-personalized outreach message for a referral or recruiter connection.

@@ -6,6 +6,7 @@ import {
 } from './ingest-runs';
 import { fetchAllSources } from './sources';
 import { embed, scoreJob } from './gemini';
+import { ensureFullDescription } from './jd-fetcher';
 import { mergeInsightsForScoring } from './experience-match';
 import { cosineSimilarity, jobToEmbeddingText } from './matcher';
 import { isTopCompany } from './top-companies';
@@ -398,7 +399,7 @@ export async function runIngest(opts?: {
 
     const { data: candidates } = await sb
       .from('jobs')
-      .select('id, title, company, location, description, embedding')
+      .select('id, title, company, location, description, embedding, url')
       .not('embedding', 'is', null)
       .order('fetched_at', { ascending: false })
       .limit(800);
@@ -410,6 +411,7 @@ export async function runIngest(opts?: {
       location: string | null;
       description: string | null;
       embedding: number[] | null;
+      url: string | null;
     };
 
     const eligible = (candidates ?? [])
@@ -426,6 +428,7 @@ export async function runIngest(opts?: {
             location: c.location,
             description: c.description,
             embedding: c.embedding,
+            url: (c as { url?: string | null }).url ?? null,
           }) as Cand,
       );
 
@@ -549,6 +552,15 @@ export async function runIngest(opts?: {
       await Promise.all(
         batch.map(async (c) => {
           try {
+            let jobDescription = c.description;
+            if (c.url) {
+              jobDescription = await ensureFullDescription({
+                jobId: c.id,
+                currentDescription: c.description,
+                url: c.url,
+              });
+            }
+
             const { score, reason, matchedSkills, missingSkills } = await scoreJob({
               resume: p.resume_text!,
               insights: p.insights,
@@ -556,7 +568,7 @@ export async function runIngest(opts?: {
               jobTitle: c.title,
               jobCompany: c.company,
               jobLocation: c.location,
-              jobDescription: c.description,
+              jobDescription,
               profileId: p.id,
             });
 
@@ -568,7 +580,7 @@ export async function runIngest(opts?: {
                 jobTitle: c.title,
                 jobCompany: c.company,
                 jobLocation: c.location,
-                jobDescription: c.description,
+                jobDescription,
                 resumeText: p.resume_text!,
                 insights: p.insights,
                 profileId: p.id,
