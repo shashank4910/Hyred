@@ -32,7 +32,9 @@ How to open one section cheaply: `grep -n "<heading text>" CONTEXT.md` to get th
 | **Coding rules / gotchas** (the must-nots) | `CONTEXT.md` → `## Known Pitfalls` | before editing AI/ingest/resume/auth code |
 | How the AI pipeline works (search profile, JD fetch, 4-phase skill match, scoring) | `CONTEXT.md` → `## Key Architecture Decisions` | touching `lib/gemini.ts`, `lib/ingest.ts`, `lib/search-profile.ts` |
 | Where a file/feature lives | `CONTEXT.md` → `## File Map` | locating code |
-| **Job detail page** (skill match, tailored resume, keywords, PDF) | `CONTEXT.md` → `## Core App Features` → `### Job detail` + Known Pitfalls (ATS keyword rows) + `docs/context/session-log.md` → Sessions 9–11 | `JobActions.tsx`, `generateAtsResume`, keyword chips |
+| **Job detail page** (skill match, tailored resume, keywords, PDF) | `CONTEXT.md` → `## Core App Features` → `### Job detail` + `### Resume Studio — templates & preview` + Known Pitfalls (ATS keyword rows) + `docs/context/session-log.md` → Sessions 9–11, **28** | `JobActions.tsx`, `generateAtsResume`, keyword chips |
+| **Resume Studio template preview** | `CONTEXT.md` → `### Resume Studio — templates & preview` + `docs/context/session-log.md` → Session 28 | `ResumePreviewModal.tsx`, `ResumeTemplatePicker.tsx`, `lib/resume-templates.ts`, `lib/resume-pdf-preview.ts` |
+| **Match Intelligence / Interview Prep pages** | `CONTEXT.md` → `### Premium Tier 1` + Session 28 | `/jobs/[id]/verdict`, `/jobs/[id]/prep`, `MatchCard.tsx` links |
 | **Onboarding / resume upload** | `CONTEXT.md` → `### Onboarding` + Known Pitfalls (resume parser + `.doc` rows) + `lib/resume-upload.ts` | first-time user, `/onboarding`, `/api/profile/parse` |
 | **Top MNC page** | `CONTEXT.md` → `### Top MNC` + `lib/top-companies.ts` | `/top-mnc`, MNC badge filter |
 | **Import job (manual URL)** | `CONTEXT.md` → `### Import job` | `/import`, `/api/import-job` |
@@ -50,7 +52,7 @@ How to open one section cheaply: `grep -n "<heading text>" CONTEXT.md` to get th
 | Multi-tenant PII in forms / resume prompts | `CONTEXT.md` → `## Known Pitfalls` (owner PII rows) | onboarding, apply-profile, `generateAtsResume` |
 | Resume upload / `.doc` vs `.docx` / Vercel `fs` build | `CONTEXT.md` → `## Known Pitfalls` (resume parser + client bundle rows) + `lib/resume-upload.ts` | onboarding upload, `lib/resume.ts`, deploy failures |
 | **LLM key admin (multi-key pool, daily quotas, RPM rotation)** | `CONTEXT.md` → File Map (`lib/llm-keys.ts`) + Known Pitfalls (Cerebras model deprecation, RPM ≠ exhaustion rows) + `docs/context/session-log.md` → Session 16 (a)–(c) | adding/rotating provider keys, debugging 429s, changing primary provider |
-| **Dashboard pagination + back-nav scroll restore** | `CONTEXT.md` → File Map (`MatchList`, `BackToMatches`, `staleTimes`) + Known Pitfalls (back-nav skeleton, hydration mismatch rows) + Session 16 (d)–(e) | editing dashboard list, infinite scroll, jobs-list ↔ job-detail navigation |
+| **Dashboard pagination + back-nav scroll restore** | `CONTEXT.md` → File Map (`MatchList`, `BackToMatches`, `staleTimes`) + Known Pitfalls (back-nav skeleton, hydration mismatch, **viewed card contrast PR #209** rows) + Session 16 (d)–(e), **28** | editing dashboard list, infinite scroll, jobs-list ↔ job-detail navigation, `MatchCard.tsx` seen/new styling |
 | **JD HTML poisoning AI prompts** | `CONTEXT.md` → Known Pitfalls (HTML row) + `lib/jd-fetcher.ts` (`sanitizeJobDescriptionForAI`) + Session 16 (f) | any new code that puts `args.jobDescription` into a prompt |
 | **`scoreJob` seniority + experience-gap cap** | `CONTEXT.md` → Known Pitfalls (over-scoring row) + `lib/gemini.ts` `scoreJob` + Session 16 (g) | tuning scoring, adding new score rules, debugging high-score-low-fit complaints |
 | Repo visibility / deployment | `CONTEXT.md` → `## Repo & deployment notes` | go-live, collaborator access |
@@ -74,7 +76,7 @@ How to open one section cheaply: `grep -n "<heading text>" CONTEXT.md` to get th
 | Kiro-specific steering | `.kiro/steering/jobradar-context.md` | Kiro auto-loads it |
 | **Superpowers workflow (big tasks only)** | `.cursor/rules/superpowers-gate.mdc` | multi-phase features, new subsystems; skip for surgical fixes |
 | Past session history | `docs/context/session-log.md` (newest first) | Tier 3 only |
-| **Doc system / context bridges** | `docs/context/session-log.md` → Session 26 | fixing AGENTS↔CONTEXT↔session-log gaps |
+| **Doc system / context bridges** | `docs/context/session-log.md` → Session 26, **28** | fixing AGENTS↔CONTEXT↔session-log gaps |
 
 > Keep this Index in sync when you add/rename a `##` section in `CONTEXT.md`. It is the single source of the map.
 

@@ -220,7 +220,7 @@ This file should be updated every 2-3 significant conversations. Add:
 - Changes to architecture
 - New "NEVER do" / "ALWAYS do" rules learned
 
-Last updated: June 20, 2026 (session 26: doc bridge audit — `## Key Architecture Decisions`, `## Core App Features`, AGENTS Index gaps; ATS v9 session 25 PR #187/#188; Tier B session 24. Full log → `docs/context/session-log.md`.)
+Last updated: June 21, 2026 (session 28: Resume Studio template preview UX PR #218, verdict/prep pages, MatchCard viewed contrast; session 27 Tier 1 APIs. Full log → `docs/context/session-log.md`.)
 
 _Earlier: session 11 (ATS keyword guarantee); session 7 (Phase 1 auth); session 6 (Groq migration)._
 

@@ -677,3 +677,18 @@ Tier 1 implementation shipped on branch `feat/tier-1-premium-features`:
 **Manual step:** Run migration `0015_hyred_premium_tier1.sql` in Supabase before testing live.
 
 **Dev testing premium:** Insert a row into `premium_subscriptions` for your `profile_id` with `plan = 'premium_sprint'` and `status = 'active'`.
+
+---
+
+## Status update (2026-06-21)
+
+Resume Studio **UI polish** shipped after Tier 1 APIs (Session 28, PRs **#201–#209**, **#218**):
+
+- [x] Template picker (10 layouts) + document-studio preview modal
+- [x] Classic Navy template preview = real PDF; coming-soon templates = HTML layout mocks
+- [x] Saved version **Preview PDF** via `lib/resume-pdf-preview.ts`
+- [x] Dedicated `/jobs/[id]/verdict` and `/jobs/[id]/prep` pages + dashboard MatchCard links
+- [x] Job detail collapsibles (JD, referral, cover letter, auto-apply)
+- [x] Viewed dashboard cards: full opacity (PR #209)
+
+**Still not built:** per-template PDF renderers (only Classic Navy exports today), Stripe billing UI, Tier 2+.

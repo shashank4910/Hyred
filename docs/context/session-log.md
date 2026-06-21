@@ -2,6 +2,39 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 28 — Resume Studio UX + job detail polish (June 21, 2026)
+
+**Goal:** Ship Tier 1 Resume Studio UI to production quality — template preview, PDF previews, dedicated premium pages, dashboard card UX — after Session 27 entitlement/API work.
+
+### Shipped
+
+| PR | What |
+|---|---|
+| **#201** | Version history list refreshes immediately after Optimize (no page reload) |
+| **#202** | Dedicated `/jobs/[id]/verdict` and `/jobs/[id]/prep` pages; dashboard MatchCard links |
+| **#203** | Job detail cleanup — collapsible JD/referral/cover letter/auto-apply; preview modal shell |
+| **#204–#205** | Skill/keyword tags stay visible; template picker + eye preview on versions/templates |
+| **#206–#208** | Verdict/prep open in new tab from dashboard; verdict page CTAs back to job sections |
+| **#207** | **Style preview** (top) = template layout; **Preview PDF** (version rows) = real `generateBeautifulPdf` via `lib/resume-pdf-preview.ts` |
+| **#209** | Viewed dashboard cards: full opacity + subtle border (removed washed `opacity-75`) |
+| **#218** | Template preview **document studio** — dark dot-grid canvas, A4 paper frame, tier badges, prev/next + arrow keys; Classic Navy uses real PDF renderer |
+
+### Resume Studio preview model (keep)
+
+| Action | Mode | Renderer |
+|---|---|---|
+| **Style preview** / template eye icon | `kind='template'` | Classic Navy → PDF blob iframe; others → HTML mock in paper frame |
+| **Preview PDF** on saved version | `kind='resume'` | Always PDF via `createResumePdfObjectUrl()` |
+| Template registry | `lib/resume-templates.ts` | Only `classic-navy` has `available: true`; rest show "Soon" layout samples |
+
+**Key files:** `ResumePreviewModal.tsx`, `ResumeTemplateSamplePreview.tsx`, `ResumeTemplatePicker.tsx`, `JobActions.tsx`, `lib/resume-pdf-preview.ts`, `lib/resume-templates.ts`.
+
+**Not built yet:** Per-template PDF renderers (Phase 2); Stripe billing UI.
+
+**Doc pointer:** `CONTEXT.md` → `### Resume Studio — templates & preview`; `AGENTS.md` Index rows for Resume Studio + verdict/prep pages.
+
+---
+
 ## Session 27 — Premium Tier 1 (Match Intelligence, Interview Prep, Resume Studio Pro) (June 20, 2026)
 
 **Goal:** Ship Tier 1 premium features from locked roadmap (`docs/features-jun26-to-be-built.md`) — entitlement layer + three job-detail capabilities + UI. Orchestrator + subagent execution on branch `feat/tier-1-premium-features`.
