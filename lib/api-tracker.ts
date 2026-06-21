@@ -33,13 +33,18 @@
  * CREATE INDEX idx_api_request_logs_status ON api_request_logs(status);
  */
 
-import { supabaseAdmin } from './supabase/server';
+import 'server-only';
+
+import { supabaseAdmin } from './supabase/admin';
 import {
   JOB_API_MONTHLY_QUOTA,
   JOB_API_SOURCES,
   type JobApiSource,
 } from './job-api-keys';
 import { getConfiguredJobApiKeys } from './job-api-keys-server';
+import type { JobApiKeyUsageRow, JobApiUsageEvent } from './job-api-usage-types';
+
+export type { JobApiKeyUsageRow, JobApiUsageEvent } from './job-api-usage-types';
 
 export { maskKey } from './job-api-keys';
 
@@ -142,33 +147,6 @@ export async function getUsageSummary(daysBack = 30): Promise<{
     totalRequests: entries.length,
   };
 }
-
-export type JobApiKeyUsageRow = {
-  source: JobApiSource;
-  keyIdentifier: string;
-  configured: boolean;
-  total: number;
-  success: number;
-  rateLimited: number;
-  errors: number;
-  jobsReturned: number;
-  lastUsed: string | null;
-  monthlyQuota: number;
-  quotaPercent: number;
-  status: 'ok' | 'warning' | 'exhausted' | 'unused';
-};
-
-export type JobApiUsageEvent = {
-  id: string;
-  source: string;
-  key_identifier: string | null;
-  status: string;
-  http_status: number | null;
-  error_message: string | null;
-  query: string | null;
-  jobs_returned: number;
-  created_at: string;
-};
 
 function usageStatus(row: {
   total: number;

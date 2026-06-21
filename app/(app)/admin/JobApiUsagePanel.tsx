@@ -14,7 +14,7 @@ import {
   JOB_API_SOURCE_LABELS,
   type JobApiSource,
 } from '@/lib/job-api-keys';
-import type { JobApiKeyUsageRow, JobApiUsageEvent } from '@/lib/api-tracker';
+import type { JobApiKeyUsageRow, JobApiUsageEvent } from '@/lib/job-api-usage-types';
 
 type UsageReport = {
   from: string;
