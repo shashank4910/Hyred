@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isCurrentUserAdmin } from '@/lib/current-user';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { clearJobdatalakeKeysCache } from '@/lib/jobdatalake-keys';
 
 export const runtime = 'nodejs';
 
@@ -11,7 +12,7 @@ export const runtime = 'nodejs';
  * POST /api/admin/keys — save/update keys for a source
  *
  * Keys are stored in Supabase table: admin_settings (key-value store)
- * Row: { key: 'api_keys', value: { jsearch: [...], adzuna: [...], jobspipe: [...] } }
+ * Row: { key: 'api_keys', value: { jsearch: [...], adzuna: [...], jobspipe: [...], jobdatalake: [...] } }
  *
  * Migration SQL:
  * CREATE TABLE IF NOT EXISTS admin_settings (
@@ -66,6 +67,11 @@ export async function GET(req: NextRequest) {
   } else if (process.env.JOBSPIPE_API_KEY) {
     envKeys.jobspipe = [process.env.JOBSPIPE_API_KEY];
   }
+  if (process.env.JOBDATALAKE_API_KEYS) {
+    envKeys.jobdatalake = process.env.JOBDATALAKE_API_KEYS.split(',').filter(Boolean);
+  } else if (process.env.JOBDATALAKE_API_KEY) {
+    envKeys.jobdatalake = [process.env.JOBDATALAKE_API_KEY];
+  }
 
   return NextResponse.json({ stored: masked, env: envKeys });
 }
@@ -82,7 +88,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid body: need { source, keys: string[] }' }, { status: 400 });
   }
 
-  const validSources = ['jsearch', 'adzuna', 'jobspipe'];
+  const validSources = ['jsearch', 'adzuna', 'jobspipe', 'jobdatalake'];
   if (!validSources.includes(source)) {
     return NextResponse.json({ error: `Invalid source. Must be one of: ${validSources.join(', ')}` }, { status: 400 });
   }
@@ -104,6 +110,8 @@ export async function POST(req: NextRequest) {
     { key: 'api_keys', value: currentKeys, updated_at: new Date().toISOString() },
     { onConflict: 'key' },
   );
+
+  if (source === 'jobdatalake') clearJobdatalakeKeysCache();
 
   return NextResponse.json({ ok: true, count: currentKeys[source].length });
 }

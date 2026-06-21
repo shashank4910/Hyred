@@ -61,6 +61,7 @@ export const SOURCE_LABELS: Record<string, string> = {
   himalayas: 'Himalayas',
   jsearch: 'JSearch',
   jobspipe: 'JobsPipe',
+  jobdatalake: 'JobDataLake',
   linkedin: 'LinkedIn',
   manual: 'Imported',
 };

@@ -11,6 +11,7 @@ const ALL_SOURCES = [
   { id: 'adzuna_in', label: 'Adzuna India', tokens: '~22/scan' },
   { id: 'jsearch', label: 'JSearch (Indeed+LinkedIn)', tokens: '5/scan' },
   { id: 'jobspipe', label: 'JobsPipe (30+ ATS)', tokens: '5/scan' },
+  { id: 'jobdatalake', label: 'JobDataLake (enriched)', tokens: '5/scan' },
   { id: 'remotive', label: 'Remotive', tokens: 'free' },
   { id: 'remoteok', label: 'RemoteOK', tokens: 'free' },
   { id: 'hn', label: 'HN Who is Hiring', tokens: 'free' },
