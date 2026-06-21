@@ -7,14 +7,14 @@ import { logApiRequest, maskKey } from '../api-tracker';
  * JobsPipe — unified job search API (30+ ATS/board sources).
  * https://jobspipe.dev/docs
  *
- * POST https://api.jobspipe.dev/v1/jobs/search
- * Auth: Authorization: Bearer <key>
+ * Primary: GET  https://api.jobspipe.dev/v1/jobs?query=…&country=IN
+ * Fallback: POST https://api.jobspipe.dev/v1/jobs/search  { job_title_or, limit }
  *
- * Free tier: 5,000 requests/month, max 25 results per call.
  * Keys: JOBSPIPE_API_KEYS env or Admin Center → api_keys.jobspipe
  */
 
-const BASE = 'https://api.jobspipe.dev/v1/jobs/search';
+const POST_SEARCH = 'https://api.jobspipe.dev/v1/jobs/search';
+const GET_JOBS = 'https://api.jobspipe.dev/v1/jobs';
 
 type JobsPipeLocation =
   | string
@@ -38,9 +38,7 @@ type JobsPipeSalary =
 
 type JobsPipeJob = {
   id: string | number;
-  /** Legacy TheirStack-style field */
   job_title?: string;
-  /** JobsPipe normalized schema */
   title?: string;
   company?: string | null;
   location?: JobsPipeLocation;
@@ -53,8 +51,10 @@ type JobsPipeJob = {
   url?: string | null;
   source_url?: string | null;
   description?: string | null;
+  description_md?: string | null;
   salary_string?: string | null;
   salary?: JobsPipeSalary;
+  compensation?: JobsPipeSalary;
   min_annual_salary?: number | null;
   max_annual_salary?: number | null;
   salary_currency?: string | null;
@@ -65,7 +65,9 @@ type JobsPipeJob = {
 type JobsPipeResponse = {
   data?: JobsPipeJob[];
   jobs?: JobsPipeJob[];
+  results?: JobsPipeJob[];
   metadata?: {
+    total_results?: number;
     truncated_results?: number;
     next_cursor?: string | null;
   };
@@ -79,6 +81,7 @@ function parseJobsPayload(data: unknown): JobsPipeJob[] {
     const o = data as JobsPipeResponse;
     if (Array.isArray(o.data)) return o.data;
     if (Array.isArray(o.jobs)) return o.jobs;
+    if (Array.isArray(o.results)) return o.results;
   }
   return [];
 }
@@ -110,6 +113,12 @@ function jobPostedAt(j: JobsPipeJob): string | null {
   return `${raw}T00:00:00Z`;
 }
 
+function jobDescription(j: JobsPipeJob): string | null {
+  const raw = j.description ?? j.description_md ?? '';
+  if (!raw) return null;
+  return raw.includes('<') ? stripHtml(raw) : raw;
+}
+
 function isRemote(j: JobsPipeJob): boolean {
   if (j.remote === true) return true;
   if (j.location && typeof j.location === 'object' && j.location.remote) return true;
@@ -118,8 +127,9 @@ function isRemote(j: JobsPipeJob): boolean {
 
 function formatSalary(job: JobsPipeJob): string | null {
   if (job.salary_string?.trim()) return job.salary_string.trim();
-  if (job.salary && typeof job.salary === 'object') {
-    const s = job.salary;
+  const comp = job.salary ?? job.compensation;
+  if (comp && typeof comp === 'object') {
+    const s = comp;
     if (s.min || s.max) {
       const cur = s.currency || 'USD';
       const fmt = (n: number) => n.toLocaleString('en-US');
@@ -140,9 +150,6 @@ function toRawJob(j: JobsPipeJob): RawJob | null {
   const title = jobTitle(j);
   if (j.id == null || !title) return null;
 
-  const rawDesc = j.description ?? '';
-  const cleanDesc =
-    rawDesc && rawDesc.includes('<') ? stripHtml(rawDesc) : rawDesc || null;
   const tags = [...(j.technology_slugs ?? []), ...(j.keyword_slugs ?? [])].filter(Boolean);
 
   return {
@@ -153,25 +160,47 @@ function toRawJob(j: JobsPipeJob): RawJob | null {
     location: jobLocation(j),
     remote: isRemote(j),
     url: jobUrl(j),
-    description: cleanDesc,
+    description: jobDescription(j),
     salary: formatSalary(j),
     tags: tags.length > 0 ? tags : null,
     posted_at: jobPostedAt(j),
   };
 }
 
-async function searchWithKey(
+function logJobsPipeSuccess(
   key: string,
-  body: Record<string, unknown>,
-): Promise<JobsPipeJob[] | null> {
-  const res = await fetch(BASE, {
-    method: 'POST',
+  queryLabel: string,
+  jobs: JobsPipeJob[],
+  meta?: JobsPipeResponse['metadata'],
+): void {
+  if (jobs.length === 0 && meta?.total_results) {
+    console.log(
+      `[jobspipe] "${queryLabel}" → 0 rows in page (metadata.total_results=${meta.total_results})`,
+    );
+  }
+  logApiRequest({
+    source: 'jobspipe',
+    status: 'success',
+    http_status: 200,
+    key_identifier: maskKey(key),
+    query: queryLabel,
+    jobs_returned: jobs.length,
+  });
+}
+
+async function requestWithKey(
+  key: string,
+  url: string,
+  init: RequestInit,
+  queryLabel: string,
+): Promise<{ jobs: JobsPipeJob[]; meta?: JobsPipeResponse['metadata'] } | null> {
+  const res = await fetch(url, {
+    ...init,
     headers: {
       Authorization: `Bearer ${key}`,
-      'Content-Type': 'application/json',
       'user-agent': 'hyred/0.1',
+      ...(init.headers ?? {}),
     },
-    body: JSON.stringify(body),
     cache: 'no-store',
   });
 
@@ -183,7 +212,7 @@ async function searchWithKey(
       status: res.status === 429 ? 'rate_limited' : 'error',
       http_status: res.status,
       key_identifier: maskKey(key),
-      query: JSON.stringify(body.job_title_or ?? []),
+      query: queryLabel,
       error_message:
         res.status === 402
           ? 'Monthly quota exceeded'
@@ -199,20 +228,43 @@ async function searchWithKey(
     throw new Error(`JobsPipe HTTP ${res.status}: ${text.slice(0, 200)}`);
   }
 
-  const payload = (await res.json()) as unknown;
+  const payload = (await res.json()) as JobsPipeResponse;
   const jobs = parseJobsPayload(payload);
-  logApiRequest({
-    source: 'jobspipe',
-    status: 'success',
-    http_status: 200,
-    key_identifier: maskKey(key),
-    query: JSON.stringify(body.job_title_or ?? []),
-    jobs_returned: jobs.length,
-  });
-  return jobs;
+  logJobsPipeSuccess(key, queryLabel, jobs, payload.metadata);
+  return { jobs, meta: payload.metadata };
 }
 
-async function searchWithRotation(body: Record<string, unknown>): Promise<JobsPipeJob[]> {
+async function searchGet(
+  key: string,
+  params: Record<string, string>,
+): Promise<JobsPipeJob[] | null> {
+  const qs = new URLSearchParams(params);
+  const queryLabel = `GET ${params.query ?? ''}${params.country ? ` @${params.country}` : ''}`;
+  const result = await requestWithKey(
+    key,
+    `${GET_JOBS}?${qs.toString()}`,
+    { method: 'GET' },
+    queryLabel,
+  );
+  return result?.jobs ?? null;
+}
+
+async function searchPost(
+  key: string,
+  body: Record<string, unknown>,
+): Promise<JobsPipeJob[] | null> {
+  const queryLabel = `POST ${JSON.stringify(body.job_title_or ?? [])}`;
+  const result = await requestWithKey(key, POST_SEARCH, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }, queryLabel);
+  return result?.jobs ?? null;
+}
+
+async function searchWithRotation(
+  fetcher: (key: string) => Promise<JobsPipeJob[] | null>,
+): Promise<JobsPipeJob[]> {
   const allKeys = await getJobspipeApiKeys();
   const keys = allKeys.filter((k) => !exhaustedKeys.has(k));
 
@@ -223,7 +275,7 @@ async function searchWithRotation(body: Record<string, unknown>): Promise<JobsPi
   }
 
   for (const key of keys) {
-    const result = await searchWithKey(key, body);
+    const result = await fetcher(key);
     if (result !== null) return result;
   }
 
@@ -231,19 +283,59 @@ async function searchWithRotation(body: Record<string, unknown>): Promise<JobsPi
 }
 
 export type JobsPipeFetchOpts = {
-  /** Title phrases (OR). Defaults to performance-engineering style queries. */
   queries?: string[];
-  /** ISO country codes, e.g. IN, US */
   countryCodes?: string[];
-  /** Max age in days (default 14) */
+  /** Max age in days (default 30) */
   maxAgeDays?: number;
-  /** Results per query (free plan caps at 25) */
   limit?: number;
 };
 
+function buildTitleQueries(opts?: JobsPipeFetchOpts): string[] {
+  if (opts?.queries?.length) return opts.queries.slice(0, 6);
+  return ['performance engineer', 'performance test engineer', 'software engineer'];
+}
+
+/** Try GET /v1/jobs then POST /v1/jobs/search for one query phrase. */
+async function fetchForQuery(
+  title: string,
+  opts: JobsPipeFetchOpts,
+): Promise<JobsPipeJob[]> {
+  const limit = String(Math.min(opts.limit ?? 25, 25));
+  const maxAge = opts.maxAgeDays ?? 30;
+  const country = opts.countryCodes?.[0];
+
+  // 1) Native JobsPipe GET (documented: query + country + posted_after)
+  const getParams: Record<string, string> = {
+    query: title,
+    limit,
+    posted_after: `${maxAge}d`,
+  };
+  if (country) getParams.country = country;
+
+  let jobs = await searchWithRotation((key) => searchGet(key, getParams));
+  if (jobs.length > 0) return jobs;
+
+  // 2) GET without country (India filter can be too sparse for niche titles)
+  if (country) {
+    const globalParams = { ...getParams };
+    delete globalParams.country;
+    jobs = await searchWithRotation((key) => searchGet(key, globalParams));
+    if (jobs.length > 0) return jobs;
+  }
+
+  // 3) POST search — minimal body only (extra TheirStack filters often return empty pages)
+  jobs = await searchWithRotation((key) =>
+    searchPost(key, {
+      job_title_or: [title],
+      limit: Number(limit),
+    }),
+  );
+  return jobs;
+}
+
 /**
  * Fetch jobs from JobsPipe.
- * Budget: 1 API request per query string batch (titles OR'd in one call).
+ * Uses GET /v1/jobs first, then POST /v1/jobs/search as fallback.
  */
 export async function fetchJobsPipe(opts?: JobsPipeFetchOpts): Promise<RawJob[]> {
   const keys = await getJobspipeApiKeys();
@@ -252,42 +344,44 @@ export async function fetchJobsPipe(opts?: JobsPipeFetchOpts): Promise<RawJob[]>
     return [];
   }
 
-  const titleQueries = opts?.queries?.length
-    ? opts.queries.slice(0, 5)
-    : ['performance engineer', 'performance test engineer'];
-
+  const titleQueries = buildTitleQueries(opts);
   const seenIds = new Set<string>();
   const allJobs: JobsPipeJob[] = [];
 
-  for (const title of titleQueries) {
-    try {
-      const body: Record<string, unknown> = {
-        job_title_or: [title],
-        posted_at_max_age_days: opts?.maxAgeDays ?? 14,
-        limit: Math.min(opts?.limit ?? 25, 25),
-      };
-      const codes = opts?.countryCodes ?? ['IN'];
-      if (codes.length > 0) body.job_country_code_or = codes;
-
-      let jobs = await searchWithRotation(body);
-
-      // India-only can be sparse — retry globally if nothing matched.
-      if (jobs.length === 0 && codes.length > 0) {
-        const globalBody = { ...body };
-        delete globalBody.job_country_code_or;
-        jobs = await searchWithRotation(globalBody);
+  const absorb = (jobs: JobsPipeJob[]) => {
+    for (const j of jobs) {
+      const id = String(j.id ?? '');
+      if (id && !seenIds.has(id)) {
+        seenIds.add(id);
+        allJobs.push(j);
       }
+    }
+  };
 
-      for (const j of jobs) {
-        const id = String(j.id ?? '');
-        if (id && !seenIds.has(id)) {
-          seenIds.add(id);
-          allJobs.push(j);
-        }
+  // One batched POST with all titles OR'd — often best recall per credit.
+  try {
+    absorb(
+      await searchWithRotation((key) =>
+        searchPost(key, {
+          job_title_or: titleQueries,
+          limit: Math.min(opts?.limit ?? 25, 25),
+        }),
+      ),
+    );
+  } catch (e) {
+    console.warn('[jobspipe] Batched POST failed:', (e as Error).message);
+  }
+
+  // Per-title GET (+ POST fallback) only if batch was thin.
+  if (allJobs.length < 10) {
+    for (const title of titleQueries) {
+      try {
+        absorb(await fetchForQuery(title, opts ?? {}));
+        if (allJobs.length >= 25) break;
+      } catch (e) {
+        console.warn(`[jobspipe] Query "${title}" failed:`, (e as Error).message);
+        if ((e as Error).message.includes('exhausted')) break;
       }
-    } catch (e) {
-      console.warn(`[jobspipe] Query "${title}" failed:`, (e as Error).message);
-      if ((e as Error).message.includes('exhausted')) break;
     }
   }
 
@@ -297,18 +391,18 @@ export async function fetchJobsPipe(opts?: JobsPipeFetchOpts): Promise<RawJob[]>
 
   if (allJobs.length > 0 && mapped.length === 0) {
     console.warn(
-      `[jobspipe] API returned ${allJobs.length} rows but none mapped — check schema fields.`,
+      `[jobspipe] API returned ${allJobs.length} rows but none mapped — sample keys: ${Object.keys(allJobs[0] ?? {}).join(', ')}`,
     );
   }
 
+  console.log(`[jobspipe] Done — ${mapped.length} jobs from ${allJobs.length} raw rows`);
   return mapped;
 }
 
-/** Used when a JobsPipe-only scan returns nothing. */
 export async function describeJobsPipeFetchFailure(): Promise<string> {
   const keys = await getJobspipeApiKeys();
   if (keys.length === 0) {
     return 'No JobsPipe API key configured. Add one in Admin → API Key Management.';
   }
-  return 'JobsPipe returned 0 jobs for your keywords (tried India, then global). Check Admin → Job API usage for API errors.';
+  return 'JobsPipe API was called (usage shows on jobspipe.dev) but 0 jobs matched your title keywords. Check Admin → Job API usage: if jobs_returned is 0, try broader roles in your profile; if jobs_returned > 0 but Fetched is 0, report a mapping bug.';
 }
