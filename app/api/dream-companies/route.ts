@@ -8,8 +8,9 @@ import {
   type DreamCompanyRow,
 } from '@/lib/dream-companies';
 import { countUnreadDreamAlerts } from '@/lib/dream-company-alerts';
-import { ensureCompanyCatalogSeeded } from '@/lib/company-catalog/db';
+import { insertDreamCompanyPick } from '@/lib/dream-companies-db';
 import { findCatalogBySlug } from '@/lib/company-catalog/db';
+import { getCatalogSnapshot } from '@/lib/company-catalog/catalog-snapshot';
 
 export const runtime = 'nodejs';
 
@@ -41,7 +42,7 @@ export async function GET() {
   if (!profile) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
   const sb = supabaseAdmin();
-  const [{ data: picks, error }, limit, unread, seedInfo] = await Promise.all([
+  const [{ data: picks, error }, limit, unread] = await Promise.all([
     sb
       .from('dream_companies')
       .select('*')
@@ -49,7 +50,6 @@ export async function GET() {
       .order('created_at', { ascending: true }),
     dreamCompanyLimitForProfile(profile.id),
     countUnreadDreamAlerts(profile.id),
-    ensureCompanyCatalogSeeded(),
   ]);
 
   if (error) {
@@ -58,7 +58,7 @@ export async function GET() {
 
   return NextResponse.json({
     picks: (picks ?? []) as DreamCompanyRow[],
-    catalog_total: seedInfo.total,
+    catalog_total: getCatalogSnapshot().length,
     limit,
     used: picks?.length ?? 0,
     unread_alerts: unread,
@@ -83,7 +83,6 @@ export async function POST(req: NextRequest) {
 
   const notifyEmail = body.notify_email !== false;
   const notifySms = body.notify_sms === true;
-  const sb = supabaseAdmin();
 
   if (customName) {
     if (customName.length < 2 || customName.length > 120) {
@@ -92,26 +91,22 @@ export async function POST(req: NextRequest) {
     const patterns = patternsFromDisplayName(customName);
     const slug = companyCatalogKey(customName);
 
-    const { data, error } = await sb
-      .from('dream_companies')
-      .insert({
-        profile_id: profile.id,
-        company_key: slug,
-        company_display_name: customName,
-        source: 'manual',
-        custom_patterns: patterns,
-        catalog_id: null,
-        notify_email: notifyEmail,
-        notify_sms: notifySms,
-      })
-      .select('*')
-      .single();
+    const { data, error: insertErr } = await insertDreamCompanyPick({
+      profile_id: profile.id,
+      company_key: slug,
+      company_display_name: customName,
+      notify_email: notifyEmail,
+      notify_sms: notifySms,
+      source: 'manual',
+      custom_patterns: patterns,
+      catalog_id: null,
+    });
 
-    if (error) {
-      if (error.code === '23505') {
+    if (insertErr) {
+      if (insertErr.includes('duplicate') || insertErr.includes('23505')) {
         return NextResponse.json({ error: 'Already tracking this company' }, { status: 409 });
       }
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: insertErr }, { status: 500 });
     }
     return NextResponse.json({ pick: data as DreamCompanyRow, mode: 'manual' });
   }
@@ -131,26 +126,22 @@ export async function POST(req: NextRequest) {
   const catalogId =
     catalogRow.id && catalogRow.id !== catalogRow.slug ? catalogRow.id : null;
 
-  const { data, error } = await sb
-    .from('dream_companies')
-    .insert({
-      profile_id: profile.id,
-      company_key: catalogRow.slug,
-      company_display_name: catalogRow.display_name,
-      source: 'catalog',
-      catalog_id: catalogId,
-      custom_patterns: null,
-      notify_email: notifyEmail,
-      notify_sms: notifySms,
-    })
-    .select('*')
-    .single();
+  const { data, error: insertErr } = await insertDreamCompanyPick({
+    profile_id: profile.id,
+    company_key: catalogRow.slug,
+    company_display_name: catalogRow.display_name,
+    notify_email: notifyEmail,
+    notify_sms: notifySms,
+    source: 'catalog',
+    catalog_id: catalogId,
+    custom_patterns: null,
+  });
 
-  if (error) {
-    if (error.code === '23505') {
+  if (insertErr) {
+    if (insertErr.includes('duplicate') || insertErr.includes('23505')) {
       return NextResponse.json({ error: 'Already tracking this company' }, { status: 409 });
     }
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: insertErr }, { status: 500 });
   }
 
   return NextResponse.json({ pick: data as DreamCompanyRow, mode: 'catalog' });

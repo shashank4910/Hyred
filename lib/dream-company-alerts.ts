@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabase/server';
-import { normalizeDreamPickRow, resolveDreamPicksForJob, type DreamPickForMatch } from '@/lib/dream-companies';
+import { loadDreamPicksWithPatterns } from '@/lib/dream-companies-db';
+import { resolveDreamPicksForJob, type DreamPickForMatch } from '@/lib/dream-companies';
 
 export type DreamAlertJobInput = {
   profileId: string;
@@ -11,19 +12,7 @@ export type DreamAlertJobInput = {
 };
 
 export async function loadDreamPicksForProfile(profileId: string): Promise<DreamPickForMatch[]> {
-  const sb = supabaseAdmin();
-  const { data, error } = await sb
-    .from('dream_companies')
-    .select(
-      `id, company_key, company_display_name, source, custom_patterns,
-       company_catalog(patterns)`,
-    )
-    .eq('profile_id', profileId);
-  if (error) {
-    console.error('[dream-alerts] load picks failed:', error.message);
-    return [];
-  }
-  return (data ?? []).map((row) => normalizeDreamPickRow(row as Record<string, unknown>));
+  return loadDreamPicksWithPatterns(profileId);
 }
 
 export async function processDreamCompanyAlertsForJob(
