@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import {
@@ -29,6 +29,7 @@ type CatalogItem = {
   source_label: string;
   is_listed: boolean;
   exchange?: string | null;
+  patterns: string[];
 };
 
 type RegionOption = { id: string; label: string };
@@ -47,6 +48,8 @@ type AlertItem = {
 type Props = {
   initialPicks: DreamCompanyRow[];
   initialAlerts: AlertItem[];
+  catalog: CatalogItem[];
+  regions: RegionOption[];
   catalogTotal: number;
   limit: number;
   used: number;
@@ -56,6 +59,8 @@ type Props = {
 export function DreamAlertsClient({
   initialPicks,
   initialAlerts,
+  catalog,
+  regions,
   catalogTotal,
   limit,
   used: initialUsed,
@@ -71,41 +76,27 @@ export function DreamAlertsClient({
 
   const [query, setQuery] = useState('');
   const [region, setRegion] = useState('');
-  const [catalogResults, setCatalogResults] = useState<CatalogItem[]>([]);
-  const [regions, setRegions] = useState<RegionOption[]>([]);
-  const [catalogLoading, setCatalogLoading] = useState(false);
 
   const [manualName, setManualName] = useState('');
   const [requestName, setRequestName] = useState('');
   const [requestNote, setRequestNote] = useState('');
 
-  const pickedKeyList = useMemo(() => picks.map((p) => p.company_key), [picks]);
+  const pickedKeys = useMemo(() => new Set(picks.map((p) => p.company_key)), [picks]);
 
-  const loadCatalog = useCallback(async (q: string, reg: string) => {
-    setCatalogLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (q.trim()) params.set('q', q.trim());
-      if (reg) params.set('region', reg);
-      params.set('limit', '60');
-      const res = await fetch(`/api/dream-companies/catalog?${params}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Search failed');
-      const picked = new Set(pickedKeyList);
-      setCatalogResults((data.results ?? []).filter((c: CatalogItem) => !picked.has(c.key)));
-      if (data.regions) setRegions(data.regions);
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      setCatalogLoading(false);
+  const catalogResults = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    let list = catalog.filter((c) => !pickedKeys.has(c.key));
+    if (region) list = list.filter((c) => c.region === region);
+    if (q) {
+      list = list.filter(
+        (c) =>
+          c.name.toLowerCase().includes(q) ||
+          c.key.includes(q) ||
+          c.patterns.some((p) => p.includes(q)),
+      );
     }
-  }, [pickedKeyList]);
-
-  useEffect(() => {
-    if (!pickerOpen || pickerTab !== 'catalog') return;
-    const t = setTimeout(() => loadCatalog(query, region), 280);
-    return () => clearTimeout(t);
-  }, [pickerOpen, pickerTab, query, region, loadCatalog]);
+    return list.slice(0, 60);
+  }, [catalog, query, region, pickedKeys]);
 
   const addFromCatalog = async (companyKey: string) => {
     setBusy(companyKey);
@@ -449,12 +440,7 @@ export function DreamAlertsClient({
                       ))}
                     </select>
                   </div>
-                  {catalogLoading ? (
-                    <div className="flex justify-center py-8">
-                      <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                    </div>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-2 max-h-[45vh] overflow-y-auto">
                       {catalogResults.map((c) => (
                         <button
                           key={c.key}
@@ -476,8 +462,7 @@ export function DreamAlertsClient({
                           No matches — try Manual add or Request listing.
                         </p>
                       )}
-                    </div>
-                  )}
+                  </div>
                 </div>
               )}
 

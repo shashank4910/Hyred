@@ -7,6 +7,7 @@ import {
 } from '@/lib/dream-companies';
 import { jobCompanyMatchesPatterns } from '@/lib/company-catalog/match';
 import { buildCompanyCatalogSeed } from '@/lib/company-catalog/build-seed';
+import { filterCatalogSnapshot } from '@/lib/company-catalog/catalog-snapshot';
 
 describe('dream-companies', () => {
   it('companyCatalogKey slugifies names', () => {
@@ -59,5 +60,18 @@ describe('company-catalog seed', () => {
     expect(entries.length).toBeGreaterThanOrEqual(400);
     const slugs = new Set(entries.map((e) => e.slug));
     expect(slugs.size).toBe(entries.length);
+  });
+});
+
+describe('company-catalog snapshot search', () => {
+  it('finds TCS when user types tcs (pattern alias)', () => {
+    const hits = filterCatalogSnapshot({ q: 'tcs', limit: 10 });
+    expect(hits.length).toBeGreaterThan(0);
+    expect(hits.some((c) => c.key === 'tcs' || c.patterns.includes('tcs'))).toBe(true);
+  });
+
+  it('finds Google by partial name', () => {
+    const hits = filterCatalogSnapshot({ q: 'goog', limit: 5 });
+    expect(hits.some((c) => c.name.toLowerCase().includes('google'))).toBe(true);
   });
 });
