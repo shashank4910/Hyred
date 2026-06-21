@@ -27,8 +27,10 @@ export function AdminDashboard() {
   // Key management state
   const [jsearchKeys, setJsearchKeys] = useState<string[]>([]);
   const [adzunaKeys, setAdzunaKeys] = useState<string[]>([]);
+  const [jobspipeKeys, setJobspipeKeys] = useState<string[]>([]);
   const [newJsearchKey, setNewJsearchKey] = useState('');
   const [newAdzunaKey, setNewAdzunaKey] = useState('');
+  const [newJobspipeKey, setNewJobspipeKey] = useState('');
   const [savingKeys, setSavingKeys] = useState(false);
   const [envKeys, setEnvKeys] = useState<Record<string, string[]>>({});
 
@@ -55,6 +57,7 @@ export function AdminDashboard() {
         const stored = data.stored ?? {};
         setJsearchKeys((stored.jsearch ?? []).map((k: { full: string }) => k.full));
         setAdzunaKeys((stored.adzuna ?? []).map((k: { full: string }) => k.full));
+        setJobspipeKeys((stored.jobspipe ?? []).map((k: { full: string }) => k.full));
         setEnvKeys(data.env ?? {});
       }
     } catch { /* ignore */ }
@@ -110,6 +113,22 @@ export function AdminDashboard() {
     const updated = adzunaKeys.filter((_, i) => i !== idx);
     setAdzunaKeys(updated);
     saveKeys('adzuna', updated);
+  }
+
+  function addJobspipeKey() {
+    const k = newJobspipeKey.trim();
+    if (!k) return;
+    if (jobspipeKeys.includes(k)) { toast('Key already exists'); return; }
+    const updated = [...jobspipeKeys, k];
+    setJobspipeKeys(updated);
+    setNewJobspipeKey('');
+    saveKeys('jobspipe', updated);
+  }
+
+  function removeJobspipeKey(idx: number) {
+    const updated = jobspipeKeys.filter((_, i) => i !== idx);
+    setJobspipeKeys(updated);
+    saveKeys('jobspipe', updated);
   }
 
   function maskKeyDisplay(key: string): string {
@@ -356,6 +375,49 @@ export function AdminDashboard() {
           </div>
         </div>
 
+
+        {/* JobsPipe Keys */}
+        <div className="mb-6">
+          <h3 className="text-sm font-semibold text-on-background mb-2">
+            JobsPipe API Keys
+          </h3>
+          <p className="text-xs text-on-surface-variant mb-3">
+            Bearer keys from{' '}
+            <a
+              href="https://jobspipe.dev"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline"
+            >
+              jobspipe.dev
+            </a>
+            . Free tier: 5,000 requests/month per key. Used as{' '}
+            <code className="bg-surface-container px-1 rounded">Authorization: Bearer …</code>
+          </p>
+          <div className="space-y-2 mb-3">
+            {jobspipeKeys.map((k, i) => (
+              <div key={i} className="flex items-center gap-2 p-2 rounded-lg bg-surface-container border border-border-muted">
+                <span className="font-mono text-xs flex-1 text-on-surface-variant">{maskKeyDisplay(k)}</span>
+                <button onClick={() => removeJobspipeKey(i)} className="text-error hover:bg-error-container p-1 rounded" title="Remove">
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newJobspipeKey}
+              onChange={(e) => setNewJobspipeKey(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && addJobspipeKey()}
+              placeholder="jp_live_… or paste API key"
+              className="input flex-1 text-xs"
+            />
+            <button onClick={addJobspipeKey} disabled={savingKeys} className="btn-primary text-xs">
+              <Plus className="h-3.5 w-3.5" /> Add
+            </button>
+          </div>
+        </div>
 
         {/* Adzuna Credentials */}
         <div>

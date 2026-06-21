@@ -11,7 +11,7 @@ export const runtime = 'nodejs';
  * POST /api/admin/keys — save/update keys for a source
  *
  * Keys are stored in Supabase table: admin_settings (key-value store)
- * Row: { key: 'api_keys', value: { jsearch: [...], adzuna: [...] } }
+ * Row: { key: 'api_keys', value: { jsearch: [...], adzuna: [...], jobspipe: [...] } }
  *
  * Migration SQL:
  * CREATE TABLE IF NOT EXISTS admin_settings (
@@ -61,6 +61,11 @@ export async function GET(req: NextRequest) {
   } else if (process.env.ADZUNA_APP_ID && process.env.ADZUNA_APP_KEY) {
     envKeys.adzuna = [`${process.env.ADZUNA_APP_ID}:${process.env.ADZUNA_APP_KEY}`];
   }
+  if (process.env.JOBSPIPE_API_KEYS) {
+    envKeys.jobspipe = process.env.JOBSPIPE_API_KEYS.split(',').filter(Boolean);
+  } else if (process.env.JOBSPIPE_API_KEY) {
+    envKeys.jobspipe = [process.env.JOBSPIPE_API_KEY];
+  }
 
   return NextResponse.json({ stored: masked, env: envKeys });
 }
@@ -77,7 +82,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid body: need { source, keys: string[] }' }, { status: 400 });
   }
 
-  const validSources = ['jsearch', 'adzuna'];
+  const validSources = ['jsearch', 'adzuna', 'jobspipe'];
   if (!validSources.includes(source)) {
     return NextResponse.json({ error: `Invalid source. Must be one of: ${validSources.join(', ')}` }, { status: 400 });
   }
