@@ -57,6 +57,7 @@ import {
   resetStaleDailyCounters,
   providerHasActiveDbKeys,
   providerHasAnyDbKeys,
+  isKeyWithinDailyBudget,
   type LlmKey,
 } from './llm-keys';
 import { getRateLimiter, RateLimiter } from './rate-limiter';
@@ -97,7 +98,7 @@ const PROVIDER_ORDER: string[] = (() => {
 // Providers that have env-var fallback support (GEMINI_API_KEY, CEREBRAS_API_KEY, GROQ_API_KEY, etc.)
 // Ordered by priority: gemini (free) first, then cerebras/groq (free fallbacks).
 // Only fall back to env vars when there are ZERO DB keys for that provider.
-const ENV_FALLBACK_PROVIDERS = ['gemini', 'cerebras', 'groq'];
+const ENV_FALLBACK_PROVIDERS = ['bluesminds', 'gemini', 'cerebras', 'groq'];
 
 function getOpenAIClient(): OpenAI | null {
   const key = process.env.OPENAI_API_KEY;
@@ -121,6 +122,15 @@ function getGeminiClient(): OpenAI | null {
   const key = process.env.GEMINI_API_KEY;
   if (!key) return null;
   return new OpenAI({ apiKey: key, baseURL: GEMINI_BASE_URL });
+}
+
+function getBluesmindsClient(): OpenAI | null {
+  const key = process.env.BLUESMINDS_API_KEY;
+  if (!key) return null;
+  return new OpenAI({
+    apiKey: key,
+    baseURL: PROVIDER_DEFAULTS.bluesminds.baseUrl,
+  });
 }
 
 type ProviderEntry = {
@@ -185,8 +195,8 @@ async function getAvailableKeysForProvider(provider: string): Promise<ProviderEn
       const key = await resetLlmKeyDailyIfNeeded(raw);
       // Skip keys on RPM cooldown
       if (isKeyOnCooldown(key.id)) continue;
-      // Skip keys that exceeded daily token limit
-      if (key.tokens_used_today >= key.daily_token_limit) continue;
+      // Skip keys that exceeded daily budget (tokens OR requests for Bluesminds)
+      if (!isKeyWithinDailyBudget(key)) continue;
 
       const baseUrl = key.base_url || defaults?.baseUrl || '';
       const model = key.model || defaults?.model || '';
@@ -277,6 +287,7 @@ async function buildProviderChain(): Promise<ProviderEntry[]> {
 
 function getEnvFallbackClient(provider: string): OpenAI | null {
   switch (provider) {
+    case 'bluesminds': return getBluesmindsClient();
     case 'cerebras': return getCerebrasClient();
     case 'groq': return getGroqClient();
     case 'gemini': return getGeminiClient();
@@ -286,6 +297,7 @@ function getEnvFallbackClient(provider: string): OpenAI | null {
 
 function getEnvFallbackModel(provider: string): string {
   switch (provider) {
+    case 'bluesminds': return PROVIDER_DEFAULTS.bluesminds.model;
     case 'cerebras': return CEREBRAS_CHAT_MODEL;
     case 'groq': return GROQ_CHAT_MODEL;
     case 'gemini': return GEMINI_CHAT_MODEL;

@@ -43,6 +43,13 @@ type UsageSummary = {
 
 type ProviderDefaults = Record<string, { baseUrl: string; model: string }>;
 
+type ProviderBudgetConfig = {
+  mode: 'tokens' | 'requests' | 'pi_credits';
+  defaultDailyLimit: number;
+  limitLabel: string;
+  freeTierNote: string;
+};
+
 const PROVIDER_LABELS: Record<string, string> = {
   cerebras: 'Cerebras',
   groq: 'Groq',
@@ -60,13 +67,18 @@ const PROVIDER_FREE_LIMITS: Record<string, string> = {
   gemini: '~1,000 req/day',
   mistral: 'Free tier',
   sambanova: '10-30 RPM',
-  bluesminds: 'Paid',
+  bluesminds: '500 pi credits · 300 req/day · 20 RPM',
 };
+
+function keyBudgetUsed(k: LlmKeyRow, mode: string): number {
+  return mode === 'requests' ? k.requests_today : k.tokens_used_today;
+}
 
 export function LlmKeysPanel() {
   const [keys, setKeys] = useState<LlmKeyRow[]>([]);
   const [usage, setUsage] = useState<UsageSummary | null>(null);
   const [providers, setProviders] = useState<ProviderDefaults>({});
+  const [budgets, setBudgets] = useState<Record<string, ProviderBudgetConfig>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -88,6 +100,7 @@ export function LlmKeysPanel() {
       setKeys(data.keys ?? []);
       setUsage(data.usage ?? null);
       setProviders(data.providers ?? {});
+      setBudgets(data.budgets ?? {});
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -163,7 +176,7 @@ export function LlmKeysPanel() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Reset failed');
-      toast.success(`Reset ${data.reset} key(s) — counters back to 0`);
+      toast.success(`Reset ${data.reset} key(s) — counters back to 0${data.repaired ? `; fixed ${data.repaired} limit(s)` : ''}`);
       fetchData();
     } catch (e) {
       toast.error((e as Error).message);
@@ -196,6 +209,14 @@ export function LlmKeysPanel() {
           <Cpu className="h-5 w-5 text-primary" /> LLM Keys & Token Usage
         </h2>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => resetProviderCounters('bluesminds')}
+            className="btn text-xs"
+            title="Reset Bluesminds counters and fix 500K token limits → 300 req/day"
+          >
+            Reset Bluesminds
+          </button>
           <button
             type="button"
             onClick={() => resetProviderCounters('cerebras')}
@@ -323,8 +344,10 @@ export function LlmKeysPanel() {
           </h3>
           <div className="space-y-2">
             {providerKeys.map((k) => {
+              const budgetMode = budgets[k.provider]?.mode ?? 'tokens';
+              const used = keyBudgetUsed(k, budgetMode);
               const pct = k.daily_token_limit > 0
-                ? Math.round((k.tokens_used_today / k.daily_token_limit) * 100)
+                ? Math.round((used / k.daily_token_limit) * 100)
                 : 0;
               const isWarning = pct > 80;
               const isExhausted = pct >= 100;
@@ -383,11 +406,18 @@ export function LlmKeysPanel() {
                         />
                       </div>
                       <span className="text-[11px] text-on-surface-variant whitespace-nowrap">
-                        {formatTokens(k.tokens_used_today)} / {formatTokens(k.daily_token_limit)}
+                        {budgetMode === 'requests'
+                          ? `${used} / ${k.daily_token_limit} req`
+                          : `${formatTokens(k.tokens_used_today)} / ${formatTokens(k.daily_token_limit)}`}
                         <span className="text-on-surface-variant/60 ml-1">({pct}%)</span>
                       </span>
                       <span className="text-[10px] text-on-surface-variant">
-                        · {k.requests_today} req
+                        · {k.requests_today} calls
+                        {budgetMode === 'requests' && k.tokens_used_today > 0 && (
+                          <span className="text-on-surface-variant/60">
+                            {' '}· {formatTokens(k.tokens_used_today)} LLM tokens (info)
+                          </span>
+                        )}
                       </span>
                     </div>
                   </div>
@@ -451,17 +481,8 @@ export function LlmKeysPanel() {
                 value={newProvider}
                 onChange={(e) => {
                   setNewProvider(e.target.value);
-                  // Set default daily limit based on provider
-                  const limits: Record<string, number> = {
-                    cerebras: 1000000,
-                    groq: 100000,
-                    openai: 999999999,
-                    gemini: 500000,
-                    mistral: 500000,
-                    sambanova: 500000,
-                    bluesminds: 500000,
-                  };
-                  setNewDailyLimit(limits[e.target.value] ?? 1000000);
+                  const b = budgets[e.target.value];
+                  setNewDailyLimit(b?.defaultDailyLimit ?? 1_000_000);
                 }}
                 className="input w-full"
               >
@@ -503,7 +524,7 @@ export function LlmKeysPanel() {
             {/* Daily limit */}
             <div>
               <label className="text-xs font-medium text-on-surface-variant block mb-1">
-                Daily Token Limit
+                Daily limit ({budgets[newProvider]?.limitLabel ?? 'tokens/day'})
               </label>
               <input
                 type="number"
@@ -512,7 +533,8 @@ export function LlmKeysPanel() {
                 className="input w-full text-sm"
               />
               <p className="text-[10px] text-on-surface-variant mt-1">
-                When this key hits this limit, the system automatically rotates to the next key.
+                {budgets[newProvider]?.freeTierNote ||
+                  'When this key hits this limit, the system rotates to the next key.'}
               </p>
             </div>
 

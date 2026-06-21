@@ -43,6 +43,145 @@ export const PROVIDER_DEFAULTS: Record<string, { baseUrl: string; model: string 
   bluesminds: { baseUrl: 'https://api.bluesminds.com/v1', model: 'gpt-4o' },
 };
 
+/** How each provider's daily budget is tracked (stored in daily_token_limit column). */
+export type ProviderBudgetMode = 'tokens' | 'requests' | 'pi_credits';
+
+export type ProviderBudgetConfig = {
+  mode: ProviderBudgetMode;
+  /** Default for daily_token_limit when adding a key (meaning depends on mode). */
+  defaultDailyLimit: number;
+  rpm: number;
+  /** Shown in Admin UI */
+  limitLabel: string;
+  freeTierNote: string;
+};
+
+/**
+ * Provider budget semantics — must match how each vendor actually bills.
+ * Bluesminds: pi credits + 300 req/day on free tier (NOT raw LLM tokens).
+ * @see https://doc.bluesminds.com/
+ */
+export const PROVIDER_BUDGET: Record<string, ProviderBudgetConfig> = {
+  cerebras: {
+    mode: 'tokens',
+    defaultDailyLimit: 1_000_000,
+    rpm: 10,
+    limitLabel: 'tokens/day',
+    freeTierNote: '1M tokens/day free',
+  },
+  groq: {
+    mode: 'tokens',
+    defaultDailyLimit: 100_000,
+    rpm: 15,
+    limitLabel: 'tokens/day',
+    freeTierNote: '~100K tokens/day',
+  },
+  openai: {
+    mode: 'tokens',
+    defaultDailyLimit: 999_999_999,
+    rpm: 60,
+    limitLabel: 'tokens/day',
+    freeTierNote: 'Paid',
+  },
+  gemini: {
+    mode: 'tokens',
+    defaultDailyLimit: 500_000,
+    rpm: 10,
+    limitLabel: 'tokens/day',
+    freeTierNote: 'Free tier',
+  },
+  mistral: {
+    mode: 'tokens',
+    defaultDailyLimit: 500_000,
+    rpm: 20,
+    limitLabel: 'tokens/day',
+    freeTierNote: 'Free tier',
+  },
+  sambanova: {
+    mode: 'tokens',
+    defaultDailyLimit: 500_000,
+    rpm: 15,
+    limitLabel: 'tokens/day',
+    freeTierNote: 'Free tier',
+  },
+  bluesminds: {
+    mode: 'requests',
+    defaultDailyLimit: 300,
+    rpm: 20,
+    limitLabel: 'requests/day',
+    freeTierNote: '500 pi credits · 300 req/day · 20 RPM (free)',
+  },
+};
+
+export function getProviderBudget(provider: string): ProviderBudgetConfig {
+  return (
+    PROVIDER_BUDGET[provider] ?? {
+      mode: 'tokens',
+      defaultDailyLimit: 1_000_000,
+      rpm: 10,
+      limitLabel: 'tokens/day',
+      freeTierNote: '',
+    }
+  );
+}
+
+/** Whether a key still has daily budget left (provider-specific semantics). */
+export function isKeyWithinDailyBudget(key: LlmKey): boolean {
+  const cfg = getProviderBudget(key.provider);
+  if (key.daily_token_limit <= 0) return true;
+  switch (cfg.mode) {
+    case 'requests':
+      return key.requests_today < key.daily_token_limit;
+    case 'pi_credits':
+      return key.tokens_used_today < key.daily_token_limit;
+    default:
+      return key.tokens_used_today < key.daily_token_limit;
+  }
+}
+
+/** Usage % for admin bars — requests for Bluesminds, tokens for others. */
+export function keyBudgetPercentUsed(key: LlmKey): number {
+  const cfg = getProviderBudget(key.provider);
+  const limit = key.daily_token_limit;
+  if (limit <= 0) return 0;
+  const used =
+    cfg.mode === 'requests' ? key.requests_today : key.tokens_used_today;
+  return Math.round((used / limit) * 100);
+}
+
+/** Budget used/limit pair for admin display. */
+export function keyBudgetDisplay(key: LlmKey): {
+  used: number;
+  limit: number;
+  unit: string;
+  percent: number;
+} {
+  const cfg = getProviderBudget(key.provider);
+  const used =
+    cfg.mode === 'requests' ? key.requests_today : key.tokens_used_today;
+  return {
+    used,
+    limit: key.daily_token_limit,
+    unit: cfg.limitLabel,
+    percent: keyBudgetPercentUsed(key),
+  };
+}
+
+/**
+ * Rough pi-credit estimate for Bluesminds logging (credits vary by model).
+ * Free tier gives 500 pi credits that do not expire — see doc.bluesminds.com.
+ */
+export function estimateBluesmindsPiCredits(
+  model: string,
+  tokensIn: number,
+  tokensOut: number,
+): number {
+  const total = tokensIn + tokensOut;
+  // gpt-4o costs more than mini; use a conservative per-request floor + token factor
+  const perToken = model.includes('mini') ? 0.002 : 0.005;
+  return Math.max(1, Math.ceil(total * perToken));
+}
+
 /**
  * Check if a key's daily counter needs reset (new UTC day since last_reset_at).
  * If yes, resets tokens_used_today and requests_today in the DB.
@@ -96,7 +235,7 @@ export async function getNextAvailableKey(provider: string): Promise<LlmKey | nu
   // Find the first key that hasn't exceeded its daily limit (with daily reset check)
   for (const rawKey of keys) {
     const key = await resetLlmKeyDailyIfNeeded(rawKey as LlmKey);
-    if (key.tokens_used_today < key.daily_token_limit) {
+    if (isKeyWithinDailyBudget(key)) {
       return key;
     }
   }
@@ -313,6 +452,29 @@ export async function resetStaleDailyCounters(provider?: string): Promise<number
   return count;
 }
 
+/** Admin: force-reset counters + fix Bluesminds keys misconfigured with token limits. */
+export async function repairBluesmindsKeyBudgets(): Promise<{
+  reset: number;
+  repaired: number;
+}> {
+  const sb = supabaseAdmin();
+  const now = new Date().toISOString();
+  const defaultLimit = getProviderBudget('bluesminds').defaultDailyLimit;
+
+  const { data: repaired } = await sb
+    .from('llm_keys')
+    .update({
+      daily_token_limit: defaultLimit,
+      updated_at: now,
+    })
+    .eq('provider', 'bluesminds')
+    .gt('daily_token_limit', 1000)
+    .select('id');
+
+  const reset = await forceResetProviderCounters('bluesminds');
+  return { reset, repaired: repaired?.length ?? 0 };
+}
+
 /** Admin: force-reset counters to zero (same day) for one provider or all. */
 export async function forceResetProviderCounters(provider?: string): Promise<number> {
   const sb = supabaseAdmin();
@@ -394,6 +556,7 @@ export async function addLlmKey(opts: {
 }): Promise<LlmKey | null> {
   const sb = supabaseAdmin();
   const defaults = PROVIDER_DEFAULTS[opts.provider];
+  const budget = getProviderBudget(opts.provider);
   const { data, error } = await sb
     .from('llm_keys')
     .insert({
@@ -402,7 +565,7 @@ export async function addLlmKey(opts: {
       label: opts.label ?? null,
       model: opts.model ?? defaults?.model ?? null,
       base_url: opts.baseUrl ?? defaults?.baseUrl ?? null,
-      daily_token_limit: opts.dailyTokenLimit ?? 1000000,
+      daily_token_limit: opts.dailyTokenLimit ?? budget.defaultDailyLimit,
       priority: opts.priority ?? 0,
     })
     .select('*')
@@ -499,7 +662,9 @@ export async function getLlmUsageSummary(daysBack = 7): Promise<{
     label: k.label,
     tokensToday: k.tokens_used_today,
     dailyLimit: k.daily_token_limit,
-    percentUsed: k.daily_token_limit > 0 ? Math.round((k.tokens_used_today / k.daily_token_limit) * 100) : 0,
+    percentUsed: keyBudgetPercentUsed(k),
+    budgetMode: getProviderBudget(k.provider).mode,
+    budgetUnit: getProviderBudget(k.provider).limitLabel,
     requestsToday: k.requests_today,
     isActive: k.is_active,
     totalTokensInPeriod: keyTokensInPeriod[k.id] ?? 0,
