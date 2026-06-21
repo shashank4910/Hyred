@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Users,
   Copy,
@@ -152,8 +152,18 @@ export function ReferralRadar({
   }
 
 
+  useEffect(() => {
+    const expand = () => setExpanded(true);
+    window.addEventListener('hyred:expand-referral', expand);
+    if (window.location.hash === '#referral') setExpanded(true);
+    return () => window.removeEventListener('hyred:expand-referral', expand);
+  }, []);
+
   return (
-    <div className="glass-card overflow-hidden border border-outline-variant/30">
+    <div
+      id="referral"
+      className="glass-card scroll-mt-24 overflow-hidden border border-outline-variant/30"
+    >
       {/* Header */}
       <button
         onClick={() => setExpanded((v) => !v)}

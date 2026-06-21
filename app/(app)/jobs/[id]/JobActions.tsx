@@ -446,7 +446,10 @@ export function JobActions({
   return (
     <div className="space-y-3">
       {/* Apply CTA */}
-      <div className="card border-primary/20 bg-gradient-to-r from-primary/5 to-transparent">
+      <div
+        id="apply"
+        className="card scroll-mt-24 border-primary/20 bg-gradient-to-r from-primary/5 to-transparent"
+      >
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div>
             <h2 className="font-semibold text-on-surface flex items-center gap-2">
@@ -584,7 +587,7 @@ export function JobActions({
 
 
       {/* Resume Studio */}
-      <div id="ats-resume" className="card">
+      <div id="ats-resume" className="card scroll-mt-24">
         <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
           <div>
             <h2 className="font-semibold text-on-surface flex items-center gap-2">

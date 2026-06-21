@@ -1,11 +1,31 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { toast } from 'sonner';
-import { Brain, Loader2, Lock, RotateCw, CheckCircle2 } from 'lucide-react';
+import {
+  Brain,
+  Loader2,
+  Lock,
+  RotateCw,
+  CheckCircle2,
+  ExternalLink,
+  FileText,
+  Users,
+} from 'lucide-react';
 import type { MatchIntelligenceResult } from '@/lib/types';
 
-export function MatchIntelligencePanel({ matchId }: { matchId: string }) {
+function sectionHref(jobHref: string, section: string) {
+  return `${jobHref}#${section}`;
+}
+
+export function MatchIntelligencePanel({
+  matchId,
+  jobHref,
+}: {
+  matchId: string;
+  jobHref: string;
+}) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<MatchIntelligenceResult | null>(null);
   const [locked, setLocked] = useState(false);
@@ -137,6 +157,29 @@ export function MatchIntelligencePanel({ matchId }: { matchId: string }) {
           )}
         </div>
       )}
+
+      <div className="mt-5 pt-5 border-t border-outline-variant/40">
+        <p className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant mb-3">
+          Next steps
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Link href={sectionHref(jobHref, 'apply')} className="btn-primary inline-flex gap-1.5 text-sm">
+            <ExternalLink className="h-4 w-4" />
+            Apply for this role
+          </Link>
+          <Link href={sectionHref(jobHref, 'ats-resume')} className="btn inline-flex gap-1.5 text-sm">
+            <FileText className="h-4 w-4" />
+            Optimize my resume for ATS
+          </Link>
+          <Link href={sectionHref(jobHref, 'referral')} className="btn inline-flex gap-1.5 text-sm">
+            <Users className="h-4 w-4" />
+            Find a referral
+          </Link>
+        </div>
+        <p className="text-[11px] text-on-surface-variant mt-2">
+          Opens the full job page with apply, resume studio, and referral tools.
+        </p>
+      </div>
     </div>
   );
 }

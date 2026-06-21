@@ -33,7 +33,7 @@ export default async function MatchVerdictPage({
       backHref={backHref}
       jobHref={jobHref}
     >
-      <MatchIntelligencePanel matchId={id} />
+      <MatchIntelligencePanel matchId={id} jobHref={jobHref} />
     </JobFeatureShell>
   );
 }
