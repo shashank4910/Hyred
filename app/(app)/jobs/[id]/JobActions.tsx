@@ -22,7 +22,7 @@ import {
 import { STATUS_ORDER } from '@/lib/ui';
 import { CollapsibleCard } from '../../_components/CollapsibleCard';
 import { KeywordManager, type GenResult } from './KeywordManager';
-import { ResumePreviewModal } from './ResumePreviewModal';
+import { ResumePreviewModal, type ResumePreviewKind } from './ResumePreviewModal';
 import { ResumeTemplatePicker, DEFAULT_RESUME_TEMPLATE_ID } from './ResumeTemplatePicker';
 import { ResumeTemplateSamplePreview } from './ResumeTemplateSamplePreview';
 import { RESUME_TEMPLATE_SAMPLE_TEXT } from '@/lib/resume-template-previews';
@@ -98,6 +98,8 @@ export function JobActions({
   const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null);
   const [previewPdfLoading, setPreviewPdfLoading] = useState(false);
   const [previewVisual, setPreviewVisual] = useState<ReactNode | undefined>();
+  const [previewKind, setPreviewKind] = useState<ResumePreviewKind>('resume');
+  const [previewTemplateId, setPreviewTemplateId] = useState<string | null>(null);
   const [versionPreviewLoading, setVersionPreviewLoading] = useState<string | null>(null);
   const [resumeTemplateId, setResumeTemplateId] = useState(DEFAULT_RESUME_TEMPLATE_ID);
 
@@ -109,9 +111,17 @@ export function JobActions({
     });
     setPreviewVisual(undefined);
     setPreviewPdfLoading(false);
+    setPreviewKind('resume');
+    setPreviewTemplateId(null);
   }
 
-  async function openPdfPreview(args: { title: string; subtitle?: string; resumeText: string }) {
+  async function openPdfPreview(args: {
+    title: string;
+    subtitle?: string;
+    resumeText: string;
+    kind?: ResumePreviewKind;
+    templateId?: string;
+  }) {
     setPreviewPdfUrl((prev) => {
       revokeResumePdfObjectUrl(prev);
       return null;
@@ -119,6 +129,8 @@ export function JobActions({
     setPreviewVisual(undefined);
     setPreviewTitle(args.title);
     setPreviewSubtitle(args.subtitle);
+    setPreviewKind(args.kind ?? 'resume');
+    setPreviewTemplateId(args.templateId ?? null);
     setPreviewPdfLoading(true);
     setPreviewOpen(true);
     try {
@@ -186,15 +198,29 @@ export function JobActions({
     previewTemplateLayout(resumeTemplateId);
   }
 
-  function previewTemplateLayout(templateId: string) {
+  async function previewTemplateLayout(templateId: string) {
     const meta = getResumeTemplate(templateId);
+    setPreviewKind('template');
+    setPreviewTemplateId(templateId);
+
+    if (meta?.available) {
+      await openPdfPreview({
+        title: meta.name,
+        subtitle: meta.blurb,
+        resumeText: RESUME_TEMPLATE_SAMPLE_TEXT,
+        kind: 'template',
+        templateId,
+      });
+      return;
+    }
+
     setPreviewPdfUrl((prev) => {
       revokeResumePdfObjectUrl(prev);
       return null;
     });
     setPreviewPdfLoading(false);
-    setPreviewTitle(meta ? `${meta.name} — style sample` : 'Template style');
-    setPreviewSubtitle('Sample layout — your optimized resume exports as PDF in this style');
+    setPreviewTitle(meta?.name ?? 'Template style');
+    setPreviewSubtitle(meta?.blurb ?? 'Coming soon — layout sample only');
     setPreviewVisual(
       <ResumeTemplateSamplePreview templateId={templateId} sampleText={RESUME_TEMPLATE_SAMPLE_TEXT} />,
     );
@@ -729,6 +755,10 @@ export function JobActions({
         onClose={closePreviewModal}
         title={previewTitle}
         subtitle={previewSubtitle}
+        kind={previewKind}
+        templateMeta={previewTemplateId ? getResumeTemplate(previewTemplateId) : undefined}
+        templateId={previewTemplateId ?? undefined}
+        onTemplateNavigate={previewKind === 'template' ? previewTemplateLayout : undefined}
         pdfUrl={previewPdfUrl}
         pdfLoading={previewPdfLoading}
         visualPreview={previewVisual}
