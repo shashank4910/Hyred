@@ -284,6 +284,7 @@ export async function runIngest(opts?: {
       opts?.sources ?? undefined,
       searchProfile,
       p.preferences,
+      p.insights,
     );
     runErrors = [...runErrors, ...errors];
     fetched = rawJobs.length;

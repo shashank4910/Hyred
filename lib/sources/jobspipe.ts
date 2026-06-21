@@ -302,28 +302,26 @@ async function fetchForQuery(
 ): Promise<JobsPipeJob[]> {
   const limit = String(Math.min(opts.limit ?? 25, 25));
   const maxAge = opts.maxAgeDays ?? 30;
-  const country = opts.countryCodes?.[0];
+  const codes = opts.countryCodes ?? [];
 
-  // 1) Native JobsPipe GET (documented: query + country + posted_after)
-  const getParams: Record<string, string> = {
+  const baseGet: Record<string, string> = {
     query: title,
     limit,
     posted_after: `${maxAge}d`,
   };
-  if (country) getParams.country = country;
 
-  let jobs = await searchWithRotation((key) => searchGet(key, getParams));
-  if (jobs.length > 0) return jobs;
-
-  // 2) GET without country (India filter can be too sparse for niche titles)
-  if (country) {
-    const globalParams = { ...getParams };
-    delete globalParams.country;
-    jobs = await searchWithRotation((key) => searchGet(key, globalParams));
+  // Try each country from user onboarding (US, IN, etc.)
+  for (const country of codes) {
+    const jobs = await searchWithRotation((key) =>
+      searchGet(key, { ...baseGet, country }),
+    );
     if (jobs.length > 0) return jobs;
   }
 
-  // 3) POST search — minimal body only (extra TheirStack filters often return empty pages)
+  // No country filter — remote users or unrecognized city names
+  let jobs = await searchWithRotation((key) => searchGet(key, baseGet));
+  if (jobs.length > 0) return jobs;
+
   jobs = await searchWithRotation((key) =>
     searchPost(key, {
       job_title_or: [title],
