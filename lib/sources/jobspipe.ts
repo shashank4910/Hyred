@@ -7,14 +7,13 @@ import { logApiRequest, maskKey } from '../api-tracker';
  * JobsPipe — unified job search API (30+ ATS/board sources).
  * https://jobspipe.dev/docs
  *
- * Primary: GET  https://api.jobspipe.dev/v1/jobs?query=…&country=IN
- * Fallback: POST https://api.jobspipe.dev/v1/jobs/search  { job_title_or, limit }
+ * POST https://api.jobspipe.dev/v1/jobs/search
+ *   { job_title_or, job_country_code_or?, posted_at_max_age_days?, limit }
  *
  * Keys: JOBSPIPE_API_KEYS env or Admin Center → api_keys.jobspipe
  */
 
 const POST_SEARCH = 'https://api.jobspipe.dev/v1/jobs/search';
-const GET_JOBS = 'https://api.jobspipe.dev/v1/jobs';
 
 type JobsPipeLocation =
   | string
@@ -234,26 +233,19 @@ async function requestWithKey(
   return { jobs, meta: payload.metadata };
 }
 
-async function searchGet(
-  key: string,
-  params: Record<string, string>,
-): Promise<JobsPipeJob[] | null> {
-  const qs = new URLSearchParams(params);
-  const queryLabel = `GET ${params.query ?? ''}${params.country ? ` @${params.country}` : ''}`;
-  const result = await requestWithKey(
-    key,
-    `${GET_JOBS}?${qs.toString()}`,
-    { method: 'GET' },
-    queryLabel,
-  );
-  return result?.jobs ?? null;
+function formatPostQueryLabel(body: Record<string, unknown>): string {
+  const titles = Array.isArray(body.job_title_or) ? body.job_title_or.join('|') : '';
+  const countries = Array.isArray(body.job_country_code_or)
+    ? `@${body.job_country_code_or.join(',')}`
+    : '@global';
+  return `POST ${titles}${countries}`;
 }
 
 async function searchPost(
   key: string,
   body: Record<string, unknown>,
 ): Promise<JobsPipeJob[] | null> {
-  const queryLabel = `POST ${JSON.stringify(body.job_title_or ?? [])}`;
+  const queryLabel = formatPostQueryLabel(body);
   const result = await requestWithKey(key, POST_SEARCH, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -295,45 +287,32 @@ function buildTitleQueries(opts?: JobsPipeFetchOpts): string[] {
   return ['performance engineer', 'performance test engineer', 'software engineer'];
 }
 
-/** Try GET /v1/jobs then POST /v1/jobs/search for one query phrase. */
-async function fetchForQuery(
-  title: string,
+/** Build POST body — always applies user country codes when onboarding resolved them. */
+function buildSearchBody(
+  titles: string[],
   opts: JobsPipeFetchOpts,
-): Promise<JobsPipeJob[]> {
-  const limit = String(Math.min(opts.limit ?? 25, 25));
-  const maxAge = opts.maxAgeDays ?? 30;
-  const codes = opts.countryCodes ?? [];
-
-  const baseGet: Record<string, string> = {
-    query: title,
-    limit,
-    posted_after: `${maxAge}d`,
+): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    job_title_or: titles,
+    limit: Math.min(opts.limit ?? 25, 25),
+    posted_at_max_age_days: opts.maxAgeDays ?? 30,
   };
 
-  // Try each country from user onboarding (US, IN, etc.)
-  for (const country of codes) {
-    const jobs = await searchWithRotation((key) =>
-      searchGet(key, { ...baseGet, country }),
-    );
-    if (jobs.length > 0) return jobs;
+  const codes = (opts.countryCodes ?? []).map((c) => c.trim().toUpperCase()).filter(Boolean);
+  if (codes.length > 0) {
+    body.job_country_code_or = codes;
   }
 
-  // No country filter — remote users or unrecognized city names
-  let jobs = await searchWithRotation((key) => searchGet(key, baseGet));
-  if (jobs.length > 0) return jobs;
+  return body;
+}
 
-  jobs = await searchWithRotation((key) =>
-    searchPost(key, {
-      job_title_or: [title],
-      limit: Number(limit),
-    }),
-  );
-  return jobs;
+async function fetchForQuery(title: string, opts: JobsPipeFetchOpts): Promise<JobsPipeJob[]> {
+  return searchWithRotation((key) => searchPost(key, buildSearchBody([title], opts)));
 }
 
 /**
- * Fetch jobs from JobsPipe.
- * Uses GET /v1/jobs first, then POST /v1/jobs/search as fallback.
+ * Fetch jobs from JobsPipe via POST /v1/jobs/search.
+ * Country filter comes from user onboarding locations (job_country_code_or).
  */
 export async function fetchJobsPipe(opts?: JobsPipeFetchOpts): Promise<RawJob[]> {
   const keys = await getJobspipeApiKeys();
@@ -342,7 +321,13 @@ export async function fetchJobsPipe(opts?: JobsPipeFetchOpts): Promise<RawJob[]>
     return [];
   }
 
-  const titleQueries = buildTitleQueries(opts);
+  const fetchOpts = opts ?? {};
+  const titleQueries = buildTitleQueries(fetchOpts);
+  const countryLabel = fetchOpts.countryCodes?.length
+    ? fetchOpts.countryCodes.join(',')
+    : 'global';
+  console.log(`[jobspipe] Scan — titles: ${titleQueries.join(' | ')} · countries: ${countryLabel}`);
+
   const seenIds = new Set<string>();
   const allJobs: JobsPipeJob[] = [];
 
@@ -356,25 +341,22 @@ export async function fetchJobsPipe(opts?: JobsPipeFetchOpts): Promise<RawJob[]>
     }
   };
 
-  // One batched POST with all titles OR'd — often best recall per credit.
+  // Batched POST with user country filter (matches manual jobspipe.dev tests).
   try {
     absorb(
       await searchWithRotation((key) =>
-        searchPost(key, {
-          job_title_or: titleQueries,
-          limit: Math.min(opts?.limit ?? 25, 25),
-        }),
+        searchPost(key, buildSearchBody(titleQueries, fetchOpts)),
       ),
     );
   } catch (e) {
     console.warn('[jobspipe] Batched POST failed:', (e as Error).message);
   }
 
-  // Per-title GET (+ POST fallback) only if batch was thin.
+  // Per-title POST only if batch was thin — still keeps country filter.
   if (allJobs.length < 10) {
     for (const title of titleQueries) {
       try {
-        absorb(await fetchForQuery(title, opts ?? {}));
+        absorb(await fetchForQuery(title, fetchOpts));
         if (allJobs.length >= 25) break;
       } catch (e) {
         console.warn(`[jobspipe] Query "${title}" failed:`, (e as Error).message);
@@ -402,5 +384,5 @@ export async function describeJobsPipeFetchFailure(): Promise<string> {
   if (keys.length === 0) {
     return 'No JobsPipe API key configured. Add one in Admin → API Key Management.';
   }
-  return 'JobsPipe API was called (usage shows on jobspipe.dev) but 0 jobs matched your title keywords. Check Admin → Job API usage: if jobs_returned is 0, try broader roles in your profile; if jobs_returned > 0 but Fetched is 0, report a mapping bug.';
+  return 'JobsPipe was queried with your location country filter but returned 0 jobs for your role titles. Check Admin → Job API usage; try broader titles or confirm JobsPipe has listings in your country.';
 }
