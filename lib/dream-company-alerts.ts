@@ -1,8 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase/server';
-import {
-  type DreamCompanyRow,
-  resolveDreamPicksForJob,
-} from '@/lib/dream-companies';
+import { normalizeDreamPickRow, resolveDreamPicksForJob, type DreamPickForMatch } from '@/lib/dream-companies';
 
 export type DreamAlertJobInput = {
   profileId: string;
@@ -10,34 +7,29 @@ export type DreamAlertJobInput = {
   company: string | null | undefined;
   jobTitle: string | null | undefined;
   matchId?: string | null;
-  /** Pre-loaded picks for this profile (cache per ingest run). */
-  dreamPicks?: Pick<DreamCompanyRow, 'id' | 'company_key' | 'company_display_name'>[];
+  dreamPicks?: DreamPickForMatch[];
 };
 
-export async function loadDreamPicksForProfile(
-  profileId: string,
-): Promise<Pick<DreamCompanyRow, 'id' | 'company_key' | 'company_display_name'>[]> {
+export async function loadDreamPicksForProfile(profileId: string): Promise<DreamPickForMatch[]> {
   const sb = supabaseAdmin();
   const { data, error } = await sb
     .from('dream_companies')
-    .select('id, company_key, company_display_name')
+    .select(
+      `id, company_key, company_display_name, source, custom_patterns,
+       company_catalog(patterns)`,
+    )
     .eq('profile_id', profileId);
   if (error) {
     console.error('[dream-alerts] load picks failed:', error.message);
     return [];
   }
-  return data ?? [];
+  return (data ?? []).map((row) => normalizeDreamPickRow(row as Record<string, unknown>));
 }
 
-/**
- * After a match is created/updated for a job, insert in-app alerts for matching dream picks.
- * Email/SMS delivery is Phase 2 — we only persist rows here.
- */
 export async function processDreamCompanyAlertsForJob(
   input: DreamAlertJobInput,
 ): Promise<number> {
-  const picks =
-    input.dreamPicks ?? (await loadDreamPicksForProfile(input.profileId));
+  const picks = input.dreamPicks ?? (await loadDreamPicksForProfile(input.profileId));
   if (picks.length === 0) return 0;
 
   const hits = resolveDreamPicksForJob(input.company, picks);

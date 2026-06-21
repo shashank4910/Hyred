@@ -74,7 +74,7 @@ How to open one section cheaply: `grep -n "<heading text>" CONTEXT.md` to get th
 | Kiro-specific steering | `.kiro/steering/jobradar-context.md` | Kiro auto-loads it |
 | **Superpowers workflow (big tasks only)** | `.cursor/rules/superpowers-gate.mdc` | multi-phase features, new subsystems; skip for surgical fixes |
 | Past session history | `docs/context/session-log.md` (newest first) | Tier 3 only |
-| **Dream Company Job Alerts** | `docs/features-jun26-to-be-built.md` §4.8 + `lib/dream-companies.ts` + migration **0016** | `/dream-alerts`, sidebar nav, ingest hook |
+| **Dream Company Job Alerts** | `docs/features-jun26-to-be-built.md` §4.8 + `lib/company-catalog/*` + migrations **0016**, **0017** | `/dream-alerts`, catalog search, manual add, admin requests |
 | **Doc system / context bridges** | `docs/context/session-log.md` → Session 26 | fixing AGENTS↔CONTEXT↔session-log gaps |
 
 > Keep this Index in sync when you add/rename a `##` section in `CONTEXT.md`. It is the single source of the map.

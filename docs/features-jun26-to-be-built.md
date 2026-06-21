@@ -378,20 +378,24 @@ Settings = form memory (apply profile). Dream companies = **job-search intent**.
 | Dashboard card only | Too easy to miss on first visit |
 | Settings | Wrong mental model; user rejected |
 
-**Schema (migration 0016)**
+**Schema (migration 0016 + 0017)**
 
-- `dream_companies` — `(profile_id, company_key)` unique; `notify_email`, `notify_sms` prefs.
-- `dream_company_alerts` — `(profile_id, job_id, dream_company_id)` unique; `read_at`, `email_sent_at`, `sms_sent_at`.
+- `dream_companies` — user picks; `source` = catalog | manual | approved_request; `custom_patterns` for manual.
+- `company_catalog` — global DB catalog (500–800+ seeded: listed + unlisted, all regions).
+- `company_catalog_requests` — Tier C user requests; admin approve in `/admin`.
+- `dream_company_alerts` — fired alerts (unchanged from Phase 1).
 
 **Code map**
 
 | Piece | Path |
 |---|---|
-| Catalog + matching | `lib/top-companies.ts` exports + `lib/dream-companies.ts` |
-| Alert processor | `lib/dream-company-alerts.ts` — called from `lib/ingest.ts` + `app/api/import-job/route.ts` |
-| CRUD API | `app/api/dream-companies/route.ts`, `[id]/route.ts`, `alerts/route.ts` |
-| UI | `app/(app)/dream-alerts/page.tsx`, `DreamAlertsClient.tsx` |
-| Nav | `app/(app)/_components/AppShell.tsx` — `Bell` icon, above ATS Checker |
+| Seed + regions | `lib/company-catalog/build-seed.ts`, `exchange-name-lists.ts` |
+| DB search + lazy seed | `lib/company-catalog/db.ts` |
+| Matching | `lib/company-catalog/match.ts`, `lib/dream-companies.ts` |
+| Catalog search API | `GET /api/dream-companies/catalog?q=&region=` |
+| Manual add | `POST /api/dream-companies` `{ custom_name }` |
+| User request | `POST /api/dream-companies/request` |
+| Admin approve | `PATCH /api/admin/company-catalog/requests` |
 
 **Ingest hook**
 
@@ -768,4 +772,13 @@ Tier 1 implementation shipped on branch `feat/tier-1-premium-features`:
 - [x] Migration **0016**, lib + ingest hook, `/dream-alerts` UI, sidebar nav above ATS Checker
 - [x] In-app alert feed (email/SMS delivery = Phase 2/3)
 
-**Manual step:** Run migration **0016** in Supabase after merge.
+**Phase 2 catalog** (Jun 21):
+
+- [x] Migration **0017** — `company_catalog`, `company_catalog_requests`, manual/custom patterns on `dream_companies`
+- [x] **Tier A:** ~400–800 seeded companies (legacy Top MNC + regional exchange lists + unlisted majors)
+- [x] **Tier B:** Exchange-style buckets (NSE/BSE, NYSE/NASDAQ, Europe, APAC, MEA, LatAm) + unlisted bucket
+- [x] **Tier C:** User request → Admin approve (`CompanyCatalogRequestsPanel`)
+- [x] **Manual add:** `custom_name` on POST `/api/dream-companies` with user-specific patterns
+- [x] Catalog search API with region filter; lazy DB seed on first search
+
+**Manual step:** Run migrations **0016** and **0017** in Supabase.

@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   companyCatalogKey,
-  findCatalogCompanyByKey,
+  jobMatchesDreamPick,
+  patternsFromDisplayName,
   resolveDreamPicksForJob,
 } from '@/lib/dream-companies';
-import { matchJobToCatalogEntry } from '@/lib/top-companies';
+import { jobCompanyMatchesPatterns } from '@/lib/company-catalog/match';
+import { buildCompanyCatalogSeed } from '@/lib/company-catalog/build-seed';
 
 describe('dream-companies', () => {
   it('companyCatalogKey slugifies names', () => {
@@ -12,32 +14,50 @@ describe('dream-companies', () => {
     expect(companyCatalogKey('Twitter/X')).toBe('twitter-x');
   });
 
-  it('findCatalogCompanyByKey resolves catalog entries', () => {
-    const entry = findCatalogCompanyByKey('google');
-    expect(entry?.name).toBe('Google');
+  it('patternsFromDisplayName builds match tokens', () => {
+    const p = patternsFromDisplayName('Reliance Industries');
+    expect(p).toContain('reliance industries');
+    expect(p.some((x) => x.includes('reliance'))).toBe(true);
   });
 
-  it('matchJobToCatalogEntry uses word boundaries', () => {
-    const google = findCatalogCompanyByKey('google')!;
-    expect(matchJobToCatalogEntry('Google India Pvt Ltd', google)).toBe(true);
-    expect(matchJobToCatalogEntry('Matchstics Inc', findCatalogCompanyByKey('tcs')!)).toBe(false);
+  it('jobCompanyMatchesPatterns uses word boundaries', () => {
+    expect(jobCompanyMatchesPatterns('Google India Pvt Ltd', ['google'])).toBe(true);
+    expect(jobCompanyMatchesPatterns('Matchstics Inc', ['tcs'])).toBe(false);
   });
 
-  it('resolveDreamPicksForJob filters user picks only', () => {
+  it('resolveDreamPicksForJob matches manual patterns', () => {
     const picks = [
       {
         id: '1',
-        company_key: 'google',
-        company_display_name: 'Google',
-      },
-      {
-        id: '2',
-        company_key: 'microsoft',
-        company_display_name: 'Microsoft',
+        company_key: 'acme',
+        company_display_name: 'Acme Corp',
+        source: 'manual' as const,
+        custom_patterns: ['acme corp', 'acme'],
+        catalog_patterns: null,
       },
     ];
-    const hits = resolveDreamPicksForJob('Google LLC', picks);
-    expect(hits).toHaveLength(1);
-    expect(hits[0].company_display_name).toBe('Google');
+    expect(resolveDreamPicksForJob('Acme Corp India', picks)).toHaveLength(1);
+  });
+
+  it('jobMatchesDreamPick falls back to display name', () => {
+    expect(
+      jobMatchesDreamPick('Toyota Motor Corporation', {
+        id: '1',
+        company_key: 'toyota',
+        company_display_name: 'Toyota Motor',
+        source: 'catalog',
+        custom_patterns: null,
+        catalog_patterns: null,
+      }),
+    ).toBe(true);
+  });
+});
+
+describe('company-catalog seed', () => {
+  it('builds 400+ unique catalog entries', () => {
+    const entries = buildCompanyCatalogSeed();
+    expect(entries.length).toBeGreaterThanOrEqual(400);
+    const slugs = new Set(entries.map((e) => e.slug));
+    expect(slugs.size).toBe(entries.length);
   });
 });
