@@ -38,8 +38,8 @@ import {
   JOB_API_MONTHLY_QUOTA,
   JOB_API_SOURCES,
   type JobApiSource,
-  getConfiguredJobApiKeys,
 } from './job-api-keys';
+import { getConfiguredJobApiKeys } from './job-api-keys-server';
 
 export { maskKey } from './job-api-keys';
 
