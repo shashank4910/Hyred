@@ -400,7 +400,7 @@ export function selectOptimalKey(
  */
 export function estimateProviderRpmLimit(provider: string): number {
   switch (provider) {
-    case 'bluesminds': return 60;  // paid, generous
+    case 'bluesminds': return 20;   // free tier per doc.bluesminds.com
     case 'openai': return 60;     // paid
     case 'groq': return 15;       // free tier
     case 'cerebras': return 10;   // free tier (reduced)

@@ -5,6 +5,7 @@ import {
   addLlmKey,
   getLlmUsageSummary,
   PROVIDER_DEFAULTS,
+  PROVIDER_BUDGET,
 } from '@/lib/llm-keys';
 
 export const runtime = 'nodejs';
@@ -39,6 +40,7 @@ export async function GET(req: NextRequest) {
       keys: maskedKeys,
       usage,
       providers: PROVIDER_DEFAULTS,
+      budgets: PROVIDER_BUDGET,
     });
   } catch (e) {
     return NextResponse.json(

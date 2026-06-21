@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isCurrentUserAdmin } from '@/lib/current-user';
 import {
   forceResetProviderCounters,
+  repairBluesmindsKeyBudgets,
   PROVIDER_DEFAULTS,
 } from '@/lib/llm-keys';
 
@@ -31,6 +32,16 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    if (provider === 'bluesminds') {
+      const result = await repairBluesmindsKeyBudgets();
+      return NextResponse.json({
+        ok: true,
+        reset: result.reset,
+        repaired: result.repaired,
+        provider,
+        message: `Reset ${result.reset} Bluesminds key(s); fixed ${result.repaired} misconfigured limit(s) → 300 req/day`,
+      });
+    }
     const count = await forceResetProviderCounters(provider === 'all' ? undefined : provider);
     return NextResponse.json({ ok: true, reset: count, provider });
   } catch (e) {
