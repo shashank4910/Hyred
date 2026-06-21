@@ -198,16 +198,20 @@ export function MatchCard({
         <div className="flex flex-wrap items-center gap-2">
           <Link
             href={verdictHref}
+            target="_blank"
+            rel="noopener noreferrer"
             className="btn inline-flex gap-1.5 px-3 py-2 text-label-md"
-            title="Match Intelligence — Apply / Stretch / Skip"
+            title="Match Intelligence — Apply / Stretch / Skip (opens in new tab)"
           >
             <Brain className="h-4 w-4" />
             Verdict
           </Link>
           <Link
             href={prepHref}
+            target="_blank"
+            rel="noopener noreferrer"
             className="btn inline-flex gap-1.5 px-3 py-2 text-label-md"
-            title="Interview Prep Pack"
+            title="Interview Prep Pack (opens in new tab)"
           >
             <ClipboardList className="h-4 w-4" />
             Interview prep
