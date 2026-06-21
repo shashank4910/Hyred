@@ -11,6 +11,7 @@ import { MatchSkillPills } from '../../_components/MatchSkillPills';
 import { CollapsibleCard } from '../../_components/CollapsibleCard';
 import { relativeTime, scoreColorClass, scoreLabel, SOURCE_LABELS } from '@/lib/ui';
 import { ReferralRadar } from './ReferralRadar';
+import { JobHashScroll } from './JobHashScroll';
 
 export const dynamic = 'force-dynamic';
 
@@ -123,6 +124,7 @@ export default async function JobMatchPage({
 
   return (
     <div className="space-y-5">
+      <JobHashScroll />
       <Link
         href={backHref}
         className="inline-flex items-center gap-1.5 text-sm text-on-surface-variant hover:text-primary transition-colors"
