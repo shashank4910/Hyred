@@ -4,7 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase/server';
 import { getCurrentProfile } from '@/lib/current-user';
 import { applyMatchSort } from '@/lib/apply-match-sort';
 import { resolveMatchSort } from '@/lib/ui';
-import { isSkillPresentInJd } from '@/lib/gemini';
+import { enrichMatchListSkills } from '@/lib/match-skill-enrich';
 import { MatchList } from './MatchList';
 
 const PAGE_SIZE = 20;
@@ -100,35 +100,26 @@ export async function DashboardMatchResults({
     );
   }
 
-  // Strip HTML from JD text before any skill matching (raw DB descriptions contain HTML tags).
-  const stripHtml = (s: string) => s.replace(/<[^>]*>/g, ' ').replace(/&[a-z]+;/gi, ' ');
-
-  // For cards missing matched_skills, derive them from profile top_skills × JD.
-  // ONLY compute for cards where matched_skills is null/empty (pre-backfill rows).
-  // NEVER overwrite missing_skills with wrong data — DB missing_skills from LLM is authoritative
-  // (it means "skills in JD but absent from resume"). If DB is also null, leave empty rather than guess.
+  // Pad sparse skill chips — common when ingest scored against a truncated JD.
   const enriched = (matches ?? []).map((m) => {
     const raw = m as unknown as {
       matched_skills: string[] | null;
       missing_skills: string[] | null;
       job: { title: string; description: string | null };
     };
-    let matchedSkills = raw.matched_skills ?? [];
-    const missingSkills = raw.missing_skills ?? []; // always use DB value — LLM computed this correctly
-
-    if (matchedSkills.length === 0 && topSkills.length > 0) {
-      // Compute matched: profile skills that appear in the JD text (HTML stripped).
-      const jdPlain = stripHtml(raw.job?.description ?? '');
-      const title = raw.job?.title ?? '';
-      matchedSkills = topSkills.filter((s) => isSkillPresentInJd(s, jdPlain, title));
-      // Do NOT touch missingSkills — the DB value is what the LLM computed at ingest time.
-    }
+    const skills = enrichMatchListSkills(
+      raw.matched_skills,
+      raw.missing_skills,
+      topSkills,
+      raw.job?.title ?? '',
+      raw.job?.description,
+    );
 
     return {
       ...m,
       bookmarked: (m as unknown as { bookmarked: boolean }).bookmarked ?? false,
-      matched_skills: matchedSkills,
-      missing_skills: missingSkills,
+      matched_skills: skills.matched_skills,
+      missing_skills: skills.missing_skills,
       job: m.job as unknown as {
         id: string;
         title: string;

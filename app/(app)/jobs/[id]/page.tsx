@@ -4,7 +4,7 @@ import { ArrowLeft, MapPin, Building2, Clock, FileText } from 'lucide-react';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { getCurrentProfile, isCurrentUserAdmin } from '@/lib/current-user';
 import { ensureFullDescription } from '@/lib/jd-fetcher';
-import { isSkillPresentInJd } from '@/lib/gemini';
+import { supplementMatchedFromProfile, filterMissingSkillsForJd } from '@/lib/match-skill-enrich';
 import { JobActions } from './JobActions';
 import { AutoApplyButton } from './AutoApplyButton';
 import { MatchSkillPills } from '../../_components/MatchSkillPills';
@@ -83,19 +83,36 @@ export default async function JobMatchPage({
   // and the user's top profile skills if they are not in sync.
   const candidateSkills = (match.profile as any)?.insights?.top_skills;
   if (Array.isArray(candidateSkills)) {
-    const updatedMatched = candidateSkills.filter((s: string) =>
-      isSkillPresentInJd(s, fullDescription, job.title)
-    );
     const currentMatched = (match as any).matched_skills ?? [];
-    const hasDiff = currentMatched.length !== updatedMatched.length ||
+    const currentMissing = (match as any).missing_skills ?? [];
+    const updatedMatched = supplementMatchedFromProfile(
+      currentMatched,
+      candidateSkills,
+      fullDescription,
+      job.title,
+    );
+    const updatedMissing = filterMissingSkillsForJd(
+      currentMissing,
+      fullDescription,
+      job.title,
+    );
+    const matchedDiff =
+      currentMatched.length !== updatedMatched.length ||
       currentMatched.some((s: string, idx: number) => s !== updatedMatched[idx]);
+    const missingDiff =
+      currentMissing.length !== updatedMissing.length ||
+      currentMissing.some((s: string, idx: number) => s !== updatedMissing[idx]);
 
-    if (hasDiff) {
+    if (matchedDiff || missingDiff) {
       await sb
         .from('matches')
-        .update({ matched_skills: updatedMatched })
+        .update({
+          matched_skills: updatedMatched,
+          missing_skills: updatedMissing,
+        })
         .eq('id', id);
       match.matched_skills = updatedMatched;
+      (match as any).missing_skills = updatedMissing;
     }
   }
 

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { ensureFullDescription } from '@/lib/jd-fetcher';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { getCurrentProfile } from '@/lib/current-user';
 import { embed, scoreJob } from '@/lib/gemini';
@@ -494,13 +495,19 @@ export async function POST(req: NextRequest) {
   };
   let vec: number[] | null = null;
   try {
+    const fullDescription = await ensureFullDescription({
+      jobId: jobRow.id,
+      currentDescription: description,
+      url: hasValidUrl ? url : jobUrl,
+    });
+
     const [v, s] = await Promise.all([
       embed(
         jobToEmbeddingText({
           title,
           company,
           location,
-          description,
+          description: fullDescription,
           tags: null,
         }),
         'embed',
@@ -512,7 +519,7 @@ export async function POST(req: NextRequest) {
         jobTitle: title,
         jobCompany: company,
         jobLocation: location,
-        jobDescription: description,
+        jobDescription: fullDescription,
         profileId: profile.id,
       }),
     ]);
