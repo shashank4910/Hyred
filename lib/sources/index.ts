@@ -6,6 +6,7 @@ import { fetchArbeitnow } from './arbeitnow';
 import { fetchAdzuna } from './adzuna';
 import { fetchHimalayas } from './himalayas';
 import { fetchJSearch } from './jsearch';
+import { fetchJobsPipe } from './jobspipe';
 import { fetchLinkedIn } from './linkedin';
 import type { SearchProfile } from '../search-profile';
 import type { Preferences } from '../types';
@@ -18,6 +19,7 @@ export type SourceName =
   | 'adzuna_in'
   | 'himalayas'
   | 'jsearch'
+  | 'jobspipe'
   | 'linkedin';
 
 export const ALL_SOURCES: SourceName[] = [
@@ -28,6 +30,7 @@ export const ALL_SOURCES: SourceName[] = [
   'adzuna_in',
   'himalayas',
   'jsearch',
+  'jobspipe',
   'linkedin',
 ];
 
@@ -39,6 +42,7 @@ export const SOURCE_LABELS: Record<SourceName, string> = {
   adzuna_in: 'Adzuna India',
   himalayas: 'Himalayas',
   jsearch: 'JSearch',
+  jobspipe: 'JobsPipe',
   linkedin: 'LinkedIn',
 };
 
@@ -175,6 +179,15 @@ function buildFns(
       queries: queries.length > 0 ? queries.slice(0, 5) : undefined,
       country: 'India',
       datePosted: 'week',
+    });
+
+  // JobsPipe — registered always; returns [] when no keys (Admin Center or env).
+  fns.jobspipe = () =>
+    fetchJobsPipe({
+      queries: queries.length > 0 ? queries.slice(0, 5) : undefined,
+      countryCodes: ['IN'],
+      maxAgeDays: 14,
+      limit: 25,
     });
 
   // LinkedIn — PUBLIC GUEST API (free, no auth, no API key).
