@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server';
-import OpenAI from 'openai';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { isExtAuthed } from '@/lib/extension/auth';
 import { corsPreflight, corsResponse } from '@/lib/extension/cors';
+import { chat } from '@/lib/gemini';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -85,13 +85,10 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const key = process.env.OPENAI_API_KEY;
-  if (!key) {
-    return corsResponse({ error: 'OPENAI_API_KEY missing' }, { status: 500 });
-  }
-  const client = new OpenAI({ apiKey: key });
+  const systemPrompt =
+    "You write candid, concrete first-person answers to job application screening questions, grounded in the candidate's actual resume.";
 
-  const prompt = `You are helping the candidate answer a screening question on a job application.
+  const userPrompt = `You are helping the candidate answer a screening question on a job application.
 Write the answer in the candidate's first-person voice. Be specific, draw on concrete experience from their resume, and tie back to the job context. Avoid clichés ("I am passionate about", "I am a hard-working professional"). No emojis. No preamble.
 Length: max ${maxWords} words.
 
@@ -109,19 +106,14 @@ ${question}
 Output the answer text only.`;
 
   try {
-    const res = await client.chat.completions.create({
-      model: 'gpt-4o-mini',
-      temperature: 0.5,
-      messages: [
-        {
-          role: 'system',
-          content:
-            "You write candid, concrete first-person answers to job application screening questions, grounded in the candidate's actual resume.",
-        },
-        { role: 'user', content: prompt },
-      ],
-    });
-    const answer = (res.choices[0]?.message?.content ?? '').trim();
+    const answer = await chat(
+      systemPrompt,
+      userPrompt,
+      0.5,
+      false,
+      'extensionAnswer',
+      auth.profile_id ?? undefined,
+    );
     return corsResponse({ ok: true, answer });
   } catch (e) {
     return corsResponse(

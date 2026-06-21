@@ -47,7 +47,7 @@ export const PROVIDER_DEFAULTS: Record<string, { baseUrl: string; model: string 
  * Check if a key's daily counter needs reset (new UTC day since last_reset_at).
  * If yes, resets tokens_used_today and requests_today in the DB.
  */
-async function maybeResetDaily(key: LlmKey): Promise<LlmKey> {
+export async function resetLlmKeyDailyIfNeeded(key: LlmKey): Promise<LlmKey> {
   const lastReset = new Date(key.last_reset_at);
   const now = new Date();
   // Compare UTC dates
@@ -95,7 +95,7 @@ export async function getNextAvailableKey(provider: string): Promise<LlmKey | nu
 
   // Find the first key that hasn't exceeded its daily limit (with daily reset check)
   for (const rawKey of keys) {
-    const key = await maybeResetDaily(rawKey as LlmKey);
+    const key = await resetLlmKeyDailyIfNeeded(rawKey as LlmKey);
     if (key.tokens_used_today < key.daily_token_limit) {
       return key;
     }
@@ -276,6 +276,89 @@ export async function recordUsage(opts: {
 }
 
 /**
+ * Batch-reset daily counters for keys whose last_reset_at is before today (UTC).
+ * Called at the start of each provider-chain build so Cerebras/Groq keys refresh
+ * at midnight UTC even if no individual key was fetched.
+ */
+export async function resetStaleDailyCounters(provider?: string): Promise<number> {
+  const sb = supabaseAdmin();
+  const now = new Date();
+  const todayStart = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+  ).toISOString();
+
+  let query = sb
+    .from('llm_keys')
+    .update({
+      tokens_used_today: 0,
+      requests_today: 0,
+      last_reset_at: now.toISOString(),
+      updated_at: now.toISOString(),
+    })
+    .lt('last_reset_at', todayStart);
+
+  if (provider) {
+    query = query.eq('provider', provider);
+  }
+
+  const { data, error } = await query.select('id');
+  if (error) {
+    console.error('[llm-keys] resetStaleDailyCounters failed:', error.message);
+    return 0;
+  }
+  const count = data?.length ?? 0;
+  if (count > 0) {
+    console.log(`[llm-keys] UTC daily reset: ${count} key(s)${provider ? ` (${provider})` : ''}`);
+  }
+  return count;
+}
+
+/** Admin: force-reset counters to zero (same day) for one provider or all. */
+export async function forceResetProviderCounters(provider?: string): Promise<number> {
+  const sb = supabaseAdmin();
+  const now = new Date().toISOString();
+  let query = sb
+    .from('llm_keys')
+    .update({
+      tokens_used_today: 0,
+      requests_today: 0,
+      last_reset_at: now,
+      updated_at: now,
+    });
+
+  if (provider) {
+    query = query.eq('provider', provider);
+  }
+
+  const { data, error } = await query.select('id');
+  if (error) throw new Error(error.message);
+  return data?.length ?? 0;
+}
+
+/** True if the provider has at least one is_active DB key. */
+export async function providerHasActiveDbKeys(provider: string): Promise<boolean> {
+  const sb = supabaseAdmin();
+  const { count, error } = await sb
+    .from('llm_keys')
+    .select('id', { count: 'exact', head: true })
+    .eq('provider', provider)
+    .eq('is_active', true);
+  if (error) return false;
+  return (count ?? 0) > 0;
+}
+
+/** True if any row exists for this provider (active or disabled). */
+export async function providerHasAnyDbKeys(provider: string): Promise<boolean> {
+  const sb = supabaseAdmin();
+  const { count, error } = await sb
+    .from('llm_keys')
+    .select('id', { count: 'exact', head: true })
+    .eq('provider', provider);
+  if (error) return false;
+  return (count ?? 0) > 0;
+}
+
+/**
  * Mark a key as temporarily exhausted (hit rate limit).
  * Sets tokens_used_today = daily_token_limit so it won't be picked again today.
  */
@@ -310,14 +393,15 @@ export async function addLlmKey(opts: {
   priority?: number;
 }): Promise<LlmKey | null> {
   const sb = supabaseAdmin();
+  const defaults = PROVIDER_DEFAULTS[opts.provider];
   const { data, error } = await sb
     .from('llm_keys')
     .insert({
       provider: opts.provider,
       api_key: opts.apiKey,
       label: opts.label ?? null,
-      model: opts.model ?? null,
-      base_url: opts.baseUrl ?? null,
+      model: opts.model ?? defaults?.model ?? null,
+      base_url: opts.baseUrl ?? defaults?.baseUrl ?? null,
       daily_token_limit: opts.dailyTokenLimit ?? 1000000,
       priority: opts.priority ?? 0,
     })

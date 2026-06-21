@@ -53,6 +53,11 @@ import {
 import {
   recordUsage,
   PROVIDER_DEFAULTS,
+  resetLlmKeyDailyIfNeeded,
+  resetStaleDailyCounters,
+  providerHasActiveDbKeys,
+  providerHasAnyDbKeys,
+  type LlmKey,
 } from './llm-keys';
 import { getRateLimiter, RateLimiter } from './rate-limiter';
 import {
@@ -73,10 +78,9 @@ const CEREBRAS_BASE_URL = 'https://api.cerebras.ai/v1';
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai';
 const EMBED_MODEL = 'text-embedding-3-small';
 
-// Provider priority order. Default: bluesminds (gpt-4o via Blueminds API) → gemini (free)
-// → cerebras/groq (free fallbacks) → openai (paid, last resort).
+// Provider priority order. Default: cerebras (free 1M/day) → groq → gemini → openai (paid last).
 // Override with LLM_PRIMARY env var for specific deployments.
-const LLM_PRIMARY = (process.env.LLM_PRIMARY || 'bluesminds').toLowerCase();
+const LLM_PRIMARY = (process.env.LLM_PRIMARY || 'cerebras').toLowerCase();
 
 /**
  * Provider priority chain. Derived dynamically from PROVIDER_DEFAULTS so any
@@ -177,7 +181,8 @@ async function getAvailableKeysForProvider(provider: string): Promise<ProviderEn
     const defaults = PROVIDER_DEFAULTS[provider];
 
     for (const k of keys) {
-      const key = k as { id: string; api_key: string; label: string | null; model: string | null; base_url: string | null; daily_token_limit: number; tokens_used_today: number };
+      const raw = k as LlmKey;
+      const key = await resetLlmKeyDailyIfNeeded(raw);
       // Skip keys on RPM cooldown
       if (isKeyOnCooldown(key.id)) continue;
       // Skip keys that exceeded daily token limit
@@ -211,31 +216,13 @@ async function getAvailableKeysForProvider(provider: string): Promise<ProviderEn
 }
 
 /**
- * Check if a provider has ANY keys in the DB (regardless of is_active status).
- * Used to decide whether env-var fallbacks should activate — if the user has
- * added and disabled all keys, we respect that choice and don't fall back.
- */
-async function providerHasAnyDbKeys(provider: string): Promise<boolean> {
-  try {
-    const { supabaseAdmin } = await import('./supabase/server');
-    const sb = supabaseAdmin();
-    const { count } = await sb
-      .from('llm_keys')
-      .select('id', { count: 'exact', head: true })
-      .eq('provider', provider);
-    return (count ?? 0) > 0;
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Build the full provider chain: ALL DB keys (round-robin) per provider,
- * then env-var fallbacks. This maximizes RPM by spreading across keys.
- *
- * With 5 Cerebras keys at 5 RPM each = 25 effective RPM when round-robined.
+ * then env-var fallbacks when DB keys are exhausted or missing.
  */
 async function buildProviderChain(): Promise<ProviderEntry[]> {
+  // UTC midnight reset for all keys (Cerebras/Groq refresh daily budget)
+  await resetStaleDailyCounters();
+
   const chain: ProviderEntry[] = [];
 
   // 1. DB keys for each provider (ALL available, not just one)
@@ -244,24 +231,26 @@ async function buildProviderChain(): Promise<ProviderEntry[]> {
     chain.push(...dbKeys);
   }
 
-  // 2. Env-var fallbacks — only when the provider has ZERO DB keys at all.
-  //    If the user disabled ALL keys for a provider, we respect that and
-  //    don't fall back to the env var (fixes the bypass bug).
-  //    These use a synthetic keyId (env:{provider}) so usage gets logged
-  //    to llm_usage_log and appears in the Live Key Activity panel.
+  // 2. Env-var fallbacks when no DB key is available right now.
+  //    - Zero DB keys → use env if set
+  //    - Active DB keys all exhausted/cooling → use env as backup
+  //    - User disabled ALL keys (only inactive rows) → skip env (respect choice)
   for (const providerName of ENV_FALLBACK_PROVIDERS) {
-    const hasAnyDbKey = await providerHasAnyDbKeys(providerName);
-    if (hasAnyDbKey) continue; // User has DB keys (even disabled) — no fallback
+    const alreadyInChain = chain.some((p) => p.provider === providerName);
+    if (alreadyInChain) continue;
+
+    const hasActive = await providerHasActiveDbKeys(providerName);
+    const hasAny = await providerHasAnyDbKeys(providerName);
+    if (hasAny && !hasActive) continue; // deliberately disabled
 
     const fallbackClient = getEnvFallbackClient(providerName);
     if (fallbackClient) {
-      const defaults = PROVIDER_DEFAULTS[providerName];
       chain.push({
         name: `${providerName.charAt(0).toUpperCase() + providerName.slice(1)}[env]`,
         client: fallbackClient,
         model: getEnvFallbackModel(providerName),
         provider: providerName,
-        keyId: `env:${providerName}`, // synthetic ID for usage logging
+        keyId: `env:${providerName}`,
       });
     }
   }
@@ -546,16 +535,30 @@ export function buildResumeContextForScoring(
  * Throws if OPENAI_API_KEY is not set — embeddings are OpenAI-only. Groq has no
  * embeddings endpoint, and Gemini's text-embedding-004 was deprecated.
  */
-export async function embed(text: string): Promise<number[]> {
+export async function embed(text: string, operation = 'embed'): Promise<number[]> {
   const client = getOpenAIClient();
   if (!client) throw new Error('Missing OPENAI_API_KEY env var');
   const trimmed = text.slice(0, 8000);
+  const startMs = Date.now();
   const result = await client.embeddings.create({
     model: EMBED_MODEL,
     input: trimmed,
   });
   const vector = result.data[0]?.embedding;
   if (!vector) throw new Error('OpenAI embeddings response had no vector');
+
+  const tokensIn = result.usage?.prompt_tokens ?? Math.ceil(trimmed.length / 4);
+  recordUsage({
+    keyId: 'env:openai',
+    provider: 'openai',
+    model: EMBED_MODEL,
+    operation,
+    tokensIn,
+    tokensOut: 0,
+    durationMs: Date.now() - startMs,
+    status: 'success',
+  });
+
   return vector;
 }
 

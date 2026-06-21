@@ -152,6 +152,24 @@ export function LlmKeysPanel() {
     }
   }
 
+  async function resetProviderCounters(provider: string) {
+    const label = provider === 'all' ? 'ALL providers' : (PROVIDER_LABELS[provider] ?? provider);
+    if (!confirm(`Reset today's token counters to 0 for ${label}?`)) return;
+    try {
+      const res = await fetch('/api/admin/llm-keys/reset', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ provider }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Reset failed');
+      toast.success(`Reset ${data.reset} key(s) — counters back to 0`);
+      fetchData();
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }
+
   function formatTokens(n: number): string {
     if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
     if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
@@ -178,6 +196,14 @@ export function LlmKeysPanel() {
           <Cpu className="h-5 w-5 text-primary" /> LLM Keys & Token Usage
         </h2>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => resetProviderCounters('cerebras')}
+            className="btn text-xs"
+            title="Set Cerebras tokens_used_today back to 0"
+          >
+            Reset Cerebras
+          </button>
           <button onClick={fetchData} disabled={loading} className="btn text-xs">
             {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
             Refresh
