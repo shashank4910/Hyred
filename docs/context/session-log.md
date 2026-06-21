@@ -2,6 +2,77 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 28 — Job APIs, location filters, Dream Company, LLM scale (June 21, 2026)
+
+**Goal:** Ship paid ingest sources with admin key management; fix JobsPipe country filtering for all users worldwide; Dream Company alerts Phase 1–2; distributed LLM rotation for multi-user scale.
+
+### Shipped — Job APIs & Admin
+
+| PR | What |
+|---|---|
+| **#210** | JobsPipe ingest source + Admin Center key storage (`api_keys.jobspipe`) |
+| **#211** | Paginated Job API usage dashboard (date range, per-key rows) |
+| **#212** | JobDataLake ingest source + bulk key paste in Admin |
+| **#213** | Split `getConfiguredJobApiKeys` → `lib/job-api-keys-server.ts` (client imported `supabase/server`) |
+| **#214** | `server-only` hardening: `lib/supabase/admin.ts`, `lib/job-api-usage-types.ts` |
+
+### Shipped — JobsPipe + location-aware country filters
+
+| PR | What |
+|---|---|
+| **#215** | Map JobsPipe `title` field (not only `job_title`); clearer zero-fetch errors |
+| **#216** | JobsPipe GET `/v1/jobs` attempt + role-title queries via `buildJobsPipeQueries()` |
+| **#217** | `lib/job-country-codes.ts` — derive ISO codes from user `preferences.locations` + resume `current_location` (not hardcoded `IN`) |
+| **#220** | `lib/data/job-location-dictionary.ts` — 400+ cities, country aliases, region expansion (North America → US/CA/MX, etc.) |
+| **#222** | **Every JobsPipe POST** includes `job_country_code_or` from user countries; dropped broken GET `/v1/jobs` (404); `posted_at_max_age_days: 30` |
+
+### Core logic — JobsPipe scan (keep)
+
+1. **`lib/sources/index.ts`** — `buildJobCountryCodes(preferences, insights)` → passed as `countryCodes` to JobsPipe + JobDataLake + JSearch.
+2. **`buildJobsPipeQueries(searchProfile, searchKeywords)`** — uses `titlePatterns` + `primaryDomain` + a few `searchKeywords` (max 6). **Not** raw single-tool queries like `"JMeter"` alone.
+3. **`fetchJobsPipe()`** — batched `POST /v1/jobs/search` with `{ job_title_or, job_country_code_or?, posted_at_max_age_days, limit }`. Per-title POST fallback if batch &lt; 10 rows. **No GET** (endpoint returns 404 on JobsPipe).
+4. **Remote-only** users → `countryCodes` undefined → global search (no `job_country_code_or`).
+5. **Adzuna** stays `adzuna_in` (India path only) — separate from user country resolution.
+
+### Manual test (JobsPipe)
+
+```powershell
+$body = '{"job_title_or":["software engineer"],"job_country_code_or":["IN"],"limit":5}'
+Invoke-RestMethod -Uri "https://api.jobspipe.dev/v1/jobs/search" -Method POST `
+  -Headers @{ Authorization = "Bearer $KEY"; "Content-Type" = "application/json" } -Body $body
+```
+
+Niche titles (e.g. `performance test engineer` + `IN`) may return **0 rows** — JobsPipe index gap, not Hyred mapping.
+
+### Shipped — Dream Company Job Alerts
+
+| PR | What |
+|---|---|
+| **#221** | Phase 1 MVP — migration **0016**, `/dream-alerts`, ingest hook |
+| **#223** | Phase 2 catalog (500+ cos), manual add, admin requests |
+| **#224** | Instant catalog search (TCS aliases) |
+| **#225** | Add dream company without migration 0017 columns (compat) |
+
+**Manual:** run migrations **0016**, **0017** in Supabase. Doc: `docs/features-jun26-to-be-built.md` §4.8.
+
+### Shipped — LLM rotation / multi-user scale
+
+| PR | What |
+|---|---|
+| **#226** | Cerebras-first LLM rotation + UTC daily key reset |
+| **#227** | Bluesminds budget by **requests** not raw LLM tokens (`PROVIDER_BUDGET` in `lib/llm-keys.ts`) |
+| **#228** | Distributed LLM runtime — migration **0018** (`llm_key_runtime`, `llm_chat_semaphore`, RPCs); `lib/llm-key-runtime.ts`, `lib/llm-concurrency.ts` for Vercel-safe cross-instance cooldowns |
+
+**Manual:** run migration **0018** after **0009** for multi-instance RPM cooldowns + global in-flight cap.
+
+### Also same day (UI / premium polish)
+
+PRs **#201–#209** — verdict/prep new-tab links, resume PDF preview, job detail collapsibles, dashboard viewed-card contrast. See Session 27 for premium APIs.
+
+**Doc pointer:** `CONTEXT.md` → `### 5. Paid job APIs & location filters`, `### Dream Company Job Alerts`; `AGENTS.md` Index rows; `lib/sources/jobspipe.ts`, `lib/job-country-codes.ts`.
+
+---
+
 ## Session 27 — Premium Tier 1 (Match Intelligence, Interview Prep, Resume Studio Pro) (June 20, 2026)
 
 **Goal:** Ship Tier 1 premium features from locked roadmap (`docs/features-jun26-to-be-built.md`) — entitlement layer + three job-detail capabilities + UI. Orchestrator + subagent execution on branch `feat/tier-1-premium-features`.

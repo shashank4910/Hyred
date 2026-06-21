@@ -1060,6 +1060,43 @@ The LLM scoring prompt (`scoreJob` in `lib/gemini.ts`) has explicit rules:
 - Tools are interchangeable (JMeter ≈ Gatling ≈ LoadRunner)
 - Location alone should never drop score below 60
 
+### 5. Paid job APIs & location-aware country filters (June 21, 2026)
+
+**Sources:** JobsPipe (`jobspipe`), JobDataLake (`jobdatalake`), JSearch (`jsearch`), Adzuna India (`adzuna_in` — always `country: 'in'`, not user-derived).
+
+**Country resolution (`lib/job-country-codes.ts`):**
+
+```
+preferences.locations + resume current_location
+  → split on comma/semicolon/pipe ("Indore, Dubai")
+  → lib/data/job-location-dictionary.ts (city / country alias / region)
+  → ISO codes[] (max 6) — e.g. IN, AE, US, GB
+```
+
+- `remote_only` or location text is only "Remote" / "WFH" → **no country filter** (global APIs).
+- Unrecognized city with no country name → **no filter** (safer than guessing).
+
+**JobsPipe (`lib/sources/jobspipe.ts`) — core scan logic:**
+
+| Step | Behavior |
+|---|---|
+| Title queries | `buildJobsPipeQueries()` in `lib/sources/index.ts` — `searchProfile.titlePatterns` + `primaryDomain` + up to 4 `searchKeywords` (max 6 titles). Role phrases beat single tools (`"performance test engineer"` not `"JMeter"` alone). |
+| API call | **POST only** `https://api.jobspipe.dev/v1/jobs/search` |
+| Body | `{ job_title_or: string[], job_country_code_or?: string[], posted_at_max_age_days: 30, limit: 25 }` |
+| Batched first | One POST with all titles OR'd |
+| Thin results | If &lt; 10 jobs, per-title POST (still with country filter) |
+| Keys | `JOBSPIPE_API_KEYS` env + Admin `api_keys.jobspipe`; rotation on 401/402/429 |
+
+**Do not use GET `/v1/jobs`** — returns `404 Not Found` on JobsPipe (wasted credits if called).
+
+**JobDataLake** — `countryCodes` passed as query param per user (same resolver).
+
+**JSearch** — `jsearchCountryParam(codes)` maps first ISO → country name string.
+
+**Admin:** `JobApiUsagePanel.tsx` + `/api/admin/job-api-usage` — logs per request with masked key + `jobs_returned`. Keys UI in `AdminDashboard.tsx` (bulk paste for JobDataLake).
+
+**Pitfall:** JobsPipe may return **0 jobs** for niche title + country combos even when the API key works (e.g. `performance test engineer` + `IN`). SAP + `IN` may return rows — index coverage, not Hyred bug.
+
 ---
 
 ## Core App Features
@@ -1127,6 +1164,19 @@ Generates a short personalized outreach blurb from resume + JD. Requires uploade
 
 50+ application fields (screening answers, work history structure, EEO prefs) used by **extension autofill** and **auto-apply agent**. Extension APIs: `/api/extension/profile`, `structure`, `refresh-structure`. Never hard-code owner PII in form defaults (PR #76).
 
+### Dream Company Job Alerts
+
+**Route:** `/dream-alerts` · **Migrations:** **0016** (alerts MVP), **0017** (company catalog + requests)
+
+| Piece | Role |
+|---|---|
+| `lib/company-catalog/*` | Seeded catalog (~500+ cos), region filter, TCS-style aliases, lazy DB seed |
+| `POST /api/dream-companies` | Watchlist add — catalog pick or `custom_name` manual pattern |
+| Ingest hook | After scan, match new jobs against user's dream company patterns |
+| Admin | `CompanyCatalogRequestsPanel` — approve user-requested companies (Tier C) |
+
+Email/SMS delivery = future phase. Full spec: `docs/features-jun26-to-be-built.md` §4.8.
+
 ---
 
 ## File Map
@@ -1141,8 +1191,20 @@ lib/ingest-runs.ts         ← Ingest run progress/finalize/stale cleanup (Stats
 lib/profile-insights.ts    ← Resume-change helpers: strip cached search_profile, refresh preferences.roles
 lib/current-user.ts        ← getCurrentProfile(), isCurrentUserAdmin(), orphan purge on re-signup
 lib/dashboard-data.ts      ← (Session 16) Cached (React `cache()`) per-request helpers: getDashboardCounts, getLastScanInfo
-lib/sources/adzuna.ts      ← Adzuna API (multi-query, pagination, dedup)
-lib/sources/index.ts       ← Source dispatcher
+lib/sources/adzuna.ts      ← Adzuna API (multi-query, pagination, dedup) — always India path
+lib/sources/jobspipe.ts    ← JobsPipe POST /v1/jobs/search; job_country_code_or from user; batched titlePatterns (PR #222)
+lib/sources/jobdatalake.ts ← JobDataLake GET /v1/jobs; user countryCodes on query
+lib/sources/jsearch.ts     ← JSearch RapidAPI; country name from jsearchCountryParam()
+lib/sources/index.ts       ← Source dispatcher; buildJobsPipeQueries(), buildJobCountryCodes() wiring
+lib/job-country-codes.ts   ← Location → ISO for paid APIs; remote_only → global
+lib/data/job-location-dictionary.ts ← 400+ cities, COUNTRY_ALIASES, REGION_TO_COUNTRIES (longest-match)
+lib/job-api-keys.ts        ← Client-safe: JOB_API_SOURCES, maskKey, quotas (no server imports)
+lib/job-api-keys-server.ts ← server-only: merge env + admin_settings.api_keys
+lib/job-api-usage-types.ts ← Shared types for usage dashboard (client-safe)
+lib/jobspipe-keys.ts       ← JobsPipe key pool (env + Admin DB)
+lib/jobdatalake-keys.ts    ← JobDataLake key pool
+lib/llm-key-runtime.ts     ← Cross-instance RPM cooldowns (migration 0018 llm_key_runtime)
+lib/llm-concurrency.ts     ← Global in-flight LLM cap (acquire_llm_chat_slot RPC)
 lib/pdf-resume.ts          ← Beautiful PDF resume generator (matches Shashank's exact format)
 lib/resume.ts              ← Server-only resume parsers (.pdf / .doc / .docx / .txt) — API routes only
 lib/resume-upload.ts       ← Client-safe upload helpers (`RESUME_FILE_ACCEPT`, `isResumeFilename`) — use from `'use client'` forms
@@ -1161,7 +1223,11 @@ app/(app)/import/           ← Manual job URL import UI
 app/(app)/ats-checker/      ← Logged-in ATS checker (radar chart, history)
 app/(app)/apply-profile/    ← Application profile form (memory store for auto-apply)
 app/(app)/_components/      ← AppShell (sidebar), MatchCard, MatchScoreRing, StatusFilter, DashboardInsights, HeaderSearch, RunIngestButton, MatchList (paginated, infinite-scroll, sessionStorage snapshot for back-nav)
-app/(app)/admin/            ← Admin Center: AdminDashboard + LlmKeysPanel.tsx (LLM keys + live usage bars), JobsControlPanel.tsx (backup/delete/restore database UI)
+app/(app)/admin/            ← Admin Center: AdminDashboard (JobsPipe/JobDataLake/JSearch keys + bulk paste), JobApiUsagePanel.tsx, LlmKeysPanel.tsx, JobsControlPanel.tsx, CompanyCatalogRequestsPanel
+app/(app)/dream-alerts/     ← Dream Company watchlist + alert feed (migration 0016+)
+app/api/admin/job-api-usage/ ← GET usage logs by date range + source
+app/api/dream-companies/    ← Dream company watchlist CRUD
+app/api/company-catalog/    ← Catalog search + seed
 app/_components/            ← AppToaster, LegalConsentFields, LegalDocumentLayout
 tailwind.config.ts          ← Luminous design tokens (Stitch)
 app/globals.css             ← .teal-gradient, .btn-*, .card, .input
@@ -1211,7 +1277,10 @@ app/api/extension/form-template/capture/route.ts ← POST passive structure capt
 app/api/extension/map-fields/route.ts            ← legacy map (profile in prompt) + mode: semantic (Tier B)
 supabase/migrations/0014_domain_form_templates.sql ← Tier B tables (manual run if not applied)
 supabase/migrations/0015_hyred_premium_tier1.sql   ← Premium tables: subscriptions, usage, resume_versions, match_verdicts, interview_prep_packs (manual run)
-docs/features-jun26-to-be-built.md                 ← Locked premium roadmap + Tier 1 status
+supabase/migrations/0016_dream_company_alerts.sql  ← dream_companies, dream_company_alerts (manual run)
+supabase/migrations/0017_company_catalog.sql       ← company_catalog, company_catalog_requests (manual run)
+supabase/migrations/0018_llm_distributed_runtime.sql ← llm_key_runtime, llm_chat_semaphore, cooldown/slot RPCs (manual run after 0009)
+docs/features-jun26-to-be-built.md                 ← Locked premium roadmap + Tier 1 + Dream Company status
 
 scripts/ingest.ts                    ← Cron entry point
 scripts/backfill-jds.ts             ← Backfill: fetch full JDs + re-embed + re-score existing jobs
@@ -1296,6 +1365,12 @@ supabase/migrations/0009_llm_keys.sql ← (Session 16) llm_keys + llm_usage_log 
 | **GlobalLogic / WP custom dropdown `.trim()` crash (Jun 2026, PR #186)** | Tier B clicked visible div triggers; site `common.js` threw `Cannot read properties of undefined (reading 'trim')` — errors fire in site handlers **after** our click, so `safeFillOp` does not catch them. Gender / notice period missed. | Prefer hidden native `<select>` in field group via `findNativeSelectForControl` + `setSelectBySemantic`; discover `select` elements first in `tier-b-form.js`. Do **not** assume div-click listbox path for Tier B. |
 | **Tier B skeleton is not cross-user answer memory (Jun 2026)** | Expectation that manual submit teaches the next user's values. | Skeleton stores **structure + semantic keys + option labels** only. Values always from current user's apply profile via `resolveProfileSemanticValue`. Never store filled values in `domain_form_templates`. |
 | **ATS Checker JD keywords use word boundaries (PR #187)** | Substring `includes()` on tech keywords inflated JD match (`go` in "ago", `r` in "performance"). | Always use `keywordInText()` from `lib/ats-checker.ts` for keyword presence. JD compare uses `KEYWORD_EQUIVALENTS` for aliases — do not reintroduce naive substring matching. |
+| **JobsPipe GET `/v1/jobs` returns 404** (Jun 2026, PR #222) | Hyred called GET with `?query=&country=IN` first — burned API credits, zero jobs. POST `/v1/jobs/search` works. | **POST only** in `lib/sources/jobspipe.ts`. Never re-add GET as primary. |
+| **JobsPipe POST omitted `job_country_code_or`** (Jun 2026, PR #222) | Indian users got global results; credits used but wrong geography. Manual PowerShell test with `job_country_code_or: ["IN"]` worked; app batch POST did not send country. | Always build POST body via `buildSearchBody()` — include `job_country_code_or` when `buildJobCountryCodes()` returns codes. Log label: `POST titles @IN`. |
+| **Hardcoded `country=IN` on JobsPipe** (Jun 2026, PR #217) | US/UK users got India-filtered jobs or empty sets. | Use `buildJobCountryCodes(preferences, insights)` everywhere for JobsPipe, JobDataLake, JSearch. Adzuna stays `adzuna_in` only. |
+| **Client admin panel imported server Supabase** (Jun 2026, PR #213–#214) | `JobApiUsagePanel` → `job-api-keys.ts` → `supabase/server` → Vercel build `Can't resolve 'next/headers'`. | Client: `lib/job-api-keys.ts` + `lib/job-api-usage-types.ts` only. Server: `lib/job-api-keys-server.ts` + `import 'server-only'`. |
+| **In-memory LLM cooldowns don't work on Vercel** (Jun 2026, PR #228) | Multiple serverless instances each had their own `KEY_COOLDOWNS` map → RPM 429 storms under load. | Migration **0018** + `lib/llm-key-runtime.ts` for DB-backed cooldowns; `lib/llm-concurrency.ts` for global slot cap. Run 0018 after 0009. |
+| **Bluesminds free tier bills by requests/pi credits** (Jun 2026, PR #227) | `tokens_used_today` tracked LLM tokens but Bluesminds free tier is **300 req/day**, not token-based. | `PROVIDER_BUDGET.bluesminds.mode = 'requests'` in `lib/llm-keys.ts`; UI shows request budget. |
 
 ---
 
@@ -1476,7 +1551,7 @@ When a feature seems broken:
 
 **Last updated:** June 18, 2026 — **Workday extension autofill end-to-end verified** (Alight, v0.13.0). Pages 1–5 documented: structured profile pipeline (PRs #168–#171, migrations 0011–0013), languages panel (#172), universal Application Questions taxonomy (#173), Voluntary Disclosures terms consent (#174). `AGENTS.md` Index split into per-page Workday rows.
 
-**Last updated:** June 15, 2026 (session 20 — **Global HTML Skill-boundary Fix & Admin Database Controls**). Added default 50s wall-clock timeout budget to `lib/ingest.ts` to prevent Vercel Hobby serverless timeouts; changed `ignoreDuplicates` to `false` and omitted `fetched_at` from payload in `upsertJobs` to preserve original discovery dates ("today's date" issue) while returning full scan counts. Implemented `app/api/admin/jobs-control/route.ts` API and `JobsControlPanel.tsx` UI on Admin Dashboard for backup, delete, and restore database lifecycle operations.
+**Last updated:** June 21, 2026 (session 28 — **Job APIs, worldwide location dictionary, JobsPipe country filter, Dream Company, distributed LLM**). PRs **#210–#228**. Key logic: `lib/job-country-codes.ts` + `lib/data/job-location-dictionary.ts` → `job_country_code_or` on every JobsPipe POST; POST-only JobsPipe (no GET 404); `buildJobsPipeQueries()` uses role titlePatterns; Dream Company **0016–0017**; LLM **0018** cross-instance cooldowns. Full narrative → `docs/context/session-log.md` → **Session 28**.
 
 **Last updated:** June 14, 2026 (session 19 — **Seen/Unseen card indicators** + **Hallucinated-skills guardrail** + **Sort/filter fixes**. `MatchCard.tsx`: `isViewed = status !== 'new'` drives read-email-style styling — 4px primary border + bold title + `New` pill for unseen; muted opacity + transparent border for seen. `lib/gemini.ts`: new exported `isSkillPresentInJd(skill, jdText, jobTitle)` (whole-word regex, handles C++/.NET plurals), applied as a post-filter on `scoreJob` matched/missing and `matchSkills` matched/missing/jdRequirements — eliminates LLM hallucinated skill chips. `scripts/clean-hallucinated-skills.ts`: one-time DB cleanup script. PR **#137**.)
 
