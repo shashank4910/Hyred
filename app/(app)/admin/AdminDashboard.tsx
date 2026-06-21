@@ -9,6 +9,7 @@ import {
 import { LlmKeysPanel } from './LlmKeysPanel';
 import { LlmActivityPanel } from './LlmActivityPanel';
 import { JobsControlPanel } from './JobsControlPanel';
+import { JobApiUsagePanel } from './JobApiUsagePanel';
 
 type UsageSummary = {
   bySource: Record<string, { total: number; success: number; rateLimited: number; errors: number }>;
@@ -185,6 +186,9 @@ export function AdminDashboard() {
       {/* === JOBS & MATCHES LIFECYCLE CONTROL === */}
       <JobsControlPanel />
 
+      {/* === Job API key usage (JSearch / JobsPipe / Adzuna) === */}
+      <JobApiUsagePanel />
+
 
       {/* === SECTION 1: Job Source Usage Overview === */}
       <section className="glass-card p-6" style={{ contentVisibility: 'auto', containIntrinsicSize: '300px' }}>
@@ -348,7 +352,7 @@ export function AdminDashboard() {
             JSearch (RapidAPI) Keys
           </h3>
           <p className="text-xs text-on-surface-variant mb-3">
-            Each key = ~200 requests/month. Add multiple accounts for unlimited usage.
+            Each key ≈ 200 requests/month. Add <strong>multiple</strong> RapidAPI keys — usage is tracked above.
           </p>
           <div className="space-y-2 mb-3">
             {jsearchKeys.map((k, i) => (
@@ -391,8 +395,10 @@ export function AdminDashboard() {
             >
               jobspipe.dev
             </a>
-            . Free tier: 5,000 requests/month per key. Used as{' '}
-            <code className="bg-surface-container px-1 rounded">Authorization: Bearer …</code>
+            . Free tier: 5,000 requests/month <strong>per key</strong>. Add multiple keys to rotate when one is exhausted.
+          </p>
+          <p className="text-[11px] text-on-surface-variant mb-3">
+            Auth header: <code className="bg-surface-container px-1 rounded">Authorization: Bearer …</code>
           </p>
           <div className="space-y-2 mb-3">
             {jobspipeKeys.map((k, i) => (

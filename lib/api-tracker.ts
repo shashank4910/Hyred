@@ -34,6 +34,14 @@
  */
 
 import { supabaseAdmin } from './supabase/server';
+import {
+  JOB_API_MONTHLY_QUOTA,
+  JOB_API_SOURCES,
+  type JobApiSource,
+  getConfiguredJobApiKeys,
+} from './job-api-keys';
+
+export { maskKey } from './job-api-keys';
 
 export type ApiLogEntry = {
   source: string;
@@ -44,15 +52,6 @@ export type ApiLogEntry = {
   query?: string;
   jobs_returned?: number;
 };
-
-/**
- * Mask an API key for display: show first 4 and last 4 chars.
- * e.g. "abc12345xyz" → "abc1...xyz"
- */
-export function maskKey(key: string): string {
-  if (!key || key.length < 10) return key ? '***' : '';
-  return `${key.slice(0, 4)}...${key.slice(-4)}`;
-}
 
 /**
  * Log an API request. Fire-and-forget — never blocks the caller.
@@ -141,5 +140,210 @@ export async function getUsageSummary(daysBack = 30): Promise<{
     byKey,
     recentErrors,
     totalRequests: entries.length,
+  };
+}
+
+export type JobApiKeyUsageRow = {
+  source: JobApiSource;
+  keyIdentifier: string;
+  configured: boolean;
+  total: number;
+  success: number;
+  rateLimited: number;
+  errors: number;
+  jobsReturned: number;
+  lastUsed: string | null;
+  monthlyQuota: number;
+  quotaPercent: number;
+  status: 'ok' | 'warning' | 'exhausted' | 'unused';
+};
+
+export type JobApiUsageEvent = {
+  id: string;
+  source: string;
+  key_identifier: string | null;
+  status: string;
+  http_status: number | null;
+  error_message: string | null;
+  query: string | null;
+  jobs_returned: number;
+  created_at: string;
+};
+
+function usageStatus(row: {
+  total: number;
+  rateLimited: number;
+  quotaPercent: number;
+}): JobApiKeyUsageRow['status'] {
+  if (row.total === 0) return 'unused';
+  if (row.rateLimited > 0 || row.quotaPercent >= 100) return 'exhausted';
+  if (row.quotaPercent >= 80) return 'warning';
+  return 'ok';
+}
+
+/**
+ * Paginated job API key usage for Admin dashboard (date range + source filter).
+ */
+export async function getJobApiUsageReport(opts: {
+  from: string;
+  to: string;
+  source?: JobApiSource | 'all';
+  keysPage?: number;
+  keysPageSize?: number;
+  eventsPage?: number;
+  eventsPageSize?: number;
+}): Promise<{
+  from: string;
+  to: string;
+  source: string;
+  keys: { page: number; pageSize: number; total: number; rows: JobApiKeyUsageRow[] };
+  events: { page: number; pageSize: number; total: number; rows: JobApiUsageEvent[] };
+}> {
+  const keysPage = Math.max(1, opts.keysPage ?? 1);
+  const keysPageSize = Math.min(50, Math.max(5, opts.keysPageSize ?? 10));
+  const eventsPage = Math.max(1, opts.eventsPage ?? 1);
+  const eventsPageSize = Math.min(50, Math.max(5, opts.eventsPageSize ?? 15));
+
+  const fromIso = new Date(`${opts.from}T00:00:00.000Z`).toISOString();
+  const toIso = new Date(`${opts.to}T23:59:59.999Z`).toISOString();
+
+  const sources =
+    opts.source && opts.source !== 'all' ? [opts.source] : [...JOB_API_SOURCES];
+
+  const sb = supabaseAdmin();
+
+  const { data: logs } = await sb
+    .from('api_request_logs')
+    .select('source, key_identifier, status, http_status, error_message, created_at, jobs_returned')
+    .in('source', sources)
+    .gte('created_at', fromIso)
+    .lte('created_at', toIso)
+    .order('created_at', { ascending: false })
+    .limit(15000);
+
+  const entries = logs ?? [];
+  const agg = new Map<
+    string,
+    {
+      source: JobApiSource;
+      keyIdentifier: string;
+      total: number;
+      success: number;
+      rateLimited: number;
+      errors: number;
+      jobsReturned: number;
+      lastUsed: string | null;
+    }
+  >();
+
+  for (const e of entries) {
+    const src = e.source as JobApiSource;
+    if (!JOB_API_SOURCES.includes(src)) continue;
+    const keyId = e.key_identifier || '(unknown)';
+    const mapKey = `${src}::${keyId}`;
+    if (!agg.has(mapKey)) {
+      agg.set(mapKey, {
+        source: src,
+        keyIdentifier: keyId,
+        total: 0,
+        success: 0,
+        rateLimited: 0,
+        errors: 0,
+        jobsReturned: 0,
+        lastUsed: null,
+      });
+    }
+    const row = agg.get(mapKey)!;
+    row.total++;
+    if (e.status === 'success') row.success++;
+    else if (e.status === 'rate_limited') row.rateLimited++;
+    else row.errors++;
+    row.jobsReturned += e.jobs_returned ?? 0;
+    if (!row.lastUsed || e.created_at > row.lastUsed) row.lastUsed = e.created_at;
+  }
+
+  const configured = await getConfiguredJobApiKeys();
+  for (const src of sources) {
+    for (const { identifier } of configured[src as JobApiSource] ?? []) {
+      const mapKey = `${src}::${identifier}`;
+      if (!agg.has(mapKey)) {
+        agg.set(mapKey, {
+          source: src as JobApiSource,
+          keyIdentifier: identifier,
+          total: 0,
+          success: 0,
+          rateLimited: 0,
+          errors: 0,
+          jobsReturned: 0,
+          lastUsed: null,
+        });
+      }
+    }
+  }
+
+  const allRows: JobApiKeyUsageRow[] = Array.from(agg.values())
+    .map((r) => {
+      const monthlyQuota = JOB_API_MONTHLY_QUOTA[r.source];
+      const quotaPercent = monthlyQuota > 0 ? Math.round((r.total / monthlyQuota) * 100) : 0;
+      const configuredIds = new Set(
+        (configured[r.source] ?? []).map((k) => k.identifier),
+      );
+      const row = {
+        source: r.source,
+        keyIdentifier: r.keyIdentifier,
+        configured: configuredIds.has(r.keyIdentifier),
+        total: r.total,
+        success: r.success,
+        rateLimited: r.rateLimited,
+        errors: r.errors,
+        jobsReturned: r.jobsReturned,
+        lastUsed: r.lastUsed,
+        monthlyQuota,
+        quotaPercent,
+        status: 'ok' as const,
+      };
+      return { ...row, status: usageStatus(row) };
+    })
+    .sort((a, b) => b.total - a.total || a.source.localeCompare(b.source));
+
+  const keysTotal = allRows.length;
+  const keysOffset = (keysPage - 1) * keysPageSize;
+  const keysRows = allRows.slice(keysOffset, keysOffset + keysPageSize);
+
+  const eventsOffset = (eventsPage - 1) * eventsPageSize;
+  const { count: eventsTotal } = await sb
+    .from('api_request_logs')
+    .select('id', { count: 'exact', head: true })
+    .in('source', sources)
+    .gte('created_at', fromIso)
+    .lte('created_at', toIso);
+
+  const { data: eventRows } = await sb
+    .from('api_request_logs')
+    .select(
+      'id, source, key_identifier, status, http_status, error_message, query, jobs_returned, created_at',
+    )
+    .in('source', sources)
+    .gte('created_at', fromIso)
+    .lte('created_at', toIso)
+    .order('created_at', { ascending: false })
+    .range(eventsOffset, eventsOffset + eventsPageSize - 1);
+
+  return {
+    from: opts.from,
+    to: opts.to,
+    source: opts.source ?? 'all',
+    keys: {
+      page: keysPage,
+      pageSize: keysPageSize,
+      total: keysTotal,
+      rows: keysRows,
+    },
+    events: {
+      page: eventsPage,
+      pageSize: eventsPageSize,
+      total: eventsTotal ?? 0,
+      rows: (eventRows ?? []) as JobApiUsageEvent[],
+    },
   };
 }
