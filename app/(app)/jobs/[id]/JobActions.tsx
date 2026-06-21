@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition, useEffect, useRef } from 'react';
+import { useState, useTransition, useEffect, useRef, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
@@ -24,6 +24,9 @@ import { CollapsibleCard } from '../../_components/CollapsibleCard';
 import { KeywordManager, type GenResult } from './KeywordManager';
 import { ResumePreviewModal } from './ResumePreviewModal';
 import { ResumeTemplatePicker, DEFAULT_RESUME_TEMPLATE_ID } from './ResumeTemplatePicker';
+import { ResumeTemplateSamplePreview } from './ResumeTemplateSamplePreview';
+import { RESUME_TEMPLATE_SAMPLE_TEXT } from '@/lib/resume-template-previews';
+import { getResumeTemplate } from '@/lib/resume-templates';
 import type { ResumeVersionSummary } from '@/lib/types';
 
 export function JobActions({
@@ -90,6 +93,12 @@ export function JobActions({
   const [showVersions, setShowVersions] = useState(initialResumeVersions.length > 0);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewMode, setPreviewMode] = useState<'preview' | 'edit'>('preview');
+  const [previewTitle, setPreviewTitle] = useState('Resume preview');
+  const [previewSubtitle, setPreviewSubtitle] = useState<string | undefined>();
+  const [previewText, setPreviewText] = useState('');
+  const [previewAllowEdit, setPreviewAllowEdit] = useState(true);
+  const [previewVisual, setPreviewVisual] = useState<ReactNode | undefined>();
+  const [versionPreviewLoading, setVersionPreviewLoading] = useState<string | null>(null);
   const [resumeTemplateId, setResumeTemplateId] = useState(DEFAULT_RESUME_TEMPLATE_ID);
 
   // Load JD keywords for the keyword panel
@@ -116,6 +125,59 @@ export function JobActions({
       .finally(() => { if (!cancelled) setLoadingKeywords(false); });
     return () => { cancelled = true; };
   }, [matchId]);
+
+  async function previewSavedVersion(version: ResumeVersionSummary) {
+    setVersionPreviewLoading(version.id);
+    const tid = toast.loading('Loading version…');
+    try {
+      const res = await fetch(`/api/match/${matchId}/resume/versions/${version.id}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not load version');
+      setPreviewTitle(version.label ?? 'Saved resume');
+      setPreviewSubtitle(
+        version.ats_match_score != null
+          ? `ATS ${version.ats_match_score}% · ${new Date(version.created_at).toLocaleString()}`
+          : new Date(version.created_at).toLocaleString(),
+      );
+      setPreviewText(data.version?.resume_text ?? '');
+      setPreviewVisual(undefined);
+      setPreviewAllowEdit(false);
+      setPreviewMode('preview');
+      setPreviewOpen(true);
+      toast.dismiss(tid);
+    } catch (e) {
+      toast.error((e as Error).message, { id: tid });
+    } finally {
+      setVersionPreviewLoading(null);
+    }
+  }
+
+  function openCurrentResumePreview() {
+    if (!atsResume.trim()) {
+      toast.message('Optimize your resume first, then preview here.');
+      return;
+    }
+    setPreviewTitle('Current tailored resume');
+    setPreviewSubtitle(undefined);
+    setPreviewText(editedResume || atsResume);
+    setPreviewVisual(undefined);
+    setPreviewAllowEdit(true);
+    setPreviewMode('preview');
+    setPreviewOpen(true);
+  }
+
+  function previewTemplateLayout(templateId: string) {
+    const meta = getResumeTemplate(templateId);
+    setPreviewTitle(meta ? `${meta.name} — sample layout` : 'Template preview');
+    setPreviewSubtitle('Sample resume — your content will use this layout when exported');
+    setPreviewText('');
+    setPreviewVisual(
+      <ResumeTemplateSamplePreview templateId={templateId} sampleText={RESUME_TEMPLATE_SAMPLE_TEXT} />,
+    );
+    setPreviewAllowEdit(false);
+    setPreviewMode('preview');
+    setPreviewOpen(true);
+  }
 
   async function generate() {
     setGenerating(true);
@@ -513,14 +575,7 @@ export function JobActions({
           <div className="flex gap-2 flex-wrap">
             <button
               type="button"
-              onClick={() => {
-                if (!atsResume.trim()) {
-                  toast.message('Optimize your resume first, then preview here.');
-                  return;
-                }
-                setPreviewMode('preview');
-                setPreviewOpen(true);
-              }}
+              onClick={openCurrentResumePreview}
               className={[
                 'inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-xl transition-colors',
                 atsResume.trim()
@@ -551,6 +606,7 @@ export function JobActions({
         <ResumeTemplatePicker
           selectedId={resumeTemplateId}
           onSelect={setResumeTemplateId}
+          onPreviewTemplate={previewTemplateLayout}
           isPremium={isPremium}
         />
 
@@ -596,19 +652,33 @@ export function JobActions({
             {showVersions && (
               <div className="mt-2 space-y-1.5">
                 {resumeVersions.map((v) => (
-                  <div key={v.id} className="flex items-center justify-between rounded-lg bg-surface-container-low border border-outline-variant px-3 py-2 text-xs">
-                    <span className="text-on-surface font-medium truncate max-w-[60%]">
+                  <div key={v.id} className="flex items-center justify-between gap-2 rounded-lg bg-surface-container-low border border-outline-variant px-3 py-2 text-xs">
+                    <span className="text-on-surface font-medium truncate min-w-0 flex-1">
                       {v.label ?? 'Resume'}
                     </span>
-                    <div className="flex items-center gap-3 shrink-0">
+                    <div className="flex items-center gap-2 shrink-0">
                       {v.ats_match_score != null && (
-                        <span className="text-on-surface-variant">
+                        <span className="text-on-surface-variant hidden sm:inline">
                           ATS <span className="font-semibold text-on-surface">{v.ats_match_score}%</span>
                         </span>
                       )}
-                      <span className="text-on-surface-variant/60">
+                      <span className="text-on-surface-variant/60 hidden md:inline">
                         {new Date(v.created_at).toLocaleDateString()}
                       </span>
+                      <button
+                        type="button"
+                        onClick={() => previewSavedVersion(v)}
+                        disabled={versionPreviewLoading === v.id}
+                        className="inline-flex items-center gap-1 rounded-lg border border-primary/40 bg-primary/10 px-2 py-1 text-[11px] font-semibold text-primary hover:bg-primary/20 disabled:opacity-60"
+                        title="Preview this version"
+                      >
+                        {versionPreviewLoading === v.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Eye className="h-3.5 w-3.5" />
+                        )}
+                        <span className="sr-only sm:not-sr-only">Preview</span>
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -636,7 +706,9 @@ export function JobActions({
       <ResumePreviewModal
         open={previewOpen}
         onClose={() => setPreviewOpen(false)}
-        text={editedResume || atsResume}
+        title={previewTitle}
+        subtitle={previewSubtitle}
+        text={previewAllowEdit ? editedResume || atsResume : previewText}
         mode={previewMode}
         onModeChange={setPreviewMode}
         editedText={editedResume}
@@ -646,7 +718,8 @@ export function JobActions({
           setPreviewMode('preview');
           toast.success('Changes saved');
         }}
-        title="Resume Studio preview"
+        allowEdit={previewAllowEdit}
+        visualPreview={previewVisual}
       />
     </div>
   );
