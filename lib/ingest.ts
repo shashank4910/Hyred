@@ -345,7 +345,7 @@ export async function runIngest(opts?: {
       if (embedAborted) return false;
       try {
         const text = jobToEmbeddingText(j);
-        const vec = await embed(text);
+        const vec = await embed(text, 'embed', p.id);
         await sb.from('jobs').update({ embedding: vec }).eq('id', j.id);
         return true;
       } catch (e) {
@@ -557,6 +557,7 @@ export async function runIngest(opts?: {
               jobCompany: c.company,
               jobLocation: c.location,
               jobDescription: c.description,
+              profileId: p.id,
             });
 
             let finalScore = score;

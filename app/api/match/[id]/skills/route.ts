@@ -72,6 +72,7 @@ export async function POST(
       jobDescription: fullDescription,
       resumeText,
       topSkills,
+      profileId: viewer.id,
     });
     return NextResponse.json({ ...result, allSkills: topSkills });
   } catch (e) {

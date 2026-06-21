@@ -503,6 +503,8 @@ export async function POST(req: NextRequest) {
           description,
           tags: null,
         }),
+        'embed',
+        profile.id,
       ),
       scoreJob({
         resume: profile.resume_text,
@@ -511,6 +513,7 @@ export async function POST(req: NextRequest) {
         jobCompany: company,
         jobLocation: location,
         jobDescription: description,
+        profileId: profile.id,
       }),
     ]);
     vec = v;

@@ -54,6 +54,7 @@ export async function generateAndSaveCoverLetterForMatch(
     jobTitle: job.title,
     jobCompany: job.company,
     jobDescription: fullDescription,
+    profileId,
   });
 
   const { error: updateErr } = await sb

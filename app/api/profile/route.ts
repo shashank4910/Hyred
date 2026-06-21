@@ -127,10 +127,10 @@ export async function POST(req: NextRequest) {
       const insightsPromise =
         providedInsights != null
           ? Promise.resolve(providedInsights)
-          : extractResumeInsights(resumeText).catch(() => null);
+          : extractResumeInsights(resumeText, profile.id).catch(() => null);
 
       const [vec, ins] = await Promise.all([
-        embed(resumeText),
+        embed(resumeText, 'embed', profile.id),
         insightsPromise,
       ]);
       embedding = vec;
