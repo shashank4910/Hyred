@@ -74,7 +74,10 @@ How to open one section cheaply: `grep -n "<heading text>" CONTEXT.md` to get th
 | Kiro-specific steering | `.kiro/steering/jobradar-context.md` | Kiro auto-loads it |
 | **Superpowers workflow (big tasks only)** | `.cursor/rules/superpowers-gate.mdc` | multi-phase features, new subsystems; skip for surgical fixes |
 | Past session history | `docs/context/session-log.md` (newest first) | Tier 3 only |
-| **Dream Company Job Alerts** | `docs/features-jun26-to-be-built.md` §4.8 + `lib/company-catalog/*` + migrations **0016**, **0017** | `/dream-alerts`, catalog search, manual add, admin requests |
+| **Dream Company Job Alerts** | `CONTEXT.md` → `### Dream Company Job Alerts` + `docs/features-jun26-to-be-built.md` §4.8 + migrations **0016**, **0017** | `/dream-alerts`, catalog search, manual add, admin requests |
+| **Paid job APIs (JobsPipe, JobDataLake, JSearch)** | `CONTEXT.md` → `### 5. Paid job APIs & location filters` + File Map (`lib/sources/jobspipe.ts`) + `docs/context/session-log.md` → Session 28 | ingest sources, Admin keys, usage dashboard, zero-fetch debugging |
+| **User location → country filter** | `CONTEXT.md` → `### 5. Paid job APIs` + `lib/job-country-codes.ts` + `lib/data/job-location-dictionary.ts` | onboarding locations, worldwide cities, `job_country_code_or`, remote-only global |
+| **Distributed LLM runtime (multi-instance)** | `CONTEXT.md` → File Map (`lib/llm-key-runtime.ts`) + Known Pitfalls (in-memory cooldown row) + migration **0018** + Session 28 | Vercel-safe RPM cooldowns, `acquire_llm_chat_slot`, 10-user scale |
 | **Doc system / context bridges** | `docs/context/session-log.md` → Session 26 | fixing AGENTS↔CONTEXT↔session-log gaps |
 
 > Keep this Index in sync when you add/rename a `##` section in `CONTEXT.md`. It is the single source of the map.

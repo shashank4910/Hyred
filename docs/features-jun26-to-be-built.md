@@ -780,5 +780,8 @@ Tier 1 implementation shipped on branch `feat/tier-1-premium-features`:
 - [x] **Tier C:** User request → Admin approve (`CompanyCatalogRequestsPanel`)
 - [x] **Manual add:** `custom_name` on POST `/api/dream-companies` with user-specific patterns
 - [x] Catalog search API with region filter; lazy DB seed on first search
+- [x] PR **#224** instant search (TCS aliases); **#225** add without 0017 columns (compat)
 
 **Manual step:** Run migrations **0016** and **0017** in Supabase.
+
+**Context:** `CONTEXT.md` → `### Dream Company Job Alerts`; `docs/context/session-log.md` → Session 28.

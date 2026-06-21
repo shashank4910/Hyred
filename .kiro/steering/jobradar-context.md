@@ -277,3 +277,12 @@ _Earlier: session 11 (ATS keyword guarantee); session 7 (Phase 1 auth); session 
 - Shared **form skeleton** in Supabase (migration **0014**) — structure only, no cross-user PII.
 - **Open:** `AGENTS.md` Index → Tier B rows → `CONTEXT.md` → `### Tier B — custom career forms (beta)`.
 - **Shipped:** PRs #185–#186, extension v0.16.1+.
+
+### Job APIs + location filters (Jun 21, 2026 — Session 28)
+
+- **JobsPipe / JobDataLake / JSearch** — Admin-managed keys + usage dashboard (PRs #210–#214).
+- **Country filter:** `lib/job-country-codes.ts` + `lib/data/job-location-dictionary.ts` → `job_country_code_or` on **every** JobsPipe POST (PR #217, #220, #222). **POST only** — GET `/v1/jobs` returns 404.
+- **Title queries:** `buildJobsPipeQueries()` uses `searchProfile.titlePatterns` (role phrases), not single-tool keywords.
+- **Dream Company:** `/dream-alerts`, migrations **0016–0017** (PRs #221, #223–#225).
+- **LLM scale:** migration **0018** + `lib/llm-key-runtime.ts` for cross-instance cooldowns (PR #228).
+- **Open:** `AGENTS.md` Index → Paid job APIs / location / distributed LLM rows → `CONTEXT.md` → `### 5. Paid job APIs`.
