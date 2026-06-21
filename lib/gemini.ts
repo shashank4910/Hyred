@@ -60,15 +60,22 @@ import {
   isKeyWithinDailyBudget,
   type LlmKey,
 } from './llm-keys';
-import { getRateLimiter, RateLimiter } from './rate-limiter';
+import { getRateLimiter, keyBucket, RateLimiter } from './rate-limiter';
 import {
   getKeyHealthStore,
   computeCapacityScore,
   computeRpmHeadroomScore,
   computeKeyScore,
-  selectOptimalKey,
   estimateProviderRpmLimit,
 } from './key-rotator';
+import {
+  getCooldownKeyIds,
+  getKeyFailureCount,
+  setKeyCooldownDb,
+  clearKeyCooldownDb,
+  isKeyOnCooldownDb,
+} from './llm-key-runtime';
+import { withLlmChatSlot } from './llm-concurrency';
 
 const OPENAI_CHAT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const GROQ_CHAT_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
@@ -137,37 +144,44 @@ type ProviderEntry = {
   name: string;
   client: OpenAI;
   model: string;
-  keyId?: string;   // DB key ID (for usage tracking); undefined = env-var key
-  provider: string; // provider name
+  keyId?: string;
+  provider: string;
+  keyRow?: LlmKey;
 };
 
-/**
- * In-memory cooldown map: keyId → timestamp when cooldown expires.
- * On RPM 429, we cooldown the key for 60s instead of marking it "daily exhausted".
- * This means the key becomes available again after the cooldown, not after midnight.
- */
-const KEY_COOLDOWNS: Map<string, number> = new Map();
-const RPM_COOLDOWN_MS = 65_000; // 65 seconds (slightly over 1 minute to be safe)
-
-function isKeyOnCooldown(keyId: string): boolean {
-  const until = KEY_COOLDOWNS.get(keyId);
-  if (!until) return false;
-  if (Date.now() >= until) {
-    KEY_COOLDOWNS.delete(keyId);
-    return false;
-  }
-  return true;
-}
-
-function cooldownKey(keyId: string): void {
-  KEY_COOLDOWNS.set(keyId, Date.now() + RPM_COOLDOWN_MS);
-}
-
-/**
- * Global round-robin index per provider. Ensures sequential rotation across
- * multiple keys so requests spread evenly (avoids hammering one key).
- */
+/** Round-robin offset per provider (spreads load across scored keys). */
 const ROUND_ROBIN_INDEX: Map<string, number> = new Map();
+const EMBED_ROUND_ROBIN_INDEX = { n: 0 };
+
+async function sortAndRotateProviderEntries(
+  provider: string,
+  entries: ProviderEntry[],
+): Promise<ProviderEntry[]> {
+  if (entries.length <= 1) return entries;
+
+  const healthStore = getKeyHealthStore();
+  const rpmLimit = estimateProviderRpmLimit(provider);
+
+  const scored = entries.map((e) => {
+    const key = e.keyRow;
+    if (!key || !e.keyId) return { e, score: 50 };
+    const score = computeKeyScore({
+      capacityRemaining: computeCapacityScore(key.tokens_used_today, key.daily_token_limit),
+      healthScore: healthStore.getHealthScore(e.keyId),
+      rpmHeadroom: computeRpmHeadroomScore(healthStore.getRpmCount(e.keyId), rpmLimit),
+      latencyScore: healthStore.getLatencyScore(e.keyId),
+      priority: key.priority,
+      onCooldown: false,
+    });
+    return { e, score: Math.max(score, 0) };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  const sorted = scored.map((s) => s.e);
+  const idx = (ROUND_ROBIN_INDEX.get(provider) ?? 0) % sorted.length;
+  ROUND_ROBIN_INDEX.set(provider, idx + 1);
+  return [...sorted.slice(idx), ...sorted.slice(0, idx)];
+}
 
 /**
  * Get ALL active DB keys for a provider, ordered for round-robin rotation.
@@ -187,16 +201,20 @@ async function getAvailableKeysForProvider(provider: string): Promise<ProviderEn
 
     if (!keys?.length) return [];
 
+    const rawKeys = keys as LlmKey[];
+    const resetKeys: LlmKey[] = [];
+    for (const raw of rawKeys) {
+      resetKeys.push(await resetLlmKeyDailyIfNeeded(raw));
+    }
+
+    const eligible = resetKeys.filter((key) => isKeyWithinDailyBudget(key));
+    const cooling = await getCooldownKeyIds(eligible.map((k) => k.id));
+
     const entries: ProviderEntry[] = [];
     const defaults = PROVIDER_DEFAULTS[provider];
 
-    for (const k of keys) {
-      const raw = k as LlmKey;
-      const key = await resetLlmKeyDailyIfNeeded(raw);
-      // Skip keys on RPM cooldown
-      if (isKeyOnCooldown(key.id)) continue;
-      // Skip keys that exceeded daily budget (tokens OR requests for Bluesminds)
-      if (!isKeyWithinDailyBudget(key)) continue;
+    for (const key of eligible) {
+      if (cooling.has(key.id)) continue;
 
       const baseUrl = key.base_url || defaults?.baseUrl || '';
       const model = key.model || defaults?.model || '';
@@ -207,18 +225,11 @@ async function getAvailableKeysForProvider(provider: string): Promise<ProviderEn
         model,
         keyId: key.id,
         provider,
+        keyRow: key,
       });
     }
 
-    // Round-robin: rotate starting position so each call uses a different key
-    if (entries.length > 1) {
-      const idx = (ROUND_ROBIN_INDEX.get(provider) ?? 0) % entries.length;
-      ROUND_ROBIN_INDEX.set(provider, idx + 1);
-      // Rotate array so the "next" key is first
-      return [...entries.slice(idx), ...entries.slice(0, idx)];
-    }
-
-    return entries;
+    return sortAndRotateProviderEntries(provider, entries);
   } catch (e) {
     // Graceful fallback for environments (like CLI scripts) without DB config
     return [];
@@ -358,7 +369,7 @@ async function buildProviderChainCached(): Promise<ProviderEntry[]> {
  * Multi-tenant rate limiting:
  *   - Per-user: 120 req/min, 500K tokens/min (prevents one user from hogging)
  *   - Per-key: RPM limit varies by provider (avoids 429s)
- *   - Global: 300 req/min circuit breaker
+ *   - Global: 600 req/min circuit breaker (+ DB semaphore for in-flight cap)
  *
  * To enable per-user rate limiting, pass the user's profileId.
  */
@@ -370,114 +381,97 @@ export async function chat(
   operation = 'chat',
   profileId?: string,
 ): Promise<string> {
-  // ── Step 1: Estimate token cost for this call ───────────────────────────
-  // Check rate limits BEFORE hitting any API (fail fast, save money).
-  const estimatedTokens = RateLimiter.estimateTokenCost(systemPrompt, userPrompt, 500);
-  const rateLimiter = getRateLimiter();
+  return withLlmChatSlot(async () => {
+    const estimatedTokens = RateLimiter.estimateTokenCost(systemPrompt, userPrompt, 500);
+    const rateLimiter = getRateLimiter();
 
-  // Build bucket keys for this request
-  const bucketKeys: string[] = ['global'];
-  if (profileId) bucketKeys.push(`user:${profileId}`);
+    const bucketKeys: string[] = ['global'];
+    if (profileId) bucketKeys.push(`user:${profileId}`);
 
-  const rateResult = rateLimiter.check(bucketKeys, { cost: estimatedTokens });
-  if (!rateResult.allowed) {
-    // Track the rejection rate but don't throw a cryptic error
-    console.warn(`[chat] Rate limit hit for ${profileId || 'anonymous'}: ${rateResult.reason}`);
-    // Fall through — if it's a soft limit, the provider chain may still have
-    // slack. We log the warning but don't block the call. Only block if the
-    // global bucket is exhausted (last-resort circuit breaker).
-    if (bucketKeys.length === 1) {
-      // Only 'global' bucket checked — hard block
-      throw new Error(`Global rate limit exceeded. ${rateResult.reason}`);
-    }
-  }
-
-  // ── Step 2: Build provider chain (cached, with health scoring) ──────────
-  const providers = await buildProviderChainCached();
-
-  if (providers.length === 0) {
-    throw new Error(
-      'No chat LLM configured. Add keys in Admin Center or set CEREBRAS_API_KEY / GROQ_API_KEY / OPENAI_API_KEY env vars.',
-    );
-  }
-
-  const healthStore = getKeyHealthStore();
-  const errors: string[] = [];
-
-  // ── Step 3: Try each provider in order, with health-aware ordering ──────
-  for (const provider of providers) {
-    // Skip keys that are on exponential-backoff cooldown
-    if (provider.keyId && healthStore.isOnCooldown(provider.keyId)) {
-      errors.push(`${provider.name} → on cooldown (${healthStore.getCooldownDuration(provider.keyId)}ms)`);
-      continue;
+    const rateResult = rateLimiter.check(bucketKeys, { cost: estimatedTokens });
+    if (!rateResult.allowed) {
+      console.warn(`[chat] Rate limit hit for ${profileId || 'anonymous'}: ${rateResult.reason}`);
+      if (!profileId) {
+        throw new Error(`Global rate limit exceeded. ${rateResult.reason}`);
+      }
     }
 
-    const startMs = Date.now();
-    try {
-      const res = await provider.client.chat.completions.create({
-        model: provider.model,
-        temperature,
-        ...(jsonMode ? { response_format: { type: 'json_object' as const } } : {}),
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-      });
-      const content = (res.choices[0]?.message?.content ?? '').trim();
+    const providers = await buildProviderChainCached();
+    if (providers.length === 0) {
+      throw new Error(
+        'No chat LLM configured. Add keys in Admin Center or set CEREBRAS_API_KEY / GROQ_API_KEY / OPENAI_API_KEY env vars.',
+      );
+    }
 
-      // Use ACTUAL token counts from the API response (accurate tracking!)
-      const tokensIn = res.usage?.prompt_tokens ?? 0;
-      const tokensOut = res.usage?.completion_tokens ?? 0;
-      const durationMs = Date.now() - startMs;
+    const healthStore = getKeyHealthStore();
+    const errors: string[] = [];
 
-      // ── Record success in health store ───────────────────────────────
-      if (provider.keyId) {
-        healthStore.recordSuccess(provider.keyId, durationMs);
+    for (const provider of providers) {
+      if (provider.keyId && (await isKeyOnCooldownDb(provider.keyId))) {
+        errors.push(`${provider.name} → on DB cooldown`);
+        continue;
       }
 
-      // ── Log usage for DB-tracked keys ────────────────────────────────
-      if (provider.keyId && (tokensIn > 0 || tokensOut > 0)) {
-        recordUsage({
-          keyId: provider.keyId,
-          provider: provider.provider,
+      const tryBuckets = [...bucketKeys];
+      if (provider.keyId) tryBuckets.push(keyBucket(provider.keyId));
+      const keyRate = rateLimiter.check(tryBuckets, { cost: estimatedTokens });
+      if (!keyRate.allowed) {
+        errors.push(`${provider.name} → ${keyRate.reason ?? 'rate limited'}`);
+        continue;
+      }
+
+      const startMs = Date.now();
+      try {
+        const res = await provider.client.chat.completions.create({
           model: provider.model,
-          operation,
-          tokensIn,
-          tokensOut,
-          durationMs,
-          status: 'success',
-          profileId,
+          temperature,
+          ...(jsonMode ? { response_format: { type: 'json_object' as const } } : {}),
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
         });
-      }
+        const content = (res.choices[0]?.message?.content ?? '').trim();
 
-      return content;
-    } catch (e) {
-      const msg = (e as Error).message;
-      const is429 = msg.includes('429') || msg.toLowerCase().includes('rate') || msg.toLowerCase().includes('limit');
-      errors.push(`${provider.name} → ${msg}`);
-      console.warn(`[chat] ${provider.name} failed, trying next provider: ${msg}`);
+        const tokensIn = res.usage?.prompt_tokens ?? 0;
+        const tokensOut = res.usage?.completion_tokens ?? 0;
+        const durationMs = Date.now() - startMs;
 
-      if (provider.keyId) {
-        if (is429) {
-          // RPM hit: exponential backoff cooldown (65s × 2^failures, max 10 min).
-          // Do NOT mark as daily-exhausted (tokens might be fine, it's just RPM).
-          healthStore.recordFailure(provider.keyId);
-          cooldownKey(provider.keyId);
+        if (provider.keyId) {
+          healthStore.recordSuccess(provider.keyId, durationMs);
+          await clearKeyCooldownDb(provider.keyId);
+        }
+
+        if (provider.keyId && (tokensIn > 0 || tokensOut > 0)) {
           recordUsage({
             keyId: provider.keyId,
             provider: provider.provider,
             model: provider.model,
             operation,
-            tokensIn: 0,
-            tokensOut: 0,
-            durationMs: Date.now() - startMs,
-            status: 'rate_limited',
-            errorMessage: msg,
+            tokensIn,
+            tokensOut,
+            durationMs,
+            status: 'success',
             profileId,
           });
-        } else {
-          // Non-rate-limit error — increment failures for health tracking
+        }
+
+        return content;
+      } catch (e) {
+        const msg = (e as Error).message;
+        const is429 =
+          msg.includes('429') ||
+          msg.toLowerCase().includes('rate') ||
+          msg.toLowerCase().includes('limit');
+        errors.push(`${provider.name} → ${msg}`);
+        console.warn(`[chat] ${provider.name} failed, trying next provider: ${msg}`);
+
+        if (provider.keyId) {
           healthStore.recordFailure(provider.keyId);
+          if (is429) {
+            const failures = (await getKeyFailureCount(provider.keyId)) + 1;
+            await setKeyCooldownDb(provider.keyId, failures);
+          }
           recordUsage({
             keyId: provider.keyId,
             provider: provider.provider,
@@ -486,16 +480,16 @@ export async function chat(
             tokensIn: 0,
             tokensOut: 0,
             durationMs: Date.now() - startMs,
-            status: 'error',
+            status: is429 ? 'rate_limited' : 'error',
             errorMessage: msg,
             profileId,
           });
         }
       }
     }
-  }
 
-  throw new Error(`All chat providers failed. ${errors.join(' || ')}`);
+    throw new Error(`All chat providers failed. ${errors.join(' || ')}`);
+  });
 }
 
 /** JSON-mode chat shared by ingest helpers (Groq primary, OpenAI fallback). */
@@ -547,31 +541,125 @@ export function buildResumeContextForScoring(
  * Throws if OPENAI_API_KEY is not set — embeddings are OpenAI-only. Groq has no
  * embeddings endpoint, and Gemini's text-embedding-004 was deprecated.
  */
-export async function embed(text: string, operation = 'embed'): Promise<number[]> {
-  const client = getOpenAIClient();
-  if (!client) throw new Error('Missing OPENAI_API_KEY env var');
-  const trimmed = text.slice(0, 8000);
-  const startMs = Date.now();
-  const result = await client.embeddings.create({
-    model: EMBED_MODEL,
-    input: trimmed,
-  });
-  const vector = result.data[0]?.embedding;
-  if (!vector) throw new Error('OpenAI embeddings response had no vector');
+export async function embed(
+  text: string,
+  operation = 'embed',
+  profileId?: string,
+): Promise<number[]> {
+  return withLlmChatSlot(async () => {
+    const providers = await getOpenAIEmbedProviders();
+    if (providers.length === 0) {
+      throw new Error('Missing OPENAI_API_KEY or active OpenAI key in Admin');
+    }
 
-  const tokensIn = result.usage?.prompt_tokens ?? Math.ceil(trimmed.length / 4);
-  recordUsage({
-    keyId: 'env:openai',
-    provider: 'openai',
-    model: EMBED_MODEL,
-    operation,
-    tokensIn,
-    tokensOut: 0,
-    durationMs: Date.now() - startMs,
-    status: 'success',
-  });
+    const rateLimiter = getRateLimiter();
+    const trimmed = text.slice(0, 8000);
+    const estimatedTokens = Math.ceil(trimmed.length / 4);
+    const bucketKeys: string[] = ['global'];
+    if (profileId) bucketKeys.push(`user:${profileId}`);
 
-  return vector;
+    const startIdx = EMBED_ROUND_ROBIN_INDEX.n++ % providers.length;
+    const rotated = [...providers.slice(startIdx), ...providers.slice(0, startIdx)];
+    const errors: string[] = [];
+
+    for (const provider of rotated) {
+      if (await isKeyOnCooldownDb(provider.keyId)) {
+        errors.push(`${provider.keyId} → on cooldown`);
+        continue;
+      }
+
+      const tryBuckets = [...bucketKeys, keyBucket(provider.keyId)];
+      const rateResult = rateLimiter.check(tryBuckets, { cost: estimatedTokens });
+      if (!rateResult.allowed) {
+        errors.push(`${provider.keyId} → ${rateResult.reason ?? 'rate limited'}`);
+        continue;
+      }
+
+      const startMs = Date.now();
+      try {
+        const result = await provider.client.embeddings.create({
+          model: EMBED_MODEL,
+          input: trimmed,
+        });
+        const vector = result.data[0]?.embedding;
+        if (!vector) throw new Error('OpenAI embeddings response had no vector');
+
+        const tokensIn = result.usage?.prompt_tokens ?? estimatedTokens;
+        await clearKeyCooldownDb(provider.keyId);
+        recordUsage({
+          keyId: provider.keyId,
+          provider: 'openai',
+          model: EMBED_MODEL,
+          operation,
+          tokensIn,
+          tokensOut: 0,
+          durationMs: Date.now() - startMs,
+          status: 'success',
+          profileId,
+        });
+
+        return vector;
+      } catch (e) {
+        const msg = (e as Error).message;
+        const is429 =
+          msg.includes('429') ||
+          msg.toLowerCase().includes('rate') ||
+          msg.toLowerCase().includes('limit');
+        errors.push(`${provider.keyId} → ${msg}`);
+        if (is429) {
+          const failures = (await getKeyFailureCount(provider.keyId)) + 1;
+          await setKeyCooldownDb(provider.keyId, failures);
+        }
+        recordUsage({
+          keyId: provider.keyId,
+          provider: 'openai',
+          model: EMBED_MODEL,
+          operation,
+          tokensIn: 0,
+          tokensOut: 0,
+          durationMs: Date.now() - startMs,
+          status: is429 ? 'rate_limited' : 'error',
+          errorMessage: msg,
+          profileId,
+        });
+      }
+    }
+
+    throw new Error(`All OpenAI embed keys failed. ${errors.join(' || ')}`);
+  });
+}
+
+async function getOpenAIEmbedProviders(): Promise<Array<{ client: OpenAI; keyId: string }>> {
+  const out: Array<{ client: OpenAI; keyId: string }> = [];
+  try {
+    const { supabaseAdmin } = await import('./supabase/server');
+    const sb = supabaseAdmin();
+    const { data: keys } = await sb
+      .from('llm_keys')
+      .select('*')
+      .eq('provider', 'openai')
+      .eq('is_active', true)
+      .order('priority', { ascending: true });
+
+    for (const raw of keys ?? []) {
+      const key = await resetLlmKeyDailyIfNeeded(raw as LlmKey);
+      if (!isKeyWithinDailyBudget(key)) continue;
+      const baseUrl = key.base_url || PROVIDER_DEFAULTS.openai.baseUrl;
+      out.push({
+        client: new OpenAI({ apiKey: key.api_key, baseURL: baseUrl }),
+        keyId: key.id,
+      });
+    }
+  } catch {
+    // DB unavailable — env only
+  }
+
+  if (out.length === 0) {
+    const envClient = getOpenAIClient();
+    if (envClient) out.push({ client: envClient, keyId: 'env:openai' });
+  }
+
+  return out;
 }
 
 /**
@@ -585,6 +673,7 @@ export async function scoreJob(args: {
   jobCompany: string | null;
   jobLocation: string | null;
   jobDescription: string | null;
+  profileId?: string;
 }): Promise<{ score: number; reason: string; matchedSkills: string[]; missingSkills: string[] }> {
   const resumeBlock = buildResumeContextForScoring(args.resume, args.insights);
   // Defensive — strip HTML before any prompt sees it. Some old DB rows still
@@ -721,6 +810,7 @@ matchedSkills/missingSkills RULES:
     0.2,
     true,
     'scoreJob',
+    args.profileId,
   );
   try {
     const parsed = JSON.parse(text);
@@ -818,6 +908,7 @@ export async function generateCoverLetter(args: {
   jobTitle: string;
   jobCompany: string | null;
   jobDescription: string | null;
+  profileId?: string;
 }): Promise<string> {
   const userPrompt = `Write a concise, confident cover letter (max 220 words) for this job.
 Avoid clichés ("I am writing to apply..."). Lead with a hook tied to the company or role.
@@ -843,6 +934,7 @@ Output the cover letter only, no preamble.`;
     0.7,
     false,
     'generateCoverLetter',
+    args.profileId,
   );
 }
 
@@ -851,6 +943,7 @@ Output the cover letter only, no preamble.`;
  */
 export async function extractResumeInsights(
   resume: string,
+  profileId?: string,
 ): Promise<ResumeInsights> {
   const userPrompt = `Read this resume and extract structured insights.
 
@@ -885,6 +978,7 @@ Rules:
     0.2,
     true,
     'extractResumeInsights',
+    profileId,
   );
   try {
     const parsed = JSON.parse(text);
@@ -1020,6 +1114,7 @@ export async function matchSkills(args: {
   resumeText?: string;
   topSkills?: string[];
   candidateSkills?: string[];
+  profileId?: string;
 }): Promise<{ matched: string[]; missing: string[] }> {
   const topSkills = args.topSkills ?? args.candidateSkills ?? [];
   const resumeText = args.resumeText ?? '';
@@ -1065,6 +1160,7 @@ INVARIANTS: matched ∪ missing = jdRequirements, matched ∩ missing = ∅`;
     0.1,
     true,
     'matchSkills',
+    args.profileId,
   );
 
   let parsed: { jdRequirements?: unknown; matched?: unknown; missing?: unknown } = {};

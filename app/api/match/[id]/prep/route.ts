@@ -80,6 +80,7 @@ export async function POST(
     missingSkills: (match.missing_skills as string[] | null) ?? [],
     resumeText,
     reason: match.reason ?? null,
+    profileId: profile.id,
   });
 
   await sb.from('interview_prep_packs').upsert({

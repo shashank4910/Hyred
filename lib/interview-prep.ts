@@ -33,6 +33,7 @@ export async function generateInterviewPrep(args: {
   missingSkills: string[];
   resumeText: string;
   reason: string | null;
+  profileId?: string;
 }): Promise<InterviewPrepPack> {
   const system = `You are Hyred's interview prep coach.
 Return compact JSON with:
@@ -47,6 +48,14 @@ Return compact JSON with:
 }
 Only use evidence from the resume and JD. Never invent achievements or tools.`;
 
-  const raw = await chat(system, JSON.stringify(args), 0.3, true, 'generateInterviewPrep');
+  const { profileId, ...payload } = args;
+  const raw = await chat(
+    system,
+    JSON.stringify(payload),
+    0.3,
+    true,
+    'generateInterviewPrep',
+    profileId,
+  );
   return normalizeInterviewPrep(JSON.parse(raw) as Partial<InterviewPrepPack>);
 }

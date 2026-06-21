@@ -60,8 +60,9 @@ export const DEFAULT_BUCKETS: RateLimitBucket[] = [
   { key: 'user:',    maxRequests: 120, maxTokens: 500_000,  windowMs: 60_000,  label: 'user' },
   // Per-key RPM (applied per API key)
   { key: 'key:',     maxRequests: 30,  maxTokens: 200_000,  windowMs: 60_000,  label: 'API key' },
-  // Global aggregate (all users combined, last resort circuit breaker)
-  { key: 'global',   maxRequests: 300, maxTokens: 2_000_000, windowMs: 60_000,  label: 'global' },
+  // Global aggregate (all users combined, last-resort circuit breaker)
+  // ~600/min supports ~10 concurrent users doing on-demand AI without tripping too early.
+  { key: 'global',   maxRequests: 600, maxTokens: 4_000_000, windowMs: 60_000,  label: 'global' },
 ];
 
 /**
