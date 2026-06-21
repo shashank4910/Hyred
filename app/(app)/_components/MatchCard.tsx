@@ -56,7 +56,7 @@ export function MatchCard({
 }: Props) {
   const fullDate = formatFullDate(job.fetched_at);
   const tooltip = `Discovered on ${fullDate}`;
-  const isViewed = status === 'viewed' || status !== 'new';
+  const isNew = status === 'new';
   const [bookmarked, setBookmarked] = useState(initialBookmarked);
   const [saving, setSaving] = useState(false);
 
@@ -97,9 +97,9 @@ export function MatchCard({
     <div
       className={[
         'group block min-w-0 animate-fade-in rounded-2xl p-6 shadow-card transition-all hover:-translate-y-1 hover:border-primary/10 hover:shadow-elevated border-l-4',
-        isViewed
-          ? 'bg-surface-container-low/40 border-l-transparent opacity-75 hover:opacity-100'
-          : 'bg-surface-container-lowest border-l-primary shadow-elevated',
+        isNew
+          ? 'bg-surface-container-lowest border-l-primary shadow-elevated ring-1 ring-primary/5'
+          : 'bg-surface-container-lowest border-l-outline-variant/60 hover:border-l-primary/40',
       ].join(' ')}
     >
       <div className="mb-6 flex items-start justify-between gap-4">
@@ -113,12 +113,12 @@ export function MatchCard({
                 href={jobHref}
                 className={[
                   'text-headline-md leading-tight hover:text-primary transition-colors',
-                  isViewed ? 'text-on-surface-variant font-medium' : 'text-on-surface font-bold',
+                  isNew ? 'text-on-surface font-bold' : 'text-on-surface font-semibold',
                 ].join(' ')}
               >
                 {job.title}
               </Link>
-              {!isViewed && (
+              {isNew && (
                 <span className="inline-flex rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">
                   New
                 </span>
