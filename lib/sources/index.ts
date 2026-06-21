@@ -133,6 +133,24 @@ function buildLinkedInQueries(profile?: SearchProfile | null): string[] {
   return Array.from(out).slice(0, 6);
 }
 
+/** Role-title phrases work better on JobsPipe than single tool keywords (e.g. "JMeter"). */
+function buildJobsPipeQueries(
+  profile?: SearchProfile | null,
+  searchKeywords?: string[],
+): string[] | undefined {
+  const out = new Set<string>();
+  const add = (s?: string) => {
+    const t = (s ?? '').trim();
+    if (t.length >= 3) out.add(t);
+  };
+  (profile?.titlePatterns ?? []).slice(0, 4).forEach(add);
+  add(profile?.primaryDomain);
+  (profile?.adjacentDomains ?? []).slice(0, 2).forEach(add);
+  (searchKeywords ?? []).slice(0, 4).forEach(add);
+  if (out.size === 0) return undefined;
+  return Array.from(out).slice(0, 6);
+}
+
 /**
  * Build the dispatch table at call time.
  *
@@ -186,12 +204,12 @@ function buildFns(
       datePosted: 'week',
     });
 
-  // JobsPipe — registered always; returns [] when no keys (Admin Center or env).
+  // JobsPipe — GET /v1/jobs first (native API), POST /v1/jobs/search fallback.
   fns.jobspipe = () =>
     fetchJobsPipe({
-      queries: queries.length > 0 ? queries.slice(0, 5) : undefined,
+      queries: buildJobsPipeQueries(searchProfile, queries),
       countryCodes: ['IN'],
-      maxAgeDays: 14,
+      maxAgeDays: 30,
       limit: 25,
     });
 
