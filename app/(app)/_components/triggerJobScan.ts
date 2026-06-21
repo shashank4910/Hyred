@@ -60,6 +60,11 @@ export async function triggerJobScan(options?: {
     const warnings = formatIngestWarnings(data.errors);
     if (warnings) {
       toast.warning(warnings, { duration: 12_000 });
+    } else if (options?.sources?.length && result.fetched === 0) {
+      toast.warning(
+        'Selected job source(s) returned 0 new jobs. The scan still scored older jobs already in the database. Check Admin → API keys and Stats → Notes.',
+        { duration: 12_000 },
+      );
     }
 
     if (options?.autoFlow) {

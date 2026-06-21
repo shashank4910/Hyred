@@ -6,8 +6,9 @@ import { fetchArbeitnow } from './arbeitnow';
 import { fetchAdzuna } from './adzuna';
 import { fetchHimalayas } from './himalayas';
 import { fetchJSearch } from './jsearch';
-import { fetchJobsPipe } from './jobspipe';
+import { fetchJobsPipe, describeJobsPipeFetchFailure } from './jobspipe';
 import { fetchJobDataLake } from './jobdatalake';
+import { getJobdatalakeApiKeys } from '../jobdatalake-keys';
 import { fetchLinkedIn } from './linkedin';
 import type { SearchProfile } from '../search-profile';
 import type { Preferences } from '../types';
@@ -230,22 +231,57 @@ export async function fetchAllSources(
 
   const fns = buildFns(searchProfile, preferences);
   const names = sources ?? (Object.keys(fns) as SourceName[]);
+  const explicit = sources?.length ? new Set(sources) : null;
 
-  await Promise.all(
+  const results = await Promise.all(
     names.map(async (s) => {
       const fn = fns[s];
       if (!fn) {
-        // Source not configured (e.g. missing API keys) — silently skip.
-        return;
+        if (explicit?.has(s)) {
+          return {
+            source: s,
+            jobs: [] as RawJob[],
+            error: `${SOURCE_LABELS[s] ?? s} is not available (missing API keys or env).`,
+          };
+        }
+        return { source: s, jobs: [] as RawJob[], error: null as string | null };
       }
       try {
         const jobs = await fn();
-        all.push(...jobs);
+        return { source: s, jobs, error: null as string | null };
       } catch (e) {
-        errors.push({ source: s, error: (e as Error).message });
+        return { source: s, jobs: [] as RawJob[], error: (e as Error).message };
       }
     }),
   );
+
+  for (const r of results) {
+    all.push(...r.jobs);
+    if (r.error) {
+      errors.push({ source: r.source, error: r.error });
+      continue;
+    }
+    if (!explicit?.has(r.source) || r.jobs.length > 0) continue;
+
+    if (r.source === 'jobspipe') {
+      errors.push({ source: r.source, error: await describeJobsPipeFetchFailure() });
+    } else if (r.source === 'jobdatalake') {
+      const keys = await getJobdatalakeApiKeys();
+      errors.push({
+        source: r.source,
+        error:
+          keys.length === 0
+            ? 'No JobDataLake API key configured. Add one in Admin → API Key Management.'
+            : 'JobDataLake returned 0 jobs for your keywords (India filter).',
+      });
+    } else if (r.source === 'jsearch') {
+      errors.push({
+        source: r.source,
+        error:
+          'JSearch returned 0 jobs. Check RapidAPI keys in Admin or try broader profile keywords.',
+      });
+    }
+  }
 
   return { jobs: all, errors };
 }
