@@ -1,7 +1,7 @@
 import type { RawJob } from '../types';
 import { stripHtml } from '../jd-fetcher';
 import { getJobspipeApiKeys } from '../jobspipe-keys';
-import { logApiRequest } from '../api-tracker';
+import { logApiRequest, maskKey } from '../api-tracker';
 
 /**
  * JobsPipe — unified job search API (30+ ATS/board sources).
@@ -79,8 +79,9 @@ async function searchWithKey(
       source: 'jobspipe',
       status: res.status === 429 ? 'rate_limited' : 'error',
       http_status: res.status,
-      key_identifier: `${key.slice(0, 4)}...${key.slice(-4)}`,
+      key_identifier: maskKey(key),
       query: JSON.stringify(body.job_title_or ?? []),
+      error_message: res.status === 402 ? 'Monthly quota exceeded' : res.status === 401 ? 'Invalid API key' : 'Rate limited',
     });
     return null;
   }
@@ -96,7 +97,7 @@ async function searchWithKey(
     source: 'jobspipe',
     status: 'success',
     http_status: 200,
-    key_identifier: `${key.slice(0, 4)}...${key.slice(-4)}`,
+    key_identifier: maskKey(key),
     query: JSON.stringify(body.job_title_or ?? []),
     jobs_returned: jobs.length,
   });

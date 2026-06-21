@@ -1,4 +1,5 @@
 import type { RawJob } from '../types';
+import { logApiRequest, maskKey } from '../api-tracker';
 
 /**
  * Adzuna public API — https://developer.adzuna.com/
@@ -93,6 +94,10 @@ async function fetchPage(opts: {
   if (opts.whatPhrase) params.set('what_phrase', opts.whatPhrase);
 
   const url = `${BASE}/${opts.country}/search/${opts.page}?${params.toString()}`;
+  const source = `adzuna_${opts.country.toLowerCase()}`;
+  const keyId = maskKey(`${opts.appId}:${opts.appKey}`);
+  const queryLabel = opts.what || opts.whatPhrase || opts.category || 'search';
+
   const res = await fetch(url, {
     headers: { 'user-agent': 'jobradar/0.4' },
     cache: 'no-store',
@@ -100,11 +105,30 @@ async function fetchPage(opts: {
 
   if (!res.ok) {
     const body = await res.text().catch(() => '');
+    const status =
+      res.status === 429 ? 'rate_limited' : 'error';
+    logApiRequest({
+      source,
+      key_identifier: keyId,
+      status,
+      http_status: res.status,
+      query: queryLabel,
+      error_message: body.slice(0, 200),
+    });
     throw new Error(`Adzuna ${res.status}: ${body.slice(0, 200)}`);
   }
 
   const data = (await res.json()) as AdzunaResponse;
-  return data.results ?? [];
+  const results = data.results ?? [];
+  logApiRequest({
+    source,
+    key_identifier: keyId,
+    status: 'success',
+    http_status: 200,
+    query: queryLabel,
+    jobs_returned: results.length,
+  });
+  return results;
 }
 
 /**
