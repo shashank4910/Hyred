@@ -1,40 +1,31 @@
 'use client';
 
 import { useEffect, type ReactNode } from 'react';
-import { X, Pencil, Save } from 'lucide-react';
-
-export type ResumePreviewModalKind = 'current' | 'version' | 'template';
+import { X, Loader2 } from 'lucide-react';
 
 type Props = {
   open: boolean;
   onClose: () => void;
   title?: string;
-  /** Plain-text preview (current resume or saved version) */
-  text?: string;
-  mode?: 'preview' | 'edit';
-  onModeChange?: (mode: 'preview' | 'edit') => void;
-  editedText?: string;
-  onEditedTextChange?: (text: string) => void;
-  onSave?: () => void;
-  allowEdit?: boolean;
-  /** Styled template sample — when set, shown instead of plain text */
-  visualPreview?: ReactNode;
   subtitle?: string;
+  /** Navy-header PDF preview — same as downloaded file */
+  pdfUrl?: string | null;
+  pdfLoading?: boolean;
+  /** Template layout mock (HTML) */
+  visualPreview?: ReactNode;
+  /** Fallback plain text (legacy) */
+  text?: string;
 };
 
 export function ResumePreviewModal({
   open,
   onClose,
   title = 'Resume preview',
-  text = '',
-  mode = 'preview',
-  onModeChange,
-  editedText = '',
-  onEditedTextChange,
-  onSave,
-  allowEdit = true,
-  visualPreview,
   subtitle,
+  pdfUrl,
+  pdfLoading = false,
+  visualPreview,
+  text = '',
 }: Props) {
   useEffect(() => {
     if (!open) return;
@@ -51,8 +42,6 @@ export function ResumePreviewModal({
 
   if (!open) return null;
 
-  const showEdit = allowEdit && !visualPreview && onModeChange && onEditedTextChange && onSave;
-
   return (
     <div
       className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4"
@@ -66,7 +55,7 @@ export function ResumePreviewModal({
         onClick={onClose}
         aria-label="Close preview"
       />
-      <div className="relative z-10 flex max-h-[92vh] w-full max-w-3xl flex-col rounded-t-2xl sm:rounded-2xl border border-outline-variant bg-surface-container-lowest shadow-elevated">
+      <div className="relative z-10 flex max-h-[92vh] w-full max-w-4xl flex-col rounded-t-2xl sm:rounded-2xl border border-outline-variant bg-surface-container-lowest shadow-elevated">
         <div className="flex items-center justify-between gap-3 border-b border-outline-variant px-4 py-3">
           <div className="min-w-0">
             <h3 className="font-semibold text-on-surface truncate">{title}</h3>
@@ -74,56 +63,26 @@ export function ResumePreviewModal({
               <p className="text-xs text-on-surface-variant truncate mt-0.5">{subtitle}</p>
             )}
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {showEdit && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => onModeChange!('preview')}
-                  className={
-                    mode === 'preview'
-                      ? 'text-xs font-medium text-primary border-b border-primary pb-0.5'
-                      : 'text-xs text-on-surface-variant hover:text-on-surface'
-                  }
-                >
-                  Preview
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onModeChange!('edit')}
-                  className={
-                    mode === 'edit'
-                      ? 'text-xs font-medium text-primary border-b border-primary pb-0.5'
-                      : 'text-xs text-on-surface-variant hover:text-on-surface'
-                  }
-                >
-                  <Pencil className="h-3 w-3 inline mr-0.5" />
-                  Edit
-                </button>
-                {mode === 'edit' && (
-                  <button type="button" onClick={onSave} className="btn-primary text-xs py-1.5 px-2.5">
-                    <Save className="h-3 w-3" />
-                    Save
-                  </button>
-                )}
-              </>
-            )}
-            <button type="button" onClick={onClose} className="btn p-2" aria-label="Close">
-              <X className="h-4 w-4" />
-            </button>
-          </div>
+          <button type="button" onClick={onClose} className="btn p-2 shrink-0" aria-label="Close">
+            <X className="h-4 w-4" />
+          </button>
         </div>
-        <div className="flex-1 overflow-y-auto p-4 bg-surface-container-low/30">
-          {visualPreview ? (
-            visualPreview
-          ) : mode === 'edit' && showEdit ? (
-            <textarea
-              value={editedText}
-              onChange={(e) => onEditedTextChange!(e.target.value)}
-              className="input min-h-[60vh] w-full font-mono text-sm leading-relaxed resize-y bg-surface-container-lowest"
+        <div className="flex-1 overflow-hidden min-h-[50vh] sm:min-h-[70vh] bg-slate-200/80">
+          {pdfLoading ? (
+            <div className="flex h-full min-h-[50vh] flex-col items-center justify-center gap-3 text-on-surface-variant">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="text-sm">Building PDF preview…</p>
+            </div>
+          ) : pdfUrl ? (
+            <iframe
+              title={title}
+              src={pdfUrl}
+              className="h-full min-h-[50vh] sm:min-h-[70vh] w-full border-0 bg-white"
             />
+          ) : visualPreview ? (
+            <div className="h-full overflow-y-auto p-4">{visualPreview}</div>
           ) : (
-            <pre className="whitespace-pre-wrap text-sm text-on-surface-variant font-sans leading-relaxed bg-surface-container-lowest rounded-xl border border-outline-variant p-4">
+            <pre className="h-full overflow-y-auto whitespace-pre-wrap p-4 text-sm text-on-surface-variant font-sans leading-relaxed">
               {text}
             </pre>
           )}
