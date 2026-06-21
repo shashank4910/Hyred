@@ -357,3 +357,35 @@ export const CATEGORY_LABELS: Record<CompanyEntry['category'], string> = {
 };
 
 export type { CompanyEntry };
+
+/** Stable slug for dream-company picks (e.g. "Google" → "google"). */
+export function companyCatalogKey(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+/** Full curated catalog for dream-company picker UI. */
+export function getCompanyCatalog(): readonly CompanyEntry[] {
+  return COMPANIES;
+}
+
+export function findCatalogCompanyByKey(key: string): CompanyEntry | null {
+  const normalized = key.trim().toLowerCase();
+  return COMPANIES.find((c) => companyCatalogKey(c.name) === normalized) ?? null;
+}
+
+/** True when job company matches one catalog entry's patterns (word-boundary). */
+export function matchJobToCatalogEntry(
+  companyName: string | null | undefined,
+  entry: CompanyEntry,
+): boolean {
+  if (!companyName) return false;
+  const hay = normalize(companyName);
+  for (const pattern of entry.patterns) {
+    const needle = ` ${pattern.replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim()} `;
+    if (needle !== '  ' && hay.includes(needle)) return true;
+  }
+  return false;
+}

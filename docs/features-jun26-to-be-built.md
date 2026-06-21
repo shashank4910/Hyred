@@ -20,6 +20,7 @@ These premium features are now locked for the June 2026 roadmap.
 ### Tier 2 — Build Next
 4. **Smart Scan Plus**
 5. **Autofill Pro**
+6. **Dream Company Job Alerts** *(in progress — Jun 21, 2026)*
 
 ### Tier 3 — After Tier 1 and Tier 2
 6. **Application Health Report**
@@ -317,6 +318,86 @@ Strong user value if extension quality is reliable.
 **Important note**
 
 This should not be the headline premium promise until extension reliability is consistently strong.
+
+---
+
+### 4.8 Dream Company Job Alerts *(Tier 2 — building Jun 21, 2026)*
+
+**User problem**
+
+Users do not want "more jobs." They want to know **the moment their dream company posts a role** — before the listing gets buried or the req closes.
+
+**Premium value**
+
+High emotional intent, strong retention hook, natural upsell (more companies + faster channels). Complements Smart Scan Plus (generic high-match alerts) with **company-specific** alerts.
+
+**What it should do**
+
+- User picks dream companies from the curated MNC catalog (`lib/top-companies.ts` patterns — same word-boundary matching as Top MNC page).
+- On every ingest scan (and manual import), when a **new match** appears for a job whose company matches a dream pick → create an alert.
+- **Phase 1 (MVP):** in-app alert feed + sidebar nav entry; email/SMS toggles stored but delivery stubbed.
+- **Phase 2:** instant email via Resend/SendGrid after ingest finalizes.
+- **Phase 3:** SMS/WhatsApp on premium sprint (Twilio / WhatsApp Business) with strict opt-in and monthly caps.
+
+**What it should not do**
+
+- No free-text company names in v1 (false positives + support burden).
+- No promise of "before LinkedIn" — only "as soon as Hyred ingests it."
+- No unlimited SMS.
+
+**Free vs premium**
+
+| | Free | Premium |
+|---|---|---|
+| Dream companies | 1 | 10 |
+| In-app alerts | Yes | Yes |
+| Email | Daily digest (Phase 2) | Instant (Phase 2) |
+| SMS | No | Capped (Phase 3) |
+
+**Primary surface (locked for v1)**
+
+- **Sidebar nav:** `Dream Alerts` placed **above ATS Checker** — aspirational utility next to free tools, not buried in Settings.
+- **Route:** `/dream-alerts` — pick companies, view alert feed, channel preferences.
+
+**Secondary surfaces (later)**
+
+- Dashboard banner: "2 new roles at Google" when unread alerts exist.
+- Job detail badge when match is from a dream company.
+- Email subject line + deep link to `/jobs/[id]`.
+
+**Why not Settings initially**
+
+Settings = form memory (apply profile). Dream companies = **job-search intent**. Users think in goals ("I want Google"), not configuration. Sidebar discovery matches how LinkedIn / Wellfound surface "job alerts."
+
+**Alternative placements considered**
+
+| Place | Verdict |
+|---|---|
+| Above ATS Checker *(chosen)* | Best — visible, pairs with free tools, low friction |
+| Below ATS Checker | Also fine; slightly less prominent |
+| Dashboard card only | Too easy to miss on first visit |
+| Settings | Wrong mental model; user rejected |
+
+**Schema (migration 0016)**
+
+- `dream_companies` — `(profile_id, company_key)` unique; `notify_email`, `notify_sms` prefs.
+- `dream_company_alerts` — `(profile_id, job_id, dream_company_id)` unique; `read_at`, `email_sent_at`, `sms_sent_at`.
+
+**Code map**
+
+| Piece | Path |
+|---|---|
+| Catalog + matching | `lib/top-companies.ts` exports + `lib/dream-companies.ts` |
+| Alert processor | `lib/dream-company-alerts.ts` — called from `lib/ingest.ts` + `app/api/import-job/route.ts` |
+| CRUD API | `app/api/dream-companies/route.ts`, `[id]/route.ts`, `alerts/route.ts` |
+| UI | `app/(app)/dream-alerts/page.tsx`, `DreamAlertsClient.tsx` |
+| Nav | `app/(app)/_components/AppShell.tsx` — `Bell` icon, above ATS Checker |
+
+**Ingest hook**
+
+After successful `matches` upsert for a profile, load cached dream picks once per run → `processDreamCompanyAlertsForJob({ profileId, jobId, company, title })` → insert alert rows (deduped).
+
+**Manual step:** run migration **0016** in Supabase before live testing.
 
 ---
 
@@ -677,3 +758,14 @@ Tier 1 implementation shipped on branch `feat/tier-1-premium-features`:
 **Manual step:** Run migration `0015_hyred_premium_tier1.sql` in Supabase before testing live.
 
 **Dev testing premium:** Insert a row into `premium_subscriptions` for your `profile_id` with `plan = 'premium_sprint'` and `status = 'active'`.
+
+---
+
+## Status update (2026-06-21) — Dream Company Job Alerts
+
+**Phase 1 MVP** (see §4.8):
+
+- [x] Migration **0016**, lib + ingest hook, `/dream-alerts` UI, sidebar nav above ATS Checker
+- [x] In-app alert feed (email/SMS delivery = Phase 2/3)
+
+**Manual step:** Run migration **0016** in Supabase after merge.
