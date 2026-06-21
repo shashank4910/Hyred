@@ -7,6 +7,7 @@ import { fetchAdzuna } from './adzuna';
 import { fetchHimalayas } from './himalayas';
 import { fetchJSearch } from './jsearch';
 import { fetchJobsPipe } from './jobspipe';
+import { fetchJobDataLake } from './jobdatalake';
 import { fetchLinkedIn } from './linkedin';
 import type { SearchProfile } from '../search-profile';
 import type { Preferences } from '../types';
@@ -20,6 +21,7 @@ export type SourceName =
   | 'himalayas'
   | 'jsearch'
   | 'jobspipe'
+  | 'jobdatalake'
   | 'linkedin';
 
 export const ALL_SOURCES: SourceName[] = [
@@ -31,6 +33,7 @@ export const ALL_SOURCES: SourceName[] = [
   'himalayas',
   'jsearch',
   'jobspipe',
+  'jobdatalake',
   'linkedin',
 ];
 
@@ -43,6 +46,7 @@ export const SOURCE_LABELS: Record<SourceName, string> = {
   himalayas: 'Himalayas',
   jsearch: 'JSearch',
   jobspipe: 'JobsPipe',
+  jobdatalake: 'JobDataLake',
   linkedin: 'LinkedIn',
 };
 
@@ -188,6 +192,14 @@ function buildFns(
       countryCodes: ['IN'],
       maxAgeDays: 14,
       limit: 25,
+    });
+
+  // JobDataLake — registered always; returns [] when no keys (Admin Center or env).
+  fns.jobdatalake = () =>
+    fetchJobDataLake({
+      queries: queries.length > 0 ? queries.slice(0, 5) : undefined,
+      countryCodes: ['IN'],
+      perPage: 50,
     });
 
   // LinkedIn — PUBLIC GUEST API (free, no auth, no API key).

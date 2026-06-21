@@ -5,7 +5,7 @@ import { X } from 'lucide-react';
 import { DEFAULT_MATCH_SORT, SOURCE_LABELS, resolveMatchSort } from '@/lib/ui';
 import { useDashboardNav } from './DashboardNavContext';
 
-const SOURCES = ['remotive', 'remoteok', 'hn', 'arbeitnow', 'adzuna_in', 'himalayas', 'jsearch', 'jobspipe', 'linkedin'];
+const SOURCES = ['remotive', 'remoteok', 'hn', 'arbeitnow', 'adzuna_in', 'himalayas', 'jsearch', 'jobspipe', 'jobdatalake', 'linkedin'];
 
 export function MatchFilters({ isAdmin = false }: { isAdmin?: boolean }) {
   const sp = useSearchParams();

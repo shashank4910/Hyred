@@ -18,6 +18,22 @@ type UsageSummary = {
   totalRequests: number;
 };
 
+/** Split pasted keys — one per line or comma. */
+function parseKeyLines(text: string): string[] {
+  return text
+    .split(/[\n,]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function mergeUniqueKeys(existing: string[], incoming: string[]): string[] {
+  const out = [...existing];
+  for (const k of incoming) {
+    if (!out.includes(k)) out.push(k);
+  }
+  return out;
+}
+
 
 export function AdminDashboard() {
   const [stats, setStats] = useState<UsageSummary | null>(null);
@@ -29,9 +45,13 @@ export function AdminDashboard() {
   const [jsearchKeys, setJsearchKeys] = useState<string[]>([]);
   const [adzunaKeys, setAdzunaKeys] = useState<string[]>([]);
   const [jobspipeKeys, setJobspipeKeys] = useState<string[]>([]);
+  const [jobdatalakeKeys, setJobdatalakeKeys] = useState<string[]>([]);
   const [newJsearchKey, setNewJsearchKey] = useState('');
+  const [bulkJsearchKeys, setBulkJsearchKeys] = useState('');
   const [newAdzunaKey, setNewAdzunaKey] = useState('');
   const [newJobspipeKey, setNewJobspipeKey] = useState('');
+  const [newJobdatalakeKey, setNewJobdatalakeKey] = useState('');
+  const [bulkJobdatalakeKeys, setBulkJobdatalakeKeys] = useState('');
   const [savingKeys, setSavingKeys] = useState(false);
   const [envKeys, setEnvKeys] = useState<Record<string, string[]>>({});
 
@@ -59,6 +79,7 @@ export function AdminDashboard() {
         setJsearchKeys((stored.jsearch ?? []).map((k: { full: string }) => k.full));
         setAdzunaKeys((stored.adzuna ?? []).map((k: { full: string }) => k.full));
         setJobspipeKeys((stored.jobspipe ?? []).map((k: { full: string }) => k.full));
+        setJobdatalakeKeys((stored.jobdatalake ?? []).map((k: { full: string }) => k.full));
         setEnvKeys(data.env ?? {});
       }
     } catch { /* ignore */ }
@@ -92,6 +113,18 @@ export function AdminDashboard() {
     setJsearchKeys(updated);
     setNewJsearchKey('');
     saveKeys('jsearch', updated);
+  }
+
+  function addJsearchKeysBulk() {
+    const incoming = parseKeyLines(bulkJsearchKeys);
+    if (incoming.length === 0) return;
+    const updated = mergeUniqueKeys(jsearchKeys, incoming);
+    const added = updated.length - jsearchKeys.length;
+    if (added === 0) { toast('All keys already exist'); return; }
+    setJsearchKeys(updated);
+    setBulkJsearchKeys('');
+    saveKeys('jsearch', updated);
+    toast.success(`Added ${added} JSearch key${added !== 1 ? 's' : ''}`);
   }
 
   function removeJsearchKey(idx: number) {
@@ -130,6 +163,34 @@ export function AdminDashboard() {
     const updated = jobspipeKeys.filter((_, i) => i !== idx);
     setJobspipeKeys(updated);
     saveKeys('jobspipe', updated);
+  }
+
+  function addJobdatalakeKey() {
+    const k = newJobdatalakeKey.trim();
+    if (!k) return;
+    if (jobdatalakeKeys.includes(k)) { toast('Key already exists'); return; }
+    const updated = [...jobdatalakeKeys, k];
+    setJobdatalakeKeys(updated);
+    setNewJobdatalakeKey('');
+    saveKeys('jobdatalake', updated);
+  }
+
+  function addJobdatalakeKeysBulk() {
+    const incoming = parseKeyLines(bulkJobdatalakeKeys);
+    if (incoming.length === 0) return;
+    const updated = mergeUniqueKeys(jobdatalakeKeys, incoming);
+    const added = updated.length - jobdatalakeKeys.length;
+    if (added === 0) { toast('All keys already exist'); return; }
+    setJobdatalakeKeys(updated);
+    setBulkJobdatalakeKeys('');
+    saveKeys('jobdatalake', updated);
+    toast.success(`Added ${added} JobDataLake key${added !== 1 ? 's' : ''}`);
+  }
+
+  function removeJobdatalakeKey(idx: number) {
+    const updated = jobdatalakeKeys.filter((_, i) => i !== idx);
+    setJobdatalakeKeys(updated);
+    saveKeys('jobdatalake', updated);
   }
 
   function maskKeyDisplay(key: string): string {
@@ -186,7 +247,7 @@ export function AdminDashboard() {
       {/* === JOBS & MATCHES LIFECYCLE CONTROL === */}
       <JobsControlPanel />
 
-      {/* === Job API key usage (JSearch / JobsPipe / Adzuna) === */}
+      {/* === Job API key usage (JSearch / JobsPipe / JobDataLake / Adzuna) === */}
       <JobApiUsagePanel />
 
 
@@ -350,6 +411,11 @@ export function AdminDashboard() {
         <div className="mb-6">
           <h3 className="text-sm font-semibold text-on-background mb-2">
             JSearch (RapidAPI) Keys
+            {jsearchKeys.length > 0 && (
+              <span className="ml-2 text-xs font-normal text-on-surface-variant">
+                ({jsearchKeys.length} key{jsearchKeys.length !== 1 ? 's' : ''})
+              </span>
+            )}
           </h3>
           <p className="text-xs text-on-surface-variant mb-3">
             Each key ≈ 200 requests/month. Add <strong>multiple</strong> RapidAPI keys — usage is tracked above.
@@ -375,6 +441,23 @@ export function AdminDashboard() {
             />
             <button onClick={addJsearchKey} disabled={savingKeys} className="btn-primary text-xs">
               <Plus className="h-3.5 w-3.5" /> Add
+            </button>
+          </div>
+          <div className="mt-3">
+            <p className="text-[11px] text-on-surface-variant mb-1">Bulk add (one key per line)</p>
+            <textarea
+              value={bulkJsearchKeys}
+              onChange={(e) => setBulkJsearchKeys(e.target.value)}
+              placeholder="Paste multiple RapidAPI keys…"
+              rows={3}
+              className="input w-full text-xs font-mono resize-y"
+            />
+            <button
+              onClick={addJsearchKeysBulk}
+              disabled={savingKeys || !bulkJsearchKeys.trim()}
+              className="btn-secondary text-xs mt-2"
+            >
+              <Plus className="h-3.5 w-3.5" /> Add all
             </button>
           </div>
         </div>
@@ -421,6 +504,75 @@ export function AdminDashboard() {
             />
             <button onClick={addJobspipeKey} disabled={savingKeys} className="btn-primary text-xs">
               <Plus className="h-3.5 w-3.5" /> Add
+            </button>
+          </div>
+        </div>
+
+        {/* JobDataLake Keys */}
+        <div className="mb-6">
+          <h3 className="text-sm font-semibold text-on-background mb-2">
+            JobDataLake API Keys
+            {jobdatalakeKeys.length > 0 && (
+              <span className="ml-2 text-xs font-normal text-on-surface-variant">
+                ({jobdatalakeKeys.length} key{jobdatalakeKeys.length !== 1 ? 's' : ''})
+              </span>
+            )}
+          </h3>
+          <p className="text-xs text-on-surface-variant mb-3">
+            Keys from{' '}
+            <a
+              href="https://www.jobdatalake.com/docs"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline"
+            >
+              jobdatalake.com
+            </a>
+            . Free tier: 1,000 credits/month <strong>per key</strong> (1 credit per search). Add multiple keys to rotate when credits run out.
+          </p>
+          <p className="text-[11px] text-on-surface-variant mb-3">
+            Auth header: <code className="bg-surface-container px-1 rounded">X-API-Key: …</code>
+            {' · '}
+            Env: <code className="bg-surface-container px-1 rounded">JOBDATALAKE_API_KEYS</code>
+          </p>
+          <div className="space-y-2 mb-3">
+            {jobdatalakeKeys.map((k, i) => (
+              <div key={i} className="flex items-center gap-2 p-2 rounded-lg bg-surface-container border border-border-muted">
+                <span className="font-mono text-xs flex-1 text-on-surface-variant">{maskKeyDisplay(k)}</span>
+                <button onClick={() => removeJobdatalakeKey(i)} className="text-error hover:bg-error-container p-1 rounded" title="Remove">
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newJobdatalakeKey}
+              onChange={(e) => setNewJobdatalakeKey(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && addJobdatalakeKey()}
+              placeholder="Paste JobDataLake API key"
+              className="input flex-1 text-xs"
+            />
+            <button onClick={addJobdatalakeKey} disabled={savingKeys} className="btn-primary text-xs">
+              <Plus className="h-3.5 w-3.5" /> Add
+            </button>
+          </div>
+          <div className="mt-3">
+            <p className="text-[11px] text-on-surface-variant mb-1">Bulk add (one key per line)</p>
+            <textarea
+              value={bulkJobdatalakeKeys}
+              onChange={(e) => setBulkJobdatalakeKeys(e.target.value)}
+              placeholder="Paste multiple JobDataLake keys…"
+              rows={3}
+              className="input w-full text-xs font-mono resize-y"
+            />
+            <button
+              onClick={addJobdatalakeKeysBulk}
+              disabled={savingKeys || !bulkJobdatalakeKeys.trim()}
+              className="btn-secondary text-xs mt-2"
+            >
+              <Plus className="h-3.5 w-3.5" /> Add all
             </button>
           </div>
         </div>

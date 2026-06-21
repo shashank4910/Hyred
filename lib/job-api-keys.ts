@@ -1,5 +1,5 @@
 /** Paid job-board APIs tracked in Admin usage dashboard. */
-export const JOB_API_SOURCES = ['jsearch', 'jobspipe', 'adzuna_in'] as const;
+export const JOB_API_SOURCES = ['jsearch', 'jobspipe', 'jobdatalake', 'adzuna_in'] as const;
 export type JobApiSource = (typeof JOB_API_SOURCES)[number];
 
 /** Mask an API key for display: first 4 + last 4 chars. */
@@ -12,12 +12,14 @@ export function maskKey(key: string): string {
 export const JOB_API_MONTHLY_QUOTA: Record<JobApiSource, number> = {
   jsearch: 200,
   jobspipe: 5000,
+  jobdatalake: 1000,
   adzuna_in: 2500,
 };
 
 export const JOB_API_SOURCE_LABELS: Record<JobApiSource, string> = {
   jsearch: 'JSearch',
   jobspipe: 'JobsPipe',
+  jobdatalake: 'JobDataLake',
   adzuna_in: 'Adzuna India',
 };
 
@@ -33,6 +35,7 @@ export async function getConfiguredJobApiKeys(): Promise<
   const result: Record<JobApiSource, Array<{ raw: string; identifier: string }>> = {
     jsearch: [],
     jobspipe: [],
+    jobdatalake: [],
     adzuna_in: [],
   };
 
@@ -57,6 +60,12 @@ export async function getConfiguredJobApiKeys(): Promise<
   } else if (process.env.JOBSPIPE_API_KEY) {
     pushUnique('jobspipe', process.env.JOBSPIPE_API_KEY);
   }
+  const jdlMulti = process.env.JOBDATALAKE_API_KEYS ?? '';
+  if (jdlMulti.trim()) {
+    for (const k of jdlMulti.split(',')) pushUnique('jobdatalake', k);
+  } else if (process.env.JOBDATALAKE_API_KEY) {
+    pushUnique('jobdatalake', process.env.JOBDATALAKE_API_KEY);
+  }
 
   // DB
   try {
@@ -71,6 +80,7 @@ export async function getConfiguredJobApiKeys(): Promise<
     for (const k of stored.jsearch ?? []) pushUnique('jsearch', k);
     for (const k of stored.adzuna ?? []) pushUnique('adzuna_in', k);
     for (const k of stored.jobspipe ?? []) pushUnique('jobspipe', k);
+    for (const k of stored.jobdatalake ?? []) pushUnique('jobdatalake', k);
   } catch {
     /* ignore */
   }
