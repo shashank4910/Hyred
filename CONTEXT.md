@@ -1076,12 +1076,28 @@ The LLM scoring prompt (`scoreJob` in `lib/gemini.ts`) has explicit rules:
 | JD keyword analysis + Optimize resume | `GET/POST /api/match/[id]/resume` → `generateAtsResume()`, `extractJdKeywords` |
 | PDF download | `POST /api/match/[id]/resume/pdf` → `lib/pdf-resume.ts` |
 | Cover letter | `POST /api/coverletter` |
-| **Match Intelligence** (premium) | `GET/POST /api/match/[id]/verdict` → `lib/match-intelligence.ts` |
-| **Interview Prep Pack** (quota) | `GET/POST /api/match/[id]/prep` → `lib/interview-prep.ts` |
+| **Match Intelligence** (premium) | `GET/POST /api/match/[id]/verdict` → `lib/match-intelligence.ts` · **page:** `/jobs/[id]/verdict` |
+| **Interview Prep Pack** (quota) | `GET/POST /api/match/[id]/prep` → `lib/interview-prep.ts` · **page:** `/jobs/[id]/prep` |
 | Resume version history | `GET /api/match/[id]/resume` → `resume_versions` table |
+| **Resume Studio — templates & preview** | `lib/resume-templates.ts`, `ResumeTemplatePicker.tsx`, `ResumePreviewModal.tsx` — see subsection below |
 | Bookmark / status / notes | `/api/match/[id]/bookmark`, `status`, `notes` |
 
 **Pitfalls:** ATS keyword flow (Sessions 9–11), owner PII in prompts, JD HTML sanitization, hallucinated skill chips (Session 19). See Known Pitfalls rows for `generateAtsResume`. Premium verdict GET returns `locked: false` for users who can generate (premium plan); free users see locked preview until they upgrade.
+
+### Resume Studio — templates & preview
+
+**UI:** `JobActions.tsx` → `ResumeTemplatePicker`, `ResumePreviewModal`, `ResumeTemplateSamplePreview`
+
+| User action | What opens | Renderer |
+|---|---|---|
+| **Style preview** (top) or template card eye | Template mode (`kind='template'`) | **Classic Navy** → real PDF (`lib/resume-pdf-preview.ts` → `generateBeautifulPdf`); others → HTML layout mock |
+| **Preview PDF** on a saved version row | Resume mode (`kind='resume'`) | Always real PDF blob in iframe |
+
+**Template registry:** `lib/resume-templates.ts` — 10 templates; only `classic-navy` is `available: true` today. Coming-soon templates show layout samples + "Soon" in picker; PDF export still uses Classic Navy until Phase 2 per-template renderers land.
+
+**Preview modal UX (PR #218):** Document-studio layout — dark dot-grid canvas, centered A4 paper shadow, Free/Pro badges, prev/next template navigation (keyboard ←/→). Sample text: `RESUME_TEMPLATE_SAMPLE_TEXT` from `lib/resume-template-previews.ts` (= `ATS_SAMPLE_RESUME`).
+
+**Dashboard entry:** MatchCard links to `/jobs/[id]/verdict` and `/jobs/[id]/prep` in new tab (PR #202, #206). Viewed cards use full opacity + gray border; new cards keep teal border + "New" pill (PR #209 — do not reintroduce `opacity-75` on seen jobs).
 
 ### Premium Tier 1 — Match Intelligence, Interview Prep, Resume Studio Pro
 
@@ -1093,7 +1109,9 @@ The LLM scoring prompt (`scoreJob` in `lib/gemini.ts`) has explicit rules:
 | Interview Prep Pack | 1 lifetime | 8/cycle | `GET/POST /api/match/[id]/prep` |
 | Resume Studio Pro | 3/month | 40/cycle | `POST /api/match/[id]/resume` (+ `resume_versions` on GET) |
 
-**UI:** `JobActions.tsx` — verdict card, prep card, collapsible resume version list; 402 → premium toast.
+**UI:** `JobActions.tsx` — collapsible resume section, template picker, version list; verdict/prep live on dedicated pages (not inline cards). 402 → premium toast.
+
+**Pages:** `app/(app)/jobs/[id]/verdict/page.tsx`, `app/(app)/jobs/[id]/prep/page.tsx`
 
 **Not built yet:** Stripe checkout, subscription management UI, Tier 2 (Smart Scan Plus, Autofill Pro).
 
@@ -1153,8 +1171,16 @@ lib/ats-checker-samples.ts   ← Shared Try-sample resume + JD
 lib/premium.ts               ← Premium entitlements + quota helpers (interview_prep, match_intelligence, resume_studio)
 lib/match-intelligence.ts    ← Apply/Stretch/Skip verdict generation (LLM JSON)
 lib/interview-prep.ts        ← Interview prep pack generation (questions + STAR hints)
+lib/resume-templates.ts      ← Resume Studio template registry (10 layouts; only classic-navy PDF-ready)
+lib/resume-template-previews.ts ← Sample resume text for template layout previews
+lib/resume-pdf-preview.ts    ← Client-side PDF blob URL for in-browser preview (same as download)
 
 app/(app)/jobs/[id]/        ← Job detail: JobActions.tsx, ReferralRadar.tsx, AutoApplyButton, BackToMatches.tsx
+app/(app)/jobs/[id]/verdict/ ← Match Intelligence page (Apply/Stretch/Skip)
+app/(app)/jobs/[id]/prep/    ← Interview Prep Pack page
+app/(app)/jobs/[id]/ResumePreviewModal.tsx      ← PDF + template preview modal (document-studio UX)
+app/(app)/jobs/[id]/ResumeTemplatePicker.tsx    ← 10-template horizontal picker
+app/(app)/jobs/[id]/ResumeTemplateSamplePreview.tsx ← HTML layout mocks for coming-soon templates
 app/(app)/onboarding/       ← First-run resume upload + profile setup
 app/(app)/top-mnc/          ← Top MNC filtered job list (lib/top-companies.ts)
 app/(app)/import/           ← Manual job URL import UI
@@ -1288,7 +1314,7 @@ supabase/migrations/0009_llm_keys.sql ← (Session 16) llm_keys + llm_usage_log 
 | **`useState` lazy initializer reading sessionStorage = hydration mismatch** (session 16) | First snapshot-restore attempt initialized `useState(() => readSnapshot()?.matches ?? initialMatches)`. On cold loads / refreshes the server rendered 20 cards but the client init produced 80 (from a stale snapshot) → React hydration error + flash. | Initialize state with **the server data first**, then swap to the snapshot in `useLayoutEffect` (client-only, before paint). Use a `didInit` ref so the swap runs once. The `useEffect` that consumes the snapshot must also guard with a one-shot ref. |
 | **Bluesminds provider added as primary — full provider chain restructured** (June 2026) | Bluesminds (`DeepSeek-V4-Flash` → `gpt-4o`) added to the LLM fallback chain. `LLM_PRIMARY` default changed from `groq` to `bluesminds`. The provider chain is now dynamically built from `PROVIDER_DEFAULTS` keys, so any new provider added to `lib/llm-keys.ts` is auto-included. Order: Bluesminds (paid primary) → Gemini (free, env-var) → Cerebras (free) → Groq (free) → OpenAI (paid, last resort). Two model-name fixes were required (`DeepSeek-V4-Flash` case-sensitive, then switched to `gpt-4o` for speed). | **Provider chain is now dynamic and configurable via `LLM_PRIMARY` env var. `buildProviderChain()` iterates `PROVIDER_ORDER` (primary first, then rest), grabs ALL DB keys per provider (round-robin with rotation index), and only falls back to env vars when a provider has ZERO DB keys (fixes the bypass bug where disabled DB keys still fell through to the env). Env-var fallback calls now get synthetic `keyId: 'env:{provider}'` so they log to `llm_usage_log` and appear in the Live Key Activity panel.** |
 | **LLM hallucinated skills shown as matched/missing (session 19, PR #137)** | `scoreJob` and `matchSkills` returned skill names not physically present in the JD (e.g., `"C++"` on a Python-only role). The LLM infers related concepts from training data — the output was verbatim-trusted and stored, so phantom skills showed as green chips on the dashboard card and job detail page. | Added `isSkillPresentInJd(skill, jdText, jobTitle)` (exported from `lib/gemini.ts`) — case-insensitive whole-word regex that handles special chars (C++, .NET) and trailing plural 's'. Both `scoreJob` and `matchSkills` now filter matched/missing arrays through this function before returning. Run `scripts/clean-hallucinated-skills.ts` once to clean historical DB records. **Never trust LLM skill output verbatim; always validate against the JD text.** |
-| **Seen/Unseen card visual UX (session 19, PR #137)** | After clicking a job and going back, every card looked identical — users had no cue which matches were fresh vs already viewed. | Derive `isViewed = status !== 'new'` client-side in `MatchCard.tsx`. Unseen cards: 4px primary left border, elevated shadow, bold title, `New` pill. Seen cards: transparent border, `bg-surface-container-low/40`, `opacity-75` (hover restores 100%), muted title. No new DB columns or API calls required. |
+| **Seen/Unseen card visual UX (session 19, PR #137; viewed contrast PR #209)** | After clicking a job and going back, users need a cue which matches are fresh vs already viewed. | Derive `isViewed = status !== 'new'` in `MatchCard.tsx`. **New:** 4px primary left border, elevated shadow, bold title, `New` pill. **Viewed:** full opacity, subtle gray border — **do not** use `opacity-75` or washed backgrounds (PR #209 made seen jobs too faint). No new DB columns required. |
 | **Vercel Hobby Serverless timeouts hard-kill scans (session 20)** | Vercel Hobby/Free tier limits serverless execution to 60s. If the fetch/embed/score pipeline exceeds 60s, Vercel hard-kills it. The `ingest_runs` status remains stuck at `'running'` with 0 counters, showing a massive false duration (e.g., `1947s`) once the stale cleanup runs. | Default `INGEST_WALL_BUDGET_MS` to `50000` (50s) in `lib/ingest.ts` so the loop checks the wall clock, halts scoring/embedding early, and calls `finalizeRun()` to cleanly commit the current progress and exit before the hard kill. |
 | **HTML tags in job descriptions corrupt skills-matching (session 20)** | `isSkillPresentInJd` word-boundary checks (`\b`) were matching raw HTML description strings (e.g. `<li>JMeter</li>`). Because of this, HTML tags interfered with boundary checks, causing valid matches to fail or missing skills to be incorrectly dropped during cleanup. | Strip HTML tags via `sanitizeJobDescriptionForAI` before performing regex skill matching in `lib/gemini.ts`. Modify `cleanSkills()` to only run the JD presence filter on `matchedSkills` (LLM-returned `missingSkills` are authoritative and should not be re-verified). |
 | **`ignoreDuplicates: true` hides duplicate job counts (session 20)** | Setting `ignoreDuplicates: true` on `upsertJobs` caused Supabase to ignore conflicts, returning only newly inserted job IDs. This made it look like only a couple of jobs were fetched on scans, even when the scraping fetched hundreds. | Set `ignoreDuplicates: false` to return all IDs. To prevent overwriting the original discovery time (the "today's date" issue where every job shows the scan date), omit `fetched_at` from the upsert payload so the database default `now()` only fires on brand new inserts. |
@@ -1467,6 +1493,8 @@ When a feature seems broken:
 - New "pitfalls" or rules learned
 - Changes to the file map
 - **Keep the `AGENTS.md` Index in sync** when you add/rename a `##` section here, and append new dated session logs to `docs/context/session-log.md` (not here).
+
+**Last updated:** June 21, 2026 — **Resume Studio UX (Session 28, PRs #201–#209, #218):** template picker + document-studio preview modal; Classic Navy real PDF preview; dedicated `/jobs/[id]/verdict` and `/prep` pages; viewed MatchCard contrast fix. New CONTEXT subsection `### Resume Studio — templates & preview`; File Map + AGENTS Index rows. See `docs/context/session-log.md` → Session 28.
 
 **Last updated:** June 20, 2026 — **Doc bridge audit:** restored `## Key Architecture Decisions` heading; added `## Core App Features` (job detail, onboarding, Top MNC, import, outreach, apply profile); expanded File Map + `AGENTS.md` Index rows; fixed Tier 3 pointer to `session-log.md`; Sessions 17–18 + 26 in archive. See Session 26.
 
