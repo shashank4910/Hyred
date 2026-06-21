@@ -1,0 +1,166 @@
+/**
+ * Bulk exchange-listed company names — patterns auto-generated in build-seed.ts.
+ * Tier A (curated) + Tier B (exchange-style listings). Expand over time via admin approve + seed sync.
+ */
+
+/** NSE / BSE — large caps & widely searched employers (India). */
+export const INDIA_LISTED_NAMES = [
+  'Reliance Industries', 'Tata Consultancy Services', 'HDFC Bank', 'ICICI Bank', 'Infosys',
+  'Hindustan Unilever', 'ITC', 'Larsen & Toubro', 'Kotak Mahindra Bank', 'Axis Bank',
+  'Bharti Airtel', 'State Bank of India', 'Bajaj Finance', 'Mahindra & Mahindra', 'HCL Technologies',
+  'Asian Paints', 'Maruti Suzuki', 'Sun Pharmaceutical', 'Titan Company', 'UltraTech Cement',
+  'Wipro', 'Nestle India', 'Power Grid Corporation', 'NTPC', 'Tata Steel',
+  'Adani Enterprises', 'Adani Ports', 'JSW Steel', 'IndusInd Bank', 'Grasim Industries',
+  'Tech Mahindra', 'HDFC Life', 'SBI Life Insurance', 'Bajaj Finserv', 'Divis Laboratories',
+  'Dr Reddys Laboratories', 'Cipla', 'Apollo Hospitals', 'Eicher Motors', 'Hero MotoCorp',
+  'Bharat Petroleum', 'Indian Oil Corporation', 'Coal India', 'ONGC', 'GAIL India',
+  'Pidilite Industries', 'Dabur India', 'Godrej Consumer Products', 'Havells India', 'Berger Paints',
+  'Tata Consumer Products', 'Britannia Industries', 'Colgate Palmolive India', 'Marico', 'Page Industries',
+  'Zomato', 'Paytm', 'Nykaa', 'Policybazaar', 'PB Fintech',
+  'InterGlobe Aviation', 'Indigo', 'SpiceJet', 'IRCTC', 'Indian Railway Catering',
+  'Bandhan Bank', 'AU Small Finance Bank', 'IDFC First Bank', 'Federal Bank', 'RBL Bank',
+  'Muthoot Finance', 'Cholamandalam Investment', 'Shriram Finance', 'LIC Housing Finance', 'Piramal Enterprises',
+  'Vedanta', 'Hindalco Industries', 'Hindustan Zinc', 'Jindal Steel & Power', 'SAIL',
+  'Ambuja Cements', 'ACC', 'Shree Cement', 'Ramco Cements', 'JK Cement',
+  'Tata Power', 'Adani Green Energy', 'Adani Total Gas', 'Torrent Power', 'NHPC',
+  'Siemens India', 'ABB India', 'Schneider Electric India', 'Honeywell Automation India', 'Bosch India',
+  'TVS Motor Company', 'Bajaj Auto', 'Ashok Leyland', 'MRF', 'CEAT',
+  'Persistent Systems', 'Coforge', 'LTIMindtree', 'Mphasis', 'Cyient',
+  'KPIT Technologies', 'Tata Elxsi', 'Happiest Minds', 'Zensar Technologies', 'Sonata Software',
+  'Oracle Financial Services', 'Intellect Design Arena', 'Newgen Software', 'Rategain', 'Eternal',
+  'Info Edge', 'Naukri', 'Just Dial', 'Indiamart Intermesh', 'Zee Entertainment',
+  'PVR Inox', 'Sun TV Network', 'Network18 Media', 'TV18 Broadcast', 'Dish TV',
+  'Biocon', 'Lupin', 'Aurobindo Pharma', 'Alkem Laboratories', 'Glenmark Pharmaceuticals',
+  'Torrent Pharmaceuticals', 'Cadila Healthcare', 'IPCA Laboratories', 'Abbott India', 'Pfizer India',
+  'Procter & Gamble Health', 'GlaxoSmithKline Pharmaceuticals', 'Sanofi India', 'AstraZeneca Pharma India', 'Novartis India',
+  'Tata Communications', 'Vodafone Idea', 'Bharti Hexacom', 'RailTel Corporation', 'Tejas Networks',
+  'Varun Beverages', 'United Breweries', 'Radico Khaitan', 'United Spirits', 'Tata Global Beverages',
+  'Aditya Birla Fashion', 'Trent', 'Avenue Supermarts', 'DMart', 'Shoppers Stop',
+  'Voltas', 'Blue Star', 'Crompton Greaves', 'Whirlpool India', 'V-Guard Industries',
+  'Polycab India', 'KEI Industries', 'Finolex Cables', 'Supreme Industries', 'Astral',
+  'Kajaria Ceramics', 'Cera Sanitaryware', 'Somany Ceramics', 'Asian Granito', 'Century Plyboards',
+  'IRB Infrastructure', 'GMR Airports', 'Adani Airports', 'GMR Power', 'NCC',
+  'NBCC', 'Kalpataru Projects', 'Kec International', 'Techno Electric', 'Power Mech Projects',
+  'Container Corporation', 'Gateway Distriparks', 'Allcargo Logistics', 'Mahindra Logistics', 'Blue Dart Express',
+  'Delhivery', 'TCI Express', 'VRL Logistics', 'Gati', 'Snowman Logistics',
+  'Indian Hotels Company', 'Lemon Tree Hotels', 'Chalet Hotels', 'Jubilant Foodworks', 'Devyani International',
+  'Westlife Development', 'Restaurant Brands Asia', 'Barbeque Nation', 'Speciality Restaurants', 'Sapphire Foods',
+  'Mankind Pharma', 'Emcure Pharmaceuticals', 'Ajanta Pharma', 'Caplin Point Laboratories', 'La Renon Healthcare',
+  'KFin Technologies', 'Computer Age Management Services', 'CDSL', 'BSE', 'Multi Commodity Exchange',
+  'Angel One', 'Motilal Oswal Financial Services', 'IIFL Finance', 'Edelweiss Financial Services', 'Nuvama Wealth',
+  '360 ONE WAM', 'Anand Rathi Wealth', 'JM Financial', 'Canara HSBC Life Insurance', 'Star Health Insurance',
+];
+
+/** NYSE / NASDAQ — S&P 500-style large caps (Americas). */
+export const AMERICAS_LISTED_NAMES = [
+  'Apple', 'Microsoft', 'Amazon', 'Alphabet', 'Meta Platforms', 'NVIDIA', 'Tesla', 'Berkshire Hathaway',
+  'UnitedHealth Group', 'Johnson & Johnson', 'Exxon Mobil', 'Visa', 'Procter & Gamble', 'JPMorgan Chase',
+  'Mastercard', 'Home Depot', 'Chevron', 'Merck', 'AbbVie', 'PepsiCo', 'Costco', 'Coca-Cola',
+  'Bank of America', 'Walmart', 'Cisco Systems', 'Adobe', 'Netflix', 'Salesforce', 'AMD', 'Intel',
+  'Oracle', 'Disney', 'Verizon', 'AT&T', 'Comcast', 'Pfizer', 'Broadcom', 'Qualcomm', 'Texas Instruments',
+  'Honeywell', 'Union Pacific', 'RTX', 'Lockheed Martin', 'Boeing', 'General Electric', '3M', 'Caterpillar',
+  'Deere & Company', 'General Motors', 'Ford Motor', 'Starbucks', 'McDonalds', 'Nike', 'Lowes', 'Target',
+  'FedEx', 'UPS', 'Delta Air Lines', 'United Airlines', 'American Airlines', 'Southwest Airlines',
+  'Marriott International', 'Hilton Worldwide', 'Booking Holdings', 'Airbnb', 'Uber Technologies', 'Lyft',
+  'PayPal', 'Block', 'Coinbase Global', 'Robinhood Markets', 'Snowflake', 'Palantir Technologies',
+  'CrowdStrike', 'Fortinet', 'Palo Alto Networks', 'Zscaler', 'Okta', 'Datadog', 'MongoDB', 'Elastic',
+  'Atlassian', 'Shopify', 'Squarespace', 'Twilio', 'DocuSign', 'Zoom Video Communications', 'Autodesk',
+  'Intuit', 'ServiceNow', 'Workday', 'Splunk', 'HubSpot', 'DoorDash', 'Instacart', 'Roblox', 'Unity Software',
+  'Electronic Arts', 'Take-Two Interactive', 'Activision Blizzard', 'Warner Bros Discovery', 'Paramount Global',
+  'Fox Corporation', 'New York Times', 'Spotify Technology', 'Pinterest', 'Snap', 'Reddit', 'Discord',
+  'Goldman Sachs', 'Morgan Stanley', 'Citigroup', 'Wells Fargo', 'Charles Schwab', 'BlackRock', 'Blackstone',
+  'KKR', 'Apollo Global Management', 'Carlyle Group', 'American Express', 'Capital One', 'Discover Financial',
+  'Progressive Corporation', 'Allstate', 'MetLife', 'Prudential Financial', 'AIG', 'Chubb', 'Travelers',
+  'Eli Lilly', 'Amgen', 'Gilead Sciences', 'Regeneron Pharmaceuticals', 'Moderna', 'Biogen', 'Illumina',
+  'Thermo Fisher Scientific', 'Danaher', 'Abbott Laboratories', 'Medtronic', 'Stryker', 'Boston Scientific',
+  'CVS Health', 'Walgreens Boots Alliance', 'HCA Healthcare', 'Cigna', 'Humana', 'Anthem', 'Centene',
+  'NextEra Energy', 'Duke Energy', 'Southern Company', 'Dominion Energy', 'Exelon', 'Con Edison',
+  'Semiconductor Manufacturing International', 'Applied Materials', 'Lam Research', 'KLA Corporation', 'ASML Holding',
+  'Micron Technology', 'Western Digital', 'Seagate Technology', 'Analog Devices', 'Marvell Technology',
+  'Rivian Automotive', 'Lucid Group', 'NIO', 'Li Auto', 'XPeng', 'Fisker', 'Canoo',
+  'Chipotle Mexican Grill', 'Yum Brands', 'Dominos Pizza', 'Papa Johns', 'Wingstop', 'Shake Shack',
+  'Ross Stores', 'TJX Companies', 'Burlington Stores', 'Dollar General', 'Dollar Tree', 'Best Buy',
+  'Kroger', 'Albertsons', 'Sysco', 'US Foods', 'Mondelez International', 'General Mills', 'Kellanova',
+  'Hershey Company', 'Conagra Brands', 'Campbell Soup', 'Hormel Foods', 'Tyson Foods', 'JBS USA',
+  'Freeport-McMoRan', 'Newmont Corporation', 'Barrick Gold', 'Southern Copper', 'Nucor Corporation',
+  'United States Steel', 'Alcoa Corporation', 'International Paper', 'Packaging Corporation', 'WestRock',
+];
+
+/** Euronext / LSE / DAX / CAC — Europe listed. */
+export const EUROPE_LISTED_NAMES = [
+  'SAP', 'Siemens', 'Deutsche Telekom', 'Allianz', 'BMW', 'Mercedes-Benz Group', 'Volkswagen', 'BASF',
+  'Bayer', 'Adidas', 'Deutsche Bank', 'Commerzbank', 'Infineon Technologies', 'SAP SE', 'Continental',
+  'LVMH', 'Loreal', 'TotalEnergies', 'Sanofi', 'BNP Paribas', 'Airbus', 'Schneider Electric', 'Danone',
+  'Hermes International', 'Kering', 'Capgemini', 'Dassault Systemes', 'Safran', 'Thales', 'Orange',
+  'Vinci', 'Engie', 'Veolia Environnement', 'Publicis Groupe', 'Worldline', 'Atos', 'STMicroelectronics',
+  'Nestle', 'Roche Holding', 'Novartis', 'UBS Group', 'Credit Suisse', 'Zurich Insurance', 'ABB',
+  'Glencore', 'Richemont', 'Swiss Re', 'Holcim', 'Givaudan', 'Sonova Holding',
+  'Shell', 'BP', 'HSBC Holdings', 'Barclays', 'Lloyds Banking Group', 'NatWest Group', 'Standard Chartered',
+  'AstraZeneca', 'GSK', 'Diageo', 'Unilever', 'Rio Tinto', 'Anglo American', 'BHP Group', 'Rolls-Royce Holdings',
+  'BAE Systems', 'BT Group', 'Vodafone Group', 'Tesco', 'Sainsburys', 'Marks and Spencer', 'Next',
+  'ASOS', 'Burberry', 'Compass Group', 'Whitbread', 'InterContinental Hotels', 'Experian', 'Relx',
+  'Spotify AB', 'Ericsson', 'Volvo Group', 'Volvo Car', 'Atlas Copco', 'Sandvik', 'SKF', 'H&M',
+  'IKEA Ingka', 'Nokia', 'Fortum', 'Nordea Bank', 'Kone', 'Wartsila', 'Neste', 'Orsted',
+  'Maersk', 'Novo Nordisk', 'Carlsberg', 'Coloplast', 'Pandora', 'Genmab', 'DSV',
+  'Enel', 'Eni', 'Intesa Sanpaolo', 'UniCredit', 'Ferrari', 'Stellantis', 'Pirelli', 'Moncler',
+  'Inditex', 'Telefonica', 'BBVA', 'Santander', 'Iberdrola', 'Repsol', 'Amadeus IT Group',
+];
+
+/** Japan, Korea, China, SEA, Australia — APAC listed. */
+export const APAC_LISTED_NAMES = [
+  'Toyota Motor', 'Sony Group', 'Honda Motor', 'Nintendo', 'SoftBank Group', 'Rakuten Group', 'Keyence',
+  'Tokyo Electron', 'Fast Retailing', 'Recruit Holdings', 'Mitsubishi UFJ Financial', 'Sumitomo Mitsui Financial',
+  'Nomura Holdings', 'Hitachi', 'Panasonic', 'Canon', 'Fujitsu', 'NEC Corporation', 'Nissan Motor',
+  'Mazda Motor', 'Subaru Corporation', 'Suzuki Motor', 'Bridgestone', 'Daikin Industries', 'Shin-Etsu Chemical',
+  'Tokyo Metro', 'East Japan Railway', 'Central Japan Railway', 'KDDI', 'NTT', 'SoftBank Corp',
+  'Samsung Electronics', 'SK Hynix', 'Hyundai Motor', 'Kia Corporation', 'LG Electronics', 'LG Chem',
+  'POSCO Holdings', 'NAVER', 'Kakao', 'Samsung SDI', 'Celltrion', 'Hyundai Mobis', 'Amorepacific',
+  'Alibaba Group', 'Tencent Holdings', 'JD.com', 'Baidu', 'Meituan', 'Pinduoduo', 'NetEase',
+  'Xiaomi', 'BYD Company', 'Li Auto China', 'NIO China', 'Lenovo Group', 'ZTE Corporation', 'Huawei Technologies',
+  'ByteDance', 'Ant Group', 'CATL', 'SMIC', 'Geely Automobile', 'Great Wall Motor', 'SAIC Motor',
+  'Grab Holdings', 'Sea Limited', 'Shopee', 'Gojek', 'Tokopedia', 'Traveloka', 'Bukalapak',
+  'DBS Group', 'OCBC Bank', 'United Overseas Bank', 'Singapore Airlines', 'CapitaLand', 'Keppel Corporation',
+  'Commonwealth Bank', 'Westpac Banking', 'ANZ Banking Group', 'National Australia Bank', 'BHP', 'Rio Tinto Australia',
+  'Telstra', 'Woolworths Group', 'Coles Group', 'CSL Limited', 'Macquarie Group', 'Fortescue Metals',
+];
+
+/** Middle East & Africa — listed majors. */
+export const MEA_LISTED_NAMES = [
+  'Saudi Aramco', 'SABIC', 'Al Rajhi Bank', 'Saudi National Bank', 'STC', 'ACWA Power', 'Maaden',
+  'Emirates NBD', 'First Abu Dhabi Bank', 'Etisalat Group', 'Emaar Properties', 'DP World', 'ADNOC',
+  'Qatar National Bank', 'Ooredoo', 'Industries Qatar', 'Qatar Airways',
+  'Naspers', 'Prosus', 'MTN Group', 'Standard Bank Group', 'FirstRand', 'Nedbank', 'Capitec Bank',
+  'Shoprite Holdings', 'Sasol', 'AngloGold Ashanti', 'Gold Fields', 'Discovery Limited',
+  'Safaricom', 'Equity Group Holdings', 'Ecopetrol', 'Maroc Telecom', 'Attijariwafa Bank',
+];
+
+/** Latin America — listed majors. */
+export const LATAM_LISTED_NAMES = [
+  'MercadoLibre', 'Nubank', 'PagSeguro', 'StoneCo', 'Itau Unibanco', 'Bradesco', 'Banco do Brasil',
+  'Petrobras', 'Vale', 'Ambev', 'JBS', 'Embraer', 'WEG', 'Localiza', 'Magazine Luiza',
+  'Grupo Bimbo', 'FEMSA', 'America Movil', 'Grupo Mexico', 'Cemex', 'Wal-Mart de Mexico',
+  'Bancolombia', 'Grupo Aval', 'Ecopetrol Colombia', 'Rappi', 'Kavak', 'Globant', 'Despegar',
+  'Arcos Dorados', 'YPF', 'Tenaris', 'Mercado Pago', 'Uala', 'Creditas',
+];
+
+/** Major private / unlisted employers globally (Tier B unlisted bucket). */
+export const UNLISTED_MAJOR_NAMES = [
+  'Stripe', 'SpaceX', 'OpenAI', 'Anthropic', 'Databricks', 'Canva', 'Revolut', 'Klarna',
+  'Shein', 'TikTok', 'ByteDance Private', 'Huawei Unlisted', 'Huawei Technologies Unlisted',
+  'Deloitte Private', 'Ernst & Young', 'KPMG', 'PwC', 'McKinsey & Company', 'Boston Consulting Group',
+  'Bain & Company', 'Accenture Private', 'Capgemini Private', 'Infosys BPM', 'Genpact Private',
+  'Flipkart Private', 'PhonePe', 'Cred', 'Razorpay Private', 'Meesho', 'Ola Cabs', 'Oyo Rooms',
+  'Swiggy Private', 'Zomato Private', 'Byjus', 'Unacademy', 'Eruditus', 'upGrad Private',
+  'Freshworks Private', 'Zoho Corporation', 'Postman', 'BrowserStack', 'Chargebee', 'Icertis',
+  'Thoughtworks Private', 'EPAM Private', 'Globant Private', 'Luxoft', 'Endava',
+  'Anduril Industries', 'Palantir Private', 'Scale AI', 'Cohere', 'Mistral AI', 'Hugging Face',
+  'Figma Private', 'Notion Labs', 'Airtable', 'Linear', 'Vercel', 'Supabase', 'Railway',
+  'Rippling', 'Gusto', 'Deel', 'Remote.com', 'Oyster HR', 'Personio', 'HiBob',
+  'Chime', 'Plaid', 'Brex', 'Ramp', 'Mercury', 'Wise Private', 'Monzo', 'Starling Bank',
+  'N26', 'Trade Republic', 'Checkout.com', 'Adyen Private', 'Mollie', 'Razorpay X',
+  'Xiaomi Private', 'Oppo', 'Vivo', 'Realme', 'OnePlus', 'Transsion Holdings',
+  'Reliance Jio Platforms', 'Adani Enterprises Private', 'Tata Digital', 'Mahindra Electric',
+  'Mahindra Rise', 'Lenskart', 'Nykaa Private', 'FirstCry', 'BigBasket', 'Blinkit',
+  'Zepto Private', 'Dunzo', 'Rapido', 'Porter', 'BlackBuck', 'OfBusiness', 'Udaan',
+  'Groww Private', 'Zerodha', 'Upstox', 'Smallcase', 'CoinSwitch', 'WazirX',
+];

@@ -10,6 +10,7 @@ import { LlmKeysPanel } from './LlmKeysPanel';
 import { LlmActivityPanel } from './LlmActivityPanel';
 import { JobsControlPanel } from './JobsControlPanel';
 import { JobApiUsagePanel } from './JobApiUsagePanel';
+import { CompanyCatalogRequestsPanel } from './CompanyCatalogRequestsPanel';
 
 type UsageSummary = {
   bySource: Record<string, { total: number; success: number; rateLimited: number; errors: number }>;
@@ -250,6 +251,7 @@ export function AdminDashboard() {
       {/* === Job API key usage (JSearch / JobsPipe / JobDataLake / Adzuna) === */}
       <JobApiUsagePanel />
 
+      <CompanyCatalogRequestsPanel />
 
       {/* === SECTION 1: Job Source Usage Overview === */}
       <section className="glass-card p-6" style={{ contentVisibility: 'auto', containIntrinsicSize: '300px' }}>

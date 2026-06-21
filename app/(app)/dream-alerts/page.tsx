@@ -1,14 +1,9 @@
 import Link from 'next/link';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { getCurrentProfile } from '@/lib/current-user';
-import {
-  companyCatalogKey,
-  dreamCompanyLimitForProfile,
-  getCompanyCatalog,
-  type DreamCompanyRow,
-} from '@/lib/dream-companies';
+import { dreamCompanyLimitForProfile, type DreamCompanyRow } from '@/lib/dream-companies';
 import { countUnreadDreamAlerts } from '@/lib/dream-company-alerts';
-import { CATEGORY_LABELS } from '@/lib/top-companies';
+import { ensureCompanyCatalogSeeded } from '@/lib/company-catalog/db';
 import { DreamAlertsClient } from './DreamAlertsClient';
 import { BellRing } from 'lucide-react';
 
@@ -31,7 +26,7 @@ export default async function DreamAlertsPage() {
   }
 
   const sb = supabaseAdmin();
-  const [picksRes, alertsRes, limit, unread] = await Promise.all([
+  const [picksRes, alertsRes, limit, unread, seedInfo] = await Promise.all([
     sb
       .from('dream_companies')
       .select('*')
@@ -48,14 +43,8 @@ export default async function DreamAlertsPage() {
       .limit(30),
     dreamCompanyLimitForProfile(profile.id),
     countUnreadDreamAlerts(profile.id),
+    ensureCompanyCatalogSeeded(),
   ]);
-
-  const catalog = getCompanyCatalog().map((c) => ({
-    key: companyCatalogKey(c.name),
-    name: c.name,
-    category: c.category,
-    category_label: CATEGORY_LABELS[c.category],
-  }));
 
   const rawAlerts = alertsRes.data ?? [];
   const alerts = rawAlerts.map((a) => {
@@ -79,7 +68,7 @@ export default async function DreamAlertsPage() {
     <DreamAlertsClient
       initialPicks={(picksRes.data ?? []) as DreamCompanyRow[]}
       initialAlerts={alerts}
-      catalog={catalog}
+      catalogTotal={seedInfo.total}
       limit={limit}
       used={picksRes.data?.length ?? 0}
       unread={unread}

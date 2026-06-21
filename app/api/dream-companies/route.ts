@@ -4,74 +4,22 @@ import { getCurrentProfile } from '@/lib/current-user';
 import {
   companyCatalogKey,
   dreamCompanyLimitForProfile,
-  findCatalogCompanyByKey,
-  getCompanyCatalog,
+  patternsFromDisplayName,
   type DreamCompanyRow,
 } from '@/lib/dream-companies';
 import { countUnreadDreamAlerts } from '@/lib/dream-company-alerts';
-import { CATEGORY_LABELS } from '@/lib/top-companies';
+import { ensureCompanyCatalogSeeded } from '@/lib/company-catalog/db';
+import { findCatalogBySlug } from '@/lib/company-catalog/db';
 
 export const runtime = 'nodejs';
 
-/** GET — dream picks, catalog, limits, unread count */
-export async function GET() {
-  const profile = await getCurrentProfile();
-  if (!profile) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-
-  const sb = supabaseAdmin();
-  const [{ data: picks, error }, limit, unread] = await Promise.all([
-    sb
-      .from('dream_companies')
-      .select('*')
-      .eq('profile_id', profile.id)
-      .order('created_at', { ascending: true }),
-    dreamCompanyLimitForProfile(profile.id),
-    countUnreadDreamAlerts(profile.id),
-  ]);
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  const catalog = getCompanyCatalog().map((c) => ({
-    key: companyCatalogKey(c.name),
-    name: c.name,
-    category: c.category,
-    category_label: CATEGORY_LABELS[c.category],
-  }));
-
-  return NextResponse.json({
-    picks: (picks ?? []) as DreamCompanyRow[],
-    catalog,
-    limit,
-    used: picks?.length ?? 0,
-    unread_alerts: unread,
-  });
-}
-
-/** POST — add a dream company `{ company_key: string }` */
-export async function POST(req: NextRequest) {
-  const profile = await getCurrentProfile();
-  if (!profile) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-
-  const body = await req.json().catch(() => ({}));
-  const companyKey = typeof body.company_key === 'string' ? body.company_key.trim().toLowerCase() : '';
-  if (!companyKey) {
-    return NextResponse.json({ error: 'company_key required' }, { status: 400 });
-  }
-
-  const entry = findCatalogCompanyByKey(companyKey);
-  if (!entry) {
-    return NextResponse.json({ error: 'Company not in catalog' }, { status: 400 });
-  }
-
+async function assertUnderLimit(profileId: string) {
   const sb = supabaseAdmin();
   const { count } = await sb
     .from('dream_companies')
     .select('id', { count: 'exact', head: true })
-    .eq('profile_id', profile.id);
-
-  const limit = await dreamCompanyLimitForProfile(profile.id);
+    .eq('profile_id', profileId);
+  const limit = await dreamCompanyLimitForProfile(profileId);
   if ((count ?? 0) >= limit) {
     return NextResponse.json(
       {
@@ -84,16 +32,111 @@ export async function POST(req: NextRequest) {
       { status: 402 },
     );
   }
+  return null;
+}
+
+/** GET — dream picks, limits, unread count (catalog search → /catalog) */
+export async function GET() {
+  const profile = await getCurrentProfile();
+  if (!profile) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+
+  const sb = supabaseAdmin();
+  const [{ data: picks, error }, limit, unread, seedInfo] = await Promise.all([
+    sb
+      .from('dream_companies')
+      .select('*')
+      .eq('profile_id', profile.id)
+      .order('created_at', { ascending: true }),
+    dreamCompanyLimitForProfile(profile.id),
+    countUnreadDreamAlerts(profile.id),
+    ensureCompanyCatalogSeeded(),
+  ]);
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({
+    picks: (picks ?? []) as DreamCompanyRow[],
+    catalog_total: seedInfo.total,
+    limit,
+    used: picks?.length ?? 0,
+    unread_alerts: unread,
+  });
+}
+
+/**
+ * POST — add dream company
+ * - `{ company_key }` — from DB catalog
+ * - `{ custom_name }` — manual add (immediate, user-specific patterns)
+ */
+export async function POST(req: NextRequest) {
+  const profile = await getCurrentProfile();
+  if (!profile) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+
+  const limitErr = await assertUnderLimit(profile.id);
+  if (limitErr) return limitErr;
+
+  const body = await req.json().catch(() => ({}));
+  const customName = typeof body.custom_name === 'string' ? body.custom_name.trim() : '';
+  const companyKey = typeof body.company_key === 'string' ? body.company_key.trim().toLowerCase() : '';
 
   const notifyEmail = body.notify_email !== false;
   const notifySms = body.notify_sms === true;
+  const sb = supabaseAdmin();
+
+  if (customName) {
+    if (customName.length < 2 || customName.length > 120) {
+      return NextResponse.json({ error: 'Company name must be 2–120 characters' }, { status: 400 });
+    }
+    const patterns = patternsFromDisplayName(customName);
+    const slug = companyCatalogKey(customName);
+
+    const { data, error } = await sb
+      .from('dream_companies')
+      .insert({
+        profile_id: profile.id,
+        company_key: slug,
+        company_display_name: customName,
+        source: 'manual',
+        custom_patterns: patterns,
+        catalog_id: null,
+        notify_email: notifyEmail,
+        notify_sms: notifySms,
+      })
+      .select('*')
+      .single();
+
+    if (error) {
+      if (error.code === '23505') {
+        return NextResponse.json({ error: 'Already tracking this company' }, { status: 409 });
+      }
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    return NextResponse.json({ pick: data as DreamCompanyRow, mode: 'manual' });
+  }
+
+  if (!companyKey) {
+    return NextResponse.json({ error: 'company_key or custom_name required' }, { status: 400 });
+  }
+
+  const catalogRow = await findCatalogBySlug(companyKey);
+  if (!catalogRow) {
+    return NextResponse.json(
+      { error: 'Company not in catalog. Use custom_name to add manually, or submit a request.' },
+      { status: 400 },
+    );
+  }
 
   const { data, error } = await sb
     .from('dream_companies')
     .insert({
       profile_id: profile.id,
-      company_key: companyCatalogKey(entry.name),
-      company_display_name: entry.name,
+      company_key: catalogRow.slug,
+      company_display_name: catalogRow.display_name,
+      source: 'catalog',
+      catalog_id: catalogRow.id,
+      custom_patterns: null,
       notify_email: notifyEmail,
       notify_sms: notifySms,
     })
@@ -107,7 +150,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ pick: data as DreamCompanyRow });
+  return NextResponse.json({ pick: data as DreamCompanyRow, mode: 'catalog' });
 }
 
 /** PATCH — update notification prefs on a pick `{ id, notify_email?, notify_sms? }` */
