@@ -175,7 +175,7 @@ export async function fetchJobDataLake(opts?: JobDataLakeFetchOpts): Promise<Raw
         page: '1',
         sort_by: 'posted_at:desc',
       });
-      const codes = opts?.countryCodes ?? ['IN'];
+      const codes = opts?.countryCodes ?? [];
       if (codes.length > 0) params.set('countries', codes.join(','));
 
       const jobs = await searchWithRotation(params);

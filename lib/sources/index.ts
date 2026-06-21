@@ -11,7 +11,8 @@ import { fetchJobDataLake } from './jobdatalake';
 import { getJobdatalakeApiKeys } from '../jobdatalake-keys';
 import { fetchLinkedIn } from './linkedin';
 import type { SearchProfile } from '../search-profile';
-import type { Preferences } from '../types';
+import type { Preferences, ResumeInsights } from '../types';
+import { buildJobCountryCodes, jsearchCountryParam } from '../job-country-codes';
 
 export type SourceName =
   | 'remotive'
@@ -162,6 +163,7 @@ function buildJobsPipeQueries(
 function buildFns(
   searchProfile?: SearchProfile | null,
   preferences?: Preferences | null,
+  insights?: ResumeInsights | null,
 ): Partial<Record<SourceName, () => Promise<RawJob[]>>> {
   const fns: Partial<Record<SourceName, () => Promise<RawJob[]>>> = {
     remotive: () => fetchRemotive({ limit: 50 }),
@@ -169,6 +171,8 @@ function buildFns(
     hn: () => fetchHackerNews({ limit: 60 }),
     arbeitnow: () => fetchArbeitnow(),
   };
+
+  const countryCodes = buildJobCountryCodes(preferences, insights);
 
   // Use AI-generated keywords from the search profile if available
   const queries = searchProfile?.searchKeywords?.length
@@ -200,24 +204,23 @@ function buildFns(
   fns.jsearch = () =>
     fetchJSearch({
       queries: queries.length > 0 ? queries.slice(0, 5) : undefined,
-      country: 'India',
+      country: jsearchCountryParam(countryCodes),
       datePosted: 'week',
     });
 
-  // JobsPipe — GET /v1/jobs first (native API), POST /v1/jobs/search fallback.
+  // JobsPipe — country from user onboarding (US, IN, etc.), not hardcoded.
   fns.jobspipe = () =>
     fetchJobsPipe({
       queries: buildJobsPipeQueries(searchProfile, queries),
-      countryCodes: ['IN'],
+      countryCodes,
       maxAgeDays: 30,
       limit: 25,
     });
 
-  // JobDataLake — registered always; returns [] when no keys (Admin Center or env).
   fns.jobdatalake = () =>
     fetchJobDataLake({
       queries: queries.length > 0 ? queries.slice(0, 5) : undefined,
-      countryCodes: ['IN'],
+      countryCodes,
       perPage: 50,
     });
 
@@ -243,11 +246,12 @@ export async function fetchAllSources(
   sources?: SourceName[],
   searchProfile?: SearchProfile | null,
   preferences?: Preferences | null,
+  insights?: ResumeInsights | null,
 ): Promise<{ jobs: RawJob[]; errors: { source: string; error: string }[] }> {
   const errors: { source: string; error: string }[] = [];
   const all: RawJob[] = [];
 
-  const fns = buildFns(searchProfile, preferences);
+  const fns = buildFns(searchProfile, preferences, insights);
   const names = sources ?? (Object.keys(fns) as SourceName[]);
   const explicit = sources?.length ? new Set(sources) : null;
 
