@@ -157,7 +157,46 @@ type ProviderEntry = {
 
 /** Round-robin offset per provider (spreads load across scored keys). */
 const ROUND_ROBIN_INDEX: Map<string, number> = new Map();
+const PROVIDER_CALL_ROTATE: Map<string, number> = new Map();
 const EMBED_ROUND_ROBIN_INDEX = { n: 0 };
+
+/** Paid / last-resort providers — do not rotate these ahead of free keys per call. */
+const PAID_CHAT_PROVIDERS = new Set(['openai', 'bluesminds']);
+
+/**
+ * Spread parallel chat() calls across keys within each free provider group.
+ * Chain cache is shared for 30s — without this, every concurrent scoreJob hits
+ * the same first Cerebras key → 429 → cooldown → OpenAI for the rest of the scan.
+ */
+function spreadProviderChainPerCall(entries: ProviderEntry[]): ProviderEntry[] {
+  if (entries.length <= 1) return entries;
+
+  const groups: ProviderEntry[][] = [];
+  let current: ProviderEntry[] = [];
+
+  for (const entry of entries) {
+    if (current.length === 0 || current[0].provider === entry.provider) {
+      current.push(entry);
+    } else {
+      groups.push(current);
+      current = [entry];
+    }
+  }
+  if (current.length) groups.push(current);
+
+  const out: ProviderEntry[] = [];
+  for (const group of groups) {
+    const provider = group[0].provider;
+    if (PAID_CHAT_PROVIDERS.has(provider) || group.length <= 1) {
+      out.push(...group);
+      continue;
+    }
+    const idx = (PROVIDER_CALL_ROTATE.get(provider) ?? 0) % group.length;
+    PROVIDER_CALL_ROTATE.set(provider, idx + 1);
+    out.push(...group.slice(idx), ...group.slice(0, idx));
+  }
+  return out;
+}
 
 async function sortAndRotateProviderEntries(
   provider: string,
@@ -354,11 +393,11 @@ let chainCache: { timestamp: number; entries: ProviderEntry[] } | null = null;
 async function buildProviderChainCached(): Promise<ProviderEntry[]> {
   const now = Date.now();
   if (chainCache && now - chainCache.timestamp < CHAIN_CACHE_TTL) {
-    return chainCache.entries;
+    return spreadProviderChainPerCall(chainCache.entries);
   }
   const entries = await buildProviderChain();
   chainCache = { timestamp: now, entries };
-  return entries;
+  return spreadProviderChainPerCall(entries);
 }
 
 /**
@@ -448,7 +487,7 @@ export async function chat(
           await clearKeyCooldownDb(provider.keyId);
         }
 
-        if (provider.keyId && (tokensIn > 0 || tokensOut > 0)) {
+        if (provider.keyId) {
           recordUsage({
             keyId: provider.keyId,
             provider: provider.provider,
@@ -456,7 +495,7 @@ export async function chat(
             operation,
             tokensIn,
             tokensOut,
-            durationMs,
+            durationMs: Date.now() - startMs,
             status: 'success',
             profileId,
           });
