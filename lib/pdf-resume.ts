@@ -41,6 +41,7 @@
  */
 
 import { jsPDF } from 'jspdf';
+import { sanitizeResumePlainText } from './resume-plain-text';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -213,7 +214,7 @@ function measureContactBlockHeight(doc: jsPDF, contactLines: string[]): number {
 
 /** Exposed for deterministic header-parse verification. */
 export function parseResumePlainText(text: string): ParsedResume {
-  return finalizeParsedHeader(parse(asciiSafe(text)));
+  return finalizeParsedHeader(parse(sanitizeResumePlainText(text)));
 }
 
 function isSectionHeader(line: string): boolean {
@@ -223,29 +224,13 @@ function isSectionHeader(line: string): boolean {
   return /^[A-Z][A-Z\s&/-]+$/.test(t);
 }
 
-// ─── Light ASCII normalisation (defensive — generator already does this) ─────
-
-function asciiSafe(s: string): string {
-  return s
-    .replace(/[\u2014\u2013]/g, '-')
-    .replace(/[\u2018\u2019]/g, "'")
-    .replace(/[\u201C\u201D]/g, '"')
-    .replace(/[\u2022\u25CF\u25E6]/g, '-')
-    // Arrows are outside Latin-1 → jsPDF renders them as garbage and can
-    // corrupt the surrounding line. Normalise to ASCII.
-    .replace(/[\u2192\u21D2\u2794\u2799\u279C\u279E\u27A1\u2B95\u27F6\u21FE]/g, '->')
-    .replace(/[\u2190\u21D0\u27F5]/g, '<-')
-    .replace(/[\u2194\u21D4\u27F7]/g, '<->')
-    .replace(/\u00A0/g, ' ')
-    .replace(/\u2026/g, '...')
-    .replace(/[\u200B-\u200D\uFEFF]/g, '');
-}
-
 // ─── PDF builder ──────────────────────────────────────────────────────────────
+
+const TEXT_OPTS = { align: 'left' as const };
 
 export function generateBeautifulPdf(resumeText: string): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
-  const parsed = finalizeParsedHeader(parse(asciiSafe(resumeText)));
+  const parsed = finalizeParsedHeader(parse(sanitizeResumePlainText(resumeText)));
 
   // Size the navy band to fit name + amber title + contacts (fixed 98pt clipped
   // wrapped contact rows on some mobile PDF viewers).
@@ -280,7 +265,7 @@ export function generateBeautifulPdf(resumeText: string): jsPDF {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(22);
     doc.setTextColor(...C.white);
-    doc.text(parsed.name, L.mL, y);
+    doc.text(parsed.name, L.mL, y, TEXT_OPTS);
     y += 22;
   }
 
@@ -289,7 +274,7 @@ export function generateBeautifulPdf(resumeText: string): jsPDF {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(11);
     doc.setTextColor(...C.accent);
-    doc.text(parsed.title.toUpperCase(), L.mL, y);
+    doc.text(parsed.title.toUpperCase(), L.mL, y, TEXT_OPTS);
     y += 16;
   }
 
@@ -311,7 +296,7 @@ export function generateBeautifulPdf(resumeText: string): jsPDF {
     const wrapped = doc.splitTextToSize(joined, contentW);
     for (const wl of wrapped) {
       if (y > headerH - 6) break;
-      doc.text(wl, L.mL, y);
+      doc.text(wl, L.mL, y, TEXT_OPTS);
       y += 11;
     }
   }
@@ -356,7 +341,7 @@ function renderSectionHeader(doc: jsPDF, title: string, y: number): number {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10.5);
   doc.setTextColor(...C.ink);
-  doc.text(title, L.mL, y);
+  doc.text(title, L.mL, y, TEXT_OPTS);
   y += 14;
   return y;
 }
@@ -379,13 +364,13 @@ function renderBullets(doc: jsPDF, lines: string[], startY: number): number {
       const text = line.replace(/^[-•*]\s*/, '');
       const wrapped = doc.splitTextToSize(text, contentW - L.bulletIndent);
       // First line: "- " visible to parser
-      doc.text('-', L.mL, y);
-      doc.text(wrapped[0], L.mL + L.bulletIndent, y);
+      doc.text('-', L.mL, y, TEXT_OPTS);
+      doc.text(wrapped[0], L.mL + L.bulletIndent, y, TEXT_OPTS);
       y += L.lineH;
       // Continuation lines (hanging indent)
       for (let i = 1; i < wrapped.length; i++) {
         y = pageBreak(doc, y, 14);
-        doc.text(wrapped[i], L.mL + L.bulletIndent, y);
+        doc.text(wrapped[i], L.mL + L.bulletIndent, y, TEXT_OPTS);
         y += L.lineH;
       }
       y += 1.5;
@@ -393,7 +378,7 @@ function renderBullets(doc: jsPDF, lines: string[], startY: number): number {
       const wrapped = doc.splitTextToSize(line, contentW);
       for (const wl of wrapped) {
         y = pageBreak(doc, y, 14);
-        doc.text(wl, L.mL, y);
+        doc.text(wl, L.mL, y, TEXT_OPTS);
         y += L.lineH;
       }
       y += 2;
@@ -420,14 +405,14 @@ function renderSkills(doc: jsPDF, lines: string[], startY: number): number {
       doc.setFontSize(9);
       doc.setTextColor(...C.ink);
       const catText = category + ': ';
-      doc.text(catText, L.mL, y);
+      doc.text(catText, L.mL, y, TEXT_OPTS);
       const catW = doc.getTextWidth(catText);
 
       doc.setFont('helvetica', 'normal');
       const wrapped = doc.splitTextToSize(tools, contentW - catW);
       for (let i = 0; i < wrapped.length; i++) {
         if (i > 0) y = pageBreak(doc, y, 14);
-        doc.text(wrapped[i], L.mL + catW, y);
+        doc.text(wrapped[i], L.mL + catW, y, TEXT_OPTS);
         if (i < wrapped.length - 1) y += L.lineH - 1;
       }
       y += L.lineH;
@@ -435,7 +420,7 @@ function renderSkills(doc: jsPDF, lines: string[], startY: number): number {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
       doc.setTextColor(...C.ink);
-      doc.text(clean, L.mL, y);
+      doc.text(clean, L.mL, y, TEXT_OPTS);
       y += L.lineH;
     }
   }
@@ -465,7 +450,7 @@ function renderExperience(doc: jsPDF, lines: string[], startY: number): number {
       const wrapped = doc.splitTextToSize(line, contentW);
       for (const wl of wrapped) {
         y = pageBreak(doc, y, 14);
-        doc.text(wl, L.mL, y);
+        doc.text(wl, L.mL, y, TEXT_OPTS);
         y += 13;
       }
     } else if (isClient) {
@@ -475,7 +460,7 @@ function renderExperience(doc: jsPDF, lines: string[], startY: number): number {
       const wrapped = doc.splitTextToSize(line, contentW);
       for (const wl of wrapped) {
         y = pageBreak(doc, y, 13);
-        doc.text(wl, L.mL, y);
+        doc.text(wl, L.mL, y, TEXT_OPTS);
         y += 11;
       }
       y += 2;
@@ -485,12 +470,12 @@ function renderExperience(doc: jsPDF, lines: string[], startY: number): number {
       doc.setFontSize(9.5);
       doc.setTextColor(...C.ink);
       const wrapped = doc.splitTextToSize(text, contentW - L.bulletIndent);
-      doc.text('-', L.mL, y);
-      doc.text(wrapped[0], L.mL + L.bulletIndent, y);
+      doc.text('-', L.mL, y, TEXT_OPTS);
+      doc.text(wrapped[0], L.mL + L.bulletIndent, y, TEXT_OPTS);
       y += L.lineH;
       for (let i = 1; i < wrapped.length; i++) {
         y = pageBreak(doc, y, 14);
-        doc.text(wrapped[i], L.mL + L.bulletIndent, y);
+        doc.text(wrapped[i], L.mL + L.bulletIndent, y, TEXT_OPTS);
         y += L.lineH;
       }
       y += 1.5;
@@ -502,7 +487,7 @@ function renderExperience(doc: jsPDF, lines: string[], startY: number): number {
       const wrapped = doc.splitTextToSize(line, contentW);
       for (const wl of wrapped) {
         y = pageBreak(doc, y, 13);
-        doc.text(wl, L.mL, y);
+        doc.text(wl, L.mL, y, TEXT_OPTS);
         y += L.lineH;
       }
     }
