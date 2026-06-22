@@ -41,6 +41,7 @@
 import OpenAI from 'openai';
 import type { ResumeInsights } from './types';
 import { sanitizeJobDescriptionForAI } from './jd-fetcher';
+import { sanitizeResumePlainText } from './resume-plain-text';
 import { isSkillPresentInJd } from './jd-skill-match';
 import {
   enrichScoreJobSkills,
@@ -92,26 +93,36 @@ const CEREBRAS_BASE_URL = 'https://api.cerebras.ai/v1';
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai';
 const EMBED_MODEL = 'text-embedding-3-small';
 
-// Provider priority order. Default: cerebras (free 1M/day) → groq → gemini → openai (paid last).
-// Override with LLM_PRIMARY env var for specific deployments.
+// Chat: all free tiers first, OpenAI paid last. LLM_PRIMARY picks which free
+// provider is tried first (default cerebras). Embeddings stay OpenAI-only in embed().
 const LLM_PRIMARY = (process.env.LLM_PRIMARY || 'cerebras').toLowerCase();
 
-/**
- * Provider priority chain. Derived dynamically from PROVIDER_DEFAULTS so any
- * provider added there (e.g. bluesminds, mistral, sambanova) is automatically
- * included. LLM_PRIMARY controls which provider is tried first.
- */
-const PROVIDER_ORDER: string[] = (() => {
-  const primary = LLM_PRIMARY;
-  const all = Object.keys(PROVIDER_DEFAULTS);
-  // Put primary first, then the rest in order
-  return [primary, ...all.filter((p) => p !== primary)];
-})();
+const FREE_CHAT_PROVIDERS = [
+  'cerebras',
+  'groq',
+  'gemini',
+  'bluesminds',
+  'mistral',
+  'sambanova',
+] as const;
 
-// Providers that have env-var fallback support (GEMINI_API_KEY, CEREBRAS_API_KEY, GROQ_API_KEY, etc.)
-// Ordered by priority: gemini (free) first, then cerebras/groq (free fallbacks).
-// Only fall back to env vars when there are ZERO DB keys for that provider.
-const ENV_FALLBACK_PROVIDERS = ['bluesminds', 'gemini', 'cerebras', 'groq'];
+const PAID_CHAT_PROVIDER = 'openai';
+
+/** Free providers in priority order, then OpenAI always last. */
+function getChatProviderOrder(): string[] {
+  const primary = LLM_PRIMARY;
+  if (primary === PAID_CHAT_PROVIDER) {
+    return [...FREE_CHAT_PROVIDERS, PAID_CHAT_PROVIDER];
+  }
+  return [
+    primary,
+    ...FREE_CHAT_PROVIDERS.filter((p) => p !== primary),
+    PAID_CHAT_PROVIDER,
+  ];
+}
+
+// Env-var fallbacks for free chat providers only (OpenAI appended separately at end).
+const ENV_FALLBACK_PROVIDERS = ['cerebras', 'groq', 'gemini', 'bluesminds'];
 
 function getOpenAIClient(): OpenAI | null {
   const key = process.env.OPENAI_API_KEY;
@@ -160,8 +171,8 @@ const ROUND_ROBIN_INDEX: Map<string, number> = new Map();
 const PROVIDER_CALL_ROTATE: Map<string, number> = new Map();
 const EMBED_ROUND_ROBIN_INDEX = { n: 0 };
 
-/** Paid / last-resort providers — do not rotate these ahead of free keys per call. */
-const PAID_CHAT_PROVIDERS = new Set(['openai', 'bluesminds']);
+/** Paid last-resort — skip per-call key rotation (single env key usual). */
+const PAID_CHAT_PROVIDERS = new Set([PAID_CHAT_PROVIDER]);
 
 /**
  * Spread parallel chat() calls across keys within each free provider group.
@@ -291,16 +302,14 @@ async function buildProviderChain(): Promise<ProviderEntry[]> {
 
   const chain: ProviderEntry[] = [];
 
-  // 1. DB keys for each provider (ALL available, not just one)
-  for (const providerName of PROVIDER_ORDER) {
+  // 1. Free providers only — OpenAI is always appended last (step 3).
+  for (const providerName of getChatProviderOrder()) {
+    if (providerName === PAID_CHAT_PROVIDER) continue;
     const dbKeys = await getAvailableKeysForProvider(providerName);
     chain.push(...dbKeys);
   }
 
   // 2. Env-var fallbacks when no DB key is available right now.
-  //    - Zero DB keys → use env if set
-  //    - Active DB keys all exhausted/cooling → use env as backup
-  //    - User disabled ALL keys (only inactive rows) → skip env (respect choice)
   for (const providerName of ENV_FALLBACK_PROVIDERS) {
     const alreadyInChain = chain.some((p) => p.provider === providerName);
     if (alreadyInChain) continue;
@@ -321,19 +330,18 @@ async function buildProviderChain(): Promise<ProviderEntry[]> {
     }
   }
 
-  // OpenAI (paid) is always last resort — no DB key check needed
-  // because OpenAI has no separate env-var fallback in the chain above
-  // (it's the universal fallback at the end).
-  const hasDbOpenai = chain.some((p) => p.provider === 'openai');
-  if (!hasDbOpenai) {
+  // 3. OpenAI (paid) — absolute last resort after every free provider/key failed.
+  const openaiDbKeys = await getAvailableKeysForProvider(PAID_CHAT_PROVIDER);
+  chain.push(...openaiDbKeys);
+  if (!chain.some((p) => p.provider === PAID_CHAT_PROVIDER)) {
     const openaiClient = getOpenAIClient();
     if (openaiClient) {
       chain.push({
         name: `OpenAI[env] ${OPENAI_CHAT_MODEL}`,
         client: openaiClient,
         model: OPENAI_CHAT_MODEL,
-        provider: 'openai',
-        keyId: 'env:openai', // synthetic ID for usage logging
+        provider: PAID_CHAT_PROVIDER,
+        keyId: 'env:openai',
       });
     }
   }
@@ -1355,19 +1363,7 @@ export async function extractJdKeywords(args: {
  * unicode bullets. Defense-in-depth on top of the prompt's "ASCII only" rule.
  */
 function normalizeAscii(s: string): string {
-  return s
-    .replace(/[\u2014\u2013]/g, '-')          // em-dash, en-dash
-    .replace(/[\u2018\u2019\u201A\u201B]/g, "'") // smart single quotes
-    .replace(/[\u201C\u201D\u201E\u201F]/g, '"') // smart double quotes
-    .replace(/[\u2022\u25CF\u25E6\u2043\u00B7]/g, '-') // bullet variants
-    // Arrows → these are NOT in Latin-1, so jsPDF mangles them into garbage
-    // (e.g. "source -> SAP" rendered as "s o u r c e !'"). Map to ASCII.
-    .replace(/[\u2192\u21D2\u2794\u2799\u279C\u279E\u27A1\u2B95\u27F6\u21FE]/g, '->') // right arrows
-    .replace(/[\u2190\u21D0\u27F5]/g, '<-')   // left arrows
-    .replace(/[\u2194\u21D4\u27F7]/g, '<->')  // bi-directional arrows
-    .replace(/\u00A0/g, ' ')                  // non-breaking space
-    .replace(/\u2026/g, '...')                // ellipsis
-    .replace(/[\u200B-\u200D\uFEFF]/g, '');   // zero-width chars
+  return sanitizeResumePlainText(s);
 }
 
 /**
