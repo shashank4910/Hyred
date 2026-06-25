@@ -3,7 +3,10 @@ import type { supabaseAdmin } from './supabase/server';
 type AdminClient = ReturnType<typeof supabaseAdmin>;
 
 /** Runs older than this with status=running are treated as abandoned (server timeout). */
-export const INGEST_STALE_MS = 12 * 60 * 1000;
+export const INGEST_STALE_MS = 20 * 60 * 1000;
+
+/** Cap stored duration for stale runs (avoids bogus multi-day numbers). */
+const STALE_RUN_DURATION_CAP_MS = INGEST_STALE_MS + 5 * 60 * 1000;
 
 type RunPatch = {
   fetched?: number;
@@ -61,11 +64,12 @@ export async function closeStaleIngestRuns(
     }
 
     const startedMs = new Date(run.started_at as string).getTime();
+    const elapsedMs = Number.isFinite(startedMs) ? Date.now() - startedMs : STALE_RUN_DURATION_CAP_MS;
     await sb
       .from('ingest_runs')
       .update({
         finished_at: new Date().toISOString(),
-        duration_ms: Date.now() - startedMs,
+        duration_ms: Math.min(Math.max(elapsedMs, 0), STALE_RUN_DURATION_CAP_MS),
         matches_created: matchesCreated,
         status: 'failed',
         errors: [

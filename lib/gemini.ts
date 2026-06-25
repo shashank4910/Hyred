@@ -608,6 +608,8 @@ export async function embed(
     const rateLimiter = getRateLimiter();
     const trimmed = text.slice(0, 8000);
     const estimatedTokens = Math.ceil(trimmed.length / 4);
+    // Embeddings: only global + per-user guards. Per-key 30 RPM is for chat and
+    // blocks parallel ingest embeds before we reach OpenAI's real embed limits.
     const bucketKeys: string[] = ['global'];
     if (profileId) bucketKeys.push(`user:${profileId}`);
 
@@ -615,66 +617,79 @@ export async function embed(
     const rotated = [...providers.slice(startIdx), ...providers.slice(0, startIdx)];
     const errors: string[] = [];
 
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
     for (const provider of rotated) {
       if (await isKeyOnCooldownDb(provider.keyId)) {
         errors.push(`${provider.keyId} → on cooldown`);
         continue;
       }
 
-      const tryBuckets = [...bucketKeys, keyBucket(provider.keyId)];
-      const rateResult = rateLimiter.check(tryBuckets, { cost: estimatedTokens });
-      if (!rateResult.allowed) {
-        errors.push(`${provider.keyId} → ${rateResult.reason ?? 'rate limited'}`);
-        continue;
-      }
-
-      const startMs = Date.now();
-      try {
-        const result = await provider.client.embeddings.create({
-          model: EMBED_MODEL,
-          input: trimmed,
-        });
-        const vector = result.data[0]?.embedding;
-        if (!vector) throw new Error('OpenAI embeddings response had no vector');
-
-        const tokensIn = result.usage?.prompt_tokens ?? estimatedTokens;
-        await clearKeyCooldownDb(provider.keyId);
-        recordUsage({
-          keyId: provider.keyId,
-          provider: 'openai',
-          model: EMBED_MODEL,
-          operation,
-          tokensIn,
-          tokensOut: 0,
-          durationMs: Date.now() - startMs,
-          status: 'success',
-          profileId,
-        });
-
-        return vector;
-      } catch (e) {
-        const msg = (e as Error).message;
-        const is429 =
-          msg.includes('429') ||
-          msg.toLowerCase().includes('rate') ||
-          msg.toLowerCase().includes('limit');
-        errors.push(`${provider.keyId} → ${msg}`);
-        if (is429) {
-          const failures = (await getKeyFailureCount(provider.keyId)) + 1;
-          await setKeyCooldownDb(provider.keyId, failures);
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const rateResult = rateLimiter.check(bucketKeys, { cost: estimatedTokens });
+        if (!rateResult.allowed) {
+          const waitMs = rateResult.retryAfterMs ?? 1_000;
+          if (attempt < 3 && waitMs > 0) {
+            await sleep(Math.min(waitMs + 50, 5_000));
+            continue;
+          }
+          errors.push(`${provider.keyId} → ${rateResult.reason ?? 'rate limited'}`);
+          break;
         }
-        recordUsage({
-          keyId: provider.keyId,
-          provider: 'openai',
-          model: EMBED_MODEL,
-          operation,
-          tokensIn: 0,
-          tokensOut: 0,
-          durationMs: Date.now() - startMs,
-          status: is429 ? 'rate_limited' : 'error',
-          errorMessage: msg,
-          profileId,
-        });
+
+        const startMs = Date.now();
+        try {
+          const result = await provider.client.embeddings.create({
+            model: EMBED_MODEL,
+            input: trimmed,
+          });
+          const vector = result.data[0]?.embedding;
+          if (!vector) throw new Error('OpenAI embeddings response had no vector');
+
+          const tokensIn = result.usage?.prompt_tokens ?? estimatedTokens;
+          await clearKeyCooldownDb(provider.keyId);
+          recordUsage({
+            keyId: provider.keyId,
+            provider: 'openai',
+            model: EMBED_MODEL,
+            operation,
+            tokensIn,
+            tokensOut: 0,
+            durationMs: Date.now() - startMs,
+            status: 'success',
+            profileId,
+          });
+
+          return vector;
+        } catch (e) {
+          const msg = (e as Error).message;
+          const is429 =
+            msg.includes('429') ||
+            msg.toLowerCase().includes('rate') ||
+            msg.toLowerCase().includes('limit');
+          errors.push(`${provider.keyId} → ${msg}`);
+          if (is429) {
+            const failures = (await getKeyFailureCount(provider.keyId)) + 1;
+            await setKeyCooldownDb(provider.keyId, failures);
+            if (attempt < 3) {
+              await sleep(Math.min(2_000 * (attempt + 1), 8_000));
+              continue;
+            }
+          }
+          recordUsage({
+            keyId: provider.keyId,
+            provider: 'openai',
+            model: EMBED_MODEL,
+            operation,
+            tokensIn: 0,
+            tokensOut: 0,
+            durationMs: Date.now() - startMs,
+            status: is429 ? 'rate_limited' : 'error',
+            errorMessage: msg,
+            profileId,
+          });
+          break;
+        }
       }
     }
 

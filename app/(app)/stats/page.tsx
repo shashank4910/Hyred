@@ -9,7 +9,7 @@ import {
   countVisibleOnDashboard,
   dashboardMinScore,
 } from '@/lib/match-stats';
-import { relativeTime, SOURCE_LABELS } from '@/lib/ui';
+import { relativeTime, SOURCE_LABELS, formatScanDuration } from '@/lib/ui';
 import {
   CheckCircle2,
   AlertTriangle,
@@ -177,7 +177,7 @@ export default async function StatsPage() {
                     <td className="py-2 text-right tabular-nums text-on-surface">{r.scored}</td>
                     <td className="py-2 text-right tabular-nums text-primary font-medium">{r.matches_created}</td>
                     <td className="py-2 text-right tabular-nums text-on-surface-variant">
-                      {r.duration_ms ? `${(r.duration_ms / 1000).toFixed(0)}s` : '—'}
+                      {formatScanDuration(r.duration_ms)}
                     </td>
                     <td className="py-2 text-xs text-on-surface-variant capitalize">{r.triggered_by}</td>
                     {isAdmin && (
@@ -268,7 +268,7 @@ export default async function StatsPage() {
                     <td className="py-2 text-right tabular-nums text-on-surface">{r.scored}</td>
                     <td className="py-2 text-right tabular-nums text-primary font-medium">{r.matches_created}</td>
                     <td className="py-2 text-right tabular-nums text-on-surface-variant">
-                      {r.duration_ms ? `${(r.duration_ms / 1000).toFixed(1)}s` : '—'}
+                      {formatScanDuration(r.duration_ms)}
                     </td>
                     <td className="py-2 text-xs text-on-surface-variant capitalize">{r.triggered_by}</td>
                     <td className="py-2">

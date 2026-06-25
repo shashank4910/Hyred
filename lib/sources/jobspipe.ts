@@ -1,7 +1,7 @@
 import type { RawJob } from '../types';
 import { stripHtml } from '../jd-fetcher';
 import { getJobspipeApiKeys } from '../jobspipe-keys';
-import { logApiRequest, maskKey } from '../api-tracker';
+import { logApiRequest, maskKey } from '../api-tracker-log';
 
 /**
  * JobsPipe — unified job search API (30+ ATS/board sources).

@@ -1,5 +1,5 @@
 import type { RawJob } from '../types';
-import { logApiRequest } from '../api-tracker';
+import { logApiRequest } from '../api-tracker-log';
 
 /**
  * LinkedIn — PUBLIC GUEST API (no auth, no API key, no login).

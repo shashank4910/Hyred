@@ -1,6 +1,6 @@
 import type { RawJob } from '../types';
 import { stripHtml } from '../jd-fetcher';
-import { logApiRequest, maskKey } from '../api-tracker';
+import { logApiRequest, maskKey } from '../api-tracker-log';
 
 /**
  * JSearch — RapidAPI job aggregator.
