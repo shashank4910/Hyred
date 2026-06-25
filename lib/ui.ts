@@ -9,6 +9,17 @@ export function relativeTime(date: string | null): string {
   }
 }
 
+/** Human-readable scan duration; caps absurd values from stale-run bugs. */
+export function formatScanDuration(durationMs: number | null | undefined): string {
+  if (durationMs == null || durationMs <= 0) return '—';
+  const capped = Math.min(durationMs, 25 * 60 * 1000);
+  const seconds = capped / 1000;
+  if (seconds < 60) return `${seconds.toFixed(0)}s`;
+  const minutes = Math.floor(seconds / 60);
+  const rem = Math.round(seconds % 60);
+  return rem > 0 ? `${minutes}m ${rem}s` : `${minutes}m`;
+}
+
 /**
  * Compact human-readable date stamp like "28 May 26".
  * Used on match cards next to the relative time so users can see exactly

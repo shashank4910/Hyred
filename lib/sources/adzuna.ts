@@ -1,5 +1,5 @@
 import type { RawJob } from '../types';
-import { logApiRequest, maskKey } from '../api-tracker';
+import { logApiRequest, maskKey } from '../api-tracker-log';
 
 /**
  * Adzuna public API — https://developer.adzuna.com/

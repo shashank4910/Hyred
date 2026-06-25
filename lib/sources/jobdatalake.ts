@@ -1,6 +1,6 @@
 import type { RawJob } from '../types';
 import { getJobdatalakeApiKeys } from '../jobdatalake-keys';
-import { logApiRequest, maskKey } from '../api-tracker';
+import { logApiRequest, maskKey } from '../api-tracker-log';
 
 /**
  * JobDataLake — enriched job listings API.

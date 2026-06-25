@@ -354,12 +354,23 @@ export async function runIngest(opts?: {
         const isConfigError =
           embedded === 0 &&
           /missing\s+\w+_API_KEY|invalid api key|api key not valid|unauthor|forbid/i.test(msg);
+        const isEmbedExhausted = /All OpenAI embed keys failed/i.test(msg);
         if (isConfigError) {
           embedAborted = msg;
           runErrors.push({
             source: 'embed',
             error: `Embed phase aborted on first job (${needEmbed?.length ?? 0} pending). Config error: ${msg}`,
           });
+          return false;
+        }
+        if (isEmbedExhausted) {
+          if (!embedAborted) {
+            embedAborted = msg;
+            runErrors.push({
+              source: 'embed',
+              error: `Embed phase stopped (${embedded} done, ${needEmbed?.length ?? 0} pending). ${msg}`,
+            });
+          }
           return false;
         }
         runErrors.push({
