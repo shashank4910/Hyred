@@ -10,7 +10,7 @@ import { DashboardNavProvider } from './_components/DashboardNavContext';
 import { RunIngestButton } from './_components/RunIngestButton';
 import { Inbox, Sparkles, TrendingUp, Briefcase, ArrowRight } from 'lucide-react';
 import { relativeTime, STATUS_ORDER } from '@/lib/ui';
-import { getDashboardCounts } from '@/lib/match-stats';
+import { getDashboardCounts, listMatchCities } from '@/lib/match-stats';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,6 +20,7 @@ type SearchParams = {
   source?: string;
   min?: string;
   remote?: string;
+  city?: string;
   bookmarked?: string;
   sort?: 'newest' | 'score' | 'activity';
   from?: string; // match ID to highlight on back-navigation
@@ -41,6 +42,7 @@ export default async function Dashboard({
     sp.min ?? '',
     sp.q ?? '',
     sp.remote ?? '',
+    sp.city ?? '',
     sp.source ?? '',
     sp.from ?? '',
   ].join('|');
@@ -55,42 +57,59 @@ export default async function Dashboard({
 
   await closeStaleIngestRuns(sb, profile.id);
 
-  // Status counts (aligned with active dashboard filters and age limits)
-  const { counts, inboxCount, bookmarkedCount } = await getDashboardCounts(
-    sb,
-    profile.id,
-    {
-      min: sp.min,
-      remote: sp.remote,
-      source: sp.source,
-      q: sp.q,
-    },
-    isAdmin
-  );
-
-  const [{ count: totalMatches }, { data: lastRun }, { data: activeRun }] =
-    await Promise.all([
-      sb
-        .from('matches')
-        .select('id', { count: 'exact', head: true })
-        .eq('profile_id', profile.id),
-      sb
-        .from('ingest_runs')
-        .select('finished_at, matches_created, status')
-        .eq('profile_id', profile.id)
-        .not('finished_at', 'is', null)
-        .order('finished_at', { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      sb
-        .from('ingest_runs')
-        .select('started_at, matches_created')
-        .eq('profile_id', profile.id)
-        .eq('status', 'running')
-        .order('started_at', { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-    ]);
+  // Status counts + city options (aligned with active dashboard filters)
+  const [
+    { counts, inboxCount, bookmarkedCount },
+    cities,
+    { count: totalMatches },
+    { data: lastRun },
+    { data: activeRun },
+  ] = await Promise.all([
+    getDashboardCounts(
+      sb,
+      profile.id,
+      {
+        min: sp.min,
+        remote: sp.remote,
+        city: sp.city,
+        source: sp.source,
+        q: sp.q,
+      },
+      isAdmin,
+    ),
+    listMatchCities(
+      sb,
+      profile.id,
+      {
+        min: sp.min,
+        source: sp.source,
+        q: sp.q,
+        status,
+        bookmarked: sp.bookmarked,
+      },
+      isAdmin,
+    ),
+    sb
+      .from('matches')
+      .select('id', { count: 'exact', head: true })
+      .eq('profile_id', profile.id),
+    sb
+      .from('ingest_runs')
+      .select('finished_at, matches_created, status')
+      .eq('profile_id', profile.id)
+      .not('finished_at', 'is', null)
+      .order('finished_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    sb
+      .from('ingest_runs')
+      .select('started_at, matches_created')
+      .eq('profile_id', profile.id)
+      .eq('status', 'running')
+      .order('started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
 
   const lastScanLabel = activeRun
     ? 'In progress…'
@@ -153,7 +172,7 @@ export default async function Dashboard({
             bookmarkedCount={bookmarkedCount ?? 0}
             onlyBookmarked={onlyBookmarked}
           />
-          <MatchFilters isAdmin={isAdmin} />
+          <MatchFilters isAdmin={isAdmin} cities={cities} />
           <DashboardMatchesSection cacheKey={matchListKey}>
             <DashboardMatchResults
               profileId={profile.id}

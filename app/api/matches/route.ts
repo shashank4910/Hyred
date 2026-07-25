@@ -4,6 +4,7 @@ import { getCurrentProfile, isCurrentUserAdmin } from '@/lib/current-user';
 import { applyMatchSort } from '@/lib/apply-match-sort';
 import { resolveMatchSort } from '@/lib/ui';
 import { enrichMatchListSkills } from '@/lib/match-skill-enrich';
+import { sanitizeCityFilter } from '@/lib/match-location-filter';
 // Keep in sync with MATCH_LIST_SELECT in lib/match-list-select.ts
 
 export const runtime = 'nodejs';
@@ -14,7 +15,7 @@ const PAGE_SIZE = 20;
  * GET /api/matches — paginated match list for infinite scroll.
  *
  * Query params:
- *   page, status, sort, min, q, remote, source, bookmarked
+ *   page, status, sort, min, q, remote, city, source, bookmarked
  *
  * Returns: { matches, total, page, pageSize, hasMore }
  */
@@ -32,6 +33,7 @@ export async function GET(req: NextRequest) {
   const minScore = parseInt(url.searchParams.get('min') ?? '50', 10);
   const q = url.searchParams.get('q') ?? '';
   const remote = url.searchParams.get('remote') === '1';
+  const city = sanitizeCityFilter(url.searchParams.get('city'));
   const bookmarked = url.searchParams.get('bookmarked') === '1';
 
   const sb = supabaseAdmin();
@@ -61,11 +63,14 @@ export async function GET(req: NextRequest) {
   query = applyMatchSort(query, sort);
 
   if (q) {
-    const term = q.replace(/[%]/g, '');
+    const term = q.replace(/[%_]/g, '');
     query = query.or(`title.ilike.%${term}%,company.ilike.%${term}%`, { foreignTable: 'job' });
   }
   if (remote) {
     query = query.eq('job.remote', true);
+  }
+  if (city) {
+    query = query.ilike('job.location', `%${city}%`);
   }
   const source = url.searchParams.get('source') ?? '';
   if (isAdmin && source) {

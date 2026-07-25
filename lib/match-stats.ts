@@ -1,5 +1,6 @@
 import type { supabaseAdmin } from './supabase/server';
 import type { Preferences } from './types';
+import { sanitizeCityFilter, uniqueCitiesFromLocations } from './match-location-filter';
 import { STATUS_ORDER } from './ui';
 
 export const DEFAULT_DASHBOARD_MIN_SCORE = 50;
@@ -10,6 +11,8 @@ type AdminClient = ReturnType<typeof supabaseAdmin>;
 export interface MatchFilterParams {
   min?: string;
   remote?: string;
+  /** City substring filter against jobs.location (e.g. "Gurgaon"). */
+  city?: string;
   source?: string;
   q?: string;
 }
@@ -103,7 +106,7 @@ export async function getDashboardCounts(
       .from('matches')
       .select(
         `id,
-         job:jobs!inner(title, company, remote, source, posted_at)`,
+         job:jobs!inner(title, company, remote, source, posted_at, location)`,
         { count: 'exact', head: true }
       )
       .eq('profile_id', profileId)
@@ -117,8 +120,12 @@ export async function getDashboardCounts(
     if (params.remote === '1') {
       q = q.eq('job.remote', true);
     }
+    const city = sanitizeCityFilter(params.city);
+    if (city) {
+      q = q.ilike('job.location', `%${city}%`);
+    }
     if (params.q) {
-      const term = params.q.replace(/[%]/g, '');
+      const term = params.q.replace(/[%_]/g, '');
       q = q.or(`title.ilike.%${term}%,company.ilike.%${term}%`, {
         foreignTable: 'job',
       });
@@ -144,4 +151,56 @@ export async function getDashboardCounts(
     bookmarkedCount: bookmarkedRes.count ?? 0,
     counts,
   };
+}
+
+/**
+ * Distinct city labels from matches under the current dashboard filters
+ * (status / score / source / search). City + remote filters are ignored so
+ * the location dropdown still lists switchable cities.
+ */
+export async function listMatchCities(
+  sb: AdminClient,
+  profileId: string,
+  params: MatchFilterParams & { status?: string; bookmarked?: string },
+  isAdmin: boolean = false,
+): Promise<string[]> {
+  const minScore = params.min ? Number(params.min) : DEFAULT_DASHBOARD_MIN_SCORE;
+  const staleCutoff = staleJobCutoffIso();
+  const status = params.status ?? 'inbox';
+  const onlyBookmarked = params.bookmarked === '1';
+
+  let q = sb
+    .from('matches')
+    .select('job:jobs!inner(location, posted_at, title, company, source)')
+    .eq('profile_id', profileId)
+    .gte('llm_score', minScore)
+    .or(`posted_at.gte.${staleCutoff},posted_at.is.null`, { foreignTable: 'job' });
+
+  if (onlyBookmarked) {
+    q = q.eq('bookmarked', true);
+  } else if (status === 'inbox') {
+    q = q.in('status', ['new', 'viewed']);
+  } else {
+    q = q.eq('status', status);
+  }
+
+  if (isAdmin && params.source) {
+    q = q.eq('job.source', params.source);
+  }
+  if (params.q) {
+    const term = params.q.replace(/[%_]/g, '');
+    q = q.or(`title.ilike.%${term}%,company.ilike.%${term}%`, {
+      foreignTable: 'job',
+    });
+  }
+
+  // Cap for safety — city labels only, so a few hundred rows is enough.
+  const { data } = await q.limit(1000);
+
+  const locations = (data ?? []).map((row) => {
+    const job = row.job as unknown as { location: string | null } | null;
+    return job?.location ?? null;
+  });
+
+  return uniqueCitiesFromLocations(locations);
 }

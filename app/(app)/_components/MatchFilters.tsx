@@ -7,14 +7,26 @@ import { useDashboardNav } from './DashboardNavContext';
 
 const SOURCES = ['remotive', 'remoteok', 'hn', 'arbeitnow', 'adzuna_in', 'himalayas', 'jsearch', 'jobspipe', 'jobdatalake', 'linkedin'];
 
-export function MatchFilters({ isAdmin = false }: { isAdmin?: boolean }) {
+const REMOTE_VALUE = '__remote__';
+
+export function MatchFilters({
+  isAdmin = false,
+  cities = [],
+}: {
+  isAdmin?: boolean;
+  /** Cities present in the current filtered match set. */
+  cities?: string[];
+}) {
   const sp = useSearchParams();
   const { navigate, isPending } = useDashboardNav();
   const source = sp.get('source') ?? '';
   const minScore = sp.get('min') ?? '';
   const remote = sp.get('remote') ?? '';
+  const city = sp.get('city') ?? '';
   const sortParam = sp.get('sort');
   const sort = resolveMatchSort(sortParam);
+
+  const locationValue = remote === '1' ? REMOTE_VALUE : city;
 
   function setParam(name: string, value: string) {
     const params = new URLSearchParams(sp.toString());
@@ -23,11 +35,33 @@ export function MatchFilters({ isAdmin = false }: { isAdmin?: boolean }) {
     navigate(`/?${params.toString()}`, { replace: true });
   }
 
+  function setLocation(value: string) {
+    const params = new URLSearchParams(sp.toString());
+    if (value === REMOTE_VALUE) {
+      params.set('remote', '1');
+      params.delete('city');
+    } else if (value) {
+      params.set('city', value);
+      params.delete('remote');
+    } else {
+      params.delete('city');
+      params.delete('remote');
+    }
+    navigate(`/?${params.toString()}`, { replace: true });
+  }
+
   const hasFilters =
     (isAdmin && source) ||
     minScore ||
     remote ||
+    city ||
     (sortParam != null && sortParam !== '' && sort !== DEFAULT_MATCH_SORT);
+
+  // Keep a selected city visible even if it drops out of the current option list.
+  const cityOptions =
+    city && !cities.some((c) => c.toLowerCase() === city.toLowerCase())
+      ? [city, ...cities]
+      : cities;
 
   return (
     <div className={`relative z-0 flex flex-wrap items-center gap-2 ${isPending ? 'opacity-70' : ''}`}>
@@ -59,12 +93,22 @@ export function MatchFilters({ isAdmin = false }: { isAdmin?: boolean }) {
       </select>
 
       <select
-        value={remote}
-        onChange={(e) => setParam('remote', e.target.value)}
-        className="input w-auto"
+        value={locationValue}
+        onChange={(e) => setLocation(e.target.value)}
+        className="input w-auto max-w-[14rem]"
+        title="Filter by location"
       >
         <option value="">Any location</option>
-        <option value="1">Remote only</option>
+        <option value={REMOTE_VALUE}>Remote only</option>
+        {cityOptions.length > 0 && (
+          <optgroup label="Cities in your matches">
+            {cityOptions.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </optgroup>
+        )}
       </select>
 
       <select

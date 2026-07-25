@@ -61,6 +61,7 @@ export function MatchList({ initialMatches, total, initialHasMore, showSource = 
     if (sp.get('min')) params.set('min', sp.get('min')!);
     if (sp.get('q')) params.set('q', sp.get('q')!);
     if (sp.get('remote')) params.set('remote', sp.get('remote')!);
+    if (sp.get('city')) params.set('city', sp.get('city')!);
     if (sp.get('bookmarked')) params.set('bookmarked', sp.get('bookmarked')!);
     if (sp.get('source')) params.set('source', sp.get('source')!);
     return params.toString();

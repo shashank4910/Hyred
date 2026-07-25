@@ -5,6 +5,7 @@ import { getCurrentProfile } from '@/lib/current-user';
 import { applyMatchSort } from '@/lib/apply-match-sort';
 import { resolveMatchSort } from '@/lib/ui';
 import { enrichMatchListSkills } from '@/lib/match-skill-enrich';
+import { sanitizeCityFilter } from '@/lib/match-location-filter';
 import { MatchList } from './MatchList';
 
 const PAGE_SIZE = 20;
@@ -15,6 +16,7 @@ export type DashboardMatchSearchParams = {
   source?: string;
   min?: string;
   remote?: string;
+  city?: string;
   bookmarked?: string;
   sort?: string;
   from?: string;
@@ -74,6 +76,10 @@ export async function DashboardMatchResults({
   }
   if (searchParams.remote === '1') {
     query = query.eq('job.remote', true);
+  }
+  const city = sanitizeCityFilter(searchParams.city);
+  if (city) {
+    query = query.ilike('job.location', `%${city}%`);
   }
   if (searchParams.q) {
     const term = searchParams.q.replace(/[%]/g, '');
