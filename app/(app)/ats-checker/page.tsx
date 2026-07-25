@@ -32,6 +32,7 @@ import {
   Lightbulb,
 } from 'lucide-react';
 import type { AtsCheckResult, ResumeStats, JdMatchResult } from '@/lib/ats-checker';
+import { AtsFixStudio } from './AtsFixStudio';
 
 /* ------------------------------------------------------------------ */
 /*  Sample data                                                        */
@@ -110,7 +111,7 @@ Nice to have:
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
 
-type View = 'input' | 'loading' | 'results';
+type View = 'input' | 'loading' | 'results' | 'fix-studio';
 
 interface ScoreHistoryItem {
   date: string;
@@ -465,6 +466,7 @@ export default function AtsCheckerPage() {
   const [resumeText, setResumeText] = useState('');
   const [jobDescriptionText, setJobDescriptionText] = useState('');
   const [result, setResult] = useState<AtsCheckResult | null>(null);
+  const [studioResume, setStudioResume] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [filename, setFilename] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -477,6 +479,7 @@ export default function AtsCheckerPage() {
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
   const resultRef = useRef<HTMLDivElement>(null);
   const [pendingResult, setPendingResult] = useState<AtsCheckResult | null>(null);
+  const pendingResumeRef = useRef<string>('');
   const displayFilenameRef = useRef<string | null>(null);
   const [completedMilestones, setCompletedMilestones] = useState<number[]>([]);
   const [milestonesDone, setMilestonesDone] = useState(false);
@@ -543,7 +546,12 @@ export default function AtsCheckerPage() {
       }
 
       displayFilenameRef.current = displayFilename || 'Pasted text';
-      setPendingResult(data as AtsCheckResult);
+      const payloadData = data as AtsCheckResult & { resume_text?: string };
+      pendingResumeRef.current =
+        (payloadData.resume_text && String(payloadData.resume_text)) ||
+        text ||
+        '';
+      setPendingResult(payloadData);
       // View transitions to 'results' via useEffect when milestones complete
     } catch (e) {
       setError((e as Error).message || 'Network error. Please try again.');
@@ -611,6 +619,7 @@ export default function AtsCheckerPage() {
   const handleReset = useCallback(() => {
     setView('input');
     setResult(null);
+    setStudioResume('');
     setError(null);
     setFilename(null);
     setCopied(false);
@@ -816,6 +825,10 @@ export default function AtsCheckerPage() {
       const data = pendingResult;
       setPendingResult(null);
       setResult(data);
+      setStudioResume(pendingResumeRef.current || '');
+      if (pendingResumeRef.current && !resumeText.trim()) {
+        setResumeText(pendingResumeRef.current);
+      }
       setFilename(displayFilenameRef.current);
       setView('results');
 
@@ -836,8 +849,9 @@ export default function AtsCheckerPage() {
   // ── Render ────────────────────────────────────────────────────
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
+    <div className={`${view === 'fix-studio' ? 'max-w-7xl' : 'max-w-3xl'} mx-auto space-y-6 animate-fade-in`}>
       {/* Header */}
+      {view !== 'fix-studio' && (
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/5 via-surface-card to-surface-card p-6 border border-outline-variant/40 shadow-sm">
         <div className="absolute top-0 right-0 w-48 h-48 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
         <div className="relative">
@@ -868,6 +882,23 @@ export default function AtsCheckerPage() {
           </div>
         </div>
       </div>
+      )}
+
+      {/* ── FIX STUDIO ─────────────────────────────────────────── */}
+      {view === 'fix-studio' && result && studioResume && (
+        <AtsFixStudio
+          initialResume={studioResume}
+          initialResult={result}
+          jobDescription={jobDescriptionText || undefined}
+          onClose={(next) => {
+            if (next) {
+              setStudioResume(next.resume);
+              setResult(next.result);
+            }
+            setView('results');
+          }}
+        />
+      )}
 
       {/* ── INPUT VIEW ─────────────────────────────────────────── */}
       {view === 'input' && (
@@ -1470,6 +1501,16 @@ export default function AtsCheckerPage() {
             className="flex flex-col sm:flex-row gap-3 animate-slide-up"
             style={{ animationDelay: '400ms', animationFillMode: 'both' }}
           >
+            {studioResume.trim().length >= 50 && (
+              <button
+                type="button"
+                onClick={() => setView('fix-studio')}
+                className="flex-1 flex items-center justify-center gap-2 rounded-2xl bg-primary px-6 py-3 text-body-md font-semibold text-on-primary shadow-sm transition-all hover:bg-primary/90 hover:shadow-primary-glow"
+              >
+                <Sparkles className="h-4 w-4" />
+                Open Fix Studio
+              </button>
+            )}
             <button
               type="button"
               onClick={copyResults}
@@ -1490,11 +1531,11 @@ export default function AtsCheckerPage() {
             <button
               type="button"
               onClick={handleReset}
-              className="flex-1 flex items-center justify-center gap-2 rounded-2xl bg-primary px-6 py-3 text-body-md font-semibold text-on-primary shadow-sm transition-all hover:bg-primary/90 hover:shadow-primary-glow"
+              className="flex-1 flex items-center justify-center gap-2 rounded-2xl border border-outline-variant/40 bg-surface-card px-6 py-3 text-body-md font-semibold text-on-surface transition-all hover:bg-surface-container hover:shadow-sm"
             >
               <RefreshCcw className="h-4 w-4" />
-              Check another resume
-              <kbd className="hidden sm:inline-flex items-center text-[10px] text-on-primary/60 bg-white/10 rounded-md px-1.5 py-0.5 font-mono">
+              Check another
+              <kbd className="hidden sm:inline-flex items-center text-[10px] text-on-surface-variant/60 bg-surface-container rounded-md px-1.5 py-0.5 font-mono">
                 Esc
               </kbd>
             </button>
