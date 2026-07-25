@@ -76,6 +76,8 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     ...result,
+    /** Parsed resume body — needed for Fix Studio after file upload */
+    resume_text: resumeText,
     resume_chars: resumeText.length,
     filename: filename ?? null,
   });
