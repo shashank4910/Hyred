@@ -4,10 +4,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
   Check,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Copy,
+  FileText,
   Loader2,
   RefreshCcw,
+  ShieldCheck,
   Sparkles,
   Undo2,
   AlertTriangle,
@@ -37,21 +41,42 @@ function scoreTone(score: number): string {
 
 function ScoreChip({ score, delta }: { score: number; delta: number }) {
   return (
-    <div className="flex items-center gap-2">
-      <span className={`text-2xl font-bold tabular-nums ${scoreTone(score)}`}>{score}</span>
-      <span className="text-xs text-text-muted">/100</span>
-      {delta !== 0 && (
-        <span
-          className={`rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums ${
-            delta > 0
-              ? 'bg-emerald-500/10 text-emerald-600'
-              : 'bg-red-500/10 text-red-600'
+    <div className="min-w-[148px]">
+      <div className="flex items-end justify-between gap-3">
+        <div className="flex items-baseline gap-1">
+          <span className={`text-2xl font-extrabold tabular-nums leading-none ${scoreTone(score)}`}>
+            {score}
+          </span>
+          <span className="text-[11px] font-semibold text-text-muted">ATS score</span>
+        </div>
+        {delta !== 0 && (
+          <span
+            className={`rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums ${
+              delta > 0
+                ? 'bg-emerald-500/10 text-emerald-700'
+                : 'bg-red-500/10 text-red-700'
+            }`}
+          >
+            {delta > 0 ? '+' : ''}
+            {delta}
+          </span>
+        )}
+      </div>
+      <div
+        className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-container"
+        role="progressbar"
+        aria-label="ATS score"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={score}
+      >
+        <div
+          className={`h-full rounded-full transition-[width] duration-500 ${
+            score >= 80 ? 'bg-emerald-500' : score >= 50 ? 'bg-amber-500' : 'bg-red-500'
           }`}
-        >
-          {delta > 0 ? '+' : ''}
-          {delta}
-        </span>
-      )}
+          style={{ width: `${score}%` }}
+        />
+      </div>
     </div>
   );
 }
@@ -67,7 +92,7 @@ function HighlightedResume({
 }) {
   if (!highlight || mode === 'original') {
     return (
-      <pre className="whitespace-pre-wrap break-words font-mono text-[12px] leading-relaxed text-on-surface/90">
+      <pre className="whitespace-pre-wrap break-words font-sans text-[12px] leading-[1.7] text-on-surface/90">
         {text}
       </pre>
     );
@@ -82,7 +107,7 @@ function HighlightedResume({
       : 'bg-amber-500/15 ring-1 ring-amber-500/30 rounded-sm';
 
   return (
-    <pre className="whitespace-pre-wrap break-words font-mono text-[12px] leading-relaxed text-on-surface/90">
+    <pre className="whitespace-pre-wrap break-words font-sans text-[12px] leading-[1.7] text-on-surface/90">
       {before}
       <mark className={`${midClass} text-inherit px-0.5`}>{mid}</mark>
       {after}
@@ -250,261 +275,414 @@ export function AtsFixStudio({
   const previewText = previewMode === 'original' ? originalResume : workingResume;
 
   return (
-    <div className="space-y-4 animate-slide-up">
-      {/* Top bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-outline-variant/40 bg-surface-card px-4 py-3 shadow-sm">
-        <button
-          type="button"
-          onClick={() => onClose({ resume: workingResume, result })}
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-on-surface-variant hover:text-primary"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to score
-        </button>
-        <div className="flex items-center gap-4">
-          <ScoreChip score={result.overallScore} delta={scoreDelta} />
-          {usageLabel && <span className="hidden text-[11px] text-text-muted sm:inline">{usageLabel}</span>}
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleUndo}
-            disabled={applied.length === 0}
-            className="btn-ghost text-sm disabled:opacity-40"
-            title="Undo last apply"
-          >
-            <Undo2 className="h-4 w-4" />
-            Undo
-          </button>
-          <button type="button" onClick={handleCopy} className="btn-ghost text-sm">
-            {copied ? <Check className="h-4 w-4 text-emerald-500" /> : null}
-            {copied ? 'Copied' : 'Copy resume'}
-          </button>
-        </div>
-      </div>
-
-      {/* 3 panes */}
-      <div className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)_minmax(0,1.15fr)]">
-        {/* Left: weaknesses */}
-        <aside className="rounded-2xl border border-outline-variant/40 bg-surface-card p-3 shadow-sm max-h-[70vh] overflow-y-auto">
-          <p className="px-2 pb-2 text-[10px] font-bold uppercase tracking-widest text-text-muted">
-            Needs work · {needsWork.length}
-          </p>
-          <ul className="space-y-1">
-            {needsWork.map((w) => (
-              <li key={w.id}>
-                <button
-                  type="button"
-                  onClick={() => onSelectWeakness(w)}
-                  className={`w-full rounded-xl px-3 py-2.5 text-left transition-colors ${
-                    selected?.id === w.id
-                      ? 'bg-primary/10 text-primary'
-                      : 'hover:bg-surface-container text-on-surface'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-medium truncate">{w.label}</span>
-                    {w.score != null && (
-                      <span
-                        className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
-                          w.priority === 'high'
-                            ? 'bg-red-500/10 text-red-600'
-                            : 'bg-amber-500/10 text-amber-600'
-                        }`}
-                      >
-                        {w.score}
-                      </span>
-                    )}
-                  </div>
-                </button>
-              </li>
-            ))}
-          </ul>
-          {passing.length > 0 && (
-            <>
-              <p className="mt-4 px-2 pb-2 text-[10px] font-bold uppercase tracking-widest text-text-muted">
-                Passing · {passing.length}
+    <div className="space-y-5 animate-slide-up">
+      {/* Product header */}
+      <header className="overflow-hidden rounded-[1.5rem] border border-outline-variant/50 bg-surface-container-lowest shadow-card">
+        <div className="flex flex-col gap-4 px-5 py-5 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-start gap-3">
+            <button
+              type="button"
+              onClick={() => onClose({ resume: workingResume, result })}
+              className="mt-0.5 inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-outline-variant/60 bg-surface-container-lowest text-on-surface-variant transition-colors duration-200 hover:border-primary/30 hover:bg-primary/5 hover:text-primary focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/15"
+              aria-label="Back to ATS score"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="font-headline text-xl font-bold tracking-tight text-on-surface">
+                  Resume Fix Studio
+                </h1>
+                <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">
+                  <Sparkles className="h-3 w-3" />
+                  AI assisted
+                </span>
+              </div>
+              <p className="mt-1 max-w-xl text-sm text-on-surface-variant">
+                Review each weakness, approve only the changes you want, and watch your score improve.
               </p>
-              <ul className="space-y-1">
-                {passing.map((w) => (
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 sm:flex-nowrap">
+            <ScoreChip score={result.overallScore} delta={scoreDelta} />
+            <div className="h-10 w-px bg-outline-variant/50" aria-hidden="true" />
+            <button
+              type="button"
+              onClick={handleUndo}
+              disabled={applied.length === 0}
+              className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold text-on-surface-variant transition-colors duration-200 hover:bg-surface-container hover:text-primary focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/15 disabled:cursor-not-allowed disabled:opacity-40"
+              title="Undo last applied fix"
+            >
+              <Undo2 className="h-4 w-4" />
+              Undo
+            </button>
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-xl border border-primary/20 bg-primary px-4 text-sm font-semibold text-on-primary shadow-primary-glow transition-opacity duration-200 hover:opacity-90 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/20"
+            >
+              {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+              {copied ? 'Copied' : 'Copy updated resume'}
+            </button>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-outline-variant/30 bg-surface-container/45 px-5 py-2.5 text-[11px] font-medium text-on-surface-variant sm:px-6">
+          <span className="inline-flex items-center gap-1.5 text-primary">
+            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-on-primary">1</span>
+            Choose an issue
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-outline-variant bg-surface-container-lowest text-[10px] font-bold">2</span>
+            Review the rewrite
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-outline-variant bg-surface-container-lowest text-[10px] font-bold">3</span>
+            Apply and re-score
+          </span>
+          <span className="ml-auto inline-flex items-center gap-1.5 text-text-muted">
+            <ShieldCheck className="h-3.5 w-3.5 text-primary" />
+            Nothing is saved automatically
+          </span>
+        </div>
+      </header>
+
+      <div className="grid items-start gap-5 xl:grid-cols-[248px_minmax(0,1fr)]">
+        {/* Issue navigator */}
+        <aside className="overflow-hidden rounded-[1.25rem] border border-outline-variant/50 bg-surface-container-lowest shadow-card xl:sticky xl:top-24">
+          <div className="border-b border-outline-variant/30 px-4 py-3.5">
+            <p className="text-sm font-bold text-on-surface">Resume health</p>
+            <p className="mt-0.5 text-xs text-on-surface-variant">
+              {needsWork.length} {needsWork.length === 1 ? 'area needs' : 'areas need'} attention
+            </p>
+          </div>
+          <div className="max-h-[58vh] overflow-y-auto p-2.5">
+            <p className="px-2 pb-2 pt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-text-muted">
+              Improve first
+            </p>
+            <ul className="grid gap-1 sm:grid-cols-2 xl:grid-cols-1">
+              {needsWork.map((w) => {
+                const isActive = selected?.id === w.id;
+                return (
                   <li key={w.id}>
                     <button
                       type="button"
                       onClick={() => onSelectWeakness(w)}
-                      className={`w-full rounded-xl px-3 py-2 text-left text-sm text-on-surface-variant ${
-                        selected?.id === w.id ? 'bg-emerald-500/10 text-emerald-700' : 'hover:bg-surface-container'
+                      aria-pressed={isActive}
+                      className={`group relative w-full cursor-pointer rounded-xl px-3 py-3 text-left transition-colors duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/15 ${
+                        isActive
+                          ? 'bg-primary/10 text-primary'
+                          : 'text-on-surface hover:bg-surface-container'
                       }`}
                     >
-                      <span className="inline-flex items-center gap-1.5">
-                        <Check className="h-3.5 w-3.5 text-emerald-500" />
-                        {w.label}
-                      </span>
+                      {isActive && (
+                        <span className="absolute inset-y-2 left-0 w-0.5 rounded-full bg-primary" aria-hidden="true" />
+                      )}
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate text-[13px] font-semibold">{w.label}</span>
+                        {w.score != null && (
+                          <span
+                            className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold tabular-nums ${
+                              w.priority === 'high'
+                                ? 'bg-red-500/10 text-red-700'
+                                : 'bg-amber-500/10 text-amber-700'
+                            }`}
+                          >
+                            {w.score}
+                          </span>
+                        )}
+                      </div>
+                      <p className={`mt-1 truncate text-[11px] ${isActive ? 'text-primary/75' : 'text-text-muted'}`}>
+                        {w.priority === 'high' ? 'High impact' : w.priority === 'medium' ? 'Medium impact' : 'Quick polish'}
+                      </p>
                     </button>
                   </li>
-                ))}
-              </ul>
-            </>
-          )}
+                );
+              })}
+            </ul>
+
+            {passing.length > 0 && (
+              <>
+                <p className="mt-4 px-2 pb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-text-muted">
+                  Already strong
+                </p>
+                <ul className="grid gap-1 sm:grid-cols-2 xl:grid-cols-1">
+                  {passing.map((w) => {
+                    const isActive = selected?.id === w.id;
+                    return (
+                      <li key={w.id}>
+                        <button
+                          type="button"
+                          onClick={() => onSelectWeakness(w)}
+                          aria-pressed={isActive}
+                          className={`w-full cursor-pointer rounded-xl px-3 py-2.5 text-left text-[13px] transition-colors duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/15 ${
+                            isActive
+                              ? 'bg-emerald-500/10 text-emerald-800'
+                              : 'text-on-surface-variant hover:bg-surface-container'
+                          }`}
+                        >
+                          <span className="flex items-center justify-between gap-2">
+                            <span className="inline-flex min-w-0 items-center gap-2">
+                              <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+                              <span className="truncate">{w.label}</span>
+                            </span>
+                            {w.score != null && (
+                              <span className="text-[10px] font-bold tabular-nums text-emerald-700">{w.score}</span>
+                            )}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
+            )}
+          </div>
         </aside>
 
-        {/* Center: suggestion */}
-        <section className="rounded-2xl border border-outline-variant/40 bg-surface-card p-5 shadow-sm flex flex-col min-h-[420px]">
-          {selected ? (
-            <>
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-amber-600">
-                    {selected.status === 'needs_work' ? 'Needs work' : 'Passing'}
-                    {selected.priority === 'high' ? ' · High' : selected.priority === 'medium' ? ' · Medium' : ' · Low'}
-                  </p>
-                  <h2 className="mt-1 text-headline-md font-bold text-on-surface">{selected.label}</h2>
-                  <p className="mt-2 text-sm text-on-surface-variant leading-relaxed">{selected.feedback}</p>
-                </div>
-              </div>
-
-              <div className="mt-5 rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/8 via-surface-card to-secondary-container/10 p-4">
-                <div className="flex items-center gap-2 text-sm font-semibold text-on-surface">
-                  <Sparkles className="h-4 w-4 text-primary" />
-                  AI fix for this weakness
-                </div>
-                <p className="mt-1 text-xs text-on-surface-variant">
-                  Uses your Resume Studio quota. Changes stay in this session until you copy them.
-                </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    disabled={loading || quotaBlocked}
-                    onClick={() => fetchSuggestions(selected, false)}
-                    className="btn-primary text-sm disabled:opacity-50"
-                  >
-                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                    {suggestions.length ? 'Refresh suggestions' : 'See fixes'}
-                  </button>
-                  {suggestions.length > 0 && (
-                    <button
-                      type="button"
-                      disabled={loading || quotaBlocked}
-                      onClick={() => fetchSuggestions(selected, true)}
-                      className="btn-ghost text-sm border border-outline-variant/40 disabled:opacity-50"
+        <div className="grid min-w-0 gap-5 2xl:grid-cols-[minmax(360px,0.9fr)_minmax(420px,1.1fr)]">
+          {/* Fix workspace */}
+          <section className="flex min-h-[500px] min-w-0 flex-col overflow-hidden rounded-[1.25rem] border border-outline-variant/50 bg-surface-container-lowest shadow-card">
+            {selected ? (
+              <>
+                <div className="border-b border-outline-variant/30 px-5 py-5 sm:px-6">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
+                        selected.status === 'needs_work'
+                          ? selected.priority === 'high'
+                            ? 'bg-red-500/10 text-red-700'
+                            : 'bg-amber-500/10 text-amber-700'
+                          : 'bg-emerald-500/10 text-emerald-700'
+                      }`}
                     >
-                      <RefreshCcw className="h-4 w-4" />
-                      Regenerate
-                    </button>
-                  )}
-                </div>
-                {quotaBlocked && (
-                  <p className="mt-3 inline-flex items-center gap-1.5 text-xs text-amber-700 bg-amber-500/10 rounded-lg px-2.5 py-1.5">
-                    <Lock className="h-3.5 w-3.5" />
-                    Quota reached — upgrade Premium for more Resume Studio fixes.
+                      {selected.status === 'needs_work'
+                        ? `${selected.priority} impact`
+                        : 'Looking good'}
+                    </span>
+                    {selected.score != null && (
+                      <span className="text-xs font-semibold text-text-muted">{selected.score}/100</span>
+                    )}
+                  </div>
+                  <h2 className="mt-2 font-headline text-xl font-bold tracking-tight text-on-surface">
+                    {selected.label}
+                  </h2>
+                  <p className="mt-2 text-sm leading-relaxed text-on-surface-variant">
+                    {selected.feedback}
                   </p>
-                )}
-              </div>
+                </div>
 
-              {error && (
-                <p className="mt-3 inline-flex items-start gap-1.5 text-sm text-red-600">
-                  <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-                  {error}
-                </p>
-              )}
+                {selected.status === 'passing' ? (
+                  <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-600">
+                      <CheckCircle2 className="h-6 w-6" />
+                    </div>
+                    <h3 className="mt-4 font-semibold text-on-surface">No change needed here</h3>
+                    <p className="mt-1 max-w-sm text-sm leading-relaxed text-on-surface-variant">
+                      This section already meets the ATS benchmark. Choose an issue under “Improve first” to keep working.
+                    </p>
+                  </div>
+                ) : activeSuggestion ? (
+                  <div className="flex flex-1 flex-col p-5 sm:p-6">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-primary">
+                          Suggested improvement
+                        </p>
+                        <h3 className="mt-1 font-semibold text-on-surface">{activeSuggestion.title}</h3>
+                      </div>
+                      {suggestions.length > 1 && (
+                        <div className="flex shrink-0 items-center rounded-xl border border-outline-variant/50 bg-surface-container-lowest p-0.5">
+                          <button
+                            type="button"
+                            className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-surface-container hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-35"
+                            onClick={() => setActiveIdx((i) => Math.max(0, i - 1))}
+                            disabled={activeIdx === 0}
+                            aria-label="Previous suggestion"
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                          </button>
+                          <span className="min-w-10 text-center text-[11px] font-semibold tabular-nums text-text-muted">
+                            {activeIdx + 1}/{suggestions.length}
+                          </span>
+                          <button
+                            type="button"
+                            className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-surface-container hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-35"
+                            onClick={() => setActiveIdx((i) => Math.min(suggestions.length - 1, i + 1))}
+                            disabled={activeIdx >= suggestions.length - 1}
+                            aria-label="Next suggestion"
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
 
-              {activeSuggestion && (
-                <div className="mt-4 flex-1 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-semibold text-on-surface">{activeSuggestion.title}</h3>
-                    {suggestions.length > 1 && (
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          className="btn-ghost p-1.5"
-                          onClick={() => setActiveIdx((i) => Math.max(0, i - 1))}
-                          disabled={activeIdx === 0}
-                        >
-                          <ChevronLeft className="h-4 w-4" />
-                        </button>
-                        <span className="text-xs tabular-nums text-text-muted">
-                          {activeIdx + 1}/{suggestions.length}
-                        </span>
-                        <button
-                          type="button"
-                          className="btn-ghost p-1.5"
-                          onClick={() => setActiveIdx((i) => Math.min(suggestions.length - 1, i + 1))}
-                          disabled={activeIdx >= suggestions.length - 1}
-                        >
-                          <ChevronRight className="h-4 w-4" />
-                        </button>
+                    {activeSuggestion.rationale && (
+                      <p className="mt-3 text-sm leading-relaxed text-on-surface-variant">
+                        {activeSuggestion.rationale}
+                      </p>
+                    )}
+
+                    <div className="mt-5 space-y-3">
+                      <div className="rounded-xl border border-red-500/15 bg-red-500/[0.035] p-4">
+                        <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-red-700">
+                          Before
+                        </p>
+                        <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-on-surface/75 line-through decoration-red-400/50">
+                          {activeSuggestion.originalSnippet}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/[0.045] p-4">
+                        <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-700">
+                          After
+                        </p>
+                        <p className="whitespace-pre-wrap text-[13px] font-medium leading-relaxed text-on-surface">
+                          {activeSuggestion.proposedText}
+                        </p>
+                      </div>
+                    </div>
+
+                    {error && (
+                      <div role="alert" className="mt-4 flex items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/5 px-3 py-2.5 text-sm text-red-700">
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                        {error}
+                      </div>
+                    )}
+
+                    <div className="mt-auto flex flex-col-reverse gap-2 border-t border-outline-variant/30 pt-5 sm:flex-row sm:items-center sm:justify-between">
+                      <button
+                        type="button"
+                        disabled={loading || quotaBlocked}
+                        onClick={() => fetchSuggestions(selected, true)}
+                        className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold text-on-surface-variant transition-colors hover:bg-surface-container hover:text-primary focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/15 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+                        Try another rewrite
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleApply}
+                        className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-semibold text-on-primary shadow-primary-glow transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/20"
+                      >
+                        <Check className="h-4 w-4" />
+                        Apply this change
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                      {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : <Sparkles className="h-6 w-6" />}
+                    </div>
+                    <h3 className="mt-4 font-semibold text-on-surface">
+                      {loading ? 'Building a safe rewrite…' : 'See a stronger version'}
+                    </h3>
+                    <p className="mt-1 max-w-sm text-sm leading-relaxed text-on-surface-variant">
+                      {loading
+                        ? 'Hyred is finding a focused improvement without changing the facts in your resume.'
+                        : 'Hyred will suggest a small, truth-preserving edit for this exact weakness.'}
+                    </p>
+                    {!loading && (
+                      <button
+                        type="button"
+                        disabled={quotaBlocked}
+                        onClick={() => fetchSuggestions(selected, false)}
+                        className="mt-5 inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-semibold text-on-primary shadow-primary-glow transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Sparkles className="h-4 w-4" />
+                        Generate suggestions
+                      </button>
+                    )}
+                    <p className="mt-3 text-[11px] text-text-muted">
+                      {usageLabel ?? 'Uses 1 Resume Studio credit'}
+                    </p>
+                    {quotaBlocked && (
+                      <p className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-800">
+                        <Lock className="h-3.5 w-3.5" />
+                        Resume Studio quota reached
+                      </p>
+                    )}
+                    {error && !quotaBlocked && (
+                      <div role="alert" className="mt-4 flex max-w-md items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/5 px-3 py-2.5 text-left text-sm text-red-700">
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                        {error}
                       </div>
                     )}
                   </div>
-                  {activeSuggestion.rationale && (
-                    <p className="text-sm text-on-surface-variant">{activeSuggestion.rationale}</p>
-                  )}
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <div className="rounded-xl bg-red-500/5 border border-red-500/15 p-3">
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-red-600 mb-1">Current</p>
-                      <p className="text-xs font-mono text-on-surface/80 whitespace-pre-wrap">
-                        {activeSuggestion.originalSnippet}
-                      </p>
-                    </div>
-                    <div className="rounded-xl bg-emerald-500/5 border border-emerald-500/15 p-3">
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 mb-1">Suggested</p>
-                      <p className="text-xs font-mono text-on-surface/80 whitespace-pre-wrap">
-                        {activeSuggestion.proposedText}
-                      </p>
-                    </div>
-                  </div>
-                  <button type="button" onClick={handleApply} className="btn-primary w-full sm:w-auto">
-                    <Check className="h-4 w-4" />
-                    Apply this fix
-                  </button>
-                </div>
-              )}
-            </>
-          ) : (
-            <p className="text-sm text-on-surface-variant">No weaknesses to fix — nice work.</p>
-          )}
-        </section>
+                )}
+              </>
+            ) : (
+              <div className="flex flex-1 items-center justify-center p-8 text-sm text-on-surface-variant">
+                Your resume has no issues to fix.
+              </div>
+            )}
+          </section>
 
-        {/* Right: live preview */}
-        <section className="rounded-2xl border border-outline-variant/40 bg-surface-card shadow-sm flex flex-col min-h-[420px] overflow-hidden">
-          <div className="flex items-center justify-between gap-2 border-b border-outline-variant/30 px-4 py-2.5">
-            <div className="inline-flex rounded-full bg-surface-container p-0.5">
-              <button
-                type="button"
-                onClick={() => setPreviewMode('updated')}
-                className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                  previewMode === 'updated' ? 'bg-primary text-on-primary' : 'text-on-surface-variant'
-                }`}
-              >
-                Updated{applied.length ? ` · ${applied.length}` : ''}
-              </button>
-              <button
-                type="button"
-                onClick={() => setPreviewMode('original')}
-                className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                  previewMode === 'original' ? 'bg-primary text-on-primary' : 'text-on-surface-variant'
-                }`}
-              >
-                Original
-              </button>
+          {/* Resume preview */}
+          <section className="flex min-h-[560px] min-w-0 flex-col overflow-hidden rounded-[1.25rem] border border-outline-variant/50 bg-surface-container-lowest shadow-card">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant/30 px-4 py-3.5 sm:px-5">
+              <div className="flex items-center gap-2">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <FileText className="h-4 w-4" />
+                </span>
+                <div>
+                  <h3 className="text-sm font-bold text-on-surface">Resume preview</h3>
+                  <p className="text-[10px] text-text-muted">Live preview · plain ATS-safe text</p>
+                </div>
+              </div>
+              <div className="inline-flex rounded-xl border border-outline-variant/50 bg-surface-container p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setPreviewMode('updated')}
+                  aria-pressed={previewMode === 'updated'}
+                  className={`cursor-pointer rounded-[0.6rem] px-3 py-1.5 text-xs font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 ${
+                    previewMode === 'updated'
+                      ? 'bg-surface-container-lowest text-primary shadow-sm'
+                      : 'text-on-surface-variant hover:text-on-surface'
+                  }`}
+                >
+                  Updated{applied.length ? ` (${applied.length})` : ''}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreviewMode('original')}
+                  aria-pressed={previewMode === 'original'}
+                  className={`cursor-pointer rounded-[0.6rem] px-3 py-1.5 text-xs font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 ${
+                    previewMode === 'original'
+                      ? 'bg-surface-container-lowest text-primary shadow-sm'
+                      : 'text-on-surface-variant hover:text-on-surface'
+                  }`}
+                >
+                  Original
+                </button>
+              </div>
             </div>
-            <span className="text-[11px] text-text-muted">In-session only</span>
-          </div>
-          <div className="flex-1 overflow-y-auto p-4 max-h-[62vh] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/5 via-transparent to-transparent">
-            <HighlightedResume
-              text={previewText}
-              highlight={previewMode === 'updated' ? lastHighlight : null}
-              mode={previewMode}
-            />
-          </div>
-          <div className="flex items-center gap-4 border-t border-outline-variant/30 px-4 py-2 text-[11px] text-text-muted">
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-amber-500" /> Needs fixing
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-primary" /> Fixed
-            </span>
-          </div>
-        </section>
+
+            <div className="flex-1 overflow-y-auto bg-surface-container/55 p-3 sm:p-5 2xl:max-h-[68vh]">
+              <div className="mx-auto min-h-full max-w-[680px] rounded-sm border border-outline-variant/35 bg-white px-5 py-7 shadow-[0_8px_30px_rgba(17,28,45,0.06)] sm:px-8 sm:py-9">
+                <HighlightedResume
+                  text={previewText}
+                  highlight={previewMode === 'updated' ? lastHighlight : null}
+                  mode={previewMode}
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-outline-variant/30 px-4 py-2.5 text-[10px] font-medium text-text-muted sm:px-5">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-amber-400 ring-2 ring-amber-400/15" />
+                Suggested text
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-primary ring-2 ring-primary/15" />
+                Applied change
+              </span>
+              <span className="ml-auto">Session only · copy when finished</span>
+            </div>
+          </section>
+        </div>
       </div>
     </div>
   );
