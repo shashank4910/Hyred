@@ -404,20 +404,31 @@ export function AtsCheckerWidget() {
         </div>
       )}
 
-      <button
-        onClick={copyResults}
-        className="w-full py-2.5 border rounded-lg text-sm font-medium hover:bg-gray-50 transition flex items-center justify-center gap-2"
-      >
-        {copied ? (
-          <>
-            <Check className="w-4 h-4 text-green-500" /> Copied!
-          </>
-        ) : (
-          <>
-            <Copy className="w-4 h-4" /> Copy results
-          </>
-        )}
-      </button>
+      <div className="space-y-3">
+        <a
+          href="/login?next=%2Fats-checker"
+          className="w-full py-3 bg-gradient-to-r from-[#006a65] to-[#2cc9c0] text-white font-semibold rounded-xl hover:opacity-90 transition flex items-center justify-center gap-2"
+        >
+          Sign in to open Fix Studio
+        </a>
+        <p className="text-center text-xs text-gray-500">
+          Free score here. Sign in to apply AI rewrites with live re-score.
+        </p>
+        <button
+          onClick={copyResults}
+          className="w-full py-2.5 border rounded-lg text-sm font-medium hover:bg-gray-50 transition flex items-center justify-center gap-2"
+        >
+          {copied ? (
+            <>
+              <Check className="w-4 h-4 text-green-500" /> Copied!
+            </>
+          ) : (
+            <>
+              <Copy className="w-4 h-4" /> Copy results
+            </>
+          )}
+        </button>
+      </div>
     </div>
   );
 }

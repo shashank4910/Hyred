@@ -1502,14 +1502,20 @@ export default function AtsCheckerPage() {
             style={{ animationDelay: '400ms', animationFillMode: 'both' }}
           >
             {studioResume.trim().length >= 50 && (
-              <button
-                type="button"
-                onClick={() => setView('fix-studio')}
-                className="flex-1 flex items-center justify-center gap-2 rounded-2xl bg-primary px-6 py-3 text-body-md font-semibold text-on-primary shadow-sm transition-all hover:bg-primary/90 hover:shadow-primary-glow"
-              >
-                <Sparkles className="h-4 w-4" />
-                Open Fix Studio
-              </button>
+              <div className="flex-1 space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setView('fix-studio')}
+                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-6 py-3 text-body-md font-semibold text-on-primary shadow-sm transition-all hover:bg-primary/90 hover:shadow-primary-glow"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  {result.overallScore < 80 ? 'Fix with AI — Open Fix Studio' : 'Open Fix Studio'}
+                </button>
+                <p className="text-center text-[11px] text-text-muted">
+                  Score stays free. AI suggestions use Resume Studio credits
+                  {result.overallScore < 80 ? ' — start with your biggest gaps.' : '.'}
+                </p>
+              </div>
             )}
             <button
               type="button"

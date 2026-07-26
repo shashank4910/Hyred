@@ -11,11 +11,11 @@ import {
   FileText,
   Loader2,
   RefreshCcw,
+  Save,
   ShieldCheck,
   Sparkles,
   Undo2,
   AlertTriangle,
-  Lock,
 } from 'lucide-react';
 import {
   checkAtsCompatibility,
@@ -30,6 +30,11 @@ import {
   type AtsFixSuggestion,
   type AtsFixWeakness,
 } from '@/lib/ats-fix';
+import { PremiumUpgradePanel } from '@/app/_components/PremiumUpgradePanel';
+import {
+  formatResumeStudioMeter,
+  type ResumeStudioUsage,
+} from '@/lib/premium-upgrade';
 
 type PreviewMode = 'updated' | 'original';
 
@@ -138,7 +143,12 @@ export function AtsFixStudio({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [quotaBlocked, setQuotaBlocked] = useState(false);
-  const [usageLabel, setUsageLabel] = useState<string | null>(null);
+  const [usage, setUsage] = useState<ResumeStudioUsage | null>(null);
+  const [plan, setPlan] = useState<string>('free');
+  const [hasGeneratedOnce, setHasGeneratedOnce] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [showSaveUpgrade, setShowSaveUpgrade] = useState(false);
   const [lastHighlight, setLastHighlight] = useState<{
     start: number;
     end: number;
@@ -167,6 +177,35 @@ export function AtsFixStudio({
   }, [activeSuggestion, workingResume, previewMode]);
 
   const scoreDelta = result.overallScore - baselineScore;
+  const meterLabel = usage ? formatResumeStudioMeter(usage, plan) : 'Checking credits…';
+  const scoreLiftProof =
+    applied.length > 0
+      ? `Your score moved ${baselineScore} → ${result.overallScore} with ${applied.length} applied change${applied.length === 1 ? '' : 's'}`
+      : null;
+
+  const refreshUsage = useCallback(async () => {
+    try {
+      const res = await fetch('/api/premium/usage');
+      if (!res.ok) return;
+      const data = await res.json();
+      setPlan(data.plan ?? 'free');
+      if (data.resume_studio) {
+        setUsage(data.resume_studio);
+        if (
+          data.resume_studio.remaining != null &&
+          data.resume_studio.remaining <= 0
+        ) {
+          setQuotaBlocked(true);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshUsage();
+  }, [refreshUsage]);
 
   const rescore = useCallback(
     (text: string) => {
@@ -181,6 +220,7 @@ export function AtsFixStudio({
     async (weakness: AtsFixWeakness, regenerate: boolean) => {
       setLoading(true);
       setError(null);
+      setShowSaveUpgrade(false);
       try {
         const res = await fetch('/api/ats-fix', {
           method: 'POST',
@@ -200,8 +240,8 @@ export function AtsFixStudio({
         const data = await res.json();
         if (res.status === 402) {
           setQuotaBlocked(true);
-          setError(data.message ?? 'Resume Studio quota used up.');
           setSuggestions([]);
+          if (data.usage) setUsage(data.usage);
           return;
         }
         if (!res.ok) {
@@ -211,9 +251,8 @@ export function AtsFixStudio({
         const list = (data.suggestions ?? []) as AtsFixSuggestion[];
         setSuggestions(list);
         setActiveIdx(0);
-        if (data.usage?.limit != null) {
-          setUsageLabel(`${data.usage.remaining ?? 0} of ${data.usage.limit} Resume Studio fixes left`);
-        }
+        setHasGeneratedOnce(true);
+        if (data.usage) setUsage(data.usage);
         if (list[0]) {
           const range = findSnippetRange(workingResume, list[0].originalSnippet);
           if (range) {
@@ -237,6 +276,7 @@ export function AtsFixStudio({
     setActiveIdx(0);
     setError(null);
     setLastHighlight(null);
+    setShowSaveUpgrade(false);
   };
 
   const handleApply = () => {
@@ -272,11 +312,38 @@ export function AtsFixStudio({
     setTimeout(() => setCopied(false), 1500);
   };
 
+  const handleSaveToProfile = async () => {
+    setSaveMessage(null);
+    setShowSaveUpgrade(false);
+    if (plan === 'free') {
+      setShowSaveUpgrade(true);
+      return;
+    }
+    setSavingProfile(true);
+    try {
+      const res = await fetch('/api/profile/resume', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resume_text: workingResume }),
+      });
+      const data = await res.json();
+      if (res.status === 402) {
+        setShowSaveUpgrade(true);
+        return;
+      }
+      if (!res.ok) throw new Error(data.error || 'Could not save resume.');
+      setSaveMessage(data.message ?? 'Resume saved to your Hyred profile.');
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
   const previewText = previewMode === 'original' ? originalResume : workingResume;
 
   return (
     <div className="space-y-5 animate-slide-up">
-      {/* Product header */}
       <header className="overflow-hidden rounded-[1.5rem] border border-outline-variant/50 bg-surface-container-lowest shadow-card">
         <div className="flex flex-col gap-4 px-5 py-5 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-start gap-3">
@@ -301,6 +368,7 @@ export function AtsFixStudio({
               <p className="mt-1 max-w-xl text-sm text-on-surface-variant">
                 Review each weakness, approve only the changes you want, and watch your score improve.
               </p>
+              <p className="mt-2 text-[11px] font-semibold text-primary">{meterLabel}</p>
             </div>
           </div>
 
@@ -316,6 +384,16 @@ export function AtsFixStudio({
             >
               <Undo2 className="h-4 w-4" />
               Undo
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveToProfile}
+              disabled={savingProfile || workingResume === originalResume}
+              className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-xl border border-outline-variant/50 px-3 text-sm font-semibold text-on-surface-variant transition-colors hover:border-primary/30 hover:text-primary focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/15 disabled:cursor-not-allowed disabled:opacity-40"
+              title="Save to Hyred profile (Premium)"
+            >
+              {savingProfile ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Save
             </button>
             <button
               type="button"
@@ -343,13 +421,18 @@ export function AtsFixStudio({
           </span>
           <span className="ml-auto inline-flex items-center gap-1.5 text-text-muted">
             <ShieldCheck className="h-3.5 w-3.5 text-primary" />
-            Nothing is saved automatically
+            Apply never uses a credit · session only until you copy or save
           </span>
         </div>
       </header>
 
+      {saveMessage && (
+        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-800">
+          {saveMessage}
+        </div>
+      )}
+
       <div className="grid items-start gap-5 xl:grid-cols-[248px_minmax(0,1fr)]">
-        {/* Issue navigator */}
         <aside className="overflow-hidden rounded-[1.25rem] border border-outline-variant/50 bg-surface-container-lowest shadow-card xl:sticky xl:top-24">
           <div className="border-b border-outline-variant/30 px-4 py-3.5">
             <p className="text-sm font-bold text-on-surface">Resume health</p>
@@ -442,9 +525,36 @@ export function AtsFixStudio({
         </aside>
 
         <div className="grid min-w-0 gap-5 2xl:grid-cols-[minmax(360px,0.9fr)_minmax(420px,1.1fr)]">
-          {/* Fix workspace */}
           <section className="flex min-h-[500px] min-w-0 flex-col overflow-hidden rounded-[1.25rem] border border-outline-variant/50 bg-surface-container-lowest shadow-card">
-            {selected ? (
+            {quotaBlocked || showSaveUpgrade ? (
+              <div className="flex flex-1 flex-col justify-center p-5 sm:p-6">
+                <PremiumUpgradePanel
+                  feature="resume_studio"
+                  proof={scoreLiftProof}
+                  secondaryLabel="Copy current resume"
+                  onSecondary={handleCopy}
+                  headline={
+                    showSaveUpgrade && !quotaBlocked
+                      ? 'Saving to your Hyred resume is Premium'
+                      : undefined
+                  }
+                  description={
+                    showSaveUpgrade && !quotaBlocked
+                      ? 'Copy your fixes anytime for free. Premium lets you replace your master Hyred resume from Fix Studio.'
+                      : undefined
+                  }
+                />
+                {showSaveUpgrade && !quotaBlocked && (
+                  <button
+                    type="button"
+                    onClick={() => setShowSaveUpgrade(false)}
+                    className="mt-3 text-sm font-semibold text-on-surface-variant hover:text-primary"
+                  >
+                    Back to editing
+                  </button>
+                )}
+              </div>
+            ) : selected ? (
               <>
                 <div className="border-b border-outline-variant/30 px-5 py-5 sm:px-6">
                   <div className="flex flex-wrap items-center gap-2">
@@ -463,6 +573,12 @@ export function AtsFixStudio({
                     </span>
                     {selected.score != null && (
                       <span className="text-xs font-semibold text-text-muted">{selected.score}/100</span>
+                    )}
+                    {scoreDelta !== 0 && (
+                      <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                        Session {scoreDelta > 0 ? '+' : ''}
+                        {scoreDelta} pts
+                      </span>
                     )}
                   </div>
                   <h2 className="mt-2 font-headline text-xl font-bold tracking-tight text-on-surface">
@@ -554,7 +670,7 @@ export function AtsFixStudio({
                     <div className="mt-auto flex flex-col-reverse gap-2 border-t border-outline-variant/30 pt-5 sm:flex-row sm:items-center sm:justify-between">
                       <button
                         type="button"
-                        disabled={loading || quotaBlocked}
+                        disabled={loading}
                         onClick={() => fetchSuggestions(selected, true)}
                         className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold text-on-surface-variant transition-colors hover:bg-surface-container hover:text-primary focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/15 disabled:cursor-not-allowed disabled:opacity-50"
                       >
@@ -587,24 +703,22 @@ export function AtsFixStudio({
                     {!loading && (
                       <button
                         type="button"
-                        disabled={quotaBlocked}
                         onClick={() => fetchSuggestions(selected, false)}
-                        className="mt-5 inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-semibold text-on-primary shadow-primary-glow transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="mt-5 inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-semibold text-on-primary shadow-primary-glow transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/20"
                       >
                         <Sparkles className="h-4 w-4" />
                         Generate suggestions
                       </button>
                     )}
-                    <p className="mt-3 text-[11px] text-text-muted">
-                      {usageLabel ?? 'Uses 1 Resume Studio credit'}
-                    </p>
-                    {quotaBlocked && (
-                      <p className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-800">
-                        <Lock className="h-3.5 w-3.5" />
-                        Resume Studio quota reached
+                    {!hasGeneratedOnce && !loading && (
+                      <p className="mt-3 max-w-xs text-[11px] leading-relaxed text-text-muted">
+                        Uses 1 Resume Studio credit. Changes stay in this session until you copy or save them.
                       </p>
                     )}
-                    {error && !quotaBlocked && (
+                    {hasGeneratedOnce && !loading && (
+                      <p className="mt-3 text-[11px] text-text-muted">{meterLabel}</p>
+                    )}
+                    {error && (
                       <div role="alert" className="mt-4 flex max-w-md items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/5 px-3 py-2.5 text-left text-sm text-red-700">
                         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                         {error}
@@ -620,7 +734,6 @@ export function AtsFixStudio({
             )}
           </section>
 
-          {/* Resume preview */}
           <section className="flex min-h-[560px] min-w-0 flex-col overflow-hidden rounded-[1.25rem] border border-outline-variant/50 bg-surface-container-lowest shadow-card">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant/30 px-4 py-3.5 sm:px-5">
               <div className="flex items-center gap-2">
@@ -679,7 +792,7 @@ export function AtsFixStudio({
                 <span className="h-2 w-2 rounded-full bg-primary ring-2 ring-primary/15" />
                 Applied change
               </span>
-              <span className="ml-auto">Session only · copy when finished</span>
+              <span className="ml-auto">Session only · copy or save when finished</span>
             </div>
           </section>
         </div>

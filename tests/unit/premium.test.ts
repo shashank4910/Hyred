@@ -15,12 +15,17 @@ describe('quotaLimitForPlan', () => {
 });
 
 describe('quotaWindowKind', () => {
+  it('uses lifetime for free Resume Studio / Fix Studio credits', () => {
+    expect(quotaWindowKind('free', 'resume_studio')).toBe('lifetime');
+  });
+
   it('uses lifetime for the free interview prep sample', () => {
     expect(quotaWindowKind('free', 'interview_prep')).toBe('lifetime');
   });
 
   it('uses billing_cycle for paid features', () => {
     expect(quotaWindowKind('premium_monthly', 'interview_prep')).toBe('billing_cycle');
+    expect(quotaWindowKind('premium_sprint', 'resume_studio')).toBe('billing_cycle');
   });
 });
 

@@ -35,7 +35,7 @@ const NAV: {
   { href: '/dream-alerts', label: 'Dream Alerts', icon: BellRing },
   { href: '/ats-checker', label: 'ATS Checker', icon: Search },
   { href: '/top-mnc', label: 'Top MNCs', icon: Building2, premium: true },
-  { href: '/apply-profile', label: 'Settings', icon: Settings },
+  { href: '/settings', label: 'Settings', icon: Settings },
   { href: '/import', label: 'Import', icon: Link2, desktopOnly: true },
   { href: '/admin', label: 'Admin', icon: Shield, admin: true },
 ];
