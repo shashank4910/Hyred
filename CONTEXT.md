@@ -107,7 +107,12 @@ app/_components/
   LegalDocumentLayout.tsx / LegalFooterLinks.tsx ← public /privacy, /terms only
 
 app/(app)/ats-checker/
-  page.tsx               ← ATS Resume Checker (animated score ring, radar chart, JD comparison, sample data, keyboard shortcuts, score history, copy results)
+  page.tsx               ← ATS Resume Checker (score ring, radar, JD, Fix Studio entry)
+  AtsFixStudio.tsx       ← AI Fix Studio + Resume Studio credit meter + paywall panel
+app/(app)/settings/
+  page.tsx               ← Plan + Resume Studio usage + upgrade placeholder
+app/_components/
+  PremiumUpgradePanel.tsx ← Shared Premium hard-wall / upgrade CTA
 
 lib/
   ats-checker.ts         ← Pure deterministic ATS scoring engine (8 criteria, regex/heuristic, zero LLM)
@@ -1128,11 +1133,15 @@ preferences.locations + resume current_location
 |---|---|---|---|
 | Match Intelligence | 0 (locked) | 9999/cycle | `GET/POST /api/match/[id]/verdict` |
 | Interview Prep Pack | 1 lifetime | 8/cycle | `GET/POST /api/match/[id]/prep` |
-| Resume Studio Pro | 3/month | 40/cycle | `POST /api/match/[id]/resume` (+ `resume_versions` on GET) |
+| Resume Studio Pro | **3 lifetime** (until Stripe cycles) | 40/cycle | `POST /api/match/[id]/resume` **and** `POST /api/ats-fix` (shared ledger) |
 
-**UI:** `JobActions.tsx` — verdict card, prep card, collapsible resume version list; 402 → premium toast.
+**Shared Resume Studio credits:** job-detail tailored resumes + ATS **Fix Studio** generate/regenerate each consume 1 `resume_studio` event. Apply/undo/copy in Fix Studio are free. Usage meter: `GET /api/premium/usage` + Settings page `/settings`.
 
-**Not built yet:** Stripe checkout, subscription management UI, Tier 2 (Smart Scan Plus, Autofill Pro).
+**Paywall UX:** `app/_components/PremiumUpgradePanel.tsx` — Fix Studio hard-wall when remaining is 0; job-detail 402 toast links to `/settings?upgrade=resume_studio`. Stripe checkout not wired yet (placeholder Settings CTA).
+
+**UI:** `JobActions.tsx` — verdict card, prep card, collapsible resume version list; 402 → premium toast + Upgrade. Fix Studio: `AtsFixStudio.tsx`.
+
+**Not built yet:** Stripe checkout, subscription management, Tier 2 (Smart Scan Plus, Autofill Pro). Premium-only: save Fix Studio resume to profile via `POST /api/profile/resume`.
 
 **Dev testing premium:** insert `premium_subscriptions` row for your `profile_id` with `plan = 'premium_sprint'`, `status = 'active'`.
 
@@ -1432,6 +1441,20 @@ supabase/migrations/0009_llm_keys.sql ← (Session 16) llm_keys + llm_usage_log 
 
 Pastes or uploads a resume → analyses 8 ATS criteria → gives 0–100 score + improvement suggestions. Zero LLM calls, zero API costs, fully private (in-memory processing). Optional JD paste → keyword gap analysis (`jdMatch`).
 
+### Resume Fix Studio (logged-in)
+
+After a score, **Open Fix Studio** on `/ats-checker` opens a three-pane workspace (weaknesses → AI patch suggest/regenerate/apply → live Original/Updated preview with instant re-score).
+
+| Piece | Role |
+|---|---|
+| `app/(app)/ats-checker/AtsFixStudio.tsx` | Fix Studio UI + credit meter + hard paywall panel |
+| `lib/ats-fix.ts` | Weakness list, apply/undo, snippet matching |
+| `lib/ats-fix-suggest.ts` | LLM patch suggestions |
+| `POST /api/ats-fix` | Auth + `resume_studio` quota (shared with job Resume Studio) |
+| Public widget | Score only + **Sign in to open Fix Studio** CTA |
+
+Credits: generate/regenerate cost 1 Resume Studio credit each; apply/undo/copy do not. Free allotment is **3 lifetime** until Stripe billing cycles exist (`quotaWindowKind('free','resume_studio') === 'lifetime'`).
+
 ### 8 criteria checked
 
 | # | Criterion | Weight | What it checks |
@@ -1452,9 +1475,12 @@ Pastes or uploads a resume → analyses 8 ATS criteria → gives 0–100 score +
 | `lib/ats-checker.ts` | Scoring engine — `checkAtsCompatibility()`, `keywordInText()`, `extractKeywords()`, `compareWithJobDescription()` |
 | `lib/ats-checker-samples.ts` | Shared sample resume + JD (India perf engineer) for Try sample buttons |
 | `app/api/ats-checker/route.ts` | API endpoint — accepts file upload or JSON with optional `job_description` |
-| `app/(app)/ats-checker/page.tsx` | Logged-in UI — score ring, radar chart, JD match, history, keyboard shortcuts |
-| `app/free-tools/ats-score-checker/AtsCheckerWidget.tsx` | Public widget — upload/paste, Try sample, JD match, parse warnings |
+| `app/(app)/ats-checker/page.tsx` | Logged-in UI — score ring, radar chart, JD match, history, Fix Studio entry |
+| `app/(app)/ats-checker/AtsFixStudio.tsx` | AI Fix Studio (suggest / apply / undo / paywall) |
+| `app/free-tools/ats-score-checker/AtsCheckerWidget.tsx` | Public widget — upload/paste, Try sample, JD match, Sign-in CTA |
+| `app/(app)/settings/page.tsx` | Plan + Resume Studio credit meter + upgrade placeholder |
 | `tests/unit/ats-checker.test.ts` | Engine tests (55 total with API route tests) |
+| `tests/unit/ats-fix.test.ts` | Apply/undo + weakness list tests |
 
 ### Features (PR #129 + #187)
 

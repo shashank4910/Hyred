@@ -348,7 +348,15 @@ export function JobActions({
       });
       const data = await res.json();
       if (res.status === 402) {
-        toast.error('Resume optimization quota reached. Upgrade to generate more versions.', { id });
+        toast.error('Resume Studio credits used up. Upgrade for more tailored resumes and Fix Studio rewrites.', {
+          id,
+          action: {
+            label: 'Upgrade',
+            onClick: () => {
+              window.location.href = '/settings?upgrade=resume_studio';
+            },
+          },
+        });
         return;
       }
       if (!res.ok) throw new Error(data.error || 'Failed');

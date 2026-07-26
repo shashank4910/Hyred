@@ -19,6 +19,9 @@ export function quotaLimitForPlan(plan: PremiumPlan, feature: PremiumFeatureKey)
 }
 
 export function quotaWindowKind(plan: PremiumPlan, feature: PremiumFeatureKey): QuotaWindowKind {
+  // Free Resume Studio / Fix Studio: 3 lifetime credits until Stripe billing
+  // cycles exist. Paid plans use the subscription cycle window.
+  if (plan === 'free' && feature === 'resume_studio') return 'lifetime';
   if (plan === 'free' && feature === 'interview_prep') return 'lifetime';
   if (plan === 'free' && feature === 'match_intelligence') return 'lifetime';
   return 'billing_cycle';

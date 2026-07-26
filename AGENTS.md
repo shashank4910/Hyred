@@ -38,7 +38,8 @@ How to open one section cheaply: `grep -n "<heading text>" CONTEXT.md` to get th
 | **Import job (manual URL)** | `CONTEXT.md` → `### Import job` | `/import`, `/api/import-job` |
 | **Outreach / referral messages** | `CONTEXT.md` → `### Outreach` + `lib/gemini.ts` `generateOutreachMessage` | `ReferralRadar.tsx`, `/api/match/[id]/outreach` |
 | **Cover letter generation** | `CONTEXT.md` → `### Job detail` + `app/api/coverletter/route.ts` | job detail page |
-| **Premium Tier 1** (Match Intelligence, Interview Prep, Resume Studio Pro) | `CONTEXT.md` → `### Premium Tier 1` + `docs/features-jun26-to-be-built.md` + `lib/premium.ts` + migration **0015** | verdict/prep/resume APIs, quotas, `JobActions.tsx` |
+| **Premium Tier 1** (Match Intelligence, Interview Prep, Resume Studio Pro) | `CONTEXT.md` → `### Premium Tier 1` + `docs/features-jun26-to-be-built.md` + `lib/premium.ts` + migration **0015** | verdict/prep/resume APIs, quotas, `JobActions.tsx`, `/settings` usage |
+| **ATS Fix Studio** (suggest / apply / paywall) | `CONTEXT.md` → `## ATS Resume Checker` → Fix Studio + `AtsFixStudio.tsx` + `POST /api/ats-fix` (shares `resume_studio`) | Fix Studio UI, credits, upgrade panel |
 | **Apply profile form** | `CONTEXT.md` → `### Apply profile` + AI Auto-Apply section + Known Pitfalls (owner PII rows) | `/apply-profile`, extension autofill source |
 | **Current UI / design tokens / Stitch / UI PRs** | `CONTEXT.md` → `## UI & Design System` | any frontend styling, layout, or UX work |
 | Multi-tenant plan & phase status | `CONTEXT.md` → `## ⭐ ACTIVE INITIATIVE` → `### Progress Tracker` | planning the next phase |

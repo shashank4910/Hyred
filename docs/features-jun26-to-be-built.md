@@ -233,14 +233,18 @@ This is proven paid behavior. It is not the main moat by itself, but it is a str
 - no rewrite-everything mode that ignores resume truth
 
 **Free tier**
-- 3 tailored resumes per month
+- 3 Resume Studio credits **lifetime** until Stripe billing cycles exist (then align to per-cycle)
+- Shared with ATS **Fix Studio** generate/regenerate (`POST /api/ats-fix`)
 
 **Premium**
-- 40 tailored resumes per billing cycle
+- 40 Resume Studio credits per billing cycle
 - saved version history
+- Save Fix Studio resume to profile (`POST /api/profile/resume`)
 
-**Primary surface**
-- job detail page
+**Primary surfaces**
+- job detail page (tailored resume)
+- `/ats-checker` Fix Studio (patch apply)
+- `/settings` credit meter + upgrade placeholder (`?upgrade=resume_studio`)
 
 ---
 
