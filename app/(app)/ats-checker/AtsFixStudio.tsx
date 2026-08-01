@@ -247,7 +247,10 @@ export function AtsFixStudio({
   const [baselineScore] = useState(initialResult.overallScore);
   const [result, setResult] = useState(initialResult);
   const [applied, setApplied] = useState<AppliedFix[]>([]);
-  const [previewMode, setPreviewMode] = useState<PreviewMode>('updated');
+  // Open on the real uploaded file when we have one, so users see their CV first.
+  const [previewMode, setPreviewMode] = useState<PreviewMode>(
+    originalFile ? 'original' : 'updated',
+  );
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<AtsFixSuggestion[]>([]);
   const [activeIdx, setActiveIdx] = useState(0);
