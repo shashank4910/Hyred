@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
       missingKeyword: body.missing_keyword,
       jobDescription: body.job_description,
       avoidProposed: Array.isArray(body.avoid_proposed)
-        ? body.avoid_proposed.map(String).slice(0, 5)
+        ? body.avoid_proposed.map(String).slice(0, 8)
         : undefined,
       profileId: profile.id,
     });

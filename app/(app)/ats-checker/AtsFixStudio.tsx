@@ -58,7 +58,11 @@ export function AtsFixStudio({
       .map((w) => w.id),
   );
   const [finished, setFinished] = useState(false);
-  const [justFixed, setJustFixed] = useState<{ label: string; delta: number } | null>(null);
+  const [justFixed, setJustFixed] = useState<{
+    label: string;
+    delta: number;
+    complete: boolean;
+  } | null>(null);
   const [suggestions, setSuggestions] = useState<AtsFixSuggestion[]>([]);
   const [activeIdx, setActiveIdx] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -164,9 +168,12 @@ export function AtsFixStudio({
             feedback: weakness.feedback,
             missing_keyword: weakness.missingKeyword,
             job_description: jobDescription || undefined,
-            avoid_proposed: regenerate
-              ? suggestions.map((s) => s.proposedText).slice(0, 5)
-              : undefined,
+            avoid_proposed: [
+              ...(regenerate ? suggestions.map((s) => s.proposedText) : []),
+              ...applied
+                .filter((a) => a.suggestion.weaknessId === weakness.id)
+                .map((a) => a.suggestion.proposedText),
+            ].slice(0, 8),
           }),
         });
         const data = await res.json();
@@ -197,7 +204,7 @@ export function AtsFixStudio({
         setLoading(false);
       }
     },
-    [workingResume, jobDescription, suggestions],
+    [workingResume, jobDescription, suggestions, applied],
   );
 
   const onSelectWeakness = (w: AtsFixWeakness) => {
@@ -215,19 +222,24 @@ export function AtsFixStudio({
     if (w) onSelectWeakness(w);
   };
 
-  const advanceAfter = useCallback(
-    (id: string, mark: 'fixed' | 'skipped') => {
-      const nextStatus = { ...statusById, [id]: mark };
-      setStatusById(nextStatus);
-      const remaining = needsWork.filter((w) => !nextStatus[w.id]);
-      if (remaining.length === 0) {
-        setFinished(true);
-      } else {
-        onSelectWeakness(remaining[0]!);
-      }
-    },
-    [statusById, needsWork],
-  );
+  /** Mark an item done/skipped and move focus to the next open section. */
+  const advanceAfter = (
+    id: string,
+    mark: 'fixed' | 'skipped',
+    freshWeaknesses?: AtsFixWeakness[],
+  ) => {
+    const nextStatus = { ...statusById, [id]: mark };
+    setStatusById(nextStatus);
+    const list = freshWeaknesses ?? weaknesses;
+    const remaining = list.filter(
+      (w) => w.status === 'needs_work' && !nextStatus[w.id],
+    );
+    if (remaining.length === 0) {
+      setFinished(true);
+    } else {
+      onSelectWeakness(remaining[0]!);
+    }
+  };
 
   const handleApply = () => {
     if (!activeSuggestion || !selected) return;
@@ -237,16 +249,33 @@ export function AtsFixStudio({
       setError(outcome.error);
       return;
     }
-    const fixedWeakness = selected;
-    setApplied((prev) => [...prev, { suggestion: activeSuggestion, beforeResume: before }]);
+    const section = selected;
+    const appliedSuggestion = activeSuggestion;
+    setApplied((prev) => [...prev, { suggestion: appliedSuggestion, beforeResume: before }]);
     setWorkingResume(outcome.resume);
     const next = rescore(outcome.resume);
     const delta = next.overallScore - result.overallScore;
     setLastHighlight({ start: outcome.start, end: outcome.end, kind: 'fixed' });
-    setActiveIdx(0);
     setError(null);
-    setJustFixed({ label: fixedWeakness.label, delta });
-    advanceAfter(fixedWeakness.id, 'fixed');
+
+    // Re-check this section against the fresh score. Only move on when it passes.
+    const freshWeaknesses = listAtsWeaknesses(next);
+    const sectionStillWeak = freshWeaknesses.some(
+      (w) => w.id === section.id && w.status === 'needs_work',
+    );
+
+    if (!sectionStillWeak) {
+      // Section is now green → mark fixed and jump to the next open one.
+      setJustFixed({ label: section.label, delta, complete: true });
+      setSuggestions([]);
+      setActiveIdx(0);
+      advanceAfter(section.id, 'fixed', freshWeaknesses);
+    } else {
+      // Still work to do here → stay on the section, keep going with remaining fixes.
+      setJustFixed({ label: section.label, delta, complete: false });
+      setSuggestions((prev) => prev.filter((s) => s.id !== appliedSuggestion.id));
+      setActiveIdx(0);
+    }
   };
 
   const handleSkip = () => {
@@ -364,15 +393,17 @@ export function AtsFixStudio({
           )}
 
           {justFixed && (
-            <div className="flex items-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-800 animate-slide-up">
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-800 animate-slide-up">
               <span className="text-lg leading-none">✓</span>
-              Applied to “{justFixed.label}”.
-              {justFixed.delta > 0 ? (
+              {justFixed.complete ? (
+                <>“{justFixed.label}” is now in good shape — moving to the next section.</>
+              ) : (
+                <>Change applied to “{justFixed.label}”. Keep going to turn it green.</>
+              )}
+              {justFixed.delta > 0 && (
                 <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs font-bold">
                   +{justFixed.delta} pts
                 </span>
-              ) : (
-                <span className="font-normal text-emerald-700">Moving to the next issue.</span>
               )}
             </div>
           )}

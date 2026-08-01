@@ -46,6 +46,20 @@ function statusMeta(status: AtsReportCheck['status']): {
 
 type FixState = 'fixed' | 'skipped';
 
+/**
+ * 4-level gradient by live score so a section visibly climbs
+ * red → amber → light green → green as it gets fixed.
+ */
+function scoreTier(score: number): { icon: string; badge: string; label: string; Icon: typeof CheckCircle2 } {
+  if (score >= 85)
+    return { icon: 'text-emerald-500', badge: 'bg-emerald-500/15 text-emerald-700', label: 'Strong', Icon: CheckCircle2 };
+  if (score >= 75)
+    return { icon: 'text-lime-500', badge: 'bg-lime-500/15 text-lime-700', label: 'Good', Icon: CheckCircle2 };
+  if (score >= 50)
+    return { icon: 'text-amber-500', badge: 'bg-amber-500/12 text-amber-800', label: 'Improving', Icon: AlertTriangle };
+  return { icon: 'text-red-500', badge: 'bg-red-500/10 text-red-700', label: 'Urgent', Icon: AlertCircle };
+}
+
 function CheckRow({
   check,
   selected,
@@ -59,30 +73,26 @@ function CheckRow({
 }) {
   const meta = statusMeta(check.status);
   const clickable = Boolean(onSelect) && check.status !== 'locked' && Boolean(check.weaknessId);
-  const Icon = fixState === 'fixed' ? CheckCircle2 : meta.Icon;
 
-  const badge =
-    fixState === 'fixed'
-      ? { label: 'Fixed', cls: 'bg-emerald-500/15 text-emerald-700' }
-      : fixState === 'skipped'
-        ? { label: 'Skipped', cls: 'bg-surface-container text-text-muted' }
-        : { label: meta.label, cls: meta.badge };
+  // Prefer live-score gradient when the check carries a score and isn't locked.
+  const tier =
+    check.status !== 'locked' && typeof check.score === 'number' ? scoreTier(check.score) : null;
+
+  let Icon = tier ? tier.Icon : meta.Icon;
+  let iconColor = tier ? tier.icon : check.status === 'pass' ? 'text-emerald-500' : check.status === 'warn' ? 'text-amber-500' : check.status === 'fail' ? 'text-red-500' : 'text-text-muted';
+  let badge = tier ? { label: tier.label, cls: tier.badge } : { label: meta.label, cls: meta.badge };
+
+  if (fixState === 'fixed') {
+    Icon = CheckCircle2;
+    iconColor = 'text-emerald-500';
+    badge = { label: 'Fixed', cls: 'bg-emerald-500/15 text-emerald-700' };
+  } else if (fixState === 'skipped') {
+    badge = { label: 'Skipped', cls: 'bg-surface-container text-text-muted' };
+  }
 
   const body = (
     <>
-      <Icon
-        className={`mt-0.5 h-4 w-4 shrink-0 ${
-          fixState === 'fixed'
-            ? 'text-emerald-500'
-            : check.status === 'pass'
-              ? 'text-emerald-500'
-              : check.status === 'warn'
-                ? 'text-amber-500'
-                : check.status === 'fail'
-                  ? 'text-red-500'
-                  : 'text-text-muted'
-        }`}
-      />
+      <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${iconColor}`} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
           <span
