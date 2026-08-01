@@ -469,6 +469,10 @@ export default function AtsCheckerPage() {
   const [studioResume, setStudioResume] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [filename, setFilename] = useState<string | null>(null);
+  // Original uploaded file so Fix Studio can show the real CV, not a re-render.
+  const [originalFile, setOriginalFile] = useState<
+    { url: string; kind: 'pdf' | 'image' } | null
+  >(null);
   const [dragOver, setDragOver] = useState(false);
   const [copied, setCopied] = useState(false);
   const [history, setHistory] = useState<ScoreHistoryItem[]>([]);
@@ -569,6 +573,15 @@ export default function AtsCheckerPage() {
     }
     setResumeWordCount(500);
     setFilename(file.name);
+    // Keep a viewable copy of the real document for the Original preview.
+    setOriginalFile((prev) => {
+      if (prev) URL.revokeObjectURL(prev.url);
+      const isPdf = /\.pdf$/i.test(file.name) || file.type === 'application/pdf';
+      const isImage = file.type.startsWith('image/');
+      if (isPdf) return { url: URL.createObjectURL(file), kind: 'pdf' };
+      if (isImage) return { url: URL.createObjectURL(file), kind: 'image' };
+      return null; // doc/docx/txt have no faithful client render
+    });
     handleCheck(undefined as unknown as string, file, jobDescriptionText);
   }, [handleCheck, jobDescriptionText]);
 
@@ -622,6 +635,10 @@ export default function AtsCheckerPage() {
     setStudioResume('');
     setError(null);
     setFilename(null);
+    setOriginalFile((prev) => {
+      if (prev) URL.revokeObjectURL(prev.url);
+      return null;
+    });
     setCopied(false);
     setExpandedCriterion(null);
   }, []);
@@ -890,6 +907,8 @@ export default function AtsCheckerPage() {
           initialResume={studioResume}
           initialResult={result}
           jobDescription={jobDescriptionText || undefined}
+          originalFile={originalFile}
+          originalFilename={filename}
           onClose={(next) => {
             if (next) {
               setStudioResume(next.resume);
