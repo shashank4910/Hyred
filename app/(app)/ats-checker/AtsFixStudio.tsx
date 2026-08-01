@@ -18,6 +18,8 @@ import { AtsReportRail } from '@/app/_components/ats-report/AtsReportRail';
 import { AtsResumeTwinPreview } from '@/app/_components/ats-report/AtsResumeTwinPreview';
 import { AtsStudioHeader } from '@/app/_components/ats-report/AtsStudioHeader';
 import { AtsBeforeAfterCard } from '@/app/_components/ats-report/AtsBeforeAfterCard';
+import { AtsFixProgress } from '@/app/_components/ats-report/AtsFixProgress';
+import { AtsFinishScreen } from '@/app/_components/ats-report/AtsFinishScreen';
 import { HyredResumePreview } from '@/app/_components/ats-report/HyredResumePreview';
 import { useSetPreviewFocusMode } from '@/app/_components/ats-report/preview-focus';
 import { buildAtsReport, type AtsReportCheck } from '@/lib/ats-report';
@@ -49,6 +51,14 @@ export function AtsFixStudio({
   const [result, setResult] = useState(initialResult);
   const [applied, setApplied] = useState<AppliedFix[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [statusById, setStatusById] = useState<Record<string, 'fixed' | 'skipped'>>({});
+  const [initialIssueIds] = useState<string[]>(() =>
+    listAtsWeaknesses(initialResult)
+      .filter((w) => w.status === 'needs_work')
+      .map((w) => w.id),
+  );
+  const [finished, setFinished] = useState(false);
+  const [justFixed, setJustFixed] = useState<{ label: string; delta: number } | null>(null);
   const [suggestions, setSuggestions] = useState<AtsFixSuggestion[]>([]);
   const [activeIdx, setActiveIdx] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -69,6 +79,10 @@ export function AtsFixStudio({
 
   const weaknesses = useMemo(() => listAtsWeaknesses(result), [result]);
   const needsWork = weaknesses.filter((w) => w.status === 'needs_work');
+  const pending = needsWork.filter((w) => !statusById[w.id]);
+  const fixedCount = Object.values(statusById).filter((s) => s === 'fixed').length;
+  const skippedCount = Object.values(statusById).filter((s) => s === 'skipped').length;
+  const skippedItems = weaknesses.filter((w) => statusById[w.id] === 'skipped');
   const isPremium = plan !== 'free';
   const report = useMemo(
     () => buildAtsReport(result, workingResume, { isPremium }),
@@ -76,7 +90,7 @@ export function AtsFixStudio({
   );
 
   const selected: AtsFixWeakness | null =
-    weaknesses.find((w) => w.id === selectedId) ?? needsWork[0] ?? weaknesses[0] ?? null;
+    weaknesses.find((w) => w.id === selectedId) ?? pending[0] ?? needsWork[0] ?? weaknesses[0] ?? null;
 
   useEffect(() => {
     if (!selectedId && selected) setSelectedId(selected.id);
@@ -118,6 +132,12 @@ export function AtsFixStudio({
   useEffect(() => {
     void refreshUsage();
   }, [refreshUsage]);
+
+  useEffect(() => {
+    if (!justFixed) return;
+    const t = setTimeout(() => setJustFixed(null), 2600);
+    return () => clearTimeout(t);
+  }, [justFixed]);
 
   const rescore = useCallback(
     (text: string) => {
@@ -195,21 +215,57 @@ export function AtsFixStudio({
     if (w) onSelectWeakness(w);
   };
 
+  const advanceAfter = useCallback(
+    (id: string, mark: 'fixed' | 'skipped') => {
+      const nextStatus = { ...statusById, [id]: mark };
+      setStatusById(nextStatus);
+      const remaining = needsWork.filter((w) => !nextStatus[w.id]);
+      if (remaining.length === 0) {
+        setFinished(true);
+      } else {
+        onSelectWeakness(remaining[0]!);
+      }
+    },
+    [statusById, needsWork],
+  );
+
   const handleApply = () => {
-    if (!activeSuggestion) return;
+    if (!activeSuggestion || !selected) return;
     const before = workingResume;
     const outcome = applySuggestion(workingResume, activeSuggestion);
     if (!outcome.ok) {
       setError(outcome.error);
       return;
     }
+    const fixedWeakness = selected;
     setApplied((prev) => [...prev, { suggestion: activeSuggestion, beforeResume: before }]);
     setWorkingResume(outcome.resume);
-    rescore(outcome.resume);
+    const next = rescore(outcome.resume);
+    const delta = next.overallScore - result.overallScore;
     setLastHighlight({ start: outcome.start, end: outcome.end, kind: 'fixed' });
-    setSuggestions((prev) => prev.filter((s) => s.id !== activeSuggestion.id));
     setActiveIdx(0);
     setError(null);
+    setJustFixed({ label: fixedWeakness.label, delta });
+    advanceAfter(fixedWeakness.id, 'fixed');
+  };
+
+  const handleSkip = () => {
+    if (!selected) return;
+    setJustFixed(null);
+    advanceAfter(selected.id, 'skipped');
+  };
+
+  const handleDownload = () => {
+    const blob = new Blob([workingResume], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const base = (originalFilename || 'resume').replace(/\.[^.]+$/, '');
+    a.href = url;
+    a.download = `${base}-hyred.txt`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   };
 
   const handleUndo = () => {
@@ -278,6 +334,49 @@ export function AtsFixStudio({
         </div>
       )}
 
+      {finished ? (
+        <AtsFinishScreen
+          baselineScore={baselineScore}
+          currentScore={result.overallScore}
+          fixedCount={applied.length}
+          skippedItems={skippedItems}
+          copied={copied}
+          saving={savingProfile}
+          onRevisit={(w) => {
+            setFinished(false);
+            onSelectWeakness(w);
+          }}
+          onCopy={handleCopy}
+          onDownload={handleDownload}
+          onSave={handleSaveToProfile}
+          onBackToReport={() => setFinished(false)}
+        />
+      ) : (
+        <>
+          {initialIssueIds.length > 0 && (
+            <AtsFixProgress
+              total={initialIssueIds.length}
+              fixed={fixedCount}
+              skipped={skippedCount}
+              onFinish={() => setFinished(true)}
+              canFinish={fixedCount + skippedCount > 0}
+            />
+          )}
+
+          {justFixed && (
+            <div className="flex items-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-800 animate-slide-up">
+              <span className="text-lg leading-none">✓</span>
+              Applied to “{justFixed.label}”.
+              {justFixed.delta > 0 ? (
+                <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs font-bold">
+                  +{justFixed.delta} pts
+                </span>
+              ) : (
+                <span className="font-normal text-emerald-700">Moving to the next issue.</span>
+              )}
+            </div>
+          )}
+
       <div className="grid items-start gap-5 xl:grid-cols-[300px_minmax(0,1fr)]">
         <div className="xl:sticky xl:top-24">
           <AtsReportRail
@@ -285,6 +384,7 @@ export function AtsFixStudio({
             selectedWeaknessId={selected?.id ?? null}
             onSelectCheck={onSelectReportCheck}
             showUpgrade={!isPremium}
+            statusByWeaknessId={statusById}
           />
         </div>
 
@@ -304,12 +404,15 @@ export function AtsFixStudio({
           onGenerate={() => selected && fetchSuggestions(selected, false)}
           onRegenerate={() => selected && fetchSuggestions(selected, true)}
           onApply={handleApply}
+          onSkip={handleSkip}
           onPrev={() => setActiveIdx((i) => Math.max(0, i - 1))}
           onNext={() => setActiveIdx((i) => Math.min(suggestions.length - 1, i + 1))}
           onCopy={handleCopy}
           onDismissUpgrade={() => setShowSaveUpgrade(false)}
         />
       </div>
+        </>
+      )}
 
       <AtsResumeTwinPreview
         originalLabel="Original resume"

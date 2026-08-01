@@ -8,6 +8,7 @@ import {
   Loader2,
   RefreshCcw,
   Sparkles,
+  SkipForward,
 } from 'lucide-react';
 import type { AtsFixSuggestion, AtsFixWeakness } from '@/lib/ats-fix';
 import { PremiumUpgradePanel } from '@/app/_components/PremiumUpgradePanel';
@@ -28,6 +29,7 @@ export function AtsBeforeAfterCard({
   onGenerate,
   onRegenerate,
   onApply,
+  onSkip,
   onPrev,
   onNext,
   onCopy,
@@ -48,6 +50,7 @@ export function AtsBeforeAfterCard({
   onGenerate: () => void;
   onRegenerate: () => void;
   onApply: () => void;
+  onSkip: () => void;
   onPrev: () => void;
   onNext: () => void;
   onCopy: () => void;
@@ -208,6 +211,14 @@ export function AtsBeforeAfterCard({
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
               Regenerate
             </button>
+            <button
+              type="button"
+              onClick={onSkip}
+              className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-xl px-3 text-sm font-semibold text-on-surface-variant transition-colors hover:bg-surface-container hover:text-on-surface"
+            >
+              <SkipForward className="h-4 w-4" />
+              Skip
+            </button>
             <p className="ml-auto text-[11px] text-text-muted">{meterLabel}</p>
           </div>
 
@@ -237,14 +248,24 @@ export function AtsBeforeAfterCard({
               <p className="mt-1.5 max-w-sm text-sm text-on-surface-variant">
                 We’ll propose exact text swaps for this issue. You approve each one.
               </p>
-              <button
-                type="button"
-                onClick={onGenerate}
-                className="mt-5 inline-flex h-11 cursor-pointer items-center gap-2 rounded-xl bg-primary px-5 text-sm font-semibold text-on-primary shadow-primary-glow transition-opacity hover:opacity-90"
-              >
-                <Sparkles className="h-4 w-4" />
-                Generate suggestions
-              </button>
+              <div className="mt-5 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={onGenerate}
+                  className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-xl bg-primary px-5 text-sm font-semibold text-on-primary shadow-primary-glow transition-opacity hover:opacity-90"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Generate suggestions
+                </button>
+                <button
+                  type="button"
+                  onClick={onSkip}
+                  className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-xl px-3 text-sm font-semibold text-on-surface-variant transition-colors hover:bg-surface-container hover:text-on-surface"
+                >
+                  <SkipForward className="h-4 w-4" />
+                  Skip for now
+                </button>
+              </div>
               {!hasGeneratedOnce && (
                 <p className="mt-3 max-w-xs text-[11px] text-text-muted">
                   Uses 1 Resume Studio credit. Nothing saves until you copy or Save.

@@ -44,37 +44,56 @@ function statusMeta(status: AtsReportCheck['status']): {
   };
 }
 
+type FixState = 'fixed' | 'skipped';
+
 function CheckRow({
   check,
   selected,
   onSelect,
+  fixState,
 }: {
   check: AtsReportCheck;
   selected?: boolean;
   onSelect?: (check: AtsReportCheck) => void;
+  fixState?: FixState;
 }) {
   const meta = statusMeta(check.status);
   const clickable = Boolean(onSelect) && check.status !== 'locked' && Boolean(check.weaknessId);
-  const Icon = meta.Icon;
+  const Icon = fixState === 'fixed' ? CheckCircle2 : meta.Icon;
+
+  const badge =
+    fixState === 'fixed'
+      ? { label: 'Fixed', cls: 'bg-emerald-500/15 text-emerald-700' }
+      : fixState === 'skipped'
+        ? { label: 'Skipped', cls: 'bg-surface-container text-text-muted' }
+        : { label: meta.label, cls: meta.badge };
 
   const body = (
     <>
       <Icon
         className={`mt-0.5 h-4 w-4 shrink-0 ${
-          check.status === 'pass'
+          fixState === 'fixed'
             ? 'text-emerald-500'
-            : check.status === 'warn'
-              ? 'text-amber-500'
-              : check.status === 'fail'
-                ? 'text-red-500'
-                : 'text-text-muted'
+            : check.status === 'pass'
+              ? 'text-emerald-500'
+              : check.status === 'warn'
+                ? 'text-amber-500'
+                : check.status === 'fail'
+                  ? 'text-red-500'
+                  : 'text-text-muted'
         }`}
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
-          <span className="truncate text-[13px] font-semibold">{check.label}</span>
-          <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${meta.badge}`}>
-            {meta.label}
+          <span
+            className={`truncate text-[13px] font-semibold ${
+              fixState === 'skipped' ? 'text-text-muted' : ''
+            }`}
+          >
+            {check.label}
+          </span>
+          <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${badge.cls}`}>
+            {badge.label}
           </span>
         </div>
       </div>
@@ -103,10 +122,12 @@ function CategoryBlock({
   category,
   selectedWeaknessId,
   onSelectCheck,
+  statusByWeaknessId,
 }: {
   category: AtsReportCategory;
   selectedWeaknessId?: string | null;
   onSelectCheck?: (check: AtsReportCheck) => void;
+  statusByWeaknessId?: Record<string, FixState>;
 }) {
   return (
     <div className={`border-b border-outline-variant/20 last:border-0 ${category.locked ? 'opacity-75' : ''}`}>
@@ -136,6 +157,7 @@ function CategoryBlock({
             check={c}
             selected={Boolean(c.weaknessId && c.weaknessId === selectedWeaknessId)}
             onSelect={category.locked ? undefined : onSelectCheck}
+            fixState={c.weaknessId ? statusByWeaknessId?.[c.weaknessId] : undefined}
           />
         ))}
       </div>
@@ -149,12 +171,14 @@ export function AtsReportRail({
   onSelectCheck,
   showUpgrade = true,
   className = '',
+  statusByWeaknessId,
 }: {
   report: AtsReport;
   selectedWeaknessId?: string | null;
   onSelectCheck?: (check: AtsReportCheck) => void;
   showUpgrade?: boolean;
   className?: string;
+  statusByWeaknessId?: Record<string, FixState>;
 }) {
   const room = Math.max(0, 100 - report.overallScore);
 
@@ -190,6 +214,7 @@ export function AtsReportRail({
             category={cat}
             selectedWeaknessId={selectedWeaknessId}
             onSelectCheck={onSelectCheck}
+            statusByWeaknessId={statusByWeaknessId}
           />
         ))}
       </div>
