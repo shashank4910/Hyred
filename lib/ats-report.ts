@@ -30,6 +30,8 @@ export interface AtsReportCheck {
   criterionKey?: AtsCriterionKey | 'jdKeywords' | 'parse' | 'premium';
   label: string;
   status: AtsReportCheckStatus;
+  /** 0–100 live score for gradient coloring (red→amber→green). Optional. */
+  score?: number;
   /** Short status line (“3 issues”, “No issues”, “Locked”) */
   summary: string;
   /** Longer explanation for the expanded card */
@@ -330,6 +332,7 @@ export function buildAtsReport(
       id: 'content-parse',
       criterionKey: 'parse',
       label: 'ATS Parse Rate',
+      score: parsePct,
       status: result.parseQuality === 'good' ? 'pass' : result.parseQuality === 'degraded' ? 'warn' : 'fail',
       summary: statusSummary(
         result.parseQuality === 'good' ? 'pass' : result.parseQuality === 'degraded' ? 'warn' : 'fail',
@@ -343,6 +346,7 @@ export function buildAtsReport(
       weaknessId: 'quantifiableAchievements',
       criterionKey: 'quantifiableAchievements',
       label: 'Quantifying Impact',
+      score: b.quantifiableAchievements.score,
       status: criterionStatus(b.quantifiableAchievements.score),
       summary: statusSummary(
         criterionStatus(b.quantifiableAchievements.score),
@@ -356,6 +360,7 @@ export function buildAtsReport(
       weaknessId: 'bulletQuality',
       criterionKey: 'bulletQuality',
       label: 'Bullets Consistency',
+      score: b.bulletQuality.score,
       status: criterionStatus(b.bulletQuality.score),
       summary: statusSummary(criterionStatus(b.bulletQuality.score), thin.length),
       detail: b.bulletQuality.feedback,
@@ -366,6 +371,7 @@ export function buildAtsReport(
       weaknessId: 'skillsOptimization',
       criterionKey: 'skillsOptimization',
       label: 'Skills Optimization',
+      score: b.skillsOptimization.score,
       status: criterionStatus(b.skillsOptimization.score),
       summary: statusSummary(criterionStatus(b.skillsOptimization.score)),
       detail: b.skillsOptimization.feedback,
@@ -378,6 +384,7 @@ export function buildAtsReport(
       weaknessId: 'sectionStructure',
       criterionKey: 'sectionStructure',
       label: 'Essential Sections',
+      score: b.sectionStructure.score,
       status: criterionStatus(b.sectionStructure.score),
       summary: statusSummary(criterionStatus(b.sectionStructure.score)),
       detail: b.sectionStructure.feedback,
@@ -387,6 +394,7 @@ export function buildAtsReport(
       weaknessId: 'contactInfo',
       criterionKey: 'contactInfo',
       label: 'Contact Information',
+      score: b.contactInfo.score,
       status: criterionStatus(b.contactInfo.score),
       summary: statusSummary(criterionStatus(b.contactInfo.score)),
       detail: b.contactInfo.feedback,
@@ -399,6 +407,7 @@ export function buildAtsReport(
       weaknessId: 'formatCleanliness',
       criterionKey: 'formatCleanliness',
       label: 'Design & Format',
+      score: b.formatCleanliness.score,
       status: criterionStatus(b.formatCleanliness.score),
       summary: statusSummary(criterionStatus(b.formatCleanliness.score)),
       detail: result.fileHints?.formatAdvice
@@ -410,6 +419,7 @@ export function buildAtsReport(
       weaknessId: 'dateConsistency',
       criterionKey: 'dateConsistency',
       label: 'Dates & Links',
+      score: b.dateConsistency.score,
       status: criterionStatus(b.dateConsistency.score),
       summary: statusSummary(criterionStatus(b.dateConsistency.score)),
       detail: b.dateConsistency.feedback,
@@ -419,6 +429,7 @@ export function buildAtsReport(
       weaknessId: 'lengthReadability',
       criterionKey: 'lengthReadability',
       label: 'Length & Density',
+      score: b.lengthReadability.score,
       status: criterionStatus(b.lengthReadability.score),
       summary: statusSummary(criterionStatus(b.lengthReadability.score)),
       detail: b.lengthReadability.feedback,
