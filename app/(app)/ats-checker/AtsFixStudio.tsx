@@ -14,150 +14,16 @@ import {
   type AtsFixSuggestion,
   type AtsFixWeakness,
 } from '@/lib/ats-fix';
-import { parseResumeDocument, lineIsHighlighted } from '@/lib/resume-document';
 import { AtsReportRail } from '@/app/_components/ats-report/AtsReportRail';
 import { AtsResumeTwinPreview } from '@/app/_components/ats-report/AtsResumeTwinPreview';
 import { AtsStudioHeader } from '@/app/_components/ats-report/AtsStudioHeader';
 import { AtsBeforeAfterCard } from '@/app/_components/ats-report/AtsBeforeAfterCard';
+import { HyredResumePreview } from '@/app/_components/ats-report/HyredResumePreview';
 import { buildAtsReport, type AtsReportCheck } from '@/lib/ats-report';
 import {
   formatResumeStudioMeter,
   type ResumeStudioUsage,
 } from '@/lib/premium-upgrade';
-
-type PreviewMode = 'updated' | 'original';
-
-function HighlightMark({
-  active,
-  kind,
-  children,
-}: {
-  active: boolean;
-  kind: 'needs' | 'fixed';
-  children: React.ReactNode;
-}) {
-  if (!active) return <>{children}</>;
-  const cls =
-    kind === 'fixed'
-      ? 'bg-primary/12 shadow-[inset_3px_0_0_theme(colors.primary)] ring-1 ring-primary/20'
-      : 'bg-amber-400/20 shadow-[inset_3px_0_0_theme(colors.amber.400)] ring-1 ring-amber-400/30';
-  return (
-    <mark className={`-mx-1.5 rounded-[3px] px-1.5 text-inherit ${cls}`}>{children}</mark>
-  );
-}
-
-function ResumeDocumentView({
-  text,
-  highlight,
-  mode,
-}: {
-  text: string;
-  highlight: { start: number; end: number; kind: 'needs' | 'fixed' } | null;
-  mode: PreviewMode;
-}) {
-  const doc = useMemo(() => parseResumeDocument(text), [text]);
-  const hl = mode === 'updated' ? highlight : null;
-  const kind = highlight?.kind ?? 'fixed';
-
-  return (
-    <div className="font-serif text-[12.5px] leading-relaxed text-[#1a2433]">
-      {doc.name && (
-        <h1 className="text-center text-[22px] font-bold uppercase tracking-[0.12em] text-[#0f1a2b]">
-          <HighlightMark active={lineIsHighlighted(doc.name, hl)} kind={kind}>
-            {doc.name.text}
-          </HighlightMark>
-        </h1>
-      )}
-      {doc.contact.length > 0 && (
-        <p className="mt-1.5 text-center text-[11px] leading-relaxed text-[#4a5568]">
-          {doc.contact.map((c, i) => (
-            <span key={c.start}>
-              {i > 0 && <span className="mx-1.5 text-[#c3ccd8]">•</span>}
-              <HighlightMark active={lineIsHighlighted(c, hl)} kind={kind}>
-                {c.text}
-              </HighlightMark>
-            </span>
-          ))}
-        </p>
-      )}
-      {(doc.name || doc.contact.length > 0) && <div className="my-4 h-px bg-[#dbe1ea]" />}
-      <div className="space-y-5">
-        {doc.sections.map((section, si) => (
-          <section key={section.heading?.start ?? `s${si}`}>
-            {section.heading && (
-              <h2 className="mb-2 border-b border-[#c9d2de] pb-1 text-[12px] font-bold uppercase tracking-[0.14em] text-[#0f1a2b]">
-                <HighlightMark active={lineIsHighlighted(section.heading, hl)} kind={kind}>
-                  {section.heading.text}
-                </HighlightMark>
-              </h2>
-            )}
-            <div className="space-y-1.5">
-              {section.lines.map((line) => {
-                const active = lineIsHighlighted(line, hl);
-                if (line.kind === 'entryHeading') {
-                  const parts = line.text.split('|').map((p) => p.trim());
-                  return (
-                    <div key={line.start} className="mt-2.5 flex flex-wrap items-baseline justify-between gap-x-3">
-                      <span className="font-semibold text-[#16233a]">
-                        <HighlightMark active={active} kind={kind}>
-                          {parts[0]}
-                          {parts.length > 1 && (
-                            <span className="font-normal text-[#3c4a60]">
-                              {' '}
-                              · {parts.slice(1, -1).join(' · ')}
-                            </span>
-                          )}
-                        </HighlightMark>
-                      </span>
-                      {parts.length > 1 && (
-                        <span className="text-[11px] italic text-[#5a6678]">{parts[parts.length - 1]}</span>
-                      )}
-                    </div>
-                  );
-                }
-                if (line.kind === 'bullet') {
-                  return (
-                    <div key={line.start} className="flex gap-2 pl-1">
-                      <span className="mt-[6px] h-1 w-1 shrink-0 rounded-full bg-[#7a8698]" aria-hidden="true" />
-                      <p className="flex-1">
-                        <HighlightMark active={active} kind={kind}>
-                          {line.content}
-                        </HighlightMark>
-                      </p>
-                    </div>
-                  );
-                }
-                if (line.kind === 'skill') {
-                  return (
-                    <p key={line.start} className="leading-relaxed">
-                      <HighlightMark active={active} kind={kind}>
-                        {line.label ? (
-                          <>
-                            <span className="font-semibold text-[#16233a]">{line.label}:</span> {line.value}
-                          </>
-                        ) : (
-                          line.text
-                        )}
-                      </HighlightMark>
-                    </p>
-                  );
-                }
-                return (
-                  <p key={line.start} className="leading-relaxed text-[#2a3547]">
-                    <HighlightMark active={active} kind={kind}>
-                      {line.text}
-                    </HighlightMark>
-                  </p>
-                );
-              })}
-            </div>
-          </section>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export function AtsFixStudio({
   initialResume,
   initialResult,
@@ -444,34 +310,34 @@ export function AtsFixStudio({
       <AtsResumeTwinPreview
         originalLabel="Original resume"
         originalMeta={originalFilename ?? undefined}
-        hyredLabel="Hyred layout"
-        hyredMeta={applied.length ? `${applied.length} fix${applied.length === 1 ? '' : 'es'} applied` : 'Live preview'}
+        hyredLabel="Hyred ATS layout"
+        hyredMeta={
+          applied.length
+            ? `${applied.length} fix${applied.length === 1 ? '' : 'es'} applied`
+            : 'Classic Navy · ATS-safe'
+        }
         original={
           originalFile ? (
             originalFile.kind === 'pdf' ? (
-              <div className="overflow-hidden rounded-lg border border-black/10 bg-white shadow-sm">
+              <div className="overflow-hidden rounded-[3px] border border-slate-300/80 bg-white shadow-sm">
                 <iframe
                   src={`${originalFile.url}#toolbar=0&navpanes=0&view=FitH`}
                   title="Your original resume"
-                  className="h-[56vh] w-full"
+                  className="h-[60vh] w-full lg:h-full lg:min-h-[480px]"
                 />
               </div>
             ) : (
-              <div className="overflow-hidden rounded-lg border border-black/10 bg-white p-2 shadow-sm">
+              <div className="overflow-hidden rounded-[3px] border border-slate-300/80 bg-white p-2 shadow-sm">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={originalFile.url} alt="Your original resume" className="w-full" />
               </div>
             )
           ) : (
-            <div className="rounded-lg border border-black/5 bg-white px-5 py-7 shadow-sm sm:px-8 sm:py-9">
-              <ResumeDocumentView text={originalResume} highlight={null} mode="original" />
-            </div>
+            <HyredResumePreview text={originalResume} showHighlights={false} />
           )
         }
         hyred={
-          <div className="rounded-lg border border-black/5 bg-white px-5 py-7 shadow-sm sm:px-8 sm:py-9">
-            <ResumeDocumentView text={workingResume} highlight={lastHighlight} mode="updated" />
-          </div>
+          <HyredResumePreview text={workingResume} highlight={lastHighlight} showHighlights />
         }
       />
     </div>

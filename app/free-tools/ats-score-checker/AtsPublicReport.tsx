@@ -7,8 +7,7 @@ import type { AtsCheckResult } from '@/lib/ats-checker';
 import { buildAtsReport, type AtsReportCheck } from '@/lib/ats-report';
 import { AtsIssueDetail, AtsReportRail } from '@/app/_components/ats-report/AtsReportRail';
 import { AtsResumeTwinPreview } from '@/app/_components/ats-report/AtsResumeTwinPreview';
-import { ResumeTemplateSamplePreview } from '@/app/(app)/jobs/[id]/ResumeTemplateSamplePreview';
-import { DEFAULT_RESUME_TEMPLATE_ID } from '@/lib/resume-templates';
+import { HyredResumePreview } from '@/app/_components/ats-report/HyredResumePreview';
 
 export function AtsPublicReport({
   result,
@@ -116,20 +115,14 @@ export function AtsPublicReport({
 
       <AtsResumeTwinPreview
         originalLabel="Original text"
-        hyredLabel="Hyred layout"
+        hyredLabel="Hyred ATS layout"
+        hyredMeta="Classic Navy · ATS-safe"
         original={
-          <pre className="whitespace-pre-wrap break-words rounded-lg border border-black/5 bg-white p-4 font-sans text-[11px] leading-relaxed text-slate-800 shadow-sm">
+          <pre className="whitespace-pre-wrap break-words rounded-[3px] border border-slate-200 bg-white p-4 font-sans text-[11px] leading-relaxed text-slate-800 shadow-sm">
             {resumeText.slice(0, 8000)}
           </pre>
         }
-        hyred={
-          <div className="overflow-hidden rounded-lg border border-black/5 bg-white shadow-sm">
-            <ResumeTemplateSamplePreview
-              templateId={DEFAULT_RESUME_TEMPLATE_ID}
-              sampleText={resumeText}
-            />
-          </div>
-        }
+        hyred={<HyredResumePreview text={resumeText} showHighlights={false} />}
       />
     </div>
   );
