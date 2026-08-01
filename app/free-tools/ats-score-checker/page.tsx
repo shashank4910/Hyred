@@ -14,9 +14,9 @@ import {
 import { AtsCheckerWidget } from './AtsCheckerWidget';
 
 export const metadata: Metadata = {
-  title: 'Free ATS Resume Score Checker | Hyred - AI Resume Scanner',
+  title: 'Free ATS Resume Score Checker | Hyred',
   description:
-    'Check your resume score against ATS systems instantly. Free AI-powered resume scanner analyzes formatting, keywords, and job-match compatibility. Get scored in seconds.',
+    'Check your resume score against ATS systems instantly. Free deterministic scanner for formatting, sections, keywords, and job-match gaps. Get scored in seconds — no account required.',
   keywords: [
     'ATS score checker',
     'resume scanner free',
@@ -29,7 +29,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Free ATS Resume Score Checker | Hyred',
     description:
-      'Check your resume against ATS systems instantly. Free AI-powered scoring for formatting, keywords, and job-match compatibility.',
+      'Check your resume against ATS systems instantly. Free scoring for formatting, keywords, and job-match compatibility.',
     url: 'https://hyred.in/free-tools/ats-score-checker',
     siteName: 'Hyred',
     type: 'website',
@@ -38,7 +38,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'Free ATS Resume Score Checker | Hyred',
     description:
-      'Check your resume against ATS systems instantly. Free AI-powered scoring.',
+      'Check your resume against ATS systems instantly. Free scoring — no signup required.',
   },
   alternates: {
     canonical: 'https://hyred.in/free-tools/ats-score-checker',
@@ -63,8 +63,8 @@ const FEATURES = [
   },
   {
     icon: Zap,
-    title: 'Instant AI Analysis',
-    desc: 'Powered by GPT-4o for deep semantic analysis of your resume content and job-match alignment.',
+    title: 'Instant Private Analysis',
+    desc: 'Runs in seconds with a zero-LLM scoring engine — your resume stays private to this check.',
   },
 ];
 
@@ -81,7 +81,7 @@ export default function AtsScoreCheckerLandingPage() {
     name: 'Free ATS Resume Score Checker',
     url: 'https://hyred.in/free-tools/ats-score-checker',
     description:
-      'Check your resume score against ATS systems. Free AI-powered resume scanner.',
+      'Check your resume score against ATS systems. Free instant resume scanner.',
     applicationCategory: 'BusinessApplication',
     operatingSystem: 'Web',
     offers: {
@@ -133,7 +133,7 @@ export default function AtsScoreCheckerLandingPage() {
           </h1>
           <p className="text-lg sm:text-xl text-white/80 max-w-2xl mx-auto mb-8">
             75% of resumes are rejected by ATS before a human sees them. Find out
-            if yours makes the cut with our free AI-powered scanner.
+            if yours makes the cut with our free ATS score checker.
           </p>
           <div className="flex flex-wrap justify-center gap-4 text-sm text-white/70">
             <span className="flex items-center gap-1.5">
@@ -146,7 +146,7 @@ export default function AtsScoreCheckerLandingPage() {
             </span>
             <span className="flex items-center gap-1.5">
               <CheckCircle2 className="w-4 h-4 text-yellow-300" />
-              Powered by GPT-4o
+              Private · no LLM on free check
             </span>
           </div>
         </div>

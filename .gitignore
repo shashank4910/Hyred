@@ -26,3 +26,4 @@ nul
 ext.zip
 ext/
 Hyred/
+.env*
