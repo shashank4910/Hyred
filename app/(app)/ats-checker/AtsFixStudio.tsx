@@ -30,6 +30,7 @@ import {
   type AtsFixSuggestion,
   type AtsFixWeakness,
 } from '@/lib/ats-fix';
+import { parseResumeDocument, lineIsHighlighted } from '@/lib/resume-document';
 import { PremiumUpgradePanel } from '@/app/_components/PremiumUpgradePanel';
 import {
   formatResumeStudioMeter,
@@ -86,7 +87,31 @@ function ScoreChip({ score, delta }: { score: number; delta: number }) {
   );
 }
 
-function HighlightedResume({
+function HighlightMark({
+  active,
+  kind,
+  children,
+}: {
+  active: boolean;
+  kind: 'needs' | 'fixed';
+  children: React.ReactNode;
+}) {
+  if (!active) return <>{children}</>;
+  const cls =
+    kind === 'fixed'
+      ? 'bg-primary/12 shadow-[inset_3px_0_0_theme(colors.primary)] ring-1 ring-primary/20'
+      : 'bg-amber-400/15 shadow-[inset_3px_0_0_theme(colors.amber.400)] ring-1 ring-amber-400/25';
+  return (
+    <mark className={`-mx-1.5 rounded-[3px] px-1.5 text-inherit ${cls}`}>{children}</mark>
+  );
+}
+
+/**
+ * Renders resume text as a real-looking document: name header, contact row,
+ * section headings with rules, entry headings, and clean bullets. The changed
+ * line stays highlighted via character-range intersection.
+ */
+function ResumeDocumentView({
   text,
   highlight,
   mode,
@@ -95,28 +120,109 @@ function HighlightedResume({
   highlight: { start: number; end: number; kind: 'needs' | 'fixed' } | null;
   mode: PreviewMode;
 }) {
-  if (!highlight || mode === 'original') {
-    return (
-      <pre className="whitespace-pre-wrap break-words font-sans text-[12px] leading-[1.7] text-on-surface/90">
-        {text}
-      </pre>
-    );
-  }
-
-  const before = text.slice(0, highlight.start);
-  const mid = text.slice(highlight.start, highlight.end);
-  const after = text.slice(highlight.end);
-  const midClass =
-    highlight.kind === 'fixed'
-      ? 'bg-primary/15 ring-1 ring-primary/30 rounded-sm'
-      : 'bg-amber-500/15 ring-1 ring-amber-500/30 rounded-sm';
+  const doc = useMemo(() => parseResumeDocument(text), [text]);
+  const hl = mode === 'updated' ? highlight : null;
+  const kind = highlight?.kind ?? 'fixed';
 
   return (
-    <pre className="whitespace-pre-wrap break-words font-sans text-[12px] leading-[1.7] text-on-surface/90">
-      {before}
-      <mark className={`${midClass} text-inherit px-0.5`}>{mid}</mark>
-      {after}
-    </pre>
+    <div className="font-serif text-[12.5px] leading-relaxed text-[#1a2433]">
+      {/* Header */}
+      {doc.name && (
+        <h1 className="text-center text-[22px] font-bold uppercase tracking-[0.12em] text-[#0f1a2b]">
+          <HighlightMark active={lineIsHighlighted(doc.name, hl)} kind={kind}>
+            {doc.name.text}
+          </HighlightMark>
+        </h1>
+      )}
+      {doc.contact.length > 0 && (
+        <p className="mt-1.5 text-center text-[11px] leading-relaxed text-[#4a5568]">
+          {doc.contact.map((c, i) => (
+            <span key={c.start}>
+              {i > 0 && <span className="mx-1.5 text-[#c3ccd8]">•</span>}
+              <HighlightMark active={lineIsHighlighted(c, hl)} kind={kind}>
+                {c.text}
+              </HighlightMark>
+            </span>
+          ))}
+        </p>
+      )}
+
+      {(doc.name || doc.contact.length > 0) && (
+        <div className="my-4 h-px bg-[#dbe1ea]" />
+      )}
+
+      <div className="space-y-5">
+        {doc.sections.map((section, si) => (
+          <section key={section.heading?.start ?? `s${si}`}>
+            {section.heading && (
+              <h2 className="mb-2 border-b border-[#c9d2de] pb-1 text-[12px] font-bold uppercase tracking-[0.14em] text-[#0f1a2b]">
+                <HighlightMark active={lineIsHighlighted(section.heading, hl)} kind={kind}>
+                  {section.heading.text}
+                </HighlightMark>
+              </h2>
+            )}
+            <div className="space-y-1.5">
+              {section.lines.map((line) => {
+                const active = lineIsHighlighted(line, hl);
+                if (line.kind === 'entryHeading') {
+                  const parts = line.text.split('|').map((p) => p.trim());
+                  return (
+                    <div key={line.start} className="mt-2.5 flex flex-wrap items-baseline justify-between gap-x-3">
+                      <span className="font-semibold text-[#16233a]">
+                        <HighlightMark active={active} kind={kind}>
+                          {parts[0]}
+                          {parts.length > 1 && (
+                            <span className="font-normal text-[#3c4a60]"> · {parts.slice(1, -1).join(' · ')}</span>
+                          )}
+                        </HighlightMark>
+                      </span>
+                      {parts.length > 1 && (
+                        <span className="text-[11px] italic text-[#5a6678]">{parts[parts.length - 1]}</span>
+                      )}
+                    </div>
+                  );
+                }
+                if (line.kind === 'bullet') {
+                  return (
+                    <div key={line.start} className="flex gap-2 pl-1">
+                      <span className="mt-[6px] h-1 w-1 shrink-0 rounded-full bg-[#7a8698]" aria-hidden="true" />
+                      <p className="flex-1">
+                        <HighlightMark active={active} kind={kind}>
+                          {line.content}
+                        </HighlightMark>
+                      </p>
+                    </div>
+                  );
+                }
+                if (line.kind === 'skill') {
+                  return (
+                    <p key={line.start} className="leading-relaxed">
+                      <HighlightMark active={active} kind={kind}>
+                        {line.label ? (
+                          <>
+                            <span className="font-semibold text-[#16233a]">{line.label}:</span>{' '}
+                            <span>{line.value}</span>
+                          </>
+                        ) : (
+                          line.text
+                        )}
+                      </HighlightMark>
+                    </p>
+                  );
+                }
+                return (
+                  <p key={line.start} className="leading-relaxed text-[#2a3547]">
+                    <HighlightMark active={active} kind={kind}>
+                      {line.text}
+                    </HighlightMark>
+                  </p>
+                );
+              })}
+            </div>
+          </section>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -773,9 +879,9 @@ export function AtsFixStudio({
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto bg-surface-container/55 p-3 sm:p-5 2xl:max-h-[68vh]">
-              <div className="mx-auto min-h-full max-w-[680px] rounded-sm border border-outline-variant/35 bg-white px-5 py-7 shadow-[0_8px_30px_rgba(17,28,45,0.06)] sm:px-8 sm:py-9">
-                <HighlightedResume
+            <div className="flex-1 overflow-y-auto bg-[#eef1f6] p-3 sm:p-6 2xl:max-h-[68vh]">
+              <div className="mx-auto min-h-full max-w-[680px] rounded-[2px] border border-black/5 bg-white px-7 py-9 shadow-[0_1px_2px_rgba(17,28,45,0.08),0_12px_36px_rgba(17,28,45,0.10)] sm:px-11 sm:py-12">
+                <ResumeDocumentView
                   text={previewText}
                   highlight={previewMode === 'updated' ? lastHighlight : null}
                   mode={previewMode}
