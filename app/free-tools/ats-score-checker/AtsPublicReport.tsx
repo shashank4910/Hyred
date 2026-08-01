@@ -19,9 +19,15 @@ export function AtsPublicReport({
   resumeText: string;
   onReset: () => void;
 }) {
-  const report = useMemo(() => buildAtsReport(result, resumeText, { isPremium: false }), [result, resumeText]);
+  const report = useMemo(
+    () => buildAtsReport(result, resumeText, { isPremium: false }),
+    [result, resumeText],
+  );
   const [activeCheckId, setActiveCheckId] = useState<string | null>(
-    () => report.categories.flatMap((c) => c.checks).find((c) => c.status !== 'pass' && c.status !== 'locked')?.id ?? null,
+    () =>
+      report.categories
+        .flatMap((c) => c.checks)
+        .find((c) => c.status !== 'pass' && c.status !== 'locked')?.id ?? null,
   );
   const [copied, setCopied] = useState(false);
 
@@ -48,52 +54,61 @@ export function AtsPublicReport({
   };
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold text-gray-900">Your resume report</h2>
-          <p className="text-sm text-gray-500">Free: Content, Sections, and ATS Essentials</p>
+          <h2 className="font-headline text-2xl font-bold tracking-tight text-gray-900">
+            Your resume report
+          </h2>
+          <p className="mt-1 text-sm text-gray-500">
+            Free: Content, Sections, and ATS Essentials — sign in to Edit &amp; Fix
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
             onClick={copyResults}
-            className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-gray-200 px-3.5 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
           >
             {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
             {copied ? 'Copied' : 'Copy'}
           </button>
-          <button type="button" onClick={onReset} className="text-sm font-medium text-[#006a65] hover:underline">
+          <button
+            type="button"
+            onClick={onReset}
+            className="cursor-pointer text-sm font-semibold text-[#006a65] hover:underline"
+          >
             Check another
           </button>
         </div>
       </div>
 
       {result.parseWarning && (
-        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+        <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-sm text-amber-900">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           {result.parseWarning}
         </div>
       )}
 
-      <div className="grid items-start gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
+      <div className="grid items-start gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
         <AtsReportRail
           report={report}
           selectedWeaknessId={activeCheck?.weaknessId ?? null}
           onSelectCheck={(c) => setActiveCheckId(c.id)}
           showUpgrade
         />
-        <div className="space-y-5">
+        <div className="space-y-4">
           {activeCheck && <AtsIssueDetail check={activeCheck} />}
-          <div className="rounded-2xl border bg-white p-4 shadow-sm">
-            <p className="mb-3 text-sm text-gray-600">
-              Sign in to use Edit &amp; Fix with AI rewrites (Resume Studio credits).
+          <div className="rounded-2xl border border-[#006a65]/20 bg-gradient-to-br from-[#006a65]/[0.06] to-white p-5 shadow-sm">
+            <p className="text-sm leading-relaxed text-gray-600">
+              Sign in to open Fix Studio — Before/After AI rewrites with live re-score (Resume Studio
+              credits).
             </p>
             <Link
-              href="/ats-checker"
-              className="inline-flex h-10 items-center rounded-xl bg-[#006a65] px-4 text-sm font-semibold text-white"
+              href="/login?next=%2Fats-checker"
+              className="mt-4 inline-flex h-11 cursor-pointer items-center rounded-xl bg-[#006a65] px-5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
             >
-              Open Fix Studio
+              Sign in for Fix Studio
             </Link>
           </div>
         </div>
@@ -103,12 +118,12 @@ export function AtsPublicReport({
         originalLabel="Original text"
         hyredLabel="Hyred layout"
         original={
-          <pre className="whitespace-pre-wrap break-words rounded-[2px] border border-black/5 bg-white p-4 font-sans text-[11px] leading-relaxed text-slate-800 shadow-sm">
+          <pre className="whitespace-pre-wrap break-words rounded-lg border border-black/5 bg-white p-4 font-sans text-[11px] leading-relaxed text-slate-800 shadow-sm">
             {resumeText.slice(0, 8000)}
           </pre>
         }
         hyred={
-          <div className="overflow-hidden rounded-[2px] border border-black/5 bg-white shadow-sm">
+          <div className="overflow-hidden rounded-lg border border-black/5 bg-white shadow-sm">
             <ResumeTemplateSamplePreview
               templateId={DEFAULT_RESUME_TEMPLATE_ID}
               sampleText={resumeText}

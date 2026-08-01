@@ -866,7 +866,7 @@ export default function AtsCheckerPage() {
   // ── Render ────────────────────────────────────────────────────
 
   return (
-    <div className={`${view === 'fix-studio' ? 'max-w-7xl' : 'max-w-3xl'} mx-auto space-y-6 animate-fade-in`}>
+    <div className={`${view === 'fix-studio' ? 'max-w-[1400px]' : 'max-w-3xl'} mx-auto space-y-6 animate-fade-in`}>
       {/* Header */}
       {view !== 'fix-studio' && (
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/5 via-surface-card to-surface-card p-6 border border-outline-variant/40 shadow-sm">
