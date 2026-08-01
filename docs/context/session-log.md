@@ -2,6 +2,45 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 29 — Dashboard city filter + ATS Fix Studio (suggest/apply, paywall, real-resume preview) (Aug 1, 2026)
+
+**Goal:** Let users filter matches by city; build a NextRaise/Resume-Worded-style "fix my resume after the ATS score" loop on `/ats-checker`, make it production-grade, wire it for a future paywall, and show the user's real CV (not a text dump) in preview.
+
+### Shipped — Dashboard city location filter
+
+| PR | What |
+|---|---|
+| **#235** | Location dropdown lists cities found in current matches; selecting one filters list + tab counts + infinite scroll. `lib/match-location-filter.ts` (`extractCityLabel`, `uniqueCitiesFromLocations`, `sanitizeCityFilter`), `listMatchCities()` in `lib/match-stats.ts`, `city` param through `page.tsx` / `DashboardMatchResults` / `MatchList` / `GET /api/matches`. Remote-only vs city are mutually exclusive in `MatchFilters`. |
+
+### Shipped — ATS Fix Studio (weakness → AI suggest → regenerate → apply → live re-score)
+
+| PR | What |
+|---|---|
+| **#236** | Core Fix Studio. `lib/ats-fix.ts` (weakness list, snippet-range apply/undo), `lib/ats-fix-suggest.ts` (LLM patches, truth-preserving), `POST /api/ats-fix` (auth + `resume_studio` quota), `AtsFixStudio.tsx` 3-pane UI on `/ats-checker`; checker API returns `resume_text` for uploads. |
+| **#237** | Production UI polish — product header, responsive issue rail + rewrite/preview workspace, paper-style preview, better empty/loading/error states, a11y focus. |
+
+### Shipped — Paywall-ready (shared Resume Studio credits)
+
+| PR | What |
+|---|---|
+| **#238** | Shared `PremiumUpgradePanel` (`app/_components/`), Fix Studio hard-wall at 0 credits (with score-lift proof), always-visible credit meter, new `/settings` page (plan + usage), `GET /api/premium/usage`, Premium-only `POST /api/profile/resume` (save fixed resume to profile). Free `resume_studio` = **3 lifetime** until Stripe cycles (`quotaWindowKind('free','resume_studio') === 'lifetime'`). Upgrade CTAs → `/settings?upgrade=resume_studio`. Public widget → "Sign in to open Fix Studio". Sidebar Settings now → `/settings` (was `/apply-profile`). |
+
+### Shipped — Real resume preview (not a text dump)
+
+| PR | What |
+|---|---|
+| **#239** | `lib/resume-document.ts` parses resume text → structured doc (name, contact, sections, entry headings, bullets, skills) preserving char offsets; `ResumeDocumentView` renders a formatted document; edits highlight in place via `lineIsHighlighted`. Handles stray `RESUME`/`CV` titles, `Name:`/`Email:`/`Ph. No:` fields, all-caps names. |
+| **#240** | Original tab renders the **actual uploaded file** — PDF via `iframe`, image inline (object URL held in `page.tsx`, revoked on reset). `.docx`/pasted text fall back to the formatted view. |
+| **#241** | Fix Studio opens on the **Original** tab by default when an uploaded file exists (users reported still seeing the re-rendered "Updated" view first). |
+
+### Key decisions / gotchas
+
+1. **Shared credit pool:** Fix Studio generate/regenerate **and** job-detail tailored resume both consume 1 `resume_studio` event. Apply/undo/copy are free. One meter in `/settings`.
+2. **Free window is lifetime, not monthly** until Stripe exists — product copy says "3 free"; code counts all events for free `resume_studio`.
+3. **`.docx` originals** can't render client-side — would need server-side PDF conversion (not built).
+4. **Deeper gap still open:** scoring engine is the deterministic 8-criterion `checkAtsCompatibility` (no LLM). Competitors (Resume Worded) run 30+ line-level content checks (weak verbs, missing metrics, filler). A richer line-anchored quality engine is the next big lever, not the UI.
+5. **Branch/PR:** repo enforces `cursor/<name>-7446` branch prefix for agent PRs; merge is squash + delete, mark draft PRs ready before merge.
+
 ## Session 28 — Job APIs, location filters, Dream Company, LLM scale (June 21, 2026)
 
 **Goal:** Ship paid ingest sources with admin key management; fix JobsPipe country filtering for all users worldwide; Dream Company alerts Phase 1–2; distributed LLM rotation for multi-user scale.
