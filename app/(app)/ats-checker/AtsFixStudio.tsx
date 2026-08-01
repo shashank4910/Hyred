@@ -2,21 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ArrowLeft,
-  Check,
-  CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
-  Copy,
-  Loader2,
-  RefreshCcw,
-  Save,
-  ShieldCheck,
-  Sparkles,
-  Undo2,
-  AlertTriangle,
-} from 'lucide-react';
-import {
   checkAtsCompatibility,
   type AtsCheckResult,
 } from '@/lib/ats-checker';
@@ -30,9 +15,10 @@ import {
   type AtsFixWeakness,
 } from '@/lib/ats-fix';
 import { parseResumeDocument, lineIsHighlighted } from '@/lib/resume-document';
-import { PremiumUpgradePanel } from '@/app/_components/PremiumUpgradePanel';
 import { AtsReportRail } from '@/app/_components/ats-report/AtsReportRail';
 import { AtsResumeTwinPreview } from '@/app/_components/ats-report/AtsResumeTwinPreview';
+import { AtsStudioHeader } from '@/app/_components/ats-report/AtsStudioHeader';
+import { AtsBeforeAfterCard } from '@/app/_components/ats-report/AtsBeforeAfterCard';
 import { buildAtsReport, type AtsReportCheck } from '@/lib/ats-report';
 import {
   formatResumeStudioMeter,
@@ -40,54 +26,6 @@ import {
 } from '@/lib/premium-upgrade';
 
 type PreviewMode = 'updated' | 'original';
-
-function scoreTone(score: number): string {
-  if (score >= 80) return 'text-emerald-500';
-  if (score >= 50) return 'text-amber-500';
-  return 'text-red-500';
-}
-
-function ScoreChip({ score, delta }: { score: number; delta: number }) {
-  return (
-    <div className="min-w-[148px]">
-      <div className="flex items-end justify-between gap-3">
-        <div className="flex items-baseline gap-1">
-          <span className={`text-2xl font-extrabold tabular-nums leading-none ${scoreTone(score)}`}>
-            {score}
-          </span>
-          <span className="text-[11px] font-semibold text-text-muted">ATS score</span>
-        </div>
-        {delta !== 0 && (
-          <span
-            className={`rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums ${
-              delta > 0
-                ? 'bg-emerald-500/10 text-emerald-700'
-                : 'bg-red-500/10 text-red-700'
-            }`}
-          >
-            {delta > 0 ? '+' : ''}
-            {delta}
-          </span>
-        )}
-      </div>
-      <div
-        className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-container"
-        role="progressbar"
-        aria-label="ATS score"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={score}
-      >
-        <div
-          className={`h-full rounded-full transition-[width] duration-500 ${
-            score >= 80 ? 'bg-emerald-500' : score >= 50 ? 'bg-amber-500' : 'bg-red-500'
-          }`}
-          style={{ width: `${score}%` }}
-        />
-      </div>
-    </div>
-  );
-}
 
 function HighlightMark({
   active,
@@ -102,17 +40,12 @@ function HighlightMark({
   const cls =
     kind === 'fixed'
       ? 'bg-primary/12 shadow-[inset_3px_0_0_theme(colors.primary)] ring-1 ring-primary/20'
-      : 'bg-amber-400/15 shadow-[inset_3px_0_0_theme(colors.amber.400)] ring-1 ring-amber-400/25';
+      : 'bg-amber-400/20 shadow-[inset_3px_0_0_theme(colors.amber.400)] ring-1 ring-amber-400/30';
   return (
     <mark className={`-mx-1.5 rounded-[3px] px-1.5 text-inherit ${cls}`}>{children}</mark>
   );
 }
 
-/**
- * Renders resume text as a real-looking document: name header, contact row,
- * section headings with rules, entry headings, and clean bullets. The changed
- * line stays highlighted via character-range intersection.
- */
 function ResumeDocumentView({
   text,
   highlight,
@@ -128,7 +61,6 @@ function ResumeDocumentView({
 
   return (
     <div className="font-serif text-[12.5px] leading-relaxed text-[#1a2433]">
-      {/* Header */}
       {doc.name && (
         <h1 className="text-center text-[22px] font-bold uppercase tracking-[0.12em] text-[#0f1a2b]">
           <HighlightMark active={lineIsHighlighted(doc.name, hl)} kind={kind}>
@@ -148,11 +80,7 @@ function ResumeDocumentView({
           ))}
         </p>
       )}
-
-      {(doc.name || doc.contact.length > 0) && (
-        <div className="my-4 h-px bg-[#dbe1ea]" />
-      )}
-
+      {(doc.name || doc.contact.length > 0) && <div className="my-4 h-px bg-[#dbe1ea]" />}
       <div className="space-y-5">
         {doc.sections.map((section, si) => (
           <section key={section.heading?.start ?? `s${si}`}>
@@ -174,7 +102,10 @@ function ResumeDocumentView({
                         <HighlightMark active={active} kind={kind}>
                           {parts[0]}
                           {parts.length > 1 && (
-                            <span className="font-normal text-[#3c4a60]"> · {parts.slice(1, -1).join(' · ')}</span>
+                            <span className="font-normal text-[#3c4a60]">
+                              {' '}
+                              · {parts.slice(1, -1).join(' · ')}
+                            </span>
                           )}
                         </HighlightMark>
                       </span>
@@ -202,8 +133,7 @@ function ResumeDocumentView({
                       <HighlightMark active={active} kind={kind}>
                         {line.label ? (
                           <>
-                            <span className="font-semibold text-[#16233a]">{line.label}:</span>{' '}
-                            <span>{line.value}</span>
+                            <span className="font-semibold text-[#16233a]">{line.label}:</span> {line.value}
                           </>
                         ) : (
                           line.text
@@ -239,7 +169,6 @@ export function AtsFixStudio({
   initialResume: string;
   initialResult: AtsCheckResult;
   jobDescription?: string;
-  /** The real uploaded CV so the Original tab shows the true document. */
   originalFile?: { url: string; kind: 'pdf' | 'image' } | null;
   originalFilename?: string | null;
   onClose: (next?: { resume: string; result: AtsCheckResult }) => void;
@@ -307,10 +236,7 @@ export function AtsFixStudio({
       setPlan(data.plan ?? 'free');
       if (data.resume_studio) {
         setUsage(data.resume_studio);
-        if (
-          data.resume_studio.remaining != null &&
-          data.resume_studio.remaining <= 0
-        ) {
+        if (data.resume_studio.remaining != null && data.resume_studio.remaining <= 0) {
           setQuotaBlocked(true);
         }
       }
@@ -371,9 +297,7 @@ export function AtsFixStudio({
         if (data.usage) setUsage(data.usage);
         if (list[0]) {
           const range = findSnippetRange(workingResume, list[0].originalSnippet);
-          if (range) {
-            setLastHighlight({ start: range.start, end: range.end, kind: 'needs' });
-          }
+          if (range) setLastHighlight({ start: range.start, end: range.end, kind: 'needs' });
         } else {
           setError('No safe fixes found for this item. Try another weakness.');
         }
@@ -462,88 +386,21 @@ export function AtsFixStudio({
   };
 
   return (
-    <div className="space-y-5 animate-slide-up">
-      <header className="overflow-hidden rounded-[1.5rem] border border-outline-variant/50 bg-surface-container-lowest shadow-card">
-        <div className="flex flex-col gap-4 px-5 py-5 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-start gap-3">
-            <button
-              type="button"
-              onClick={() => onClose({ resume: workingResume, result })}
-              className="mt-0.5 inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-outline-variant/60 bg-surface-container-lowest text-on-surface-variant transition-colors duration-200 hover:border-primary/30 hover:bg-primary/5 hover:text-primary focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/15"
-              aria-label="Back to ATS score"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </button>
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="font-headline text-xl font-bold tracking-tight text-on-surface">
-                  Resume Fix Studio
-                </h1>
-                <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">
-                  <Sparkles className="h-3 w-3" />
-                  AI assisted
-                </span>
-              </div>
-              <p className="mt-1 max-w-xl text-sm text-on-surface-variant">
-                Review each weakness, approve only the changes you want, and watch your score improve.
-              </p>
-              <p className="mt-2 text-[11px] font-semibold text-primary">{meterLabel}</p>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3 sm:flex-nowrap">
-            <ScoreChip score={result.overallScore} delta={scoreDelta} />
-            <div className="h-10 w-px bg-outline-variant/50" aria-hidden="true" />
-            <button
-              type="button"
-              onClick={handleUndo}
-              disabled={applied.length === 0}
-              className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold text-on-surface-variant transition-colors duration-200 hover:bg-surface-container hover:text-primary focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/15 disabled:cursor-not-allowed disabled:opacity-40"
-              title="Undo last applied fix"
-            >
-              <Undo2 className="h-4 w-4" />
-              Undo
-            </button>
-            <button
-              type="button"
-              onClick={handleSaveToProfile}
-              disabled={savingProfile || workingResume === originalResume}
-              className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-xl border border-outline-variant/50 px-3 text-sm font-semibold text-on-surface-variant transition-colors hover:border-primary/30 hover:text-primary focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/15 disabled:cursor-not-allowed disabled:opacity-40"
-              title="Save to Hyred profile (Premium)"
-            >
-              {savingProfile ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              Save
-            </button>
-            <button
-              type="button"
-              onClick={handleCopy}
-              className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-xl border border-primary/20 bg-primary px-4 text-sm font-semibold text-on-primary shadow-primary-glow transition-opacity duration-200 hover:opacity-90 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/20"
-            >
-              {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-              {copied ? 'Copied' : 'Copy updated resume'}
-            </button>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-outline-variant/30 bg-surface-container/45 px-5 py-2.5 text-[11px] font-medium text-on-surface-variant sm:px-6">
-          <span className="inline-flex items-center gap-1.5 text-primary">
-            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-on-primary">1</span>
-            Choose an issue
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-outline-variant bg-surface-container-lowest text-[10px] font-bold">2</span>
-            Review the rewrite
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-outline-variant bg-surface-container-lowest text-[10px] font-bold">3</span>
-            Apply and re-score
-          </span>
-          <span className="ml-auto inline-flex items-center gap-1.5 text-text-muted">
-            <ShieldCheck className="h-3.5 w-3.5 text-primary" />
-            Apply never uses a credit · session only until you copy or save
-          </span>
-        </div>
-      </header>
+    <div className="-mx-1 space-y-5 animate-slide-up sm:mx-0">
+      <AtsStudioHeader
+        score={result.overallScore}
+        scoreDelta={scoreDelta}
+        meterLabel={meterLabel}
+        appliedCount={applied.length}
+        canUndo={applied.length > 0}
+        canSave={workingResume !== originalResume}
+        saving={savingProfile}
+        copied={copied}
+        onBack={() => onClose({ resume: workingResume, result })}
+        onUndo={handleUndo}
+        onSave={handleSaveToProfile}
+        onCopy={handleCopy}
+      />
 
       {saveMessage && (
         <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-800">
@@ -551,7 +408,7 @@ export function AtsFixStudio({
         </div>
       )}
 
-      <div className="grid items-start gap-5 xl:grid-cols-[280px_minmax(0,1fr)]">
+      <div className="grid items-start gap-5 xl:grid-cols-[300px_minmax(0,1fr)]">
         <div className="xl:sticky xl:top-24">
           <AtsReportRail
             report={report}
@@ -561,257 +418,62 @@ export function AtsFixStudio({
           />
         </div>
 
-        <div className="grid min-w-0 gap-5">
-          <section className="flex min-h-[500px] min-w-0 flex-col overflow-hidden rounded-[1.25rem] border border-outline-variant/50 bg-surface-container-lowest shadow-card">
-            {quotaBlocked || showSaveUpgrade ? (
-              <div className="flex flex-1 flex-col justify-center p-5 sm:p-6">
-                <PremiumUpgradePanel
-                  feature="resume_studio"
-                  proof={scoreLiftProof}
-                  secondaryLabel="Copy current resume"
-                  onSecondary={handleCopy}
-                  headline={
-                    showSaveUpgrade && !quotaBlocked
-                      ? 'Saving to your Hyred resume is Premium'
-                      : undefined
-                  }
-                  description={
-                    showSaveUpgrade && !quotaBlocked
-                      ? 'Copy your fixes anytime for free. Premium lets you replace your master Hyred resume from Fix Studio.'
-                      : undefined
-                  }
-                />
-                {showSaveUpgrade && !quotaBlocked && (
-                  <button
-                    type="button"
-                    onClick={() => setShowSaveUpgrade(false)}
-                    className="mt-3 text-sm font-semibold text-on-surface-variant hover:text-primary"
-                  >
-                    Back to editing
-                  </button>
-                )}
-              </div>
-            ) : selected ? (
-              <>
-                <div className="border-b border-outline-variant/30 px-5 py-5 sm:px-6">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span
-                      className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
-                        selected.status === 'needs_work'
-                          ? selected.priority === 'high'
-                            ? 'bg-red-500/10 text-red-700'
-                            : 'bg-amber-500/10 text-amber-700'
-                          : 'bg-emerald-500/10 text-emerald-700'
-                      }`}
-                    >
-                      {selected.status === 'needs_work'
-                        ? `${selected.priority} impact`
-                        : 'Looking good'}
-                    </span>
-                    {selected.score != null && (
-                      <span className="text-xs font-semibold text-text-muted">{selected.score}/100</span>
-                    )}
-                    {scoreDelta !== 0 && (
-                      <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
-                        Session {scoreDelta > 0 ? '+' : ''}
-                        {scoreDelta} pts
-                      </span>
-                    )}
-                  </div>
-                  <h2 className="mt-2 font-headline text-xl font-bold tracking-tight text-on-surface">
-                    {selected.label}
-                  </h2>
-                  <p className="mt-2 text-sm leading-relaxed text-on-surface-variant">
-                    {selected.feedback}
-                  </p>
-                </div>
-
-                {selected.status === 'passing' ? (
-                  <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-600">
-                      <CheckCircle2 className="h-6 w-6" />
-                    </div>
-                    <h3 className="mt-4 font-semibold text-on-surface">No change needed here</h3>
-                    <p className="mt-1 max-w-sm text-sm leading-relaxed text-on-surface-variant">
-                      This section already meets the ATS benchmark. Choose an issue under “Improve first” to keep working.
-                    </p>
-                  </div>
-                ) : activeSuggestion ? (
-                  <div className="flex flex-1 flex-col p-5 sm:p-6">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-primary">
-                          Suggested improvement
-                        </p>
-                        <h3 className="mt-1 font-semibold text-on-surface">{activeSuggestion.title}</h3>
-                      </div>
-                      {suggestions.length > 1 && (
-                        <div className="flex shrink-0 items-center rounded-xl border border-outline-variant/50 bg-surface-container-lowest p-0.5">
-                          <button
-                            type="button"
-                            className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-surface-container hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-35"
-                            onClick={() => setActiveIdx((i) => Math.max(0, i - 1))}
-                            disabled={activeIdx === 0}
-                            aria-label="Previous suggestion"
-                          >
-                            <ChevronLeft className="h-4 w-4" />
-                          </button>
-                          <span className="min-w-10 text-center text-[11px] font-semibold tabular-nums text-text-muted">
-                            {activeIdx + 1}/{suggestions.length}
-                          </span>
-                          <button
-                            type="button"
-                            className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-surface-container hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-35"
-                            onClick={() => setActiveIdx((i) => Math.min(suggestions.length - 1, i + 1))}
-                            disabled={activeIdx >= suggestions.length - 1}
-                            aria-label="Next suggestion"
-                          >
-                            <ChevronRight className="h-4 w-4" />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    {activeSuggestion.rationale && (
-                      <p className="mt-3 text-sm leading-relaxed text-on-surface-variant">
-                        {activeSuggestion.rationale}
-                      </p>
-                    )}
-
-                    <div className="mt-5 space-y-3">
-                      <div className="rounded-xl border border-red-500/15 bg-red-500/[0.035] p-4">
-                        <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-red-700">
-                          Before
-                        </p>
-                        <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-on-surface/75 line-through decoration-red-400/50">
-                          {activeSuggestion.originalSnippet}
-                        </p>
-                      </div>
-                      <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/[0.045] p-4">
-                        <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-700">
-                          After
-                        </p>
-                        <p className="whitespace-pre-wrap text-[13px] font-medium leading-relaxed text-on-surface">
-                          {activeSuggestion.proposedText}
-                        </p>
-                      </div>
-                    </div>
-
-                    {error && (
-                      <div role="alert" className="mt-4 flex items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/5 px-3 py-2.5 text-sm text-red-700">
-                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                        {error}
-                      </div>
-                    )}
-
-                    <div className="mt-auto flex flex-col-reverse gap-2 border-t border-outline-variant/30 pt-5 sm:flex-row sm:items-center sm:justify-between">
-                      <button
-                        type="button"
-                        disabled={loading}
-                        onClick={() => fetchSuggestions(selected, true)}
-                        className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold text-on-surface-variant transition-colors hover:bg-surface-container hover:text-primary focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/15 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
-                        Try another rewrite
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleApply}
-                        className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-semibold text-on-primary shadow-primary-glow transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/20"
-                      >
-                        <Check className="h-4 w-4" />
-                        Apply this change
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
-                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                      {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : <Sparkles className="h-6 w-6" />}
-                    </div>
-                    <h3 className="mt-4 font-semibold text-on-surface">
-                      {loading ? 'Building a safe rewrite…' : 'See a stronger version'}
-                    </h3>
-                    <p className="mt-1 max-w-sm text-sm leading-relaxed text-on-surface-variant">
-                      {loading
-                        ? 'Hyred is finding a focused improvement without changing the facts in your resume.'
-                        : 'Hyred will suggest a small, truth-preserving edit for this exact weakness.'}
-                    </p>
-                    {!loading && (
-                      <button
-                        type="button"
-                        onClick={() => fetchSuggestions(selected, false)}
-                        className="mt-5 inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-semibold text-on-primary shadow-primary-glow transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/20"
-                      >
-                        <Sparkles className="h-4 w-4" />
-                        Generate suggestions
-                      </button>
-                    )}
-                    {!hasGeneratedOnce && !loading && (
-                      <p className="mt-3 max-w-xs text-[11px] leading-relaxed text-text-muted">
-                        Uses 1 Resume Studio credit. Changes stay in this session until you copy or save them.
-                      </p>
-                    )}
-                    {hasGeneratedOnce && !loading && (
-                      <p className="mt-3 text-[11px] text-text-muted">{meterLabel}</p>
-                    )}
-                    {error && (
-                      <div role="alert" className="mt-4 flex max-w-md items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/5 px-3 py-2.5 text-left text-sm text-red-700">
-                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                        {error}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="flex flex-1 items-center justify-center p-8 text-sm text-on-surface-variant">
-                Your resume has no issues to fix.
-              </div>
-            )}
-          </section>
-
-          <AtsResumeTwinPreview
-            originalLabel={
-              originalFile
-                ? `Original${originalFilename ? ` · ${originalFilename}` : ''}`
-                : 'Original'
-            }
-            hyredLabel={`Hyred layout${applied.length ? ` · ${applied.length} fix${applied.length === 1 ? '' : 'es'}` : ''}`}
-            original={
-              originalFile ? (
-                originalFile.kind === 'pdf' ? (
-                  <div className="overflow-hidden rounded-[2px] border border-black/10 bg-white shadow-sm">
-                    <iframe
-                      src={`${originalFile.url}#toolbar=0&navpanes=0&view=FitH`}
-                      title="Your original resume"
-                      className="h-[56vh] w-full"
-                    />
-                  </div>
-                ) : (
-                  <div className="overflow-hidden rounded-[2px] border border-black/10 bg-white p-2 shadow-sm">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={originalFile.url} alt="Your original resume" className="w-full" />
-                  </div>
-                )
-              ) : (
-                <div className="rounded-[2px] border border-black/5 bg-white px-5 py-7 shadow-sm sm:px-8 sm:py-9">
-                  <ResumeDocumentView text={originalResume} highlight={null} mode="original" />
-                </div>
-              )
-            }
-            hyred={
-              <div className="rounded-[2px] border border-black/5 bg-white px-5 py-7 shadow-sm sm:px-8 sm:py-9">
-                <ResumeDocumentView
-                  text={workingResume}
-                  highlight={lastHighlight}
-                  mode="updated"
-                />
-              </div>
-            }
-          />
-        </div>
+        <AtsBeforeAfterCard
+          selected={selected}
+          activeSuggestion={activeSuggestion}
+          suggestions={suggestions}
+          activeIdx={activeIdx}
+          loading={loading}
+          error={error}
+          quotaBlocked={quotaBlocked}
+          showSaveUpgrade={showSaveUpgrade}
+          hasGeneratedOnce={hasGeneratedOnce}
+          meterLabel={meterLabel}
+          scoreLiftProof={scoreLiftProof}
+          scoreDelta={scoreDelta}
+          onGenerate={() => selected && fetchSuggestions(selected, false)}
+          onRegenerate={() => selected && fetchSuggestions(selected, true)}
+          onApply={handleApply}
+          onPrev={() => setActiveIdx((i) => Math.max(0, i - 1))}
+          onNext={() => setActiveIdx((i) => Math.min(suggestions.length - 1, i + 1))}
+          onCopy={handleCopy}
+          onDismissUpgrade={() => setShowSaveUpgrade(false)}
+        />
       </div>
+
+      <AtsResumeTwinPreview
+        originalLabel="Original resume"
+        originalMeta={originalFilename ?? undefined}
+        hyredLabel="Hyred layout"
+        hyredMeta={applied.length ? `${applied.length} fix${applied.length === 1 ? '' : 'es'} applied` : 'Live preview'}
+        original={
+          originalFile ? (
+            originalFile.kind === 'pdf' ? (
+              <div className="overflow-hidden rounded-lg border border-black/10 bg-white shadow-sm">
+                <iframe
+                  src={`${originalFile.url}#toolbar=0&navpanes=0&view=FitH`}
+                  title="Your original resume"
+                  className="h-[56vh] w-full"
+                />
+              </div>
+            ) : (
+              <div className="overflow-hidden rounded-lg border border-black/10 bg-white p-2 shadow-sm">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={originalFile.url} alt="Your original resume" className="w-full" />
+              </div>
+            )
+          ) : (
+            <div className="rounded-lg border border-black/5 bg-white px-5 py-7 shadow-sm sm:px-8 sm:py-9">
+              <ResumeDocumentView text={originalResume} highlight={null} mode="original" />
+            </div>
+          )
+        }
+        hyred={
+          <div className="rounded-lg border border-black/5 bg-white px-5 py-7 shadow-sm sm:px-8 sm:py-9">
+            <ResumeDocumentView text={workingResume} highlight={lastHighlight} mode="updated" />
+          </div>
+        }
+      />
     </div>
   );
 }
