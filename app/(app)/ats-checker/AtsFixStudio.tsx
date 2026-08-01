@@ -19,11 +19,13 @@ import { AtsResumeTwinPreview } from '@/app/_components/ats-report/AtsResumeTwin
 import { AtsStudioHeader } from '@/app/_components/ats-report/AtsStudioHeader';
 import { AtsBeforeAfterCard } from '@/app/_components/ats-report/AtsBeforeAfterCard';
 import { HyredResumePreview } from '@/app/_components/ats-report/HyredResumePreview';
+import { useSetPreviewFocusMode } from '@/app/_components/ats-report/preview-focus';
 import { buildAtsReport, type AtsReportCheck } from '@/lib/ats-report';
 import {
   formatResumeStudioMeter,
   type ResumeStudioUsage,
 } from '@/lib/premium-upgrade';
+
 export function AtsFixStudio({
   initialResume,
   initialResult,
@@ -39,6 +41,8 @@ export function AtsFixStudio({
   originalFilename?: string | null;
   onClose: (next?: { resume: string; result: AtsCheckResult }) => void;
 }) {
+  // Give previews the full width — hide the app left menu while Fix Studio is open.
+  useSetPreviewFocusMode(true);
   const [originalResume] = useState(initialResume);
   const [workingResume, setWorkingResume] = useState(initialResume);
   const [baselineScore] = useState(initialResult.overallScore);
@@ -310,11 +314,11 @@ export function AtsFixStudio({
       <AtsResumeTwinPreview
         originalLabel="Original resume"
         originalMeta={originalFilename ?? undefined}
-        hyredLabel="Hyred ATS layout"
+        hyredLabel="Hyred layout"
         hyredMeta={
           applied.length
             ? `${applied.length} fix${applied.length === 1 ? '' : 'es'} applied`
-            : 'Classic Navy · ATS-safe'
+            : 'Premium visual · ATS-safe text'
         }
         original={
           originalFile ? (

@@ -115,10 +115,10 @@ export function AtsPublicReport({
 
       <AtsResumeTwinPreview
         originalLabel="Original text"
-        hyredLabel="Hyred ATS layout"
-        hyredMeta="Classic Navy · ATS-safe"
+        hyredLabel="Hyred layout"
+        hyredMeta="Premium visual"
         original={
-          <pre className="whitespace-pre-wrap break-words rounded-[3px] border border-slate-200 bg-white p-4 font-sans text-[11px] leading-relaxed text-slate-800 shadow-sm">
+          <pre className="whitespace-pre-wrap break-words rounded-sm border border-slate-200 bg-white p-4 font-sans text-[11px] leading-relaxed text-slate-800 shadow-sm">
             {resumeText.slice(0, 8000)}
           </pre>
         }

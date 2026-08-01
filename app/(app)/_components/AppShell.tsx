@@ -15,11 +15,17 @@ import {
   Building2,
   Search,
   BellRing,
+  PanelLeftClose,
+  PanelLeft,
 } from 'lucide-react';
 import { dismissAllAppToasts } from '@/lib/toast-app';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { HeaderSearch } from './HeaderSearch';
 import { RunIngestButton } from './RunIngestButton';
+import {
+  usePreviewFocusMode,
+  togglePreviewFocusMode,
+} from '@/app/_components/ats-report/preview-focus';
 
 const NAV: {
   href: string;
@@ -51,6 +57,8 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const previewFocus = usePreviewFocusMode();
+  const onAtsChecker = pathname.startsWith('/ats-checker');
 
   const nav = NAV.filter((item) => !item.admin || isAdmin);
 
@@ -70,10 +78,15 @@ export function AppShell({
         .toUpperCase()
     : profile?.email?.slice(0, 2).toUpperCase() ?? 'HY';
 
+  const hideSidebar = previewFocus;
+
   return (
     <div className="min-h-screen bg-background text-on-surface">
-      {/* Desktop sidebar — below header dropdowns, above page content */}
-      <aside className="fixed left-0 top-0 z-40 hidden h-screen w-[260px] flex-col gap-y-6 bg-surface-container-lowest px-4 py-8 shadow-glass lg:flex">
+      <aside
+        className={`fixed left-0 top-0 z-40 h-screen w-[260px] flex-col gap-y-6 bg-surface-container-lowest px-4 py-8 shadow-glass transition-transform duration-200 ${
+          hideSidebar ? 'lg:hidden' : 'hidden lg:flex'
+        }`}
+      >
         <Brand />
 
         <nav className="flex-1 space-y-1">
@@ -106,7 +119,7 @@ export function AppShell({
           <button
             type="button"
             onClick={logout}
-            className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-label-md font-semibold text-on-surface-variant transition-colors hover:bg-surface-container-low"
+            className="flex w-full cursor-pointer items-center gap-3 rounded-2xl px-4 py-3 text-label-md font-semibold text-on-surface-variant transition-colors hover:bg-surface-container-low"
           >
             <LogOut className="h-5 w-5" />
             Log out
@@ -114,11 +127,38 @@ export function AppShell({
         </div>
       </aside>
 
-      {/* Top header — above sidebar so scan source picker is not clipped */}
-      <header className="fixed top-0 z-[60] flex h-20 w-full items-center justify-between gap-4 overflow-visible border-b border-outline-variant/20 bg-surface/80 px-4 backdrop-blur-md lg:pl-[284px] lg:pr-6">
+      <header
+        className={`fixed top-0 z-[60] flex h-20 w-full items-center justify-between gap-4 overflow-visible border-b border-outline-variant/20 bg-surface/80 px-4 backdrop-blur-md lg:pr-6 ${
+          hideSidebar ? 'lg:pl-4' : 'lg:pl-[284px]'
+        }`}
+      >
         <div className="flex items-center gap-3 lg:hidden">
           <Brand compact />
         </div>
+
+        {hideSidebar && (
+          <button
+            type="button"
+            onClick={togglePreviewFocusMode}
+            className="hidden cursor-pointer items-center gap-2 rounded-xl border border-outline-variant/50 px-3 py-2 text-xs font-semibold text-on-surface-variant transition-colors hover:border-primary/30 hover:text-primary lg:inline-flex"
+            title="Show menu"
+          >
+            <PanelLeft className="h-4 w-4" />
+            Menu
+          </button>
+        )}
+
+        {!hideSidebar && onAtsChecker && (
+          <button
+            type="button"
+            onClick={togglePreviewFocusMode}
+            className="hidden cursor-pointer items-center gap-2 rounded-xl border border-outline-variant/50 px-3 py-2 text-xs font-semibold text-on-surface-variant transition-colors hover:border-primary/30 hover:text-primary lg:inline-flex"
+            title="Hide menu for more preview space"
+          >
+            <PanelLeftClose className="h-4 w-4" />
+            Focus previews
+          </button>
+        )}
 
         <Suspense fallback={<div className="hidden flex-1 lg:block" />}>
           <HeaderSearch />
@@ -134,7 +174,6 @@ export function AppShell({
         </div>
       </header>
 
-      {/* Mobile bottom nav */}
       <nav className="fixed bottom-0 left-0 z-50 flex w-full items-center justify-around border-t border-outline-variant/30 bg-surface-container-lowest/95 px-2 py-2 backdrop-blur-md lg:hidden">
         {nav.slice(0, 7).map(({ href, label, icon: Icon, premium }) => {
           const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
@@ -158,7 +197,11 @@ export function AppShell({
         })}
       </nav>
 
-      <main className="relative z-0 mx-auto w-full min-w-0 max-w-page px-4 pb-24 pt-24 sm:px-6 lg:pl-[284px] lg:pb-12 lg:pr-6">
+      <main
+        className={`relative z-0 mx-auto w-full min-w-0 px-4 pb-24 pt-24 sm:px-6 lg:pb-12 lg:pr-6 ${
+          hideSidebar ? 'max-w-[1600px] lg:pl-4' : 'max-w-page lg:pl-[284px]'
+        }`}
+      >
         {children}
       </main>
     </div>
