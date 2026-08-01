@@ -230,11 +230,16 @@ export function AtsFixStudio({
   initialResume,
   initialResult,
   jobDescription,
+  originalFile = null,
+  originalFilename = null,
   onClose,
 }: {
   initialResume: string;
   initialResult: AtsCheckResult;
   jobDescription?: string;
+  /** The real uploaded CV so the Original tab shows the true document. */
+  originalFile?: { url: string; kind: 'pdf' | 'image' } | null;
+  originalFilename?: string | null;
   onClose: (next?: { resume: string; result: AtsCheckResult }) => void;
 }) {
   const [originalResume] = useState(initialResume);
@@ -848,7 +853,11 @@ export function AtsFixStudio({
                 </span>
                 <div>
                   <h3 className="text-sm font-bold text-on-surface">Resume preview</h3>
-                  <p className="text-[10px] text-text-muted">Live preview · plain ATS-safe text</p>
+                  <p className="text-[10px] text-text-muted">
+                    {previewMode === 'original' && originalFile
+                      ? `Your uploaded file${originalFilename ? ` · ${originalFilename}` : ''}`
+                      : 'Live preview · ATS-safe text'}
+                  </p>
                 </div>
               </div>
               <div className="inline-flex rounded-xl border border-outline-variant/50 bg-surface-container p-0.5">
@@ -880,25 +889,48 @@ export function AtsFixStudio({
             </div>
 
             <div className="flex-1 overflow-y-auto bg-[#eef1f6] p-3 sm:p-6 2xl:max-h-[68vh]">
-              <div className="mx-auto min-h-full max-w-[680px] rounded-[2px] border border-black/5 bg-white px-7 py-9 shadow-[0_1px_2px_rgba(17,28,45,0.08),0_12px_36px_rgba(17,28,45,0.10)] sm:px-11 sm:py-12">
-                <ResumeDocumentView
-                  text={previewText}
-                  highlight={previewMode === 'updated' ? lastHighlight : null}
-                  mode={previewMode}
-                />
-              </div>
+              {previewMode === 'original' && originalFile ? (
+                originalFile.kind === 'pdf' ? (
+                  <div className="mx-auto min-h-full max-w-[680px] overflow-hidden rounded-[2px] border border-black/10 bg-white shadow-[0_1px_2px_rgba(17,28,45,0.08),0_12px_36px_rgba(17,28,45,0.10)]">
+                    <iframe
+                      src={`${originalFile.url}#toolbar=0&navpanes=0&view=FitH`}
+                      title="Your original resume"
+                      className="h-[72vh] w-full"
+                    />
+                  </div>
+                ) : (
+                  <div className="mx-auto min-h-full max-w-[680px] overflow-hidden rounded-[2px] border border-black/10 bg-white p-2 shadow-[0_1px_2px_rgba(17,28,45,0.08),0_12px_36px_rgba(17,28,45,0.10)]">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={originalFile.url} alt="Your original resume" className="w-full" />
+                  </div>
+                )
+              ) : (
+                <div className="mx-auto min-h-full max-w-[680px] rounded-[2px] border border-black/5 bg-white px-7 py-9 shadow-[0_1px_2px_rgba(17,28,45,0.08),0_12px_36px_rgba(17,28,45,0.10)] sm:px-11 sm:py-12">
+                  <ResumeDocumentView
+                    text={previewText}
+                    highlight={previewMode === 'updated' ? lastHighlight : null}
+                    mode={previewMode}
+                  />
+                </div>
+              )}
             </div>
 
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-outline-variant/30 px-4 py-2.5 text-[10px] font-medium text-text-muted sm:px-5">
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-amber-400 ring-2 ring-amber-400/15" />
-                Suggested text
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-primary ring-2 ring-primary/15" />
-                Applied change
-              </span>
-              <span className="ml-auto">Session only · copy or save when finished</span>
+              {previewMode === 'original' && originalFile ? (
+                <span>Your original file, exactly as uploaded. Switch to Updated to see AI fixes.</span>
+              ) : (
+                <>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-amber-400 ring-2 ring-amber-400/15" />
+                    Suggested text
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-primary ring-2 ring-primary/15" />
+                    Applied change
+                  </span>
+                  <span className="ml-auto">Session only · copy or save when finished</span>
+                </>
+              )}
             </div>
           </section>
         </div>
