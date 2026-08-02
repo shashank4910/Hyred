@@ -22,7 +22,12 @@ import { AtsFixProgress } from '@/app/_components/ats-report/AtsFixProgress';
 import { AtsFinishScreen } from '@/app/_components/ats-report/AtsFinishScreen';
 import { HyredResumePreview } from '@/app/_components/ats-report/HyredResumePreview';
 import { useSetPreviewFocusMode } from '@/app/_components/ats-report/preview-focus';
-import { buildAtsReport, type AtsReportCheck } from '@/lib/ats-report';
+import {
+  buildAtsReport,
+  findUnquantifiedBullets,
+  findThinBullets,
+  type AtsReportCheck,
+} from '@/lib/ats-report';
 import {
   formatResumeStudioMeter,
   type ResumeStudioUsage,
@@ -57,11 +62,35 @@ export function AtsFixStudio({
       .filter((w) => w.status === 'needs_work')
       .map((w) => w.id),
   );
+  // How many applied fixes turn a section green (drives the red→amber→green rail).
+  const [fixTargets] = useState<Record<string, number>>(() => {
+    const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
+    const targets: Record<string, number> = {};
+    for (const w of listAtsWeaknesses(initialResult)) {
+      if (w.status !== 'needs_work') continue;
+      if (w.id.startsWith('jd:')) {
+        targets[w.id] = 1;
+        continue;
+      }
+      const gap = Math.max(0, 75 - (w.score ?? 0));
+      const byGap = clamp(Math.ceil(gap / 20), 1, 3);
+      if (w.id === 'quantifiableAchievements') {
+        targets[w.id] = clamp(Math.max(findUnquantifiedBullets(initialResume, 6).length, byGap), 1, 4);
+      } else if (w.id === 'bulletQuality') {
+        targets[w.id] = clamp(Math.max(findThinBullets(initialResume, 6).length, byGap), 1, 4);
+      } else {
+        targets[w.id] = byGap;
+      }
+    }
+    return targets;
+  });
   const [finished, setFinished] = useState(false);
   const [justFixed, setJustFixed] = useState<{
     label: string;
     delta: number;
     complete: boolean;
+    applied?: number;
+    target?: number;
   } | null>(null);
   const [suggestions, setSuggestions] = useState<AtsFixSuggestion[]>([]);
   const [activeIdx, setActiveIdx] = useState(0);
@@ -88,6 +117,25 @@ export function AtsFixStudio({
   const skippedCount = Object.values(statusById).filter((s) => s === 'skipped').length;
   const skippedItems = weaknesses.filter((w) => statusById[w.id] === 'skipped');
   const isPremium = plan !== 'free';
+
+  // Applied-fix count per section → progress ratio for the rail color.
+  const appliedBySection = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const a of applied) {
+      const id = a.suggestion.weaknessId;
+      counts[id] = (counts[id] ?? 0) + 1;
+    }
+    return counts;
+  }, [applied]);
+
+  const progressByWeaknessId = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const [id, target] of Object.entries(fixTargets)) {
+      const done = appliedBySection[id] ?? 0;
+      if (done > 0) out[id] = Math.min(1, done / Math.max(1, target));
+    }
+    return out;
+  }, [appliedBySection, fixTargets]);
   const report = useMemo(
     () => buildAtsReport(result, workingResume, { isPremium }),
     [result, workingResume, isPremium],
@@ -196,7 +244,7 @@ export function AtsFixStudio({
           const range = findSnippetRange(workingResume, list[0].originalSnippet);
           if (range) setLastHighlight({ start: range.start, end: range.end, kind: 'needs' });
         } else {
-          setError('No safe fixes found for this item. Try another weakness.');
+          setError('No more safe fixes we can auto-write here. Use Skip to move to the next section.');
         }
       } catch (e) {
         setError((e as Error).message || 'Network error.');
@@ -258,21 +306,24 @@ export function AtsFixStudio({
     setLastHighlight({ start: outcome.start, end: outcome.end, kind: 'fixed' });
     setError(null);
 
-    // Re-check this section against the fresh score. Only move on when it passes.
+    // A section is "done" when its planned fixes are applied, or the engine already passes it.
     const freshWeaknesses = listAtsWeaknesses(next);
-    const sectionStillWeak = freshWeaknesses.some(
+    const enginePassing = !freshWeaknesses.some(
       (w) => w.id === section.id && w.status === 'needs_work',
     );
+    const target = fixTargets[section.id] ?? 1;
+    const doneCount = (appliedBySection[section.id] ?? 0) + 1;
+    const complete = enginePassing || doneCount >= target;
 
-    if (!sectionStillWeak) {
+    if (complete) {
       // Section is now green → mark fixed and jump to the next open one.
-      setJustFixed({ label: section.label, delta, complete: true });
+      setJustFixed({ label: section.label, delta, complete: true, applied: doneCount, target });
       setSuggestions([]);
       setActiveIdx(0);
       advanceAfter(section.id, 'fixed', freshWeaknesses);
     } else {
       // Still work to do here → stay on the section, keep going with remaining fixes.
-      setJustFixed({ label: section.label, delta, complete: false });
+      setJustFixed({ label: section.label, delta, complete: false, applied: doneCount, target });
       setSuggestions((prev) => prev.filter((s) => s.id !== appliedSuggestion.id));
       setActiveIdx(0);
     }
@@ -396,9 +447,15 @@ export function AtsFixStudio({
             <div className="flex flex-wrap items-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-800 animate-slide-up">
               <span className="text-lg leading-none">✓</span>
               {justFixed.complete ? (
-                <>“{justFixed.label}” is now in good shape — moving to the next section.</>
+                <>“{justFixed.label}” is done — moving to the next section.</>
               ) : (
-                <>Change applied to “{justFixed.label}”. Keep going to turn it green.</>
+                <>
+                  Applied to “{justFixed.label}”
+                  {justFixed.applied != null && justFixed.target != null && (
+                    <> · {Math.min(justFixed.applied, justFixed.target)}/{justFixed.target} fixes</>
+                  )}
+                  . Keep going to turn it green.
+                </>
               )}
               {justFixed.delta > 0 && (
                 <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs font-bold">
@@ -416,6 +473,7 @@ export function AtsFixStudio({
             onSelectCheck={onSelectReportCheck}
             showUpgrade={!isPremium}
             statusByWeaknessId={statusById}
+            progressByWeaknessId={progressByWeaknessId}
           />
         </div>
 
