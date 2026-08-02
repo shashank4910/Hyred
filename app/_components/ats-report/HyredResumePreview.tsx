@@ -10,14 +10,12 @@ import {
 
 type Highlight = { start: number; end: number; kind: 'needs' | 'fixed' } | null;
 
-/** Matches lib/pdf-resume.ts design tokens (Classic Navy ATS PDF). */
+/** Matches lib/pdf-resume.ts Executive Clean tokens. */
 const C = {
-  headerBg: '#0f172a',
-  accent: '#eab308',
-  white: '#ffffff',
-  ink: '#0f172a',
-  stone: '#505c6e',
-  light: '#b4c3d7',
+  navy: '#1B3A5C',
+  ink: '#1e293b',
+  stone: '#64748b',
+  rule: '#cbd5e1',
 };
 
 function HighlightMark({
@@ -64,13 +62,8 @@ function SectionHeading({
   return (
     <h2 className="mb-2.5">
       <span
-        className="mb-2 block h-[1.2px] w-full"
-        style={{ backgroundColor: C.accent }}
-        aria-hidden="true"
-      />
-      <span
-        className="text-[11px] font-bold uppercase tracking-[0.04em]"
-        style={{ color: C.ink }}
+        className="text-[11px] font-bold uppercase tracking-[0.06em]"
+        style={{ color: C.navy }}
       >
         {line ? (
           <HighlightMark active={lineIsHighlighted(line, highlight)} kind={kind}>
@@ -80,8 +73,22 @@ function SectionHeading({
           text
         )}
       </span>
+      <span className="mt-1.5 block h-[1px] w-full" style={{ backgroundColor: C.navy }} />
     </h2>
   );
+}
+
+function splitLeftAndDates(text: string): { left: string; dates: string | null } {
+  const paren = text.match(/^(.+?)\s*[(\[]\s*([^)\]]*\d{4}[^)\]]*)\s*[)\]]\s*$/);
+  if (paren) return { left: paren[1].trim(), dates: paren[2].trim() };
+  const pipeParts = text.split('|').map((p) => p.trim()).filter(Boolean);
+  if (pipeParts.length >= 2) {
+    const last = pipeParts[pipeParts.length - 1]!;
+    if (/\d{4}/.test(last) || /present|current/i.test(last)) {
+      return { left: pipeParts.slice(0, -1).join(' · '), dates: last };
+    }
+  }
+  return { left: text, dates: null };
 }
 
 function renderSectionBody(
@@ -90,22 +97,33 @@ function renderSectionBody(
   kind: 'needs' | 'fixed',
 ) {
   return (
-    <div className="space-y-1 text-[11.5px] leading-[1.45]" style={{ color: C.ink }}>
+    <div className="space-y-1.5 text-[11.5px] leading-[1.5]" style={{ color: C.ink }}>
       {section.lines.map((line) => {
         const active = lineIsHighlighted(line, hl);
-        if (line.kind === 'entryHeading') {
+        if (line.kind === 'entryHeading' || (!line.kind.startsWith('bullet') && looksLikeHeaderLine(line.text))) {
+          const { left, dates } = splitLeftAndDates(line.text);
           return (
-            <p key={line.start} className="mt-2.5 font-bold first:mt-0" style={{ color: C.ink }}>
-              <HighlightMark active={active} kind={kind}>
-                {line.text}
-              </HighlightMark>
-            </p>
+            <div
+              key={line.start}
+              className="mt-2.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 first:mt-0"
+            >
+              <p className="min-w-0 font-bold" style={{ color: C.ink }}>
+                <HighlightMark active={active} kind={kind}>
+                  {left}
+                </HighlightMark>
+              </p>
+              {dates && (
+                <p className="shrink-0 text-[10px] font-normal" style={{ color: C.stone }}>
+                  {dates}
+                </p>
+              )}
+            </div>
           );
         }
         if (line.kind === 'bullet') {
           return (
-            <div key={line.start} className="flex gap-2 pl-0">
-              <span className="shrink-0 font-normal select-none" aria-hidden="true">
+            <div key={line.start} className="flex gap-2">
+              <span className="shrink-0 select-none" aria-hidden="true">
                 -
               </span>
               <p className="min-w-0 flex-1">
@@ -143,9 +161,17 @@ function renderSectionBody(
   );
 }
 
+function looksLikeHeaderLine(text: string): boolean {
+  return (
+    /[|]/.test(text) ||
+    /\d{4}\s*[-–]\s*(present|current|\d{4})/i.test(text) ||
+    /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b.{0,30}\d{4}/i.test(text) ||
+    /pvt|ltd|inc|llc|corp|technologies|services/i.test(text)
+  );
+}
+
 /**
- * On-screen preview that matches Download PDF (lib/pdf-resume Classic Navy).
- * Single-column ATS layout — what you see is what you get when you download.
+ * On-screen preview matching Download PDF — Executive Clean (ATS-safe).
  */
 export function HyredResumePreview({
   text,
@@ -175,13 +201,14 @@ export function HyredResumePreview({
 
   return (
     <article
-      className={`relative mx-auto w-full max-w-[720px] overflow-hidden rounded-sm border border-slate-300/80 bg-white shadow-[0_2px_8px_rgba(15,23,42,0.08),0_14px_40px_rgba(15,23,42,0.1)] ${className}`}
+      className={`relative mx-auto w-full max-w-[720px] overflow-hidden rounded-sm border border-slate-200 bg-white shadow-[0_1px_3px_rgba(15,23,42,0.06),0_12px_32px_rgba(15,23,42,0.08)] ${className}`}
       aria-label="Hyred resume preview"
     >
-      {/* Navy header — matches generateBeautifulPdf */}
-      <header className="relative px-7 pb-5 pt-6 sm:px-9 sm:pb-6 sm:pt-7" style={{ backgroundColor: C.headerBg }}>
-        <div className="absolute inset-x-0 top-0 h-1" style={{ backgroundColor: C.accent }} />
-        <h1 className="text-[clamp(1.25rem,2.6vw,1.55rem)] font-bold tracking-wide text-white">
+      <header className="px-8 pb-4 pt-7 sm:px-10 sm:pt-8">
+        <h1
+          className="text-[clamp(1.2rem,2.5vw,1.45rem)] font-bold tracking-[0.04em]"
+          style={{ color: C.navy }}
+        >
           {doc.name ? (
             <HighlightMark active={lineIsHighlighted(doc.name, hl)} kind={kind}>
               {name.toUpperCase()}
@@ -191,24 +218,21 @@ export function HyredResumePreview({
           )}
         </h1>
         {roleTitle && (
-          <p
-            className="mt-1.5 text-[11px] font-normal uppercase tracking-[0.06em]"
-            style={{ color: C.accent }}
-          >
+          <p className="mt-1.5 text-[12px] font-normal" style={{ color: C.stone }}>
             <HighlightMark active={lineIsHighlighted(roleTitle, hl)} kind={kind}>
-              {roleTitle.text.toUpperCase()}
+              {roleTitle.text}
             </HighlightMark>
           </p>
         )}
         {contactLines.length > 0 && (
           <p
-            className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10.5px] leading-relaxed"
-            style={{ color: C.light }}
+            className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-relaxed"
+            style={{ color: C.stone }}
           >
             {contactLines.map((c, i) => (
               <span key={c.start} className="inline-flex items-center gap-2">
                 {i > 0 && (
-                  <span style={{ color: C.light, opacity: 0.7 }} aria-hidden="true">
+                  <span style={{ color: C.rule }} aria-hidden="true">
                     |
                   </span>
                 )}
@@ -219,17 +243,17 @@ export function HyredResumePreview({
             ))}
           </p>
         )}
+        <div className="mt-4 h-[1.5px] w-full" style={{ backgroundColor: C.navy }} />
       </header>
 
-      {/* Single-column body — same as PDF */}
       {doc.sections.length === 0 ? (
-        <div className="px-7 py-6 sm:px-9">
+        <div className="px-8 py-5 sm:px-10">
           <p className="whitespace-pre-wrap text-[12px] leading-relaxed" style={{ color: C.stone }}>
             {text.slice(0, 4000)}
           </p>
         </div>
       ) : (
-        <div className="space-y-4 px-7 py-6 sm:px-9 sm:py-7">
+        <div className="space-y-5 px-8 pb-7 pt-1 sm:px-10 sm:pb-8">
           {doc.sections.map((section, si) => (
             <section key={section.heading?.start ?? `sec-${si}`}>
               {section.heading && (
@@ -248,7 +272,7 @@ export function HyredResumePreview({
 
       <footer className="flex items-center justify-end border-t border-slate-100 px-6 py-2">
         <span className="text-[9px] font-semibold tracking-wide text-slate-400">
-          Same layout as Download PDF · <span className="text-primary">Hyred</span>
+          Executive Clean · ATS-safe · <span className="text-primary">Hyred</span>
         </span>
       </footer>
     </article>
