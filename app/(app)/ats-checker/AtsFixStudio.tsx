@@ -9,6 +9,7 @@ import {
   applySuggestion,
   findSnippetRange,
   listAtsWeaknesses,
+  pickWorstWeakness,
   suggestionOverlapsHandled,
   undoLastFix,
   type AppliedFix,
@@ -56,7 +57,10 @@ export function AtsFixStudio({
   const [baselineScore] = useState(initialResult.overallScore);
   const [result, setResult] = useState(initialResult);
   const [applied, setApplied] = useState<AppliedFix[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // CTA decision: always land on the worst open issue first.
+  const [selectedId, setSelectedId] = useState<string | null>(
+    () => pickWorstWeakness(initialResult)?.id ?? null,
+  );
   const [statusById, setStatusById] = useState<Record<string, 'fixed' | 'skipped'>>({});
   const [initialIssueIds] = useState<string[]>(() =>
     listAtsWeaknesses(initialResult)

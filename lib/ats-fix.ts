@@ -76,12 +76,6 @@ export function listAtsWeaknesses(result: AtsCheckResult): AtsFixWeakness[] {
     });
   }
 
-  // Sort needs_work first (lowest score), then passing
-  items.sort((a, b) => {
-    if (a.status !== b.status) return a.status === 'needs_work' ? -1 : 1;
-    return (a.score ?? 100) - (b.score ?? 100);
-  });
-
   const missing = result.jdMatch?.missing?.slice(0, 8) ?? [];
   for (const kw of missing) {
     items.push({
@@ -96,7 +90,22 @@ export function listAtsWeaknesses(result: AtsCheckResult): AtsFixWeakness[] {
     });
   }
 
+  // Worst first: needs_work → high/medium/low priority → lowest score.
+  // (CTA "Fix" lands here so the user starts on the biggest gap.)
+  const prioRank = { high: 0, medium: 1, low: 2 } as const;
+  items.sort((a, b) => {
+    if (a.status !== b.status) return a.status === 'needs_work' ? -1 : 1;
+    const pd = prioRank[a.priority] - prioRank[b.priority];
+    if (pd !== 0) return pd;
+    return (a.score ?? 55) - (b.score ?? 55);
+  });
+
   return items;
+}
+
+/** Highest-priority open weakness — used when Fix Studio opens. */
+export function pickWorstWeakness(result: AtsCheckResult): AtsFixWeakness | null {
+  return listAtsWeaknesses(result).find((w) => w.status === 'needs_work') ?? null;
 }
 
 /**
