@@ -1527,29 +1527,33 @@ export default function AtsCheckerPage() {
             className="flex flex-col sm:flex-row gap-3 animate-slide-up"
             style={{ animationDelay: '400ms', animationFillMode: 'both' }}
           >
-            {studioResume.trim().length >= 50 && (
-              <div className="flex-1 space-y-2">
-                <button
-                  type="button"
-                  onClick={() => void openFixStudioInNewTab()}
-                  disabled={openingFix}
-                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-6 py-3 text-body-md font-semibold text-on-primary shadow-sm transition-all hover:bg-primary/90 hover:shadow-primary-glow disabled:opacity-60"
-                >
-                  {openingFix ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Sparkles className="h-4 w-4" />
-                  )}
-                  {result.overallScore < 80
-                    ? 'Upgrade resume with AI — new tab'
-                    : 'Polish resume with AI — new tab'}
-                </button>
-                <p className="text-center text-[11px] text-text-muted">
-                  Your report stays here. One-click AI upgrade opens in a new tab
-                  (effort scales with your score). Download PDF when done.
-                </p>
-              </div>
-            )}
+            <div className="flex-1 space-y-2">
+              <button
+                type="button"
+                onClick={() => void openFixStudioInNewTab()}
+                disabled={openingFix || studioResume.trim().length < 50}
+                title={
+                  studioResume.trim().length < 50
+                    ? 'Need extractable resume text (scanned/image PDFs may fail)'
+                    : undefined
+                }
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-6 py-3 text-body-md font-semibold text-on-primary shadow-sm transition-all hover:bg-primary/90 hover:shadow-primary-glow disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {openingFix ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="h-4 w-4" />
+                )}
+                {result.overallScore < 80
+                  ? 'Upgrade resume with AI — new tab'
+                  : 'Polish resume with AI — new tab'}
+              </button>
+              <p className="text-center text-[11px] text-text-muted">
+                {studioResume.trim().length < 50
+                  ? 'Upgrade needs readable text from your file. Paste text, or upload a text-based PDF (not a scan).'
+                  : 'Your report stays here. One-click AI upgrade opens in a new tab. Download PDF after Upgrade.'}
+              </p>
+            </div>
             <button
               type="button"
               onClick={copyResults}
