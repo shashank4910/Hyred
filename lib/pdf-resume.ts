@@ -17,18 +17,46 @@
 
 import { jsPDF } from 'jspdf';
 import { sanitizeResumePlainText } from './resume-plain-text';
+import { resolveResumeTheme, type ResumeTheme } from './resume-template-theme';
 
-// ─── Design tokens ────────────────────────────────────────────────────────────
+// ─── Design tokens (filled per template at render time) ───────────────────────
 
 type RGB = [number, number, number];
 
-const C = {
-  navy:  [27, 58, 92] as RGB,     // #1B3A5C — name + section accents
-  ink:   [30, 41, 59] as RGB,     // near-black body
-  stone: [100, 116, 139] as RGB,  // secondary / contact / dates
-  rule:  [203, 213, 225] as RGB,  // soft divider
-  white: [255, 255, 255] as RGB,
+type ActiveTheme = {
+  name: RGB;
+  title: RGB;
+  contact: RGB;
+  section: RGB;
+  ink: RGB;
+  stone: RGB;
+  white: RGB;
+  bandBg?: RGB;
+  bandName?: RGB;
+  bandTitle?: RGB;
+  bandContact?: RGB;
+  bandAccent?: RGB;
+  headerStyle: 'light' | 'band';
 };
+
+let C: ActiveTheme = {
+  name: [27, 58, 92],
+  title: [100, 116, 139],
+  contact: [100, 116, 139],
+  section: [27, 58, 92],
+  ink: [30, 41, 59],
+  stone: [100, 116, 139],
+  white: [255, 255, 255],
+  headerStyle: 'light',
+};
+
+function applyTheme(theme: ResumeTheme): void {
+  C = {
+    ...theme.pdf,
+    white: [255, 255, 255],
+    headerStyle: theme.headerStyle,
+  };
+}
 
 const L = {
   pageW:    595.28, // A4 pt
@@ -194,7 +222,110 @@ function cleanContactDisplay(line: string): string {
     .trim();
 }
 
-export function generateBeautifulPdf(resumeText: string): jsPDF {
+function renderLightHeader(doc: jsPDF, parsed: ParsedResume): number {
+  let y = L.mTop;
+
+  if (parsed.name) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(20);
+    doc.setTextColor(...C.name);
+    const nameLines = doc.splitTextToSize(parsed.name.toUpperCase(), contentW);
+    for (const nl of nameLines) {
+      doc.text(nl, L.mL, y, TEXT_OPTS);
+      y += 22;
+    }
+  }
+
+  if (parsed.title) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10.5);
+    doc.setTextColor(...C.title);
+    const titleLines = doc.splitTextToSize(parsed.title, contentW);
+    for (const tl of titleLines) {
+      doc.text(tl, L.mL, y, TEXT_OPTS);
+      y += 13;
+    }
+    y += 2;
+  }
+
+  if (parsed.contactLines.length > 0) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(...C.contact);
+    const joined = parsed.contactLines.map(cleanContactDisplay).filter(Boolean).join('  |  ');
+    const wrapped = doc.splitTextToSize(joined, contentW);
+    for (const wl of wrapped) {
+      doc.text(wl, L.mL, y, TEXT_OPTS);
+      y += 11;
+    }
+  }
+
+  y += 10;
+  doc.setFillColor(...C.section);
+  doc.rect(L.mL, y, contentW, 1.5, 'F');
+  return y + 18;
+}
+
+function renderBandHeader(doc: jsPDF, parsed: ParsedResume): number {
+  const bandBg = C.bandBg ?? C.name;
+  const bandName = C.bandName ?? C.white;
+  const bandTitle = C.bandTitle ?? C.title;
+  const bandContact = C.bandContact ?? C.contact;
+  const bandAccent = C.bandAccent ?? C.section;
+
+  doc.setFont('helvetica', 'normal');
+  let headerH = 28;
+  if (parsed.name) headerH += 22;
+  if (parsed.title) headerH += 16;
+  if (parsed.contactLines.length) headerH += 14;
+  headerH = Math.max(92, headerH + 12);
+
+  doc.setFillColor(...bandBg);
+  doc.rect(0, 0, L.pageW, headerH, 'F');
+  doc.setFillColor(...bandAccent);
+  doc.rect(0, 0, L.pageW, 3.5, 'F');
+
+  let y = 30;
+  if (parsed.name) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(20);
+    doc.setTextColor(...bandName);
+    doc.text(parsed.name.toUpperCase(), L.mL, y, TEXT_OPTS);
+    y += 20;
+  }
+  if (parsed.title) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(...bandTitle);
+    const titleLines = doc.splitTextToSize(parsed.title.toUpperCase(), contentW);
+    for (const tl of titleLines.slice(0, 2)) {
+      doc.text(tl, L.mL, y, TEXT_OPTS);
+      y += 12;
+    }
+  }
+  if (parsed.contactLines.length > 0) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(...bandContact);
+    const joined = parsed.contactLines.map(cleanContactDisplay).filter(Boolean).join('  |  ');
+    const wrapped = doc.splitTextToSize(joined, contentW);
+    for (const wl of wrapped.slice(0, 2)) {
+      if (y > headerH - 8) break;
+      doc.text(wl, L.mL, y, TEXT_OPTS);
+      y += 11;
+    }
+  }
+
+  return headerH + 20;
+}
+
+export function generateBeautifulPdf(
+  resumeText: string,
+  templateId?: string | null,
+): jsPDF {
+  const theme = resolveResumeTheme(templateId);
+  applyTheme(theme);
+
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
   const parsed = finalizeParsedHeader(parse(sanitizeResumePlainText(resumeText)));
 
@@ -205,55 +336,13 @@ export function generateBeautifulPdf(resumeText: string): jsPDF {
     creator: 'Hyred',
   });
 
-  // White page — contact stays in the document body (ATS-safe).
   doc.setFillColor(...C.white);
   doc.rect(0, 0, L.pageW, L.pageH, 'F');
 
-  let y = L.mTop;
-
-  // ── Name ───────────────────────────────────────────────────────────────────
-  if (parsed.name) {
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(20);
-    doc.setTextColor(...C.navy);
-    const nameLines = doc.splitTextToSize(parsed.name.toUpperCase(), contentW);
-    for (const nl of nameLines) {
-      doc.text(nl, L.mL, y, TEXT_OPTS);
-      y += 22;
-    }
-  }
-
-  // ── Role title ─────────────────────────────────────────────────────────────
-  if (parsed.title) {
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10.5);
-    doc.setTextColor(...C.stone);
-    const titleLines = doc.splitTextToSize(parsed.title, contentW);
-    for (const tl of titleLines) {
-      doc.text(tl, L.mL, y, TEXT_OPTS);
-      y += 13;
-    }
-    y += 2;
-  }
-
-  // ── Contact (body text, one line) ──────────────────────────────────────────
-  if (parsed.contactLines.length > 0) {
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    doc.setTextColor(...C.stone);
-    const joined = parsed.contactLines.map(cleanContactDisplay).filter(Boolean).join('  |  ');
-    const wrapped = doc.splitTextToSize(joined, contentW);
-    for (const wl of wrapped) {
-      doc.text(wl, L.mL, y, TEXT_OPTS);
-      y += 11;
-    }
-  }
-
-  // Accent rule under header
-  y += 10;
-  doc.setFillColor(...C.navy);
-  doc.rect(L.mL, y, contentW, 1.5, 'F');
-  y += 18;
+  let y =
+    C.headerStyle === 'band'
+      ? renderBandHeader(doc, parsed)
+      : renderLightHeader(doc, parsed);
 
   // ── Body sections ──────────────────────────────────────────────────────────
   for (let si = 0; si < parsed.sections.length; si++) {
@@ -282,10 +371,10 @@ export function generateBeautifulPdf(resumeText: string): jsPDF {
 function renderSectionHeader(doc: jsPDF, title: string, y: number): number {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10.5);
-  doc.setTextColor(...C.navy);
+  doc.setTextColor(...C.section);
   doc.text(title.toUpperCase(), L.mL, y, TEXT_OPTS);
   y += 5;
-  doc.setFillColor(...C.navy);
+  doc.setFillColor(...C.section);
   doc.rect(L.mL, y, contentW, 0.9, 'F');
   y += 12;
   return y;

@@ -16,6 +16,7 @@ import {
 import type { AtsCheckResult } from '@/lib/ats-checker';
 import { planAtsUpgrade, type AtsUpgradePlan } from '@/lib/ats-upgrade';
 import { AtsResumeTwinPreview } from '@/app/_components/ats-report/AtsResumeTwinPreview';
+import { AtsResumeTemplatePicker } from '@/app/_components/ats-report/AtsResumeTemplatePicker';
 import { HyredResumePreview } from '@/app/_components/ats-report/HyredResumePreview';
 import { AtsScoreRing } from '@/app/_components/ats-report/AtsScoreRing';
 import { useSetPreviewFocusMode } from '@/app/_components/ats-report/preview-focus';
@@ -24,6 +25,11 @@ import {
   formatResumeStudioMeter,
   type ResumeStudioUsage,
 } from '@/lib/premium-upgrade';
+import {
+  DEFAULT_ATS_TEMPLATE_ID,
+  resolveResumeTheme,
+  type ResumeTemplateId,
+} from '@/lib/resume-template-theme';
 
 /**
  * One-click Resume Upgrade Studio (replaces step-by-step section fixing).
@@ -61,6 +67,8 @@ export function AtsFixStudio({
   const [showSaveUpgrade, setShowSaveUpgrade] = useState(false);
   const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [templateId, setTemplateId] = useState<ResumeTemplateId>(DEFAULT_ATS_TEMPLATE_ID);
+  const templateName = resolveResumeTheme(templateId).name;
 
   const upgradePlan: AtsUpgradePlan = useMemo(
     () => planAtsUpgrade(initialResult),
@@ -137,9 +145,9 @@ export function AtsFixStudio({
     setError(null);
     try {
       const { generateBeautifulPdf } = await import('@/lib/pdf-resume');
-      const doc = generateBeautifulPdf(workingResume);
+      const doc = generateBeautifulPdf(workingResume, templateId);
       const base = (originalFilename || 'resume').replace(/\.[^.]+$/, '');
-      const filename = `${base}-hyred.pdf`;
+      const filename = `${base}-hyred-${templateId}.pdf`;
       const blob = doc.output('blob');
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -423,8 +431,11 @@ export function AtsFixStudio({
           hyredLabel={upgraded ? 'Upgraded Hyred resume' : 'Hyred layout (preview)'}
           hyredMeta={
             upgraded
-              ? `Score ${result.overallScore} · ready to download`
-              : 'Click Upgrade to generate'
+              ? `Score ${result.overallScore} · ${templateName} · ready to download`
+              : `${templateName} · click Upgrade to generate`
+          }
+          hyredHeaderExtra={
+            <AtsResumeTemplatePicker selectedId={templateId} onSelect={setTemplateId} />
           }
           original={
             originalFile ? (
@@ -443,11 +454,11 @@ export function AtsFixStudio({
                 </div>
               )
             ) : (
-              <HyredResumePreview text={originalResume} showHighlights={false} />
+              <HyredResumePreview text={originalResume} showHighlights={false} templateId={templateId} />
             )
           }
           hyred={
-            <HyredResumePreview text={workingResume} showHighlights={false} />
+            <HyredResumePreview text={workingResume} showHighlights={false} templateId={templateId} />
           }
         />
       </div>
