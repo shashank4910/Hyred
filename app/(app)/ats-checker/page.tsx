@@ -27,7 +27,6 @@ import {
   ChevronDown,
   ChevronUp,
   Briefcase,
-  Zap,
   Shield,
   Lightbulb,
 } from 'lucide-react';
@@ -691,14 +690,14 @@ export default function AtsCheckerPage() {
   // ── Milestone config ──────────────────────────────────────────
 
   const MILESTONES = [
-    { id: 'parsing', label: 'Parsing resume structure', icon: <FileText className="h-4 w-4" /> },
-    { id: 'contact', label: 'Checking contact information', icon: <AtSign className="h-4 w-4" /> },
-    { id: 'bullets', label: 'Evaluating bullet point quality', icon: <ListChecks className="h-4 w-4" /> },
-    { id: 'metrics', label: 'Scanning for quantified metrics', icon: <Target className="h-4 w-4" /> },
-    { id: 'skills', label: 'Analyzing skills optimization', icon: <Sparkles className="h-4 w-4" /> },
-    { id: 'format', label: 'Checking formatting cleanliness', icon: <FileCheck className="h-4 w-4" /> },
-    { id: 'dates', label: 'Validating date formatting', icon: <Calendar className="h-4 w-4" /> },
-    { id: 'score', label: 'Computing ATS compatibility score', icon: <TrendingUp className="h-4 w-4" /> },
+    { id: 'parsing', label: 'Structure', icon: <FileText className="h-4 w-4" /> },
+    { id: 'contact', label: 'Contact', icon: <AtSign className="h-4 w-4" /> },
+    { id: 'bullets', label: 'Bullets', icon: <ListChecks className="h-4 w-4" /> },
+    { id: 'metrics', label: 'Metrics', icon: <Target className="h-4 w-4" /> },
+    { id: 'skills', label: 'Skills', icon: <Sparkles className="h-4 w-4" /> },
+    { id: 'format', label: 'Format', icon: <FileCheck className="h-4 w-4" /> },
+    { id: 'dates', label: 'Dates', icon: <Calendar className="h-4 w-4" /> },
+    { id: 'score', label: 'Score', icon: <TrendingUp className="h-4 w-4" /> },
   ] as const;
 
   function quickAnalyze(id: string): string {
@@ -814,9 +813,10 @@ export default function AtsCheckerPage() {
       return;
     }
 
+    // Slow enough to feel deliberate (~8–14s typical), not a flash checklist.
     const count = Math.max(resumeWordCount, 1);
-    const base = count < 300 ? 250 : count < 800 ? 400 : count < 1500 ? 550 : 750;
-    const durations = [1.0, 1.2, 0.9, 1.3, 1.1, 0.8, 1.0, 1.5].map(v => Math.round(base * v));
+    const base = count < 300 ? 700 : count < 800 ? 900 : count < 1500 ? 1100 : 1300;
+    const durations = [1.0, 1.15, 0.95, 1.2, 1.1, 0.9, 1.0, 1.35].map((v) => Math.round(base * v));
 
     let currentStep = 0;
     let timer: ReturnType<typeof setTimeout>;
@@ -905,22 +905,17 @@ export default function AtsCheckerPage() {
             ATS Resume Checker
           </h1>
           <p className="text-body-md text-on-surface-variant mt-2 max-w-xl">
-            Analyze your resume for Applicant Tracking System compatibility. 
-            Free, instant, no AI — fully private and processed in-memory.
+            See how ATS systems read your resume — then fix weak spots before you apply.
           </p>
           {/* Stats bar */}
           <div className="flex flex-wrap items-center gap-3 mt-4">
             <span className="inline-flex items-center gap-1.5 text-xs text-text-muted bg-surface-container rounded-full px-3 py-1">
               <FileCheck className="h-3.5 w-3.5 text-primary" />
-              8 criteria checked
-            </span>
-            <span className="inline-flex items-center gap-1.5 text-xs text-text-muted bg-surface-container rounded-full px-3 py-1">
-              <Zap className="h-3.5 w-3.5 text-amber-500" />
-              Instant results
+              8 ATS checks
             </span>
             <span className="inline-flex items-center gap-1.5 text-xs text-text-muted bg-surface-container rounded-full px-3 py-1">
               <Shield className="h-3.5 w-3.5 text-emerald-500" />
-              100% private
+              Not stored
             </span>
           </div>
         </div>
@@ -1101,117 +1096,124 @@ export default function AtsCheckerPage() {
       {/* ── LOADING VIEW ───────────────────────────────────────── */}
       {view === 'loading' && (
         <div className="rounded-2xl border border-outline-variant/40 bg-surface-card shadow-sm overflow-hidden animate-fade-in">
-          {/* Header */}
-          <div className="relative px-6 pt-6 pb-4 border-b border-outline-variant/20">
-            <div className="absolute top-0 right-0 w-48 h-48 bg-primary/3 rounded-full blur-3xl" />
-            <div className="relative flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primary-container animate-pulse flex items-center justify-center">
-                <Search className="h-5 w-5 text-on-primary" />
-              </div>
-              <div>
-                <h2 className="text-body-md font-semibold text-on-surface">
-                  Analyzing your resume
-                </h2>
-                <p className="text-xs text-text-muted">
-                  {resumeWordCount > 0 && `${resumeWordCount} words`}
-                  {resumeWordCount > 0 && ' · '}
-                  {MILESTONES.length} checks
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Milestone timeline */}
-          <div className="px-6 py-4 space-y-0.5">
-            {MILESTONES.map((m, i) => {
-              const isComplete = completedMilestones.includes(i);
-              const isActive = i === completedMilestones.length && !isComplete;
-              const isPending = !isComplete && !isActive;
-
-              return (
-                <div
-                  key={m.id}
-                  className={`flex items-center gap-3 py-2 transition-all duration-500 ${
-                    isActive ? 'opacity-100' : isPending ? 'opacity-35' : 'opacity-85'
-                  }`}
-                >
-                  {/* Status bubble */}
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 transition-all duration-500 ${
-                    isComplete
-                      ? 'bg-emerald-500/15 text-emerald-500 scale-100'
-                      : isActive
-                        ? 'bg-primary/12 text-primary'
-                        : 'bg-surface-container text-text-muted'
-                  }`}>
-                    {isComplete ? (
-                      <Check className="h-3.5 w-3.5" />
-                    ) : isActive ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <span className="text-[10px] font-bold">{i + 1}</span>
-                    )}
-                  </div>
-
-                  {/* Icon */}
-                  <span className={`shrink-0 transition-colors duration-500 ${
-                    isComplete ? 'text-emerald-500' : isActive ? 'text-primary' : 'text-text-muted'
-                  }`}>
-                    {m.icon}
-                  </span>
-
-                  {/* Label + detail */}
-                  <div className="flex-1 min-w-0 flex items-baseline gap-2">
-                    <span className={`text-sm transition-colors duration-500 ${
-                      isComplete
-                        ? 'text-on-surface'
-                        : isActive
-                          ? 'text-on-surface font-semibold'
-                          : 'text-text-muted'
-                    }`}>
-                      {m.label}
-                    </span>
-                    {isComplete && (
-                      <span className="text-xs text-emerald-600 truncate animate-slide-up">
-                        {quickAnalyze(m.id)}
-                      </span>
-                    )}
-                    {isActive && (
-                      <span className="text-xs text-text-muted truncate animate-pulse-dot">
-                        {quickAnalyze(m.id)}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Active pulse dot */}
-                  {isActive && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-primary/60 animate-ping" />
-                  )}
+          <div className="grid sm:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] gap-0">
+            {/* Document scan visual */}
+            <div className="relative px-6 pt-7 pb-6 border-b sm:border-b-0 sm:border-r border-outline-variant/20 bg-gradient-to-b from-primary/[0.04] to-transparent">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-10 h-10 rounded-xl bg-primary text-on-primary flex items-center justify-center shadow-sm">
+                  <Search className="h-5 w-5" />
                 </div>
-              );
-            })}
-          </div>
+                <div>
+                  <h2 className="text-body-md font-semibold text-on-surface">
+                    Scanning resume
+                  </h2>
+                  <p className="text-xs text-text-muted">
+                    {resumeWordCount > 0 ? `${resumeWordCount.toLocaleString()} words · ` : ''}
+                    {MILESTONES.length} checks
+                  </p>
+                </div>
+              </div>
 
-          {/* Progress bar */}
-          <div className="px-6 pb-6 pt-1">
-            <div className="h-1.5 rounded-full bg-surface-container overflow-hidden">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-[#006a65] via-[#2cc9c0] to-[#006a65] transition-all duration-500 ease-out"
-                style={{
-                  width: `${completedMilestones.length > 0
-                    ? Math.round((completedMilestones.length / MILESTONES.length) * 100)
-                    : 2}%`,
-                }}
-              />
+              <div className="relative mx-auto max-w-[220px] aspect-[3/4] rounded-xl border border-outline-variant/50 bg-surface-container-lowest shadow-sm overflow-hidden">
+                <div className="absolute inset-x-4 top-4 space-y-2.5">
+                  <div className="h-2 w-2/3 rounded-full ats-scan-line-skeleton" />
+                  <div className="h-1.5 w-full rounded-full ats-scan-line-skeleton opacity-70" />
+                  <div className="h-1.5 w-5/6 rounded-full ats-scan-line-skeleton opacity-60" />
+                  <div className="h-1.5 w-full rounded-full ats-scan-line-skeleton opacity-50 mt-4" />
+                  <div className="h-1.5 w-4/5 rounded-full ats-scan-line-skeleton opacity-50" />
+                  <div className="h-1.5 w-full rounded-full ats-scan-line-skeleton opacity-40" />
+                  <div className="h-1.5 w-3/5 rounded-full ats-scan-line-skeleton opacity-40" />
+                  <div className="h-1.5 w-full rounded-full ats-scan-line-skeleton opacity-35 mt-4" />
+                  <div className="h-1.5 w-5/6 rounded-full ats-scan-line-skeleton opacity-35" />
+                  <div className="h-1.5 w-2/3 rounded-full ats-scan-line-skeleton opacity-30" />
+                </div>
+                {/* Scan beam */}
+                <div className="pointer-events-none absolute inset-x-0 h-10 ats-scan-beam">
+                  <div className="h-px w-full bg-primary/80 shadow-[0_0_12px_2px_rgba(0,106,101,0.45)]" />
+                  <div className="h-8 w-full bg-gradient-to-b from-primary/25 to-transparent ats-scan-glow" />
+                </div>
+                <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-surface-container-lowest/80" />
+              </div>
             </div>
-            <div className="flex justify-between mt-1.5">
-              <span className="text-[10px] text-text-muted">
-                {completedMilestones.length > 0
-                  ? `${Math.round((completedMilestones.length / MILESTONES.length) * 100)}% complete`
-                  : 'Starting…'}
-              </span>
-              <span className="text-[10px] text-text-muted">
-                {completedMilestones.length}/{MILESTONES.length} steps
-              </span>
+
+            {/* Milestone timeline */}
+            <div className="px-5 py-5 flex flex-col">
+              <div className="space-y-0.5 flex-1">
+                {MILESTONES.map((m, i) => {
+                  const isComplete = completedMilestones.includes(i);
+                  const isActive = i === completedMilestones.length && !isComplete;
+                  const isPending = !isComplete && !isActive;
+
+                  return (
+                    <div
+                      key={m.id}
+                      className={`flex items-center gap-2.5 py-1.5 transition-all duration-700 ${
+                        isActive ? 'opacity-100' : isPending ? 'opacity-30' : 'opacity-90'
+                      }`}
+                    >
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 transition-all duration-700 ${
+                        isComplete
+                          ? 'bg-emerald-500/15 text-emerald-500'
+                          : isActive
+                            ? 'bg-primary/12 text-primary ring-2 ring-primary/20'
+                            : 'bg-surface-container text-text-muted'
+                      }`}>
+                        {isComplete ? (
+                          <Check className="h-3.5 w-3.5" />
+                        ) : isActive ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <span className="text-[10px] font-bold">{i + 1}</span>
+                        )}
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-baseline gap-2">
+                          <span className={`text-sm transition-colors duration-500 ${
+                            isComplete
+                              ? 'text-on-surface'
+                              : isActive
+                                ? 'text-on-surface font-semibold'
+                                : 'text-text-muted'
+                          }`}>
+                            {m.label}
+                          </span>
+                          {(isComplete || isActive) && (
+                            <span className={`text-[11px] truncate ${
+                              isComplete ? 'text-emerald-600' : 'text-text-muted'
+                            }`}>
+                              {quickAnalyze(m.id)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="pt-4 mt-2">
+                <div className="h-1.5 rounded-full bg-surface-container overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-[#006a65] via-[#2cc9c0] to-[#006a65] transition-all duration-700 ease-out"
+                    style={{
+                      width: `${completedMilestones.length > 0
+                        ? Math.round((completedMilestones.length / MILESTONES.length) * 100)
+                        : 4}%`,
+                    }}
+                  />
+                </div>
+                <div className="flex justify-between mt-1.5">
+                  <span className="text-[10px] text-text-muted">
+                    {completedMilestones.length > 0
+                      ? `${Math.round((completedMilestones.length / MILESTONES.length) * 100)}%`
+                      : 'Starting…'}
+                  </span>
+                  <span className="text-[10px] text-text-muted">
+                    {completedMilestones.length}/{MILESTONES.length}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1232,21 +1234,21 @@ export default function AtsCheckerPage() {
               <div className="flex-1 text-center sm:text-left">
                 <h2 className="text-headline-md font-bold text-on-surface">
                   {result.overallScore >= 80
-                    ? 'Excellent — ATS Ready 🚀'
+                    ? 'ATS-ready'
                     : result.overallScore >= 60
-                      ? 'Good — Minor Tweaks Needed 👍'
+                      ? 'Almost there'
                       : result.overallScore >= 40
-                        ? 'Fair — Several Improvements Required ⚠️'
-                        : 'Needs Significant Work 🚨'}
+                        ? 'Needs work'
+                        : 'High risk of ATS filter'}
                 </h2>
                 <p className="text-sm text-on-surface-variant mt-1.5">
                   {result.overallScore >= 80
-                    ? 'Your resume is well-optimized for ATS systems. You should have no trouble getting parsed.'
+                    ? 'Parsers should read this cleanly. Small polish can still help.'
                     : result.overallScore >= 60
-                      ? 'Solid foundation with a few areas to polish. ATS parsers will mostly read you correctly.'
+                      ? 'Most fields parse fine — fix the gaps below before you apply.'
                       : result.overallScore >= 40
-                        ? 'Some key areas need attention. ATS systems may struggle to extract your information reliably.'
-                        : 'Major changes recommended. Your resume may be getting filtered out before a human sees it.'}
+                        ? 'Several fields may parse poorly. Fix the top issues first.'
+                        : 'Key fields look missing or hard to parse. Start with the top 3 fixes.'}
                 </p>
 
                 {/* Filename badge */}
@@ -1311,7 +1313,7 @@ export default function AtsCheckerPage() {
               <div className="rounded-2xl border border-outline-variant/40 bg-surface-card p-5 shadow-sm">
                 <h3 className="font-semibold text-on-surface flex items-center gap-2 mb-3">
                   <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                  What you&apos;re doing well
+                  Working well
                 </h3>
                 <ul className="space-y-2">
                   {result.goodPractices.map((g, i) => (
@@ -1319,7 +1321,7 @@ export default function AtsCheckerPage() {
                       <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-600 shrink-0 mt-0.5">
                         <Check className="h-3 w-3" />
                       </span>
-                      <span>{g}</span>
+                      <span className="leading-snug">{g}</span>
                     </li>
                   ))}
                 </ul>
@@ -1331,7 +1333,7 @@ export default function AtsCheckerPage() {
               <div className="rounded-2xl border border-outline-variant/40 bg-surface-card p-5 shadow-sm">
                 <h3 className="font-semibold text-on-surface flex items-center gap-2 mb-3">
                   <TrendingUp className="h-4 w-4 text-amber-500" />
-                  Top improvements needed
+                  Fix these first
                 </h3>
                 <ul className="space-y-2.5">
                   {result.topImprovements.map((imp, i) => (
@@ -1345,7 +1347,7 @@ export default function AtsCheckerPage() {
                       }`}>
                         {i + 1}
                       </span>
-                      <span>{imp}</span>
+                      <span className="leading-snug break-words">{imp}</span>
                     </li>
                   ))}
                 </ul>
@@ -1545,13 +1547,13 @@ export default function AtsCheckerPage() {
                   <Sparkles className="h-4 w-4" />
                 )}
                 {result.overallScore < 80
-                  ? 'Upgrade resume with AI — new tab'
-                  : 'Polish resume with AI — new tab'}
+                  ? 'Upgrade with AI'
+                  : 'Polish with AI'}
               </button>
               <p className="text-center text-[11px] text-text-muted">
                 {studioResume.trim().length < 50
-                  ? 'Upgrade needs readable text from your file. Paste text, or upload a text-based PDF (not a scan).'
-                  : 'Your report stays here. One-click AI upgrade opens in a new tab. Download PDF after Upgrade.'}
+                  ? 'Needs readable text from your file — paste text or use a text PDF / DOCX.'
+                  : 'Opens in a new tab. Report stays here. Download PDF after you upgrade.'}
               </p>
             </div>
             <button

@@ -117,7 +117,7 @@ test.describe('ATS Checker Page', () => {
     await page.getByRole('button', { name: /Try sample resume/i }).click();
     await page.getByRole('button', { name: /Check My Resume/i }).click();
 
-    await expect(page.getByText(/What you're doing well|Top improvements needed/)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/Working well|Fix these first/)).toBeVisible({ timeout: 15000 });
   });
 
   /* ── Detailed Breakdown ──────────────────────────────────── */
