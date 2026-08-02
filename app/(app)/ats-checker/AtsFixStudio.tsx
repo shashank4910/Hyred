@@ -30,6 +30,7 @@ import {
   resolveResumeTheme,
   type ResumeTemplateId,
 } from '@/lib/resume-template-theme';
+import { extractResumePhoto, toCircularPhotoDataUrl } from '@/lib/resume-photo';
 
 /**
  * One-click Resume Upgrade Studio (replaces step-by-step section fixing).
@@ -69,6 +70,31 @@ export function AtsFixStudio({
   const [downloading, setDownloading] = useState(false);
   const [templateId, setTemplateId] = useState<ResumeTemplateId>(DEFAULT_ATS_TEMPLATE_ID);
   const templateName = resolveResumeTheme(templateId).name;
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!originalFile) {
+      setPhotoUrl(null);
+      return;
+    }
+    (async () => {
+      try {
+        const extracted = await extractResumePhoto({
+          dataUrl: originalFile.url,
+          kind: originalFile.kind,
+        });
+        if (!extracted || cancelled) return;
+        const circular = await toCircularPhotoDataUrl(extracted);
+        if (!cancelled) setPhotoUrl(circular);
+      } catch {
+        /* no photo found — keep initials avatar */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [originalFile]);
 
   const upgradePlan: AtsUpgradePlan = useMemo(
     () => planAtsUpgrade(initialResult),
@@ -145,7 +171,7 @@ export function AtsFixStudio({
     setError(null);
     try {
       const { generateBeautifulPdf } = await import('@/lib/pdf-resume');
-      const doc = generateBeautifulPdf(workingResume, templateId);
+      const doc = generateBeautifulPdf(workingResume, templateId, { photoDataUrl: photoUrl });
       const base = (originalFilename || 'resume').replace(/\.[^.]+$/, '');
       const filename = `${base}-hyred-${templateId}.pdf`;
       const blob = doc.output('blob');
@@ -454,11 +480,21 @@ export function AtsFixStudio({
                 </div>
               )
             ) : (
-              <HyredResumePreview text={originalResume} showHighlights={false} templateId={templateId} />
+              <HyredResumePreview
+                text={originalResume}
+                showHighlights={false}
+                templateId={templateId}
+                photoUrl={photoUrl}
+              />
             )
           }
           hyred={
-            <HyredResumePreview text={workingResume} showHighlights={false} templateId={templateId} />
+            <HyredResumePreview
+              text={workingResume}
+              showHighlights={false}
+              templateId={templateId}
+              photoUrl={photoUrl}
+            />
           }
         />
       </div>

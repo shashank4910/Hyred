@@ -22,7 +22,12 @@ type LayoutRenderProps = {
   hl: Highlight;
   kind: 'needs' | 'fixed';
   rawText: string;
+  photoUrl?: string | null;
 };
+
+function mainBodySections(model: ResumeLayoutModel): ResumeSection[] {
+  return [...model.experienceSections, ...model.projectSections, ...model.otherSections];
+}
 
 function HighlightMark({
   active,
@@ -75,13 +80,26 @@ function AvatarInitials({
   bg,
   color,
   size = 'md',
+  photoUrl,
 }: {
   name: string;
   bg: string;
   color: string;
   size?: 'sm' | 'md' | 'lg';
+  photoUrl?: string | null;
 }) {
   const dim = size === 'lg' ? 'h-16 w-16 text-lg' : size === 'sm' ? 'h-10 w-10 text-xs' : 'h-14 w-14 text-sm';
+  if (photoUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={photoUrl}
+        alt=""
+        className={`shrink-0 rounded-full object-cover ${dim}`}
+        aria-hidden="true"
+      />
+    );
+  }
   return (
     <div
       className={`flex shrink-0 items-center justify-center rounded-full font-bold ${dim}`}
@@ -228,7 +246,7 @@ function RawFallback({ text, stone }: { text: string; stone: string }) {
   );
 }
 
-function TealEngineerLayout({ model, theme, hl, kind, rawText }: LayoutRenderProps) {
+function TealEngineerLayout({ model, theme, hl, kind, rawText, photoUrl }: LayoutRenderProps) {
   const css = theme.css;
   const name = model.name?.text ?? 'Your Name';
   const sidebarInk = css.sidebarInk ?? css.ink;
@@ -243,7 +261,12 @@ function TealEngineerLayout({ model, theme, hl, kind, rawText }: LayoutRenderPro
         className="w-[35%] shrink-0 space-y-5 px-4 py-6 sm:px-5"
         style={{ backgroundColor: css.sidebarBg }}
       >
-        <AvatarInitials name={name} bg={css.accent ?? css.section} color="#ffffff" />
+        <AvatarInitials
+          name={name}
+          bg={css.accent ?? css.section}
+          color="#ffffff"
+          photoUrl={photoUrl}
+        />
         <SidebarBlock
           title="Contact"
           sections={[
@@ -261,6 +284,15 @@ function TealEngineerLayout({ model, theme, hl, kind, rawText }: LayoutRenderPro
         <SidebarBlock
           title="Education"
           sections={model.educationSections}
+          hl={hl}
+          kind={kind}
+          headingColor={css.section}
+          ink={sidebarInk}
+          stone={css.stone}
+        />
+        <SidebarBlock
+          title="Skills"
+          sections={model.skillsSections}
           hl={hl}
           kind={kind}
           headingColor={css.section}
@@ -296,8 +328,17 @@ function TealEngineerLayout({ model, theme, hl, kind, rawText }: LayoutRenderPro
             </p>
           )}
         </header>
-        {[...model.experienceSections, ...model.otherSections.filter((s) => !SUMMARY_LIKE(s))].map(
-          (sec, i) => (
+        {model.summaryText && (
+          <section>
+            <h2 className="mb-2 text-[10px] font-bold uppercase tracking-[0.06em]" style={{ color: css.section }}>
+              {model.summaryText.heading?.text ?? 'Professional Summary'}
+            </h2>
+            <SectionLines section={model.summaryText} hl={hl} kind={kind} ink={css.ink} stone={css.stone} />
+          </section>
+        )}
+        {mainBodySections(model)
+          .filter((s) => !SUMMARY_LIKE(s))
+          .map((sec, i) => (
             <section key={sec.heading?.start ?? i}>
               {sec.heading && (
                 <h2
@@ -311,26 +352,7 @@ function TealEngineerLayout({ model, theme, hl, kind, rawText }: LayoutRenderPro
               )}
               <SectionLines section={sec} hl={hl} kind={kind} ink={css.ink} stone={css.stone} />
             </section>
-          ),
-        )}
-        {model.summaryText && (
-          <section>
-            <h2 className="mb-2 text-[10px] font-bold uppercase tracking-[0.06em]" style={{ color: css.section }}>
-              Additional
-            </h2>
-            <SectionLines section={model.summaryText} hl={hl} kind={kind} ink={css.ink} stone={css.stone} />
-          </section>
-        )}
-        {model.skillsSections.map((sec, i) => (
-          <section key={sec.heading?.start ?? i}>
-            {sec.heading && (
-              <h2 className="mb-2 text-[10px] font-bold uppercase tracking-[0.06em]" style={{ color: css.section }}>
-                {sec.heading.text}
-              </h2>
-            )}
-            <SectionLines section={sec} hl={hl} kind={kind} ink={css.ink} stone={css.stone} />
-          </section>
-        ))}
+          ))}
       </main>
     </div>
   );
@@ -403,7 +425,7 @@ function NavyGoldLayout({ model, theme, hl, kind, rawText }: LayoutRenderProps) 
               <SectionLines section={model.summaryText} hl={hl} kind={kind} ink={css.ink} stone={css.stone} />
             </section>
           )}
-          {[...model.experienceSections, ...model.otherSections].map((sec, i) => (
+          {mainBodySections(model).map((sec, i) => (
             <section key={sec.heading?.start ?? i}>
               {sec.heading && (
                 <h2 className="mb-2 text-[10px] font-bold uppercase tracking-[0.06em]" style={{ color: css.section }}>
@@ -478,7 +500,7 @@ function NavyGoldLayout({ model, theme, hl, kind, rawText }: LayoutRenderProps) 
   );
 }
 
-function ModernSummaryLayout({ model, theme, hl, kind, rawText }: LayoutRenderProps) {
+function ModernSummaryLayout({ model, theme, hl, kind, rawText, photoUrl }: LayoutRenderProps) {
   const css = theme.css;
   const name = model.name?.text ?? 'Your Name';
 
@@ -511,7 +533,7 @@ function ModernSummaryLayout({ model, theme, hl, kind, rawText }: LayoutRenderPr
           className="mx-6 mt-4 flex gap-4 px-4 py-3 sm:mx-8"
           style={{ backgroundColor: css.summaryBand }}
         >
-          <AvatarInitials name={name} bg={css.section} color="#ffffff" size="sm" />
+          <AvatarInitials name={name} bg={css.section} color="#ffffff" size="sm" photoUrl={photoUrl} />
           <div className="min-w-0 flex-1">
             <SectionLines section={model.summaryText} hl={hl} kind={kind} ink={css.ink} stone={css.stone} bullet="•" />
           </div>
@@ -613,7 +635,7 @@ function ModernSummaryLayout({ model, theme, hl, kind, rawText }: LayoutRenderPr
               </div>
             </section>
           ))}
-          {model.otherSections.map((sec, i) => (
+          {[...model.projectSections, ...model.otherSections].map((sec, i) => (
             <section key={sec.heading?.start ?? i}>
               {sec.heading && (
                 <h2 className="mb-2 text-[10px] font-bold uppercase tracking-[0.06em]" style={{ color: css.section }}>
@@ -635,6 +657,7 @@ function NursingCleanLayout({ model, theme, hl, kind, rawText }: LayoutRenderPro
   const allSections = [
     model.summaryText,
     ...model.experienceSections,
+    ...model.projectSections,
     ...model.educationSections,
     ...model.skillsSections,
     ...model.certificationsSections,
@@ -704,12 +727,13 @@ function NursingCleanLayout({ model, theme, hl, kind, rawText }: LayoutRenderPro
   );
 }
 
-function BlueBorderLayout({ model, theme, hl, kind, rawText }: LayoutRenderProps) {
+function BlueBorderLayout({ model, theme, hl, kind, rawText, photoUrl }: LayoutRenderProps) {
   const css = theme.css;
   const name = model.name?.text ?? 'Your Name';
   const allSections = [
     model.summaryText,
     ...model.experienceSections,
+    ...model.projectSections,
     ...model.educationSections,
     ...model.certificationsSections,
     ...model.languagesSections,
@@ -723,7 +747,7 @@ function BlueBorderLayout({ model, theme, hl, kind, rawText }: LayoutRenderProps
   return (
     <div className="m-3 space-y-4 px-5 py-5 sm:m-4 sm:px-6" style={{ border: `2px solid ${css.border ?? css.section}` }}>
       <div className="flex items-center gap-4">
-        <AvatarInitials name={name} bg={css.section} color="#ffffff" />
+        <AvatarInitials name={name} bg={css.section} color="#ffffff" photoUrl={photoUrl} />
         <div>
           <h1 className="text-[clamp(1.1rem,2.2vw,1.3rem)] font-bold" style={{ color: css.name }}>
             {model.name ? (
@@ -796,7 +820,7 @@ function BlueBorderLayout({ model, theme, hl, kind, rawText }: LayoutRenderProps
   );
 }
 
-function PeachExecutiveLayout({ model, theme, hl, kind, rawText }: LayoutRenderProps) {
+function PeachExecutiveLayout({ model, theme, hl, kind, rawText, photoUrl }: LayoutRenderProps) {
   const css = theme.css;
   const name = model.name?.text ?? 'Your Name';
 
@@ -810,7 +834,7 @@ function PeachExecutiveLayout({ model, theme, hl, kind, rawText }: LayoutRenderP
         className="w-[34%] shrink-0 space-y-5 px-4 py-6 sm:px-5"
         style={{ backgroundColor: css.sidebarBg }}
       >
-        <AvatarInitials name={name} bg={css.accent ?? css.section} color="#ffffff" />
+        <AvatarInitials name={name} bg={css.accent ?? css.section} color="#ffffff" photoUrl={photoUrl} />
         <SidebarBlock
           title="Contact"
           sections={[{ heading: null, lines: model.contactLines }]}
@@ -866,7 +890,7 @@ function PeachExecutiveLayout({ model, theme, hl, kind, rawText }: LayoutRenderP
             <SectionLines section={model.summaryText} hl={hl} kind={kind} ink={css.ink} stone={css.stone} />
           </section>
         )}
-        {[...model.experienceSections, ...model.otherSections].map((sec, i) => (
+        {mainBodySections(model).map((sec, i) => (
           <section key={sec.heading?.start ?? i}>
             {sec.heading && (
               <h2 className="mb-2 text-[10px] font-bold uppercase tracking-[0.06em]" style={{ color: css.section }}>
@@ -930,12 +954,15 @@ export function HyredResumePreview({
   showHighlights = true,
   className = '',
   templateId,
+  photoUrl = null,
 }: {
   text: string;
   highlight?: Highlight;
   showHighlights?: boolean;
   className?: string;
   templateId?: string | null;
+  /** Profile photo from the user's original resume (data URL). */
+  photoUrl?: string | null;
 }) {
   const doc = useMemo(() => parseResumeDocument(text), [text]);
   const model = useMemo(() => buildResumeLayoutModel(doc), [doc]);
@@ -948,7 +975,7 @@ export function HyredResumePreview({
       className={`relative mx-auto w-full max-w-[720px] overflow-hidden rounded-sm border border-slate-200 bg-white shadow-[0_1px_3px_rgba(15,23,42,0.06),0_12px_32px_rgba(15,23,42,0.08)] ${className}`}
       aria-label={`${theme.name} resume preview`}
     >
-      {renderLayout({ model, theme, hl, kind, rawText: text })}
+      {renderLayout({ model, theme, hl, kind, rawText: text, photoUrl })}
       <PreviewFooter themeName={theme.name} />
     </article>
   );

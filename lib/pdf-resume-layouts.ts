@@ -186,6 +186,14 @@ function splitLeftAndDates(line: string): { left: string; dates: string | null }
   return { left: line, dates: null };
 }
 
+/** Inserts a missing space between a glued date range and the text that follows it (e.g. "01/2020 - PresentSenior Engineer"). */
+function fixGluedDateTitle(text: string): string {
+  return text.replace(
+    /^(\d{1,2}\/\d{4}\s*[-–]\s*(?:Present|\d{1,2}\/\d{4}))([A-Za-z])/i,
+    '$1 $2',
+  );
+}
+
 function cleanContactDisplay(line: string): string {
   return line
     .replace(/^(e-?mail|phone|mobile|ph\.?\s*no\.?|linkedin|github|location|address|contact)\s*:\s*/i, '')
@@ -308,13 +316,13 @@ function drawSectionLines(
       line.kind === 'entryHeading' ||
       (line.kind !== 'bullet' && line.kind !== 'skill' && looksLikeHeaderLine(line.text));
     if (isEntry) {
-      drawEntryHeader(doc, cur, line.text, ink, stone, fontSize + 0.3);
+      drawEntryHeader(doc, cur, fixGluedDateTitle(line.text), ink, stone, fontSize + 0.3);
     } else if (line.kind === 'bullet') {
-      drawBullet(doc, cur, line.content, ink, bulletChar, fontSize);
+      drawBullet(doc, cur, fixGluedDateTitle(line.content), ink, bulletChar, fontSize);
     } else if (line.kind === 'skill' && line.label) {
       drawLabeledLine(doc, cur, line.label, line.value ?? '', ink, fontSize);
     } else {
-      drawParagraph(doc, cur, line.text, ink, fontSize);
+      drawParagraph(doc, cur, fixGluedDateTitle(line.text), ink, fontSize);
     }
   }
 }
@@ -398,7 +406,20 @@ function drawAvatar(
   textColor: RGB,
   initials: string,
   fontSize = 13,
+  photoDataUrl?: string | null,
 ): void {
+  if (photoDataUrl) {
+    try {
+      const format = /^data:image\/png/i.test(photoDataUrl) ? 'PNG' : 'JPEG';
+      doc.addImage(photoDataUrl, format, cx - r, cy - r, r * 2, r * 2);
+      doc.setDrawColor(...bg);
+      doc.setLineWidth(1.1);
+      doc.circle(cx, cy, r, 'S');
+      return;
+    } catch (e) {
+      console.warn('[pdf-resume] avatar photo failed, falling back to initials', e);
+    }
+  }
   doc.setFillColor(...bg);
   doc.circle(cx, cy, r, 'F');
   doc.setFont('helvetica', 'bold');
@@ -536,7 +557,12 @@ function drawPlainHeader(
 
 // ─── Layout: teal-sidebar (Teal Engineer) ─────────────────────────────────────
 
-function renderTealSidebar(doc: jsPDF, model: ResumeLayoutModel, theme: ResumeTheme): void {
+function renderTealSidebar(
+  doc: jsPDF,
+  model: ResumeLayoutModel,
+  theme: ResumeTheme,
+  photoDataUrl?: string | null,
+): void {
   const p = buildPalette(theme);
   const name = model.name?.text || 'Candidate';
   const sideW = PAGE_W * 0.35;
@@ -548,7 +574,7 @@ function renderTealSidebar(doc: jsPDF, model: ResumeLayoutModel, theme: ResumeTh
   paintWhitePage(doc);
   doc.setFillColor(...p.sidebarBg);
   doc.rect(0, 0, sideW, PAGE_H, 'F');
-  drawAvatar(doc, sidePad + 22, 56, 22, p.accent, p.white, initialsFromName(name));
+  drawAvatar(doc, sidePad + 22, 56, 22, p.accent, p.white, initialsFromName(name), undefined, photoDataUrl);
 
   renderTwoColumnBody(
     doc,
@@ -557,19 +583,18 @@ function renderTealSidebar(doc: jsPDF, model: ResumeLayoutModel, theme: ResumeTh
     (d, cur) => {
       drawPlainHeader(d, cur, model, p, { showContact: false });
       cur.y += 8;
-      const bodySections = [...model.experienceSections, ...model.otherSections.filter((s) => !isSummaryLike(s))];
-      for (const sec of bodySections) {
-        drawSectionHeader(d, cur, sectionTitle(sec, 'Experience'), p.section);
-        drawSectionLines(d, cur, sec, p.ink, p.stone);
-        cur.y += 10;
-      }
       if (model.summaryText) {
-        drawSectionHeader(d, cur, 'Additional', p.section);
+        drawSectionHeader(d, cur, sectionTitle(model.summaryText, 'Professional Summary'), p.section);
         drawSectionLines(d, cur, model.summaryText, p.ink, p.stone);
         cur.y += 10;
       }
-      for (const sec of model.skillsSections) {
-        drawSectionHeader(d, cur, sectionTitle(sec, 'Skills'), p.section);
+      const bodySections = [
+        ...model.experienceSections,
+        ...model.projectSections,
+        ...model.otherSections.filter((s) => !isSummaryLike(s)),
+      ];
+      for (const sec of bodySections) {
+        drawSectionHeader(d, cur, sectionTitle(sec, 'Experience'), p.section);
         drawSectionLines(d, cur, sec, p.ink, p.stone);
         cur.y += 10;
       }
@@ -579,6 +604,7 @@ function renderTealSidebar(doc: jsPDF, model: ResumeLayoutModel, theme: ResumeTh
       cur.width = sideW - sidePad * 2;
       drawContactBlock(d, cur, model.contactLines, p.section, p.sidebarInk);
       drawSidebarSectionBlock(d, cur, 'Education', model.educationSections, p.section, p.sidebarInk, p.stone);
+      drawSidebarSectionBlock(d, cur, 'Skills', model.skillsSections, p.section, p.sidebarInk, p.stone);
       drawSidebarSectionBlock(d, cur, 'Certifications', model.certificationsSections, p.section, p.sidebarInk, p.stone);
     },
   );
@@ -648,7 +674,7 @@ function renderNavyGold(doc: jsPDF, model: ResumeLayoutModel, theme: ResumeTheme
         drawSectionLines(d, cur, model.summaryText, p.ink, p.stone);
         cur.y += 10;
       }
-      for (const sec of [...model.experienceSections, ...model.otherSections]) {
+      for (const sec of [...model.experienceSections, ...model.projectSections, ...model.otherSections]) {
         drawSectionHeader(d, cur, sectionTitle(sec, 'Experience'), p.section);
         drawSectionLines(d, cur, sec, p.ink, p.stone);
         cur.y += 10;
@@ -671,7 +697,12 @@ function renderNavyGold(doc: jsPDF, model: ResumeLayoutModel, theme: ResumeTheme
 
 // ─── Layout: modern-summary ────────────────────────────────────────────────────
 
-function renderModernSummary(doc: jsPDF, model: ResumeLayoutModel, theme: ResumeTheme): void {
+function renderModernSummary(
+  doc: jsPDF,
+  model: ResumeLayoutModel,
+  theme: ResumeTheme,
+  photoDataUrl?: string | null,
+): void {
   const p = buildPalette(theme);
   paintWhitePage(doc);
 
@@ -694,7 +725,7 @@ function renderModernSummary(doc: jsPDF, model: ResumeLayoutModel, theme: Resume
     const bandH = Math.max(46, lines.length * 12 + bandPad * 2 - 4);
     doc.setFillColor(...p.summaryBand);
     doc.rect(bandX, y, bandW, bandH, 'F');
-    drawAvatar(doc, bandX + bandPad + avatarD / 2, y + bandH / 2, avatarD / 2, p.section, p.white, initialsFromName(model.name?.text || 'C'), 11);
+    drawAvatar(doc, bandX + bandPad + avatarD / 2, y + bandH / 2, avatarD / 2, p.section, p.white, initialsFromName(model.name?.text || 'C'), 11, photoDataUrl);
     doc.setTextColor(...p.ink);
     let ty = y + bandPad + 2;
     for (const l of lines) {
@@ -748,6 +779,11 @@ function renderModernSummary(doc: jsPDF, model: ResumeLayoutModel, theme: Resume
         }
         cur.y += 12;
       }
+      for (const sec of model.projectSections) {
+        drawSectionHeader(d, cur, sectionTitle(sec, 'Projects'), p.section);
+        drawSectionLines(d, cur, sec, p.ink, p.stone, { fontSize: 9.3 });
+        cur.y += 10;
+      }
       for (const sec of model.otherSections) {
         drawSectionHeader(d, cur, sectionTitle(sec, 'Details'), p.section);
         drawSectionLines(d, cur, sec, p.ink, p.stone);
@@ -782,6 +818,7 @@ function renderNursingClean(doc: jsPDF, model: ResumeLayoutModel, theme: ResumeT
   const allSections = [
     model.summaryText,
     ...model.experienceSections,
+    ...model.projectSections,
     ...model.educationSections,
     ...model.skillsSections,
     ...model.certificationsSections,
@@ -798,7 +835,12 @@ function renderNursingClean(doc: jsPDF, model: ResumeLayoutModel, theme: ResumeT
 
 // ─── Layout: blue-border ────────────────────────────────────────────────────────
 
-function renderBlueBorder(doc: jsPDF, model: ResumeLayoutModel, theme: ResumeTheme): void {
+function renderBlueBorder(
+  doc: jsPDF,
+  model: ResumeLayoutModel,
+  theme: ResumeTheme,
+  photoDataUrl?: string | null,
+): void {
   const p = buildPalette(theme);
   const borderMargin = 18;
   const innerPad = 20;
@@ -822,7 +864,7 @@ function renderBlueBorder(doc: jsPDF, model: ResumeLayoutModel, theme: ResumeThe
   });
 
   const name = model.name?.text || 'Candidate';
-  drawAvatar(doc, cur.x + 18, cur.y + 16, 18, p.section, p.white, initialsFromName(name));
+  drawAvatar(doc, cur.x + 18, cur.y + 16, 18, p.section, p.white, initialsFromName(name), undefined, photoDataUrl);
   const headerTextX = cur.x + 46;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(16.5);
@@ -853,6 +895,7 @@ function renderBlueBorder(doc: jsPDF, model: ResumeLayoutModel, theme: ResumeThe
   const allSections = [
     model.summaryText,
     ...model.experienceSections,
+    ...model.projectSections,
     ...model.educationSections,
     ...model.certificationsSections,
     ...model.languagesSections,
@@ -872,7 +915,12 @@ function renderBlueBorder(doc: jsPDF, model: ResumeLayoutModel, theme: ResumeThe
 
 // ─── Layout: peach-sidebar (Peach Executive) ──────────────────────────────────
 
-function renderPeachSidebar(doc: jsPDF, model: ResumeLayoutModel, theme: ResumeTheme): void {
+function renderPeachSidebar(
+  doc: jsPDF,
+  model: ResumeLayoutModel,
+  theme: ResumeTheme,
+  photoDataUrl?: string | null,
+): void {
   const p = buildPalette(theme);
   const name = model.name?.text || 'Candidate';
   const sideW = PAGE_W * 0.34;
@@ -884,7 +932,7 @@ function renderPeachSidebar(doc: jsPDF, model: ResumeLayoutModel, theme: ResumeT
   paintWhitePage(doc);
   doc.setFillColor(...p.sidebarBg);
   doc.rect(0, 0, sideW, PAGE_H, 'F');
-  drawAvatar(doc, sidePad + 22, 56, 22, p.accent, p.white, initialsFromName(name));
+  drawAvatar(doc, sidePad + 22, 56, 22, p.accent, p.white, initialsFromName(name), undefined, photoDataUrl);
 
   renderTwoColumnBody(
     doc,
@@ -897,7 +945,7 @@ function renderPeachSidebar(doc: jsPDF, model: ResumeLayoutModel, theme: ResumeT
         drawSectionLines(d, cur, model.summaryText, p.ink, p.stone);
         cur.y += 10;
       }
-      for (const sec of [...model.experienceSections, ...model.otherSections]) {
+      for (const sec of [...model.experienceSections, ...model.projectSections, ...model.otherSections]) {
         drawSectionHeader(d, cur, sectionTitle(sec, 'Experience'), p.section);
         drawSectionLines(d, cur, sec, p.ink, p.stone);
         cur.y += 10;
@@ -924,10 +972,16 @@ function renderPeachSidebar(doc: jsPDF, model: ResumeLayoutModel, theme: ResumeT
 // ─── Dispatcher ────────────────────────────────────────────────────────────────
 
 /** Render `resumeText` into `doc` using the structural chrome + colors of `theme`. */
-export function renderResumePdfByLayout(doc: jsPDF, resumeText: string, theme: ResumeTheme): void {
+export function renderResumePdfByLayout(
+  doc: jsPDF,
+  resumeText: string,
+  theme: ResumeTheme,
+  options?: { photoDataUrl?: string | null },
+): void {
   const sanitized = sanitizeResumePlainText(resumeText);
   const parsedDoc = parseResumeDocument(sanitized);
   const model = buildResumeLayoutModel(parsedDoc);
+  const photoDataUrl = options?.photoDataUrl ?? null;
 
   doc.setProperties({
     title: model.name?.text || '',
@@ -938,19 +992,19 @@ export function renderResumePdfByLayout(doc: jsPDF, resumeText: string, theme: R
 
   switch (theme.layout) {
     case 'teal-sidebar':
-      renderTealSidebar(doc, model, theme);
+      renderTealSidebar(doc, model, theme, photoDataUrl);
       break;
     case 'navy-gold':
       renderNavyGold(doc, model, theme);
       break;
     case 'modern-summary':
-      renderModernSummary(doc, model, theme);
+      renderModernSummary(doc, model, theme, photoDataUrl);
       break;
     case 'blue-border':
-      renderBlueBorder(doc, model, theme);
+      renderBlueBorder(doc, model, theme, photoDataUrl);
       break;
     case 'peach-sidebar':
-      renderPeachSidebar(doc, model, theme);
+      renderPeachSidebar(doc, model, theme, photoDataUrl);
       break;
     case 'nursing-clean':
     default:
