@@ -32,7 +32,7 @@ import {
   Lightbulb,
 } from 'lucide-react';
 import type { AtsCheckResult, ResumeStats, JdMatchResult } from '@/lib/ats-checker';
-import { AtsFixStudio } from './AtsFixStudio';
+import { blobUrlToDataUrl, writeAtsFixSession } from '@/lib/ats-fix-session';
 
 /* ------------------------------------------------------------------ */
 /*  Sample data                                                        */
@@ -111,7 +111,7 @@ Nice to have:
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
 
-type View = 'input' | 'loading' | 'results' | 'fix-studio';
+type View = 'input' | 'loading' | 'results';
 
 interface ScoreHistoryItem {
   date: string;
@@ -475,6 +475,7 @@ export default function AtsCheckerPage() {
   >(null);
   const [dragOver, setDragOver] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [openingFix, setOpeningFix] = useState(false);
   const [history, setHistory] = useState<ScoreHistoryItem[]>([]);
   const [showJdInput, setShowJdInput] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -863,12 +864,37 @@ export default function AtsCheckerPage() {
     }
   }, [milestonesDone, pendingResult, view]);
 
-  // ── Render ────────────────────────────────────────────────────
+  const openFixStudioInNewTab = useCallback(async () => {
+    if (!result || studioResume.trim().length < 50) return;
+    setOpeningFix(true);
+    try {
+      let originalFileDataUrl: string | null = null;
+      let originalFileKind: 'pdf' | 'image' | null = null;
+      if (originalFile) {
+        originalFileDataUrl = await blobUrlToDataUrl(originalFile.url);
+        originalFileKind = originalFileDataUrl ? originalFile.kind : null;
+      }
+      writeAtsFixSession({
+        resume: studioResume,
+        result,
+        jobDescription: jobDescriptionText || undefined,
+        filename,
+        originalFileDataUrl,
+        originalFileKind,
+      });
+      const win = window.open('/ats-checker/fix', '_blank');
+      if (!win) {
+        // Popup blocked — same-tab fallback so Fix still works
+        window.location.href = '/ats-checker/fix';
+      }
+    } finally {
+      setOpeningFix(false);
+    }
+  }, [result, studioResume, originalFile, jobDescriptionText, filename]);
 
   return (
-    <div className={`${view === 'fix-studio' ? 'max-w-[1600px]' : 'max-w-3xl'} mx-auto space-y-6 animate-fade-in`}>
+    <div className="mx-auto max-w-3xl space-y-6 animate-fade-in">
       {/* Header */}
-      {view !== 'fix-studio' && (
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/5 via-surface-card to-surface-card p-6 border border-outline-variant/40 shadow-sm">
         <div className="absolute top-0 right-0 w-48 h-48 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
         <div className="relative">
@@ -899,25 +925,6 @@ export default function AtsCheckerPage() {
           </div>
         </div>
       </div>
-      )}
-
-      {/* ── FIX STUDIO ─────────────────────────────────────────── */}
-      {view === 'fix-studio' && result && studioResume && (
-        <AtsFixStudio
-          initialResume={studioResume}
-          initialResult={result}
-          jobDescription={jobDescriptionText || undefined}
-          originalFile={originalFile}
-          originalFilename={filename}
-          onClose={(next) => {
-            if (next) {
-              setStudioResume(next.resume);
-              setResult(next.result);
-            }
-            setView('results');
-          }}
-        />
-      )}
 
       {/* ── INPUT VIEW ─────────────────────────────────────────── */}
       {view === 'input' && (
@@ -1524,14 +1531,20 @@ export default function AtsCheckerPage() {
               <div className="flex-1 space-y-2">
                 <button
                   type="button"
-                  onClick={() => setView('fix-studio')}
-                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-6 py-3 text-body-md font-semibold text-on-primary shadow-sm transition-all hover:bg-primary/90 hover:shadow-primary-glow"
+                  onClick={() => void openFixStudioInNewTab()}
+                  disabled={openingFix}
+                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-6 py-3 text-body-md font-semibold text-on-primary shadow-sm transition-all hover:bg-primary/90 hover:shadow-primary-glow disabled:opacity-60"
                 >
-                  <Sparkles className="h-4 w-4" />
-                  {result.overallScore < 80 ? 'Fix with AI — Open Fix Studio' : 'Open Fix Studio'}
+                  {openingFix ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-4 w-4" />
+                  )}
+                  {result.overallScore < 80 ? 'Fix with AI — opens in new tab' : 'Open Fix Studio — new tab'}
                 </button>
                 <p className="text-center text-[11px] text-text-muted">
-                  Score stays free. AI suggestions use Resume Studio credits
+                  Your report stays here. Fix Studio opens in a new tab.
+                  AI suggestions use Resume Studio credits
                   {result.overallScore < 80 ? ' — start with your biggest gaps.' : '.'}
                 </p>
               </div>
