@@ -101,7 +101,7 @@ export function JobActions({
   const [previewKind, setPreviewKind] = useState<ResumePreviewKind>('resume');
   const [previewTemplateId, setPreviewTemplateId] = useState<string | null>(null);
   const [versionPreviewLoading, setVersionPreviewLoading] = useState<string | null>(null);
-  const [resumeTemplateId, setResumeTemplateId] = useState(DEFAULT_RESUME_TEMPLATE_ID);
+  const [resumeTemplateId, setResumeTemplateId] = useState<string>(DEFAULT_RESUME_TEMPLATE_ID);
 
   function closePreviewModal() {
     setPreviewOpen(false);
@@ -134,7 +134,10 @@ export function JobActions({
     setPreviewPdfLoading(true);
     setPreviewOpen(true);
     try {
-      const url = await createResumePdfObjectUrl(args.resumeText);
+      const url = await createResumePdfObjectUrl(
+        args.resumeText,
+        args.templateId ?? resumeTemplateId,
+      );
       setPreviewPdfUrl(url);
     } catch (e) {
       closePreviewModal();
@@ -437,7 +440,7 @@ export function JobActions({
     try {
       const { generateBeautifulPdf } = await import('@/lib/pdf-resume');
       const text = editedResume || atsResume;
-      const doc = generateBeautifulPdf(text);
+      const doc = generateBeautifulPdf(text, resumeTemplateId);
       const filename = `${filenameBase}.pdf`;
 
       // iOS Safari (iPhone/iPad) often ignores jsPDF doc.save(); blob + anchor
