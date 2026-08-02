@@ -6,6 +6,7 @@ export type ResumeLayoutModel = {
   contactLines: ResumeLine[];
   summaryText: ResumeSection | null;
   experienceSections: ResumeSection[];
+  projectSections: ResumeSection[];
   educationSections: ResumeSection[];
   skillsSections: ResumeSection[];
   certificationsSections: ResumeSection[];
@@ -17,7 +18,9 @@ const SUMMARY_HEADING =
   /^(professional\s+summary|summary|objective|career\s+objective|profile|professional\s+profile|summary\s+of\s+qualifications)\s*:?\s*$/i;
 
 const EXPERIENCE_HEADING =
-  /^(professional\s+experience|work\s+experience|experience|employment(\s+history)?|work\s+history|projects?)\s*:?\s*$/i;
+  /^(professional\s+experience|work\s+experience|experience|employment(\s+history)?|work\s+history)\s*:?\s*$/i;
+
+const PROJECTS_HEADING = /^(personal\s+)?projects?\s*:?\s*$/i;
 
 const EDUCATION_HEADING = /^education\s*:?\s*$/i;
 
@@ -36,6 +39,7 @@ function classifySection(section: ResumeSection): keyof Pick<
   ResumeLayoutModel,
   | 'summaryText'
   | 'experienceSections'
+  | 'projectSections'
   | 'educationSections'
   | 'skillsSections'
   | 'certificationsSections'
@@ -46,6 +50,7 @@ function classifySection(section: ResumeSection): keyof Pick<
   if (!h) return 'otherSections';
   if (SUMMARY_HEADING.test(h)) return 'summaryText';
   if (EXPERIENCE_HEADING.test(h)) return 'experienceSections';
+  if (PROJECTS_HEADING.test(h)) return 'projectSections';
   if (EDUCATION_HEADING.test(h)) return 'educationSections';
   if (SKILLS_HEADING.test(h)) return 'skillsSections';
   if (CERTIFICATIONS_HEADING.test(h)) return 'certificationsSections';
@@ -67,6 +72,7 @@ export function buildResumeLayoutModel(doc: ResumeDocument): ResumeLayoutModel {
     contactLines: [],
     summaryText: null,
     experienceSections: [],
+    projectSections: [],
     educationSections: [],
     skillsSections: [],
     certificationsSections: [],

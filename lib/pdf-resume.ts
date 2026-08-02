@@ -159,9 +159,10 @@ function isSectionHeader(line: string): boolean {
 export function generateBeautifulPdf(
   resumeText: string,
   templateId?: string | null,
+  options?: { photoDataUrl?: string | null },
 ): jsPDF {
   const theme = resolveResumeTheme(templateId);
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
-  renderResumePdfByLayout(doc, resumeText, theme);
+  renderResumePdfByLayout(doc, resumeText, theme, options);
   return doc;
 }

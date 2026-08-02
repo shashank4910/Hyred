@@ -38,8 +38,8 @@ function intensityInstructions(intensity: AtsUpgradeIntensity): string {
   }
   return `INTENSITY: DEEP ATS REBUILD
 - Full ATS-friendly rebuild from source facts only.
-- Required sections (ALL CAPS): PROFESSIONAL SUMMARY, TECHNICAL SKILLS, PROFESSIONAL EXPERIENCE, EDUCATION.
-- Add PROJECTS only if source has distinct project work not already covered in Experience.
+- Required sections (ALL CAPS), in order: PROFESSIONAL SUMMARY, PROFESSIONAL EXPERIENCE, TECHNICAL SKILLS, EDUCATION.
+- Add PROJECTS (between PROFESSIONAL EXPERIENCE and TECHNICAL SKILLS) only if source has distinct project work not already covered in Experience.
 - Apply every QUALITY BAR rule aggressively.`;
 }
 
@@ -50,6 +50,8 @@ const QUALITY_BAR = `QUALITY BAR (must hit ~9.5/10 — non-negotiable):
    - Do NOT invent company city/country unless the SOURCE states that company's location.
    - Do NOT write "Present" / "Current" unless the source clearly says current / till date / working / present / from <date> with no end date AND that role is the latest. Prefer the exact date wording from source when unsure (e.g. "From June 2019").
    - Personal city (contact) ≠ employer city. Never copy personal location onto the employer line.
+   - NEVER invent features, integrations, or capabilities the source never mentions — e.g. do not add "payment gateway", "data integrity checks", "enterprise software solutions", "scalable architecture", "microservices", "cloud-native" unless those exact concepts (not just similar-sounding buzzwords) appear in the SOURCE. When rewriting a bullet, paraphrase what the SOURCE already says — do not extend its scope or imply extra systems/features that were not stated.
+   - If unsure whether something is real or an embellishment, leave it out rather than guess.
 
 2) KEEP REAL SIGNAL from the source:
    - Preserve every employer + job title that appears in the source.
@@ -61,8 +63,9 @@ const QUALITY_BAR = `QUALITY BAR (must hit ~9.5/10 — non-negotiable):
 3) STRUCTURE (ATS):
    - Line 1: Name. Line 2: short role tagline from THEIR experience. Then contact (email | phone | location).
    - ALL-CAPS section headers. Every experience/project bullet starts with "- ".
-   - Preferred order: PROFESSIONAL SUMMARY → TECHNICAL SKILLS → PROFESSIONAL EXPERIENCE → PROJECTS (optional) → EDUCATION.
+   - Preferred section order: PROFESSIONAL SUMMARY → PROFESSIONAL EXPERIENCE → PROJECTS (optional) → TECHNICAL SKILLS → EDUCATION → (certifications/languages if present).
    - Skills: Category: item, item (Languages / Test Automation / API / Build & CI / etc.).
+   - Project headings: "Project Name (Domain)" alone on its own line, with the date range on the NEXT line by itself (e.g. "MM/YYYY - MM/YYYY" or "MM/YYYY - Present"). NEVER glue the date range directly onto the title text on the same line (e.g. never "01/2020 - PresentOrder Tracker" — always a line break between them).
 
 4) DEDUPE (critical):
    - Do NOT repeat the same responsibility in both Experience and Projects.
@@ -73,15 +76,33 @@ const QUALITY_BAR = `QUALITY BAR (must hit ~9.5/10 — non-negotiable):
 5) CUT FLUFF:
    - Remove Career Objective / Declaration / "Yours truly" / Date-Place signature blocks.
    - For candidates with a degree AND ~2+ years experience: omit 10th/SSLC and 12th/HSC lines unless they are the only education. Keep bachelor's (and scores if present).
-   - Summary: 4–6 high-signal bullets max — no soft filler ("zeal to learn", "good interpersonal skills") unless nothing else exists.
+   - Summary: 3–4 high-signal bullets max (never more) — no soft filler ("zeal to learn", "good interpersonal skills") unless nothing else exists.
 
 6) BULLET QUALITY:
-   - Start with strong past-tense verbs (Built, Automated, Executed, Validated, Integrated…).
+   - Tense rule: for the CURRENT / most recent role (the one marked Present or clearly ongoing), present-tense verbs are OK (Build, Automate, Lead, Own…). For every EARLIER / past role, always use past-tense verbs (Built, Automated, Executed, Validated, Integrated…). Never mix — a finished job never gets a present-tense verb.
    - One idea per bullet. 1–2 lines max.
    - Prefer concrete activities from source over vague "responsible for".
 
 7) OUTPUT:
    - Plain text only inside JSON. ASCII. No markdown fences, tables, emoji, or multi-column layouts.`;
+
+/**
+ * Cleans up mechanical text issues the LLM sometimes leaves behind
+ * (glued date+title lines, excess blank lines, trailing whitespace).
+ * Never touches wording/facts — purely cosmetic normalization.
+ */
+export function postProcessUpgradedResume(text: string): string {
+  let out = text.replace(
+    /^(\d{1,2}\/\d{4}\s*[-–]\s*(?:Present|\d{1,2}\/\d{4}))([A-Za-z])/gim,
+    '$1 $2',
+  );
+  out = out.replace(/\n{3,}/g, '\n\n');
+  out = out
+    .split('\n')
+    .map((line) => line.replace(/[ \t]+$/g, ''))
+    .join('\n');
+  return out.trim();
+}
 
 async function parseResumeJson(raw: string): Promise<string> {
   let parsed: { resume?: string };
@@ -90,7 +111,7 @@ async function parseResumeJson(raw: string): Promise<string> {
   } catch {
     throw new Error('Model returned invalid JSON for resume upgrade.');
   }
-  const upgraded = (parsed.resume ?? '').trim();
+  const upgraded = postProcessUpgradedResume(parsed.resume ?? '');
   if (upgraded.length < 80) {
     throw new Error('Upgrade produced an empty or too-short resume.');
   }
