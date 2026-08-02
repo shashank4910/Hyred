@@ -1,5 +1,6 @@
 /**
- * LLM one-shot resume upgrade for ATS Fix (truth-preserving).
+ * LLM one-shot resume upgrade for ATS Fix (truth-preserving, high quality).
+ * Target: ~9.5/10 structural + editing quality vs source resume.
  */
 
 import { chat } from './gemini';
@@ -25,26 +26,110 @@ export interface UpgradeAtsResumeResult {
 
 function intensityInstructions(intensity: AtsUpgradeIntensity): string {
   if (intensity === 'light') {
-    return `INTENSITY: LIGHT POLISH
-- Change as little as possible.
-- Fix formatting, section headers (ALL CAPS), bullet consistency ("- ").
-- Light wording cleanup only. Do NOT rewrite most bullets.
-- Do NOT invent metrics, tools, employers, or titles.`;
+    return `INTENSITY: LIGHT POLISH (still must hit the quality bar below)
+- Prefer minimal wording changes, but DO apply all QUALITY BAR rules.
+- Fix headers, bullets, fluff removal, and dedupe even in light mode.`;
   }
   if (intensity === 'medium') {
     return `INTENSITY: FOCUSED UPGRADE
-- Rebuild into a clean ATS layout when structure is weak.
-- Strengthen weak bullets with clearer verbs — only using facts already in the resume.
-- Improve skills section clarity.
-- Do NOT invent metrics, employers, degrees, or tools not already supported by the resume.
-- Prefer keeping numbers that already exist; never fabricate new ones.`;
+- Rebuild weak structure into the required ATS layout.
+- Strengthen bullets with clearer verbs using ONLY source facts.
+- Apply every QUALITY BAR rule aggressively.`;
   }
   return `INTENSITY: DEEP ATS REBUILD
-- Produce a complete ATS-friendly resume from the candidate's existing facts.
-- Required sections (ALL CAPS headers): PROFESSIONAL SUMMARY, TECHNICAL SKILLS (or CORE COMPETENCIES), PROFESSIONAL EXPERIENCE, EDUCATION. Add others only if present in the source.
-- Every experience bullet starts with "- ".
-- Rewrite for clarity and impact WITHOUT inventing employers, titles, dates, degrees, tools, or metrics.
-- If a bullet has no number, do not invent one — use stronger truthful wording instead.`;
+- Full ATS-friendly rebuild from source facts only.
+- Required sections (ALL CAPS): PROFESSIONAL SUMMARY, TECHNICAL SKILLS, PROFESSIONAL EXPERIENCE, EDUCATION.
+- Add PROJECTS only if source has distinct project work not already covered in Experience.
+- Apply every QUALITY BAR rule aggressively.`;
+}
+
+const QUALITY_BAR = `QUALITY BAR (must hit ~9.5/10 — non-negotiable):
+
+1) TRUTH LOCK — never invent or assume:
+   - Do NOT invent employers, titles, tools, domains, metrics, %, $, headcount, or awards.
+   - Do NOT invent company city/country unless the SOURCE states that company's location.
+   - Do NOT write "Present" / "Current" unless the source clearly says current / till date / working / present / from <date> with no end date AND that role is the latest. Prefer the exact date wording from source when unsure (e.g. "From June 2019").
+   - Personal city (contact) ≠ employer city. Never copy personal location onto the employer line.
+
+2) KEEP REAL SIGNAL from the source:
+   - Preserve every employer + job title that appears in the source.
+   - Keep domain keywords already present (e.g. e-commerce, travel, banking) — do not drop them.
+   - Keep tools/frameworks that appear (Selenium, TestNG, Rest Assured, Jenkins, JIRA, etc.).
+   - Keep real numbers that already exist (years, %, scores). Never fabricate new ones.
+   - If a bullet has no number, strengthen with truthful scope already implied (domains, tools, activities) — still no invented metrics.
+
+3) STRUCTURE (ATS):
+   - Line 1: Name. Line 2: short role tagline from THEIR experience. Then contact (email | phone | location).
+   - ALL-CAPS section headers. Every experience/project bullet starts with "- ".
+   - Preferred order: PROFESSIONAL SUMMARY → TECHNICAL SKILLS → PROFESSIONAL EXPERIENCE → PROJECTS (optional) → EDUCATION.
+   - Skills: Category: item, item (Languages / Test Automation / API / Build & CI / etc.).
+
+4) DEDUPE (critical):
+   - Do NOT repeat the same responsibility in both Experience and Projects.
+   - Put day-job work under PROFESSIONAL EXPERIENCE under the employer.
+   - PROJECTS only for distinct product/project names with 2–4 unique bullets that are NOT copies of Experience.
+   - If project = the only place duties lived, move duties under Experience and keep Projects as a short titled stub OR omit Projects.
+
+5) CUT FLUFF:
+   - Remove Career Objective / Declaration / "Yours truly" / Date-Place signature blocks.
+   - For candidates with a degree AND ~2+ years experience: omit 10th/SSLC and 12th/HSC lines unless they are the only education. Keep bachelor's (and scores if present).
+   - Summary: 4–6 high-signal bullets max — no soft filler ("zeal to learn", "good interpersonal skills") unless nothing else exists.
+
+6) BULLET QUALITY:
+   - Start with strong past-tense verbs (Built, Automated, Executed, Validated, Integrated…).
+   - One idea per bullet. 1–2 lines max.
+   - Prefer concrete activities from source over vague "responsible for".
+
+7) OUTPUT:
+   - Plain text only inside JSON. ASCII. No markdown fences, tables, emoji, or multi-column layouts.`;
+
+async function parseResumeJson(raw: string): Promise<string> {
+  let parsed: { resume?: string };
+  try {
+    parsed = JSON.parse(raw) as { resume?: string };
+  } catch {
+    throw new Error('Model returned invalid JSON for resume upgrade.');
+  }
+  const upgraded = (parsed.resume ?? '').trim();
+  if (upgraded.length < 80) {
+    throw new Error('Upgrade produced an empty or too-short resume.');
+  }
+  return upgraded;
+}
+
+/** Second pass: fact-check + dedupe against source (medium/deep). */
+async function refineUpgrade(args: {
+  source: string;
+  draft: string;
+  profileId?: string;
+}): Promise<string> {
+  const system = `You are Hyred Resume QA. Return JSON only: { "resume": "<corrected full resume>" }
+
+Fix the DRAFT against the SOURCE using this checklist:
+- Remove any invented metrics, tools, employers, or locations not in SOURCE.
+- Fix employer lines that wrongly use personal city as company city.
+- Replace assumed "Present" with source date wording if source never says present/current.
+- Deduplicate Experience vs Projects (no repeated bullets).
+- Restore important domain/tool keywords from SOURCE that the draft dropped.
+- Drop SSLC/HSC if a bachelor's + experience exists.
+- Keep ATS plain-text format (name, tagline, contact, ALL-CAPS headers, "- " bullets).
+- Do not invent new content. Prefer SOURCE truth over DRAFT flair.
+${QUALITY_BAR}`;
+
+  const user = `SOURCE RESUME:
+"""
+${args.source.slice(0, 12000)}
+"""
+
+DRAFT UPGRADE (to correct):
+"""
+${args.draft.slice(0, 12000)}
+"""
+
+Return the corrected full resume JSON.`;
+
+  const raw = await chat(system, user, 0.2, true, 'ats_upgrade_refine', args.profileId);
+  return parseResumeJson(raw);
 }
 
 export async function upgradeAtsResume(
@@ -60,41 +145,40 @@ export async function upgradeAtsResume(
     ? `\nTARGET JOB DESCRIPTION (context only — do not invent JD skills the resume does not support):\n${sanitizeJobDescriptionForAI(args.jobDescription).slice(0, 2500)}\n`
     : '';
 
-  const system = `You are Hyred Resume Upgrade. Return JSON only:
-{ "resume": "<full upgraded plain-text resume>" }
+  const system = `You are Hyred Resume Upgrade — elite ATS editor for Indian and global tech hiring.
+Return JSON only: { "resume": "<full upgraded plain-text resume>" }
 
-Rules:
-- Output ONE complete resume as plain text (no markdown fences).
-- Line 1: candidate name. Line 2: short role tagline from THEIR experience. Then contact lines, then ALL-CAPS section headers and "- " bullets.
-- NEVER invent employers, job titles, dates, degrees, certifications, tools, user counts, revenue, or percentages.
-- Preserve every real employer and role from the source resume (you may reorder sections for ATS clarity).
-- ASCII only. No tables, no multi-column layouts, no emoji.
-- ${intensityInstructions(plan.intensity)}`;
+${QUALITY_BAR}
+
+${intensityInstructions(plan.intensity)}`;
 
   const user = `CURRENT ATS SCORE: ${args.result.overallScore}/100
 UPGRADE MODE: ${plan.label} (${plan.intensity})
 
-WEAK AREAS:
-${weakFeedback || '- None flagged — light polish only.'}
+WEAK AREAS FROM CHECKER:
+${weakFeedback || '- None flagged — still apply QUALITY BAR polish.'}
 ${jdBlock}
 SOURCE RESUME:
 """
 ${args.resumeText.slice(0, 14000)}
 """
 
-Return JSON with the full upgraded resume text.`;
+Produce a 9.5/10 upgraded resume: ATS-perfect structure, zero invented facts, zero fluff, zero duplicate bullets, keep all real domains/tools/employers.`;
 
-  const raw = await chat(system, user, 0.35, true, 'ats_upgrade', args.profileId);
-  let parsed: { resume?: string };
-  try {
-    parsed = JSON.parse(raw) as { resume?: string };
-  } catch {
-    throw new Error('Model returned invalid JSON for resume upgrade.');
-  }
+  const raw = await chat(system, user, 0.3, true, 'ats_upgrade', args.profileId);
+  let upgraded = await parseResumeJson(raw);
 
-  const upgraded = (parsed.resume ?? '').trim();
-  if (upgraded.length < 80) {
-    throw new Error('Upgrade produced an empty or too-short resume.');
+  // Quality refine for medium/deep (and light if output looks thin vs source)
+  if (plan.intensity !== 'light' || upgraded.length < args.resumeText.length * 0.45) {
+    try {
+      upgraded = await refineUpgrade({
+        source: args.resumeText,
+        draft: upgraded,
+        profileId: args.profileId,
+      });
+    } catch (e) {
+      console.warn('[ats_upgrade_refine] skipped', e);
+    }
   }
 
   const afterResult = checkAtsCompatibility(
