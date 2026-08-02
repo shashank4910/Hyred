@@ -34,8 +34,8 @@ export default function AtsFixStudioPage() {
       <div className="mx-auto max-w-lg space-y-4 px-4 py-16 text-center">
         <h1 className="font-headline text-xl font-bold text-on-surface">Fix Studio session expired</h1>
         <p className="text-sm text-on-surface-variant">
-          Open your ATS report again and click <strong>Fix with AI</strong> to start a new session in
-          this tab.
+          Open your ATS report again and click <strong>Upgrade resume with AI</strong> to start a new
+          session in this tab.
         </p>
         <Link
           href="/ats-checker"

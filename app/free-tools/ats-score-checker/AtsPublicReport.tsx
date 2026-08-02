@@ -100,14 +100,14 @@ export function AtsPublicReport({
           {activeCheck && <AtsIssueDetail check={activeCheck} />}
           <div className="rounded-2xl border border-[#006a65]/20 bg-gradient-to-br from-[#006a65]/[0.06] to-white p-5 shadow-sm">
             <p className="text-sm leading-relaxed text-gray-600">
-              Sign in to fix issues in Fix Studio (opens in a new tab) — Before/After AI rewrites with
-              live re-score. Uses Resume Studio credits.
+              Sign in for a one-click AI resume upgrade (opens in a new tab). Effort scales with your
+              score — then download a printable PDF. Uses Resume Studio credits.
             </p>
             <Link
               href="/login?next=%2Fats-checker"
               className="mt-4 inline-flex h-11 cursor-pointer items-center rounded-xl bg-[#006a65] px-5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
             >
-              Sign in to fix
+              Sign in to upgrade
             </Link>
           </div>
         </div>
