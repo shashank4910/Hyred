@@ -60,16 +60,27 @@ function scoreTier(score: number): { icon: string; badge: string; label: string;
   return { icon: 'text-red-500', badge: 'bg-red-500/10 text-red-700', label: 'Urgent', Icon: AlertCircle };
 }
 
+/** Color by how many of a section's fixes have been applied (0..1). */
+function progressTier(ratio: number): { icon: string; badge: string; label: string; Icon: typeof CheckCircle2 } {
+  if (ratio >= 1)
+    return { icon: 'text-emerald-500', badge: 'bg-emerald-500/15 text-emerald-700', label: 'Fixed', Icon: CheckCircle2 };
+  if (ratio >= 0.5)
+    return { icon: 'text-lime-500', badge: 'bg-lime-500/15 text-lime-700', label: 'Almost', Icon: CheckCircle2 };
+  return { icon: 'text-amber-500', badge: 'bg-amber-500/12 text-amber-800', label: 'In progress', Icon: AlertTriangle };
+}
+
 function CheckRow({
   check,
   selected,
   onSelect,
   fixState,
+  progress,
 }: {
   check: AtsReportCheck;
   selected?: boolean;
   onSelect?: (check: AtsReportCheck) => void;
   fixState?: FixState;
+  progress?: number;
 }) {
   const meta = statusMeta(check.status);
   const clickable = Boolean(onSelect) && check.status !== 'locked' && Boolean(check.weaknessId);
@@ -81,6 +92,14 @@ function CheckRow({
   let Icon = tier ? tier.Icon : meta.Icon;
   let iconColor = tier ? tier.icon : check.status === 'pass' ? 'text-emerald-500' : check.status === 'warn' ? 'text-amber-500' : check.status === 'fail' ? 'text-red-500' : 'text-text-muted';
   let badge = tier ? { label: tier.label, cls: tier.badge } : { label: meta.label, cls: meta.badge };
+
+  // In Fix Studio: once you've applied fixes, color by that progress (overrides engine score).
+  if (fixState !== 'fixed' && fixState !== 'skipped' && typeof progress === 'number' && progress > 0) {
+    const p = progressTier(progress);
+    Icon = p.Icon;
+    iconColor = p.icon;
+    badge = { label: p.label, cls: p.badge };
+  }
 
   if (fixState === 'fixed') {
     Icon = CheckCircle2;
@@ -133,11 +152,13 @@ function CategoryBlock({
   selectedWeaknessId,
   onSelectCheck,
   statusByWeaknessId,
+  progressByWeaknessId,
 }: {
   category: AtsReportCategory;
   selectedWeaknessId?: string | null;
   onSelectCheck?: (check: AtsReportCheck) => void;
   statusByWeaknessId?: Record<string, FixState>;
+  progressByWeaknessId?: Record<string, number>;
 }) {
   return (
     <div className={`border-b border-outline-variant/20 last:border-0 ${category.locked ? 'opacity-75' : ''}`}>
@@ -168,6 +189,7 @@ function CategoryBlock({
             selected={Boolean(c.weaknessId && c.weaknessId === selectedWeaknessId)}
             onSelect={category.locked ? undefined : onSelectCheck}
             fixState={c.weaknessId ? statusByWeaknessId?.[c.weaknessId] : undefined}
+            progress={c.weaknessId ? progressByWeaknessId?.[c.weaknessId] : undefined}
           />
         ))}
       </div>
@@ -182,6 +204,7 @@ export function AtsReportRail({
   showUpgrade = true,
   className = '',
   statusByWeaknessId,
+  progressByWeaknessId,
 }: {
   report: AtsReport;
   selectedWeaknessId?: string | null;
@@ -189,6 +212,7 @@ export function AtsReportRail({
   showUpgrade?: boolean;
   className?: string;
   statusByWeaknessId?: Record<string, FixState>;
+  progressByWeaknessId?: Record<string, number>;
 }) {
   const room = Math.max(0, 100 - report.overallScore);
 
@@ -225,6 +249,7 @@ export function AtsReportRail({
             selectedWeaknessId={selectedWeaknessId}
             onSelectCheck={onSelectCheck}
             statusByWeaknessId={statusByWeaknessId}
+            progressByWeaknessId={progressByWeaknessId}
           />
         ))}
       </div>
