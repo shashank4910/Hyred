@@ -1540,12 +1540,13 @@ export default function AtsCheckerPage() {
                   ) : (
                     <Sparkles className="h-4 w-4" />
                   )}
-                  {result.overallScore < 80 ? 'Fix with AI — opens in new tab' : 'Open Fix Studio — new tab'}
+                  {result.overallScore < 80
+                    ? 'Upgrade resume with AI — new tab'
+                    : 'Polish resume with AI — new tab'}
                 </button>
                 <p className="text-center text-[11px] text-text-muted">
-                  Your report stays here. Fix Studio opens in a new tab.
-                  AI suggestions use Resume Studio credits
-                  {result.overallScore < 80 ? ' — start with your biggest gaps.' : '.'}
+                  Your report stays here. One-click AI upgrade opens in a new tab
+                  (effort scales with your score). Download PDF when done.
                 </p>
               </div>
             )}
