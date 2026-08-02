@@ -1,43 +1,18 @@
 /**
- * PDF Resume Generator — ATS-friendly first, beautiful second.
+ * PDF Resume Generator — ATS-safe + Executive Clean aesthetic (2026).
  *
- * Design priority:
- *   1. EVERY bullet is rendered as TEXT ("- ") so ATS parsers (Workday,
- *      Greenhouse, Lever, Taleo, iCIMS) extract it as a list item. No
- *      graphical-only bullet circles.
- *   2. Single-column linear layout. No tables. No text boxes. No multi-column.
- *   3. Plain Helvetica throughout (parsers handle this best).
- *   4. ASCII-only output (Latin-1 fallback). Smart quotes etc. are normalised
- *      upstream by lib/gemini.ts but we re-normalise here as a safety net.
- *   5. Section headers are detected by the ALL CAPS pattern, exactly the
- *      pattern the ATS resume prompt is told to produce.
+ * Research-backed rules (single column, Helvetica, real "- " bullets, contact
+ * in document body, one accent color). Visual polish without two-column /
+ * tables / icons that break Workday/Greenhouse/Lever parsers.
  *
- * Visual styling (matches the user's preferred original-resume header):
- *   - Dark navy header band at top of page (~98pt tall).
- *   - Thin amber accent line at the very top edge.
- *   - Name in big bold WHITE.
- *   - Title tagline in amber, ALL CAPS, regular weight.
- *   - Contact info on a SINGLE line with ASCII " | " separators, in light
- *     blue-gray on the navy band. The font auto-shrinks a touch to stay on one
- *     line before any wrap. ASCII separators honour design rule #4.
- *   - Body content (sections + bullets) renders below the band on white.
- *   - Each section header has a small amber rule above it.
- *   - All bullets are real "- " text characters in the text stream so
- *     ATS parsers extract them as list items.
- *
- * Input format (produced by generateAtsResume()):
- *   Line 1: Name
- *   Line 2: Title tagline (current role title - the JD-aligned one)
- *   Line 3-N: Contact lines (email, phone, location, linkedin) - any order
- *   Then ALL-CAPS section headers and "- " bullets
- *
- * Defensive parser behaviour:
- *   - Lines like "Resume" / "RESUME" / "CURRICULUM VITAE" / "CV" / "PROFILE"
- *     that some LLM outputs include before the candidate's name are SKIPPED
- *     so the user's name (not the literal word "Resume") is what appears in
- *     the navy band.
- *   - If line 2 looks like contact info (has @, +, or .com), it skips the
- *     title slot - keeps the parser tolerant of legacy resume text.
+ * Layout ("Executive Clean"):
+ *   - White page, generous margins
+ *   - Name in large navy (not a heavy dark band)
+ *   - Role title in slate; contact as one " | " line
+ *   - Thin navy rule under the header
+ *   - Section titles in navy + underline
+ *   - Job titles bold; dates right-aligned when detectable
+ *   - Comfortable line-height and section spacing
  */
 
 import { jsPDF } from 'jspdf';
@@ -48,24 +23,23 @@ import { sanitizeResumePlainText } from './resume-plain-text';
 type RGB = [number, number, number];
 
 const C = {
-  headerBg: [15, 23, 42] as RGB,    // deep navy (matches user's original header)
-  accent:   [234, 179, 8] as RGB,   // amber
-  white:    [255, 255, 255] as RGB,
-  ink:      [15, 23, 42] as RGB,    // body text on white
-  stone:    [80, 92, 110] as RGB,   // section / secondary text on white
-  light:    [180, 195, 215] as RGB, // contact text on the navy band
-  faint:    [212, 218, 228] as RGB, // very-light section separators
+  navy:  [27, 58, 92] as RGB,     // #1B3A5C — name + section accents
+  ink:   [30, 41, 59] as RGB,     // near-black body
+  stone: [100, 116, 139] as RGB,  // secondary / contact / dates
+  rule:  [203, 213, 225] as RGB,  // soft divider
+  white: [255, 255, 255] as RGB,
 };
 
 const L = {
   pageW:    595.28, // A4 pt
   pageH:    841.89,
-  mL:       44,
-  mR:       44,
-  mBottom:  52,
-  headerH:  98,    // navy header band height
-  lineH:    13.5,
-  bulletIndent: 14, // hanging indent for wrapped bullet text
+  mL:       48,
+  mR:       48,
+  mTop:     40,
+  mBottom:  48,
+  lineH:    12.8,
+  bulletIndent: 12,
+  sectionGap: 16,
 };
 
 const contentW = L.pageW - L.mL - L.mR;
@@ -198,20 +172,6 @@ function finalizeParsedHeader(parsed: ParsedResume): ParsedResume {
   return { ...parsed, title, contactLines };
 }
 
-function measureContactBlockHeight(doc: jsPDF, contactLines: string[]): number {
-  if (contactLines.length === 0) return 0;
-  const joined = contactLines.join('   |   ');
-  let fs = 8.8;
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(fs);
-  while (doc.getTextWidth(joined) > contentW && fs > 7.2) {
-    fs -= 0.3;
-    doc.setFontSize(fs);
-  }
-  const wrapped = doc.splitTextToSize(joined, contentW);
-  return wrapped.length * 11;
-}
-
 /** Exposed for deterministic header-parse verification. */
 export function parseResumePlainText(text: string): ParsedResume {
   return finalizeParsedHeader(parse(sanitizeResumePlainText(text)));
@@ -228,21 +188,16 @@ function isSectionHeader(line: string): boolean {
 
 const TEXT_OPTS = { align: 'left' as const };
 
+function cleanContactDisplay(line: string): string {
+  return line
+    .replace(/^(e-?mail|phone|mobile|ph\.?\s*no\.?|linkedin|github|location|address|contact)\s*:\s*/i, '')
+    .trim();
+}
+
 export function generateBeautifulPdf(resumeText: string): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
   const parsed = finalizeParsedHeader(parse(sanitizeResumePlainText(resumeText)));
 
-  // Size the navy band to fit name + amber title + contacts (fixed 98pt clipped
-  // wrapped contact rows on some mobile PDF viewers).
-  doc.setFont('helvetica', 'normal');
-  let headerH = 32;
-  if (parsed.name) headerH += 22;
-  if (parsed.title) headerH += 16;
-  headerH += measureContactBlockHeight(doc, parsed.contactLines);
-  headerH = Math.max(L.headerH, headerH + 10);
-
-  // Set explicit PDF metadata so PDF viewers don't fall back to a generic
-  // "Resume" or filename-derived title in their header bar.
   doc.setProperties({
     title: parsed.name || '',
     author: parsed.name || '',
@@ -250,81 +205,73 @@ export function generateBeautifulPdf(resumeText: string): jsPDF {
     creator: 'Hyred',
   });
 
-  // ── Dark navy header band ──────────────────────────────────────────────────
-  doc.setFillColor(...C.headerBg);
-  doc.rect(0, 0, L.pageW, headerH, 'F');
+  // White page — contact stays in the document body (ATS-safe).
+  doc.setFillColor(...C.white);
+  doc.rect(0, 0, L.pageW, L.pageH, 'F');
 
-  // Thin amber accent line at the very top of the navy band.
-  doc.setFillColor(...C.accent);
-  doc.rect(0, 0, L.pageW, 4, 'F');
+  let y = L.mTop;
 
-  let y = 32;
-
-  // ── Name (large bold white) ────────────────────────────────────────────────
+  // ── Name ───────────────────────────────────────────────────────────────────
   if (parsed.name) {
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(22);
-    doc.setTextColor(...C.white);
-    doc.text(parsed.name, L.mL, y, TEXT_OPTS);
-    y += 22;
+    doc.setFontSize(20);
+    doc.setTextColor(...C.navy);
+    const nameLines = doc.splitTextToSize(parsed.name.toUpperCase(), contentW);
+    for (const nl of nameLines) {
+      doc.text(nl, L.mL, y, TEXT_OPTS);
+      y += 22;
+    }
   }
 
-  // ── Title tagline (amber, ALL CAPS) ────────────────────────────────────────
+  // ── Role title ─────────────────────────────────────────────────────────────
   if (parsed.title) {
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(11);
-    doc.setTextColor(...C.accent);
-    doc.text(parsed.title.toUpperCase(), L.mL, y, TEXT_OPTS);
-    y += 16;
+    doc.setFontSize(10.5);
+    doc.setTextColor(...C.stone);
+    const titleLines = doc.splitTextToSize(parsed.title, contentW);
+    for (const tl of titleLines) {
+      doc.text(tl, L.mL, y, TEXT_OPTS);
+      y += 13;
+    }
+    y += 2;
   }
 
-  // ── Contact info (single clean line, " | " separators, light blue-gray) ────
-  // Joins email / phone / location / linkedin with ASCII " | " separators on
-  // ONE line (the look the user asked for). The font auto-shrinks slightly to
-  // keep everything on a single line before any wrap. ASCII separators (not a
-  // bullet glyph) honour the file's ASCII-only rule and parse cleanly in ATS.
+  // ── Contact (body text, one line) ──────────────────────────────────────────
   if (parsed.contactLines.length > 0) {
     doc.setFont('helvetica', 'normal');
-    doc.setTextColor(...C.light);
-    const joined = parsed.contactLines.join('   |   ');
-    let fs = 8.8;
-    doc.setFontSize(fs);
-    while (doc.getTextWidth(joined) > contentW && fs > 7.2) {
-      fs -= 0.3;
-      doc.setFontSize(fs);
-    }
+    doc.setFontSize(9);
+    doc.setTextColor(...C.stone);
+    const joined = parsed.contactLines.map(cleanContactDisplay).filter(Boolean).join('  |  ');
     const wrapped = doc.splitTextToSize(joined, contentW);
     for (const wl of wrapped) {
-      if (y > headerH - 6) break;
       doc.text(wl, L.mL, y, TEXT_OPTS);
       y += 11;
     }
   }
 
-  // Body content starts below the navy band on white background.
-  y = headerH + 22;
+  // Accent rule under header
+  y += 10;
+  doc.setFillColor(...C.navy);
+  doc.rect(L.mL, y, contentW, 1.5, 'F');
+  y += 18;
 
   // ── Body sections ──────────────────────────────────────────────────────────
   for (let si = 0; si < parsed.sections.length; si++) {
     const sec = parsed.sections[si];
     const isLast = si === parsed.sections.length - 1;
 
-    if (y > L.pageH - L.mBottom - 50) {
-      doc.addPage();
-      y = 28;
-    }
-
+    y = pageBreak(doc, y, 40);
     y = renderSectionHeader(doc, sec.title, y);
 
     if (/SKILL|TECH|COMPETENC/i.test(sec.title)) {
       y = renderSkills(doc, sec.lines, y);
-    } else if (/EXPERIENCE|EMPLOYMENT|WORK HIST/i.test(sec.title)) {
+    } else if (/EXPERIENCE|EMPLOYMENT|WORK HIST|PROJECT/i.test(sec.title)) {
       y = renderExperience(doc, sec.lines, y);
     } else {
       y = renderBullets(doc, sec.lines, y);
     }
 
-    if (!isLast) y += 8;
+    if (!isLast) y += L.sectionGap;
   }
 
   return doc;
@@ -333,16 +280,14 @@ export function generateBeautifulPdf(resumeText: string): jsPDF {
 // ─── Section header ───────────────────────────────────────────────────────────
 
 function renderSectionHeader(doc: jsPDF, title: string, y: number): number {
-  // Thin amber rule above the header
-  doc.setFillColor(...C.accent);
-  doc.rect(L.mL, y, contentW, 1.2, 'F');
-  y += 12;
-
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10.5);
-  doc.setTextColor(...C.ink);
-  doc.text(title, L.mL, y, TEXT_OPTS);
-  y += 14;
+  doc.setTextColor(...C.navy);
+  doc.text(title.toUpperCase(), L.mL, y, TEXT_OPTS);
+  y += 5;
+  doc.setFillColor(...C.navy);
+  doc.rect(L.mL, y, contentW, 0.9, 'F');
+  y += 12;
   return y;
 }
 
@@ -360,20 +305,17 @@ function renderBullets(doc: jsPDF, lines: string[], startY: number): number {
     doc.setTextColor(...C.ink);
 
     if (isBullet) {
-      // Strip whatever bullet marker came in, then render with "- " prefix.
       const text = line.replace(/^[-•*]\s*/, '');
       const wrapped = doc.splitTextToSize(text, contentW - L.bulletIndent);
-      // First line: "- " visible to parser
       doc.text('-', L.mL, y, TEXT_OPTS);
       doc.text(wrapped[0], L.mL + L.bulletIndent, y, TEXT_OPTS);
       y += L.lineH;
-      // Continuation lines (hanging indent)
       for (let i = 1; i < wrapped.length; i++) {
         y = pageBreak(doc, y, 14);
         doc.text(wrapped[i], L.mL + L.bulletIndent, y, TEXT_OPTS);
         y += L.lineH;
       }
-      y += 1.5;
+      y += 2.5;
     } else {
       const wrapped = doc.splitTextToSize(line, contentW);
       for (const wl of wrapped) {
@@ -381,7 +323,7 @@ function renderBullets(doc: jsPDF, lines: string[], startY: number): number {
         doc.text(wl, L.mL, y, TEXT_OPTS);
         y += L.lineH;
       }
-      y += 2;
+      y += 2.5;
     }
   }
   return y;
@@ -393,7 +335,6 @@ function renderSkills(doc: jsPDF, lines: string[], startY: number): number {
   let y = startY;
   for (const line of lines) {
     y = pageBreak(doc, y, 16);
-    // Strip bullet markers — Skills should never have bullets but be safe
     const clean = line.replace(/^[-•*]\s*/, '');
     const colonIdx = clean.indexOf(':');
 
@@ -402,34 +343,98 @@ function renderSkills(doc: jsPDF, lines: string[], startY: number): number {
       const tools = clean.slice(colonIdx + 1).trim();
 
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(9);
+      doc.setFontSize(9.2);
       doc.setTextColor(...C.ink);
       const catText = category + ': ';
       doc.text(catText, L.mL, y, TEXT_OPTS);
       const catW = doc.getTextWidth(catText);
 
       doc.setFont('helvetica', 'normal');
+      doc.setTextColor(...C.ink);
       const wrapped = doc.splitTextToSize(tools, contentW - catW);
       for (let i = 0; i < wrapped.length; i++) {
-        if (i > 0) y = pageBreak(doc, y, 14);
-        doc.text(wrapped[i], L.mL + catW, y, TEXT_OPTS);
-        if (i < wrapped.length - 1) y += L.lineH - 1;
+        if (i > 0) {
+          y = pageBreak(doc, y, 14);
+          y += L.lineH - 1;
+        }
+        doc.text(wrapped[i], i === 0 ? L.mL + catW : L.mL + catW, y, TEXT_OPTS);
       }
-      y += L.lineH;
+      y += L.lineH + 1;
     } else {
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
+      doc.setFontSize(9.2);
       doc.setTextColor(...C.ink);
-      doc.text(clean, L.mL, y, TEXT_OPTS);
-      y += L.lineH;
+      const wrapped = doc.splitTextToSize(clean, contentW);
+      for (const wl of wrapped) {
+        doc.text(wl, L.mL, y, TEXT_OPTS);
+        y += L.lineH;
+      }
     }
   }
   return y;
 }
 
-// ─── Professional Experience ─────────────────────────────────────────────────
-// Detects "Title | Company | Dates" header lines and "Client: ..." sublines.
-// Bullets are rendered exactly like renderBullets — as REAL text.
+/** Split trailing dates for right-alignment when possible. */
+function splitLeftAndDates(line: string): { left: string; dates: string | null } {
+  const paren = line.match(/^(.+?)\s*[(\[]\s*([^)\]]*\d{4}[^)\]]*)\s*[)\]]\s*$/);
+  if (paren) return { left: paren[1].trim(), dates: paren[2].trim() };
+
+  const pipeParts = line.split('|').map((p) => p.trim()).filter(Boolean);
+  if (pipeParts.length >= 2) {
+    const last = pipeParts[pipeParts.length - 1]!;
+    if (/\d{4}/.test(last) || /present|current/i.test(last)) {
+      return { left: pipeParts.slice(0, -1).join('  ·  '), dates: last };
+    }
+  }
+
+  const dash = line.match(
+    /^(.+?)\s+[-–]\s*((?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+)?\d{4}\s*[-–]\s*(?:Present|Current|(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+)?\d{4}))\s*$/i,
+  );
+  if (dash) return { left: dash[1].trim(), dates: dash[2].trim() };
+
+  return { left: line, dates: null };
+}
+
+function renderRoleHeader(doc: jsPDF, line: string, y: number, opts?: { company?: boolean }): number {
+  const { left, dates } = splitLeftAndDates(line);
+  y += opts?.company ? 2 : 6;
+  y = pageBreak(doc, y, 20);
+
+  doc.setFont('helvetica', opts?.company ? 'bold' : 'bold');
+  doc.setFontSize(opts?.company ? 10.2 : 10);
+  doc.setTextColor(...C.ink);
+
+  if (dates) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(...C.stone);
+    const dateW = doc.getTextWidth(dates);
+    doc.text(dates, L.pageW - L.mR - dateW, y, TEXT_OPTS);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(opts?.company ? 10.2 : 10);
+    doc.setTextColor(...C.ink);
+    const maxLeft = contentW - dateW - 12;
+    const wrapped = doc.splitTextToSize(left, maxLeft);
+    doc.text(wrapped[0], L.mL, y, TEXT_OPTS);
+    y += 13;
+    for (let i = 1; i < wrapped.length; i++) {
+      y = pageBreak(doc, y, 13);
+      doc.text(wrapped[i], L.mL, y, TEXT_OPTS);
+      y += 12;
+    }
+  } else {
+    const wrapped = doc.splitTextToSize(left, contentW);
+    for (const wl of wrapped) {
+      y = pageBreak(doc, y, 13);
+      doc.text(wl, L.mL, y, TEXT_OPTS);
+      y += 13;
+    }
+  }
+  return y;
+}
+
+// ─── Professional Experience / Projects ──────────────────────────────────────
 
 function renderExperience(doc: jsPDF, lines: string[], startY: number): number {
   let y = startY;
@@ -439,20 +444,15 @@ function renderExperience(doc: jsPDF, lines: string[], startY: number): number {
     const isBullet = /^[-•*]\s/.test(line);
     const isClient = /^client:/i.test(line);
     const isJobHeader = !isBullet && !isClient && looksLikeJobHeader(line);
+    const looksCompany =
+      !isBullet &&
+      !isClient &&
+      !isJobHeader &&
+      (/pvt|ltd|inc|llc|corp|technologies|services|solutions/i.test(line) ||
+        (/[-–]/.test(line) && line.length < 90 && !/^[-•*]/.test(line)));
 
-    if (isJobHeader) {
-      y += 4;
-      y = pageBreak(doc, y, 22);
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(10);
-      doc.setTextColor(...C.ink);
-      const wrapped = doc.splitTextToSize(line, contentW);
-      for (const wl of wrapped) {
-        y = pageBreak(doc, y, 14);
-        doc.text(wl, L.mL, y, TEXT_OPTS);
-        y += 13;
-      }
+    if (isJobHeader || looksCompany) {
+      y = renderRoleHeader(doc, line, y, { company: looksCompany && !isJobHeader });
     } else if (isClient) {
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(9);
@@ -478,17 +478,31 @@ function renderExperience(doc: jsPDF, lines: string[], startY: number): number {
         doc.text(wrapped[i], L.mL + L.bulletIndent, y, TEXT_OPTS);
         y += L.lineH;
       }
-      y += 1.5;
+      y += 2.5;
     } else {
-      // Plain paragraph fallback
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
-      doc.setTextColor(...C.stone);
-      const wrapped = doc.splitTextToSize(line, contentW);
-      for (const wl of wrapped) {
-        y = pageBreak(doc, y, 13);
-        doc.text(wl, L.mL, y, TEXT_OPTS);
-        y += L.lineH;
+      // Role / subtitle line under company
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9.8);
+      doc.setTextColor(...C.ink);
+      const { left, dates } = splitLeftAndDates(line);
+      if (dates) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.setTextColor(...C.stone);
+        const dateW = doc.getTextWidth(dates);
+        doc.text(dates, L.pageW - L.mR - dateW, y, TEXT_OPTS);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9.8);
+        doc.setTextColor(...C.ink);
+        doc.text(doc.splitTextToSize(left, contentW - dateW - 12)[0], L.mL, y, TEXT_OPTS);
+        y += 13;
+      } else {
+        const wrapped = doc.splitTextToSize(line, contentW);
+        for (const wl of wrapped) {
+          y = pageBreak(doc, y, 13);
+          doc.text(wl, L.mL, y, TEXT_OPTS);
+          y += L.lineH;
+        }
       }
     }
   }
@@ -509,7 +523,9 @@ function looksLikeJobHeader(line: string): boolean {
 function pageBreak(doc: jsPDF, y: number, neededHeight: number): number {
   if (y + neededHeight > L.pageH - L.mBottom) {
     doc.addPage();
-    return 28;
+    doc.setFillColor(...C.white);
+    doc.rect(0, 0, L.pageW, L.pageH, 'F');
+    return L.mTop;
   }
   return y;
 }
