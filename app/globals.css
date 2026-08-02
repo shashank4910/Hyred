@@ -147,6 +147,49 @@ input[type="range"] {
   animation: scan-started-shimmer 1.8s ease-in-out infinite;
 }
 
+/* ATS checker — modern document scan */
+@keyframes ats-scan-beam {
+  0% {
+    top: 6%;
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  88% {
+    opacity: 1;
+  }
+  100% {
+    top: 90%;
+    opacity: 0;
+  }
+}
+@keyframes ats-scan-glow {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+.ats-scan-beam {
+  animation: ats-scan-beam 2.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+.ats-scan-glow {
+  animation: ats-scan-glow 2.4s ease-in-out infinite;
+}
+.ats-scan-line-skeleton {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--color-outline-variant, #c4c7c5) 35%, transparent) 0%,
+    color-mix(in srgb, var(--color-primary, #006a65) 12%, transparent) 50%,
+    color-mix(in srgb, var(--color-outline-variant, #c4c7c5) 35%, transparent) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s infinite linear;
+}
+
 .legal-prose {
   @apply text-sm text-on-surface leading-relaxed space-y-4;
 }

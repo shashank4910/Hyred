@@ -324,6 +324,21 @@ function assessParseQuality(text: string): ParseQuality {
 /*  Scoring functions (each returns 0-100 and feedback)                 */
 /* ------------------------------------------------------------------ */
 
+/** Short, action-first tip from detected issues (no "Needs improvement…" filler). */
+function tipFromIssues(issues: string[], fallback: string, max = 2): string {
+  if (issues.length === 0) return fallback;
+  return issues.slice(0, max).join(' ');
+}
+
+/** Avoid mid-word truncation in UI cards. */
+function clipAtWord(text: string, max: number): string {
+  const cleaned = text.replace(/\s+/g, ' ').trim();
+  if (cleaned.length <= max) return cleaned;
+  const cut = cleaned.slice(0, max);
+  const space = cut.lastIndexOf(' ');
+  return `${(space > Math.floor(max * 0.5) ? cut.slice(0, space) : cut).trimEnd()}…`;
+}
+
 function scoreSectionStructure(text: string): CriterionResult {
   const lines = text.split('\n');
   const headers = findSectionHeaders(lines);
@@ -405,10 +420,8 @@ function scoreSectionStructure(text: string): CriterionResult {
     score,
     weight: 20,
     feedback: score >= 80
-      ? 'Strong section structure with all required headers.'
-      : score >= 50
-        ? `Decent structure. ${issues.slice(0, 2).join(' ')}`
-        : `Needs improvement. ${issues.slice(0, 3).join(' ')}`,
+      ? 'Clear Experience, Education, and related headers.'
+      : tipFromIssues(issues, 'Add standard Experience, Education, Skills, and Summary headers.'),
   };
 }
 
@@ -518,10 +531,8 @@ function scoreContactInfo(text: string): CriterionResult {
     score,
     weight: 15,
     feedback: score >= 80
-      ? 'All key contact details present.'
-      : score >= 50
-        ? `Contact info is partially complete. ${issues.slice(0, 2).join(' ')}`
-        : `Contact info needs work. ${issues.slice(0, 3).join(' ')}`,
+      ? 'Name, email, and phone are easy to find at the top.'
+      : tipFromIssues(issues, 'Put name, email, and phone near the top of the resume.'),
   };
 }
 
@@ -620,10 +631,8 @@ function scoreBulletQuality(text: string): CriterionResult {
     score,
     weight: 15,
     feedback: score >= 80
-      ? 'Well-formatted bullet points throughout.'
-      : score >= 50
-        ? `Decent bullet formatting. ${issues.slice(0, 2).join(' ')}`
-        : `Bullet formatting needs attention. ${issues.slice(0, 3).join(' ')}`,
+      ? 'Bullets are consistent and easy for ATS to read.'
+      : tipFromIssues(issues, 'Use clear "- " bullets with enough detail in each line.'),
   };
 }
 
@@ -700,10 +709,8 @@ function scoreQuantifiableAchievements(text: string): CriterionResult {
     score,
     weight: 15,
     feedback: score >= 80
-      ? 'Strong use of quantifiable achievements throughout.'
-      : score >= 50
-        ? `Some quantified achievements found. ${issues.slice(0, 1).join(' ')}`
-        : `Few quantifiable achievements. ${issues.slice(0, 2).join(' ')}`,
+      ? 'Experience bullets include clear numbers and results.'
+      : tipFromIssues(issues, 'Add numbers, %, or scale to more experience bullets.', 1),
   };
 }
 
@@ -720,7 +727,7 @@ function scoreSkillsOptimization(text: string): CriterionResult {
     return {
       score: 15,
       weight: 15,
-      feedback: 'No dedicated Skills section found. ATS systems scan this for keyword matching.',
+      feedback: 'No Skills section found — add one with role keywords ATS can match.',
     };
   }
 
@@ -882,10 +889,8 @@ function scoreSkillsOptimization(text: string): CriterionResult {
     score,
     weight: 15,
     feedback: score >= 80
-      ? 'Well-optimized skills section with good contextualization.'
-      : score >= 50
-        ? `Skills section is decent. ${issues.slice(0, 1).join(' ')}`
-        : `Skills section needs work. ${issues.slice(0, 2).join(' ')}`,
+      ? 'Skills section lists concrete keywords ATS can match.'
+      : tipFromIssues(issues, 'Add a Skills section with role-relevant keywords.'),
   };
 }
 
@@ -952,10 +957,8 @@ function scoreLengthReadability(text: string): CriterionResult {
     score,
     weight: 10,
     feedback: score >= 80
-      ? 'Resume length is appropriate and well-structured.'
-      : score >= 50
-        ? `Length is acceptable. ${issues.slice(0, 1).join(' ')}`
-        : `Resume length needs adjustment. ${issues.slice(0, 2).join(' ')}`,
+      ? 'Length and density look right for ATS screening.'
+      : tipFromIssues(issues, 'Aim for a focused 1–2 page resume with clear sections.', 1),
   };
 }
 
@@ -1166,10 +1169,8 @@ function scoreFormatCleanliness(text: string): CriterionResult {
     score,
     weight: 5,
     feedback: score >= 90
-      ? 'Clean ASCII formatting — excellent ATS compatibility.'
-      : score >= 70
-        ? `Minor formatting issues. ${issues.slice(0, 2).join(' ')}`
-        : `Formatting issues detected. ${issues.slice(0, 3).join(' ')}`,
+      ? 'Clean plain-text formatting — strong ATS compatibility.'
+      : tipFromIssues(issues, 'Replace fancy quotes/symbols with plain characters ATS can parse.'),
   };
 }
 
@@ -1230,10 +1231,8 @@ function scoreDateConsistency(text: string): CriterionResult {
     score,
     weight: 5,
     feedback: score >= 80
-      ? 'Dates are well-formatted and consistent.'
-      : score >= 50
-        ? `Date formatting is acceptable. ${issues.slice(0, 1).join(' ')}`
-        : `Date formatting needs improvement. ${issues.slice(0, 2).join(' ')}`,
+      ? 'Dates use a consistent month/year format.'
+      : tipFromIssues(issues, 'Use consistent dates like Jan 2021 – Present.', 1),
   };
 }
 
@@ -1519,11 +1518,12 @@ export function checkAtsCompatibility(
   const allIssues: string[] = [];
   const allGood: string[] = [];
 
-  // Extract from feedback
+  // Extract from feedback — only treat truly strong scores as "doing well"
+  // (score 70–89 often still has caveats like "Minor formatting issues").
   for (const criterion of allCriteria) {
     if (criterion.score < 50) {
       allIssues.push(criterion.feedback);
-    } else if (criterion.score >= 80) {
+    } else if (criterion.score >= 90) {
       allGood.push(criterion.feedback);
     }
   }
@@ -1576,7 +1576,7 @@ export function checkAtsCompatibility(
 
   const sortedByScore = [...scoredCriteria].sort((a, b) => a.result.score - b.result.score);
   const topImprovements = sortedByScore.slice(0, 3).map(({ key, result }) =>
-    `${CRITERION_LABELS[key]}: ${result.feedback.slice(0, 100)}`,
+    `${CRITERION_LABELS[key]} — ${clipAtWord(result.feedback, 140)}`,
   );
 
   // JD keyword comparison
