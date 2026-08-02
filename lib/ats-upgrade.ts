@@ -34,10 +34,10 @@ export function planAtsUpgrade(result: AtsCheckResult): AtsUpgradePlan {
       label: 'Light polish',
       summary: `Your score is ${score}/100 — solid base. AI will do a light cleanup only.`,
       willDo: [
-        'Keep your facts, roles, and dates exactly as they are',
-        'Tighten wording and bullet consistency',
-        'Fix format / section header clarity for ATS parsers',
-        'No big rewrite — minimal changes',
+        'Keep every employer, tool, and date exactly as in your resume',
+        'Remove fluff (objectives/declarations) and tighten bullets',
+        'Deduplicate Experience vs Projects',
+        'ATS-safe format — no invented metrics or locations',
       ],
     };
   }
@@ -47,12 +47,12 @@ export function planAtsUpgrade(result: AtsCheckResult): AtsUpgradePlan {
       intensity: 'medium',
       creditCost: 1,
       label: 'Focused upgrade',
-      summary: `Your score is ${score}/100 — AI will strengthen the weak areas (${weak.length} criteria below the bar).`,
+      summary: `Your score is ${score}/100 — AI will strengthen the weak areas (${weak.length} criteria below the bar), then fact-check the result.`,
       willDo: [
-        'Rebuild structure into a clear ATS-friendly layout',
-        'Strengthen bullets and skills wording (truth only)',
-        'Improve weak sections without inventing employers or metrics',
-        'Preserve contact info, employers, titles, and dates',
+        'Rebuild into a clear ATS layout (Summary → Skills → Experience → Education)',
+        'Move project duties under the real employer; no duplicate bullets',
+        'Keep domains/tools from your resume; never invent metrics',
+        'Second AI pass: fact-check dates, locations, and dropped keywords',
       ],
     };
   }
@@ -61,12 +61,12 @@ export function planAtsUpgrade(result: AtsCheckResult): AtsUpgradePlan {
     intensity: 'deep',
     creditCost: 2,
     label: 'Full ATS rebuild',
-    summary: `Your score is ${score}/100 — AI will do a deeper rebuild so the resume is ATS-ready.`,
+    summary: `Your score is ${score}/100 — AI will rebuild for ATS, then run a quality/fact-check pass (aiming for a 9.5-level edit).`,
     willDo: [
-      'Full ATS structure: Summary, Skills, Experience, Education',
-      'Rewrite bullets for clarity and impact (no invented numbers)',
-      'Normalize dates, contact block, and section headers',
-      'Keep every employer, title, and degree you already have',
+      'Full ATS rebuild from your facts only (no invented employers/metrics)',
+      'Strong experience bullets; drop school boards if you already have a degree + experience',
+      'Keep real domains (e.g. e-commerce/travel) and all tools you listed',
+      'Second AI pass: truth lock + dedupe + restore any dropped signal',
     ],
   };
 }
