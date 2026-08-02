@@ -348,6 +348,12 @@ export function AtsFixStudio({
                 Uses {upgradePlan.creditCost} Resume Studio credit
                 {upgradePlan.creditCost === 1 ? '' : 's'}. No inventing employers or metrics.
               </p>
+              <div className="mt-5 rounded-xl border border-outline-variant/40 bg-surface-container/40 p-3">
+                <p className="mb-2 text-[11px] font-semibold text-on-surface">
+                  Choose PDF look (used after upgrade)
+                </p>
+                <AtsResumeTemplatePicker selectedId={templateId} onSelect={setTemplateId} />
+              </div>
               {error && (
                 <p className="mt-3 text-sm text-red-700" role="alert">
                   {error}
@@ -450,54 +456,80 @@ export function AtsFixStudio({
         </section>
       )}
 
-      <div id="hyred-upgrade-print">
-        <AtsResumeTwinPreview
-          originalLabel="Original resume"
-          originalMeta={originalFilename ?? undefined}
-          hyredLabel={upgraded ? 'Upgraded Hyred resume' : 'Hyred layout (preview)'}
-          hyredMeta={
-            upgraded
-              ? `Score ${result.overallScore} · ${templateName} · ready to download`
-              : `${templateName} · click Upgrade to generate`
-          }
-          hyredHeaderExtra={
-            <AtsResumeTemplatePicker selectedId={templateId} onSelect={setTemplateId} />
-          }
-          original={
-            originalFile ? (
-              originalFile.kind === 'pdf' ? (
-                <div className="overflow-hidden rounded-[3px] border border-slate-300/80 bg-white shadow-sm">
-                  <iframe
-                    src={`${originalFile.url}#toolbar=0&navpanes=0&view=FitH`}
-                    title="Your original resume"
-                    className="h-[60vh] w-full lg:h-full lg:min-h-[480px]"
-                  />
-                </div>
+      {/* Twin preview only after upgrade — showing Hyred layout of raw text before
+          Upgrade reads as a fake "already improved" resume. */}
+      {upgraded ? (
+        <div id="hyred-upgrade-print">
+          <AtsResumeTwinPreview
+            originalLabel="Original resume"
+            originalMeta={originalFilename ?? undefined}
+            hyredLabel="Upgraded Hyred resume"
+            hyredMeta={`Score ${result.overallScore} · ${templateName} · ready to download`}
+            hyredHeaderExtra={
+              <AtsResumeTemplatePicker selectedId={templateId} onSelect={setTemplateId} />
+            }
+            original={
+              originalFile ? (
+                originalFile.kind === 'pdf' ? (
+                  <div className="overflow-hidden rounded-[3px] border border-slate-300/80 bg-white shadow-sm">
+                    <iframe
+                      src={`${originalFile.url}#toolbar=0&navpanes=0&view=FitH`}
+                      title="Your original resume"
+                      className="h-[60vh] w-full lg:h-full lg:min-h-[480px]"
+                    />
+                  </div>
+                ) : (
+                  <div className="overflow-hidden rounded-[3px] border border-slate-300/80 bg-white p-2 shadow-sm">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={originalFile.url} alt="Your original resume" className="w-full" />
+                  </div>
+                )
               ) : (
-                <div className="overflow-hidden rounded-[3px] border border-slate-300/80 bg-white p-2 shadow-sm">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={originalFile.url} alt="Your original resume" className="w-full" />
-                </div>
+                <HyredResumePreview
+                  text={originalResume}
+                  showHighlights={false}
+                  templateId={templateId}
+                  photoUrl={photoUrl}
+                />
               )
-            ) : (
+            }
+            hyred={
               <HyredResumePreview
-                text={originalResume}
+                text={workingResume}
                 showHighlights={false}
                 templateId={templateId}
                 photoUrl={photoUrl}
               />
-            )
-          }
-          hyred={
-            <HyredResumePreview
-              text={workingResume}
-              showHighlights={false}
-              templateId={templateId}
-              photoUrl={photoUrl}
-            />
-          }
-        />
-      </div>
+            }
+          />
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-dashed border-outline-variant/50 bg-surface-container/30 px-5 py-8 text-center">
+          <p className="text-sm font-semibold text-on-surface">Improved preview unlocks after Upgrade</p>
+          <p className="mx-auto mt-1.5 max-w-md text-[12px] leading-relaxed text-text-muted">
+            We won’t show a Hyred layout of your old text — that looks like the upgrade already ran.
+            Click <span className="font-semibold text-on-surface">Upgrade my resume</span> above, then
+            download the PDF.
+          </p>
+          {originalFile && (
+            <div className="mx-auto mt-5 max-w-xl overflow-hidden rounded-xl border border-outline-variant/40 bg-white text-left shadow-sm">
+              <p className="border-b border-outline-variant/25 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-text-muted">
+                Your original (reference)
+              </p>
+              {originalFile.kind === 'pdf' ? (
+                <iframe
+                  src={`${originalFile.url}#toolbar=0&navpanes=0&view=FitH`}
+                  title="Your original resume"
+                  className="h-[42vh] w-full min-h-[280px]"
+                />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={originalFile.url} alt="Your original resume" className="w-full p-2" />
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

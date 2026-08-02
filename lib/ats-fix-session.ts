@@ -23,7 +23,37 @@ export interface AtsFixSessionPayload {
 
 export function writeAtsFixSession(payload: Omit<AtsFixSessionPayload, 'createdAt'>): void {
   const full: AtsFixSessionPayload = { ...payload, createdAt: Date.now() };
-  localStorage.setItem(ATS_FIX_SESSION_KEY, JSON.stringify(full));
+  try {
+    localStorage.setItem(ATS_FIX_SESSION_KEY, JSON.stringify(full));
+    return;
+  } catch {
+    /* QuotaExceeded — retry without heavy original file bytes */
+  }
+  try {
+    const slim: AtsFixSessionPayload = {
+      ...full,
+      originalFileDataUrl: null,
+      originalFileKind: null,
+    };
+    localStorage.setItem(ATS_FIX_SESSION_KEY, JSON.stringify(slim));
+  } catch {
+    /* last resort: clear stale session then try slim again */
+    try {
+      localStorage.removeItem(ATS_FIX_SESSION_KEY);
+      localStorage.setItem(
+        ATS_FIX_SESSION_KEY,
+        JSON.stringify({
+          resume: full.resume,
+          result: full.result,
+          jobDescription: full.jobDescription,
+          filename: full.filename,
+          createdAt: full.createdAt,
+        } satisfies AtsFixSessionPayload),
+      );
+    } catch {
+      /* caller will see expired session if write fully failed */
+    }
+  }
 }
 
 export function readAtsFixSession(): AtsFixSessionPayload | null {
