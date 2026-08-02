@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { isAdminEmail } from '@/lib/current-user';
 
 export type PremiumFeatureKey = 'interview_prep' | 'match_intelligence' | 'resume_studio';
 export type PremiumPlan = 'free' | 'premium_monthly' | 'premium_sprint';
@@ -16,6 +17,19 @@ export function quotaLimitForPlan(plan: PremiumPlan, feature: PremiumFeatureKey)
     resume_studio: 40,
   };
   return plan === 'free' ? freeLimits[feature] : premiumLimits[feature];
+}
+
+/** Owner/admin testing: no credit cap (Resume Studio, Fix Studio, etc.). */
+async function isUnlimitedPremiumTester(profileId: string): Promise<boolean> {
+  const sb = supabaseAdmin();
+  const { data } = await sb
+    .from('profiles')
+    .select('email, is_admin')
+    .eq('id', profileId)
+    .maybeSingle();
+  if (!data) return false;
+  if ((data as { is_admin?: boolean }).is_admin === true) return true;
+  return isAdminEmail((data as { email?: string }).email);
 }
 
 export function quotaWindowKind(plan: PremiumPlan, feature: PremiumFeatureKey): QuotaWindowKind {
@@ -40,6 +54,17 @@ export async function getPremiumAccess(profileId: string): Promise<{
   cycleStart: string | null;
   cycleEnd: string | null;
 }> {
+  if (await isUnlimitedPremiumTester(profileId)) {
+    const now = new Date();
+    const end = new Date(now);
+    end.setFullYear(end.getFullYear() + 10);
+    return {
+      plan: 'premium_monthly',
+      cycleStart: now.toISOString(),
+      cycleEnd: end.toISOString(),
+    };
+  }
+
   const sb = supabaseAdmin();
   const { data } = await sb
     .from('premium_subscriptions')
@@ -59,6 +84,10 @@ export async function getFeatureUsage(
   profileId: string,
   feature: PremiumFeatureKey,
 ): Promise<{ used: number; limit: number | null; remaining: number | null }> {
+  if (await isUnlimitedPremiumTester(profileId)) {
+    return summarizeUsage({ used: 0, limit: null });
+  }
+
   const access = await getPremiumAccess(profileId);
   const limit = quotaLimitForPlan(access.plan, feature);
   const windowKind = quotaWindowKind(access.plan, feature);
