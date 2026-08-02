@@ -9,6 +9,7 @@ import {
   applySuggestion,
   findSnippetRange,
   listAtsWeaknesses,
+  suggestionOverlapsHandled,
   undoLastFix,
   type AppliedFix,
   type AtsFixSuggestion,
@@ -220,8 +221,12 @@ export function AtsFixStudio({
               ...(regenerate ? suggestions.map((s) => s.proposedText) : []),
               ...applied
                 .filter((a) => a.suggestion.weaknessId === weakness.id)
-                .map((a) => a.suggestion.proposedText),
-            ].slice(0, 8),
+                .flatMap((a) => [a.suggestion.proposedText, a.suggestion.originalSnippet]),
+            ].slice(0, 10),
+            avoid_originals: applied
+              .filter((a) => a.suggestion.weaknessId === weakness.id)
+              .map((a) => a.suggestion.originalSnippet)
+              .slice(0, 10),
           }),
         });
         const data = await res.json();
@@ -235,7 +240,12 @@ export function AtsFixStudio({
           setError(data.error ?? 'Could not generate fixes.');
           return;
         }
-        const list = (data.suggestions ?? []) as AtsFixSuggestion[];
+        const handled = applied
+          .filter((a) => a.suggestion.weaknessId === weakness.id)
+          .flatMap((a) => [a.suggestion.originalSnippet, a.suggestion.proposedText]);
+        const list = ((data.suggestions ?? []) as AtsFixSuggestion[]).filter(
+          (s) => !suggestionOverlapsHandled(s, handled),
+        );
         setSuggestions(list);
         setActiveIdx(0);
         setHasGeneratedOnce(true);
@@ -322,9 +332,17 @@ export function AtsFixStudio({
       setActiveIdx(0);
       advanceAfter(section.id, 'fixed', freshWeaknesses);
     } else {
-      // Still work to do here → stay on the section, keep going with remaining fixes.
+      // Still work to do here → stay on the section, drop any leftover that retargets this line.
       setJustFixed({ label: section.label, delta, complete: false, applied: doneCount, target });
-      setSuggestions((prev) => prev.filter((s) => s.id !== appliedSuggestion.id));
+      const handled = [
+        appliedSuggestion.originalSnippet,
+        appliedSuggestion.proposedText,
+      ];
+      setSuggestions((prev) =>
+        prev.filter(
+          (s) => s.id !== appliedSuggestion.id && !suggestionOverlapsHandled(s, handled),
+        ),
+      );
       setActiveIdx(0);
     }
   };

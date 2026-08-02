@@ -14,7 +14,8 @@ export const maxDuration = 60;
  *
  * Body: {
  *   resume_text, weakness_id, criterion_key, feedback,
- *   missing_keyword?, job_description?, avoid_proposed?: string[]
+ *   missing_keyword?, job_description?,
+ *   avoid_proposed?: string[], avoid_originals?: string[]
  * }
  */
 export async function POST(req: NextRequest) {
@@ -46,6 +47,7 @@ export async function POST(req: NextRequest) {
     missing_keyword?: string;
     job_description?: string;
     avoid_proposed?: string[];
+    avoid_originals?: string[];
   };
   try {
     body = await req.json();
@@ -73,7 +75,10 @@ export async function POST(req: NextRequest) {
       missingKeyword: body.missing_keyword,
       jobDescription: body.job_description,
       avoidProposed: Array.isArray(body.avoid_proposed)
-        ? body.avoid_proposed.map(String).slice(0, 8)
+        ? body.avoid_proposed.map(String).slice(0, 10)
+        : undefined,
+      avoidOriginals: Array.isArray(body.avoid_originals)
+        ? body.avoid_originals.map(String).slice(0, 10)
         : undefined,
       profileId: profile.id,
     });
