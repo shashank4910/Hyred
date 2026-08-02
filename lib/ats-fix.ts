@@ -179,3 +179,32 @@ export function makeSuggestionId(weaknessId: string, originalSnippet: string): s
   for (let i = 0; i < base.length; i++) h = (h * 31 + base.charCodeAt(i)) | 0;
   return `fix_${Math.abs(h).toString(36)}`;
 }
+
+function normLine(s: string): string {
+  return s.replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+/** True if two resume lines are the same (or overlapping) after normalize. */
+export function sameOrOverlappingLine(a: string, b: string): boolean {
+  const na = normLine(a);
+  const nb = normLine(b);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  if (na.length >= 24 && nb.includes(na)) return true;
+  if (nb.length >= 24 && na.includes(nb)) return true;
+  const prefixLen = Math.min(48, na.length, nb.length);
+  if (prefixLen >= 32 && na.slice(0, prefixLen) === nb.slice(0, prefixLen)) return true;
+  return false;
+}
+
+/** Drop leftovers that retarget an already-applied line. */
+export function suggestionOverlapsHandled(
+  suggestion: Pick<AtsFixSuggestion, 'originalSnippet' | 'proposedText'>,
+  handled: string[],
+): boolean {
+  return handled.some(
+    (h) =>
+      sameOrOverlappingLine(h, suggestion.originalSnippet) ||
+      sameOrOverlappingLine(h, suggestion.proposedText),
+  );
+}
