@@ -8,13 +8,19 @@ import {
   Briefcase,
   Check,
   CheckCircle2,
+  ChevronDown,
   Loader2,
   RefreshCcw,
   Sparkles,
   XCircle,
 } from 'lucide-react';
 import type { AtsCheckResult } from '@/lib/ats-checker';
-import { buildAtsReport, type AtsReportCheck } from '@/lib/ats-report';
+import {
+  buildAtsReport,
+  type AtsReport,
+  type AtsReportCategory,
+  type AtsReportCheck,
+} from '@/lib/ats-report';
 import { AtsScoreRing } from './AtsScoreRing';
 
 function scoreColor(score: number): string {
@@ -91,6 +97,295 @@ function lineMatchesQuote(line: string, quote: string): boolean {
   if (!l || !q) return false;
   const needle = q.slice(0, Math.min(48, q.length));
   return l.includes(needle) || needle.includes(l.slice(0, 32));
+}
+
+function StatusIcon({ status, className = 'h-4 w-4' }: { status: AtsReportCheck['status']; className?: string }) {
+  if (status === 'pass') return <CheckCircle2 className={`${className} text-emerald-600`} />;
+  if (status === 'warn') return <AlertTriangle className={`${className} text-amber-600`} />;
+  return <XCircle className={`${className} text-red-600`} />;
+}
+
+function statusPill(status: AtsReportCheck['status'], summary: string) {
+  const cls =
+    status === 'pass'
+      ? 'bg-emerald-500/10 text-emerald-700'
+      : status === 'warn'
+        ? 'bg-amber-500/10 text-amber-700'
+        : 'bg-red-500/10 text-red-700';
+  return (
+    <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${cls}`}>
+      {summary}
+    </span>
+  );
+}
+
+/** One check as an Enhancv-style expandable card with per-user evidence. */
+function CheckCard({
+  check,
+  onQuoteClick,
+}: {
+  check: AtsReportCheck;
+  onQuoteClick?: (quote: string) => void;
+}) {
+  const hasIssue = check.status === 'fail' || check.status === 'warn';
+  const [open, setOpen] = useState(hasIssue);
+  const quotes = check.quotes ?? [];
+  const failedItems = (check.foundItems ?? []).filter((f) => !f.ok);
+
+  return (
+    <div
+      id={`check-${check.id}`}
+      className="border-b border-outline-variant/20 last:border-b-0 scroll-mt-24"
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-3 px-4 sm:px-5 py-3.5 text-left transition-colors hover:bg-surface-container/40"
+        aria-expanded={open}
+      >
+        <StatusIcon status={check.status} />
+        <span className="flex-1 text-sm font-semibold text-on-surface">{check.label}</span>
+        {statusPill(check.status, check.summary)}
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 text-text-muted transition-transform ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+
+      {open && (
+        <div className="px-4 sm:px-5 pb-4 pl-11 sm:pl-12 space-y-3">
+          {check.education && (
+            <p className="text-xs text-text-muted leading-relaxed">{check.education}</p>
+          )}
+
+          {hasIssue ? (
+            <>
+              <p className="text-sm text-on-surface-variant leading-relaxed">{check.detail}</p>
+
+              {/* Extracted items with pass/fail marks (contact, sections) */}
+              {check.foundItems && check.foundItems.length > 0 && (
+                <ul className="grid gap-1.5 sm:grid-cols-2">
+                  {check.foundItems.map((item) => (
+                    <li
+                      key={item.label}
+                      className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs ${
+                        item.ok
+                          ? 'border-emerald-500/20 bg-emerald-500/[0.05] text-emerald-800'
+                          : 'border-red-500/25 bg-red-500/[0.06] text-red-800'
+                      }`}
+                    >
+                      {item.ok ? (
+                        <Check className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                      ) : (
+                        <XCircle className="h-3.5 w-3.5 shrink-0 text-red-500" />
+                      )}
+                      <span className="font-medium">{item.label}</span>
+                      {item.ok && item.value && (
+                        <span className="truncate text-emerald-700/80">{item.value}</span>
+                      )}
+                      {!item.ok && <span className="text-red-600/80">not found</span>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {/* Repeated words with replacement pills */}
+              {check.repetitions && check.repetitions.length > 0 && (
+                <ul className="space-y-2">
+                  {check.repetitions.map((rep) => (
+                    <li
+                      key={rep.word}
+                      className="rounded-lg border border-red-500/20 bg-red-500/[0.05] px-3 py-2"
+                    >
+                      <p className="text-xs text-red-800">
+                        <span className="font-bold">“{rep.word}”</span> appears{' '}
+                        <span className="font-bold">{rep.count} times</span>
+                      </p>
+                      {rep.suggestions.length > 0 && (
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                          <span className="text-[11px] text-text-muted">Try instead:</span>
+                          {rep.suggestions.map((s) => (
+                            <span
+                              key={s}
+                              className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700"
+                            >
+                              {s}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {/* Spelling-style corrections */}
+              {check.suggestions && check.suggestions.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {check.suggestions.map((s) => (
+                    <span
+                      key={s.found}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 bg-red-500/[0.05] px-2.5 py-1 text-xs"
+                    >
+                      <span className="font-semibold text-red-700 line-through decoration-red-400">
+                        {s.found}
+                      </span>
+                      <ArrowRight className="h-3 w-3 text-text-muted" />
+                      <span className="font-semibold text-emerald-700">{s.suggestion}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Red evidence quotes from the user's resume */}
+              {quotes.length > 0 && (
+                <ul className="space-y-1.5">
+                  {quotes.slice(0, 3).map((q) => (
+                    <li key={q.text}>
+                      <button
+                        type="button"
+                        onClick={() => onQuoteClick?.(q.text)}
+                        className="w-full rounded-lg border border-red-500/25 bg-red-500/[0.08] px-2.5 py-2 text-left text-[12px] leading-snug text-red-900 transition-colors hover:bg-red-500/[0.12]"
+                      >
+                        <span className="font-medium text-red-700">From your resume: </span>
+                        <span className="italic">“{q.text}”</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {quotes.length === 0 &&
+                failedItems.length === 0 &&
+                (!check.repetitions || check.repetitions.length === 0) &&
+                (!check.suggestions || check.suggestions.length === 0) && (
+                  <p className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/25 bg-red-500/[0.08] px-2.5 py-2 text-[12px] font-medium text-red-800">
+                    <XCircle className="h-3.5 w-3.5 shrink-0" />
+                    Not found in your resume
+                  </p>
+                )}
+            </>
+          ) : (
+            <div className="flex items-start gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.06] px-3 py-2.5">
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-emerald-800">Good job!</p>
+                <p className="mt-0.5 text-xs text-emerald-800/90 leading-relaxed">
+                  {check.passText ?? check.detail}
+                </p>
+                {check.foundItems && check.foundItems.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {check.foundItems.map((item) => (
+                      <span
+                        key={item.label}
+                        className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium ${
+                          item.ok
+                            ? 'bg-emerald-500/10 text-emerald-700'
+                            : 'bg-amber-500/10 text-amber-700'
+                        }`}
+                      >
+                        {item.ok ? <Check className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+                        {item.label}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Sticky left rail — score + per-check status, click to jump. */
+function ReportRail({ report }: { report: AtsReport }) {
+  const scrollTo = (id: string) => {
+    document.getElementById(`check-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+
+  return (
+    <nav className="rounded-2xl border border-outline-variant/40 bg-surface-card shadow-sm p-4">
+      <div className="flex items-center gap-3 pb-3 border-b border-outline-variant/25">
+        <span className={`text-2xl font-extrabold tabular-nums ${scoreColor(report.overallScore)}`}>
+          {report.overallScore}
+        </span>
+        <div className="text-[11px] leading-tight text-text-muted">
+          <p className="font-semibold text-on-surface-variant">Your score</p>
+          <p>
+            {report.issueCount} issue{report.issueCount === 1 ? '' : 's'} found
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-3 space-y-3">
+        {report.categories
+          .filter((c) => !c.locked)
+          .map((cat) => (
+            <div key={cat.id}>
+              <p className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+                {cat.label}
+                {cat.score != null && (
+                  <span className={`tabular-nums normal-case ${scoreColor(cat.score)}`}>
+                    {cat.score}%
+                  </span>
+                )}
+              </p>
+              <ul className="mt-1.5 space-y-0.5">
+                {cat.checks.map((check) => (
+                  <li key={check.id}>
+                    <button
+                      type="button"
+                      onClick={() => scrollTo(check.id)}
+                      className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs text-on-surface-variant transition-colors hover:bg-surface-container/50"
+                    >
+                      <StatusIcon status={check.status} className="h-3.5 w-3.5" />
+                      <span className="truncate">{check.label}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+      </div>
+    </nav>
+  );
+}
+
+/** One category container with its checks. */
+function CategoryBlock({
+  category,
+  onQuoteClick,
+}: {
+  category: AtsReportCategory;
+  onQuoteClick?: (quote: string) => void;
+}) {
+  return (
+    <section className="rounded-2xl border border-outline-variant/40 bg-surface-card shadow-sm overflow-hidden">
+      <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-3.5 bg-surface-container/30 border-b border-outline-variant/25">
+        <div className="flex items-center gap-2.5">
+          <h4 className="text-sm font-bold text-on-surface tracking-tight">{category.label}</h4>
+          {category.score != null && (
+            <span className={`text-xs font-bold tabular-nums ${scoreColor(category.score)}`}>
+              {category.score}%
+            </span>
+          )}
+        </div>
+        {category.issueCount > 0 ? (
+          <span className="rounded-full bg-red-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-red-700">
+            {category.issueCount} issue{category.issueCount === 1 ? '' : 's'} found
+          </span>
+        ) : (
+          <span className="rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700">
+            All good
+          </span>
+        )}
+      </div>
+      {category.checks.map((check) => (
+        <CheckCard key={check.id} check={check} onQuoteClick={onQuoteClick} />
+      ))}
+    </section>
+  );
 }
 
 function UpgradeButton({
@@ -223,9 +518,11 @@ export function AtsScanReport({
   const activeCheck = findings.find((c) => c.id === activeCheckId) ?? findings[0] ?? null;
 
   const allEvidenceQuotes = useMemo(() => {
-    const qs = findings.flatMap((c) => (c.quotes ?? []).map((q) => q.text));
+    const qs = allChecks
+      .filter((c) => c.status === 'fail' || c.status === 'warn')
+      .flatMap((c) => (c.quotes ?? []).map((q) => q.text));
     return [...new Set(qs)];
-  }, [findings]);
+  }, [allChecks]);
 
   const canUpgrade = studioResume.trim().length >= 50;
   const verdict = verdictFor(result.overallScore);
@@ -422,7 +719,7 @@ export function AtsScanReport({
             </ol>
 
             {/* Resume preview */}
-            <div className="px-4 sm:px-5 py-4 bg-surface-container/20">
+            <div id="resume-evidence-panel" className="px-4 sm:px-5 py-4 bg-surface-container/20 scroll-mt-24">
               <div className="flex items-center justify-between gap-2 mb-2.5">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
                   Your resume
@@ -466,7 +763,38 @@ export function AtsScanReport({
         </section>
       )}
 
-      {/* ── 3. Quiet next-step ───────────────────────────────────── */}
+      {/* ── 3. Full report — every check, per-user evidence ──────── */}
+      <section>
+        <div className="px-1 pb-3">
+          <h3 className="text-sm font-bold text-on-surface tracking-tight">Full report</h3>
+          <p className="mt-0.5 text-xs text-text-muted">
+            Every check we ran on your resume — open any row to see the exact evidence.
+          </p>
+        </div>
+        <div className="grid gap-4 lg:grid-cols-[230px_minmax(0,1fr)] lg:items-start">
+          <div className="hidden lg:block lg:sticky lg:top-20">
+            <ReportRail report={report} />
+          </div>
+          <div className="space-y-4 min-w-0">
+            {report.categories
+              .filter((c) => !c.locked)
+              .map((cat) => (
+                <CategoryBlock
+                  key={cat.id}
+                  category={cat}
+                  onQuoteClick={(quote) => {
+                    setActiveQuote(quote);
+                    document
+                      .getElementById('resume-evidence-panel')
+                      ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  }}
+                />
+              ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── 4. Quiet next-step ───────────────────────────────────── */}
       <div
         ref={quietRowRef}
         className="flex flex-wrap items-center justify-between gap-3 px-1"
