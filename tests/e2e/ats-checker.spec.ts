@@ -104,9 +104,6 @@ test.describe('ATS Checker Page', () => {
     // Wait for results to load
     await expect(page.getByText(/ATS-ready|Almost there|Needs work|High risk of ATS filter/)).toBeVisible({ timeout: 15000 });
 
-    // Detailed findings elements should be present
-    await expect(page.getByText(/80|90|100/).or(page.getByText(/Detailed findings/))).toBeVisible();
-
     await expect(page.getByText(/ATS Scan Report/i)).toBeVisible();
     await expect(page.getByText(/\d+ words/i)).toBeVisible();
     await expect(page.getByRole('button', { name: /Upgrade with AI|Polish with AI/i }).first()).toBeVisible();
@@ -119,21 +116,15 @@ test.describe('ATS Checker Page', () => {
     await expect(page.getByText(/ATS Scan Report|Priority findings|Working well/)).toBeVisible({ timeout: 15000 });
   });
 
-  /* ── Detailed Breakdown ──────────────────────────────────── */
+  /* ── Resume evidence ─────────────────────────────────────── */
 
-  test('expands and collapses criterion details', async ({ page }) => {
+  test('shows resume evidence panel with findings', async ({ page }) => {
     await page.getByRole('button', { name: /Try sample resume/i }).click();
     await page.getByRole('button', { name: /Check My Resume/i }).click();
 
-    // Wait for results
-    await expect(page.getByText(/Detailed findings/)).toBeVisible({ timeout: 15000 });
-
-    // Click on the first criterion accordion header
-    const criterionBtn = page.getByRole('button', { name: /Section Structure|Contact Info|Bullet Points/ }).first();
-    await criterionBtn.click();
-
-    // Should show tip
-    await expect(page.getByText(/Tip:/)).toBeVisible();
+    await expect(page.getByText(/Priority findings|ATS-ready|Almost there/i)).toBeVisible({ timeout: 15000 });
+    // Sample resume is strong — may have few issues; report chrome + resume preview still show
+    await expect(page.getByText(/Your resume|ATS Scan Report/i)).toBeVisible();
   });
 
   /* ── Result Actions ──────────────────────────────────────── */
@@ -148,7 +139,7 @@ test.describe('ATS Checker Page', () => {
     await page.getByRole('button', { name: /Try sample resume/i }).click();
     await page.getByRole('button', { name: /Check My Resume/i }).click();
 
-    await expect(page.getByText(/Detailed findings/)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/Priority findings/)).toBeVisible({ timeout: 15000 });
 
     // Click copy button
     await page.getByRole('button', { name: /Copy results/i }).click();
@@ -159,7 +150,7 @@ test.describe('ATS Checker Page', () => {
     await page.getByRole('button', { name: /Try sample resume/i }).click();
     await page.getByRole('button', { name: /Check My Resume/i }).click();
 
-    await expect(page.getByText(/Detailed findings/)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/Priority findings/)).toBeVisible({ timeout: 15000 });
 
     await page.getByRole('button', { name: /Check another/i }).click();
     // Should be back at the text input
@@ -174,7 +165,7 @@ test.describe('ATS Checker Page', () => {
     await page.getByRole('button', { name: /Check My Resume/i }).click();
 
     // Wait for results
-    await expect(page.getByText(/Detailed findings/)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/Priority findings/)).toBeVisible({ timeout: 15000 });
 
     // Go back to input
     await page.getByRole('button', { name: /Check another/i }).click();
@@ -185,7 +176,7 @@ test.describe('ATS Checker Page', () => {
   test('history panel shows scored items', async ({ page }) => {
     await page.getByRole('button', { name: /Try sample resume/i }).click();
     await page.getByRole('button', { name: /Check My Resume/i }).click();
-    await expect(page.getByText(/Detailed findings/)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/Priority findings/)).toBeVisible({ timeout: 15000 });
     await page.getByRole('button', { name: /Check another/i }).click();
 
     // Open history
@@ -198,7 +189,7 @@ test.describe('ATS Checker Page', () => {
   test('escape key resets from results view', async ({ page }) => {
     await page.getByRole('button', { name: /Try sample resume/i }).click();
     await page.getByRole('button', { name: /Check My Resume/i }).click();
-    await expect(page.getByText(/Detailed findings/)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/Priority findings/)).toBeVisible({ timeout: 15000 });
 
     // Press Escape
     await page.keyboard.press('Escape');

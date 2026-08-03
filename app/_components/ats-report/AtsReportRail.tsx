@@ -310,9 +310,10 @@ export function AtsIssueDetail({
           {check.quotes.map((q, i) => (
             <li
               key={`${i}-${q.text.slice(0, 20)}`}
-              className="rounded-xl border border-amber-500/25 bg-amber-500/[0.06] px-3.5 py-2.5 text-sm italic text-on-surface"
+              className="rounded-xl border border-red-500/25 bg-red-500/[0.08] px-3.5 py-2.5 text-sm text-red-900"
             >
-              “{q.text}”
+              <span className="font-medium text-red-700 not-italic">From your resume: </span>
+              <span className="italic">“{q.text}”</span>
             </li>
           ))}
         </ul>
