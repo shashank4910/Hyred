@@ -94,7 +94,7 @@ test.describe('ATS Checker Page', () => {
     const checkBtn = page.getByRole('button', { name: /Check My Resume/i });
     await checkBtn.click();
     // Should show loading state
-    await expect(page.getByText('Analyzing your resume')).toBeVisible({ timeout: 3000 });
+    await expect(page.getByText('Scanning resume')).toBeVisible({ timeout: 3000 });
   });
 
   test('displays results after successful check', async ({ page }) => {
@@ -104,20 +104,19 @@ test.describe('ATS Checker Page', () => {
     // Wait for results to load
     await expect(page.getByText(/ATS-ready|Almost there|Needs work|High risk of ATS filter/)).toBeVisible({ timeout: 15000 });
 
-    // Score breakdown elements should be present
-    await expect(page.getByText(/80|90|100/).or(page.getByText(/Score breakdown/))).toBeVisible();
+    // Detailed findings elements should be present
+    await expect(page.getByText(/80|90|100/).or(page.getByText(/Detailed findings/))).toBeVisible();
 
-    // Stats row
-    await expect(page.getByText('Words')).toBeVisible();
-    await expect(page.getByText('Bullets')).toBeVisible();
-    await expect(page.getByText('Sections')).toBeVisible();
+    await expect(page.getByText(/ATS Scan Report/i)).toBeVisible();
+    await expect(page.getByText(/\d+ words/i)).toBeVisible();
+    await expect(page.getByRole('button', { name: /Upgrade with AI|Polish with AI/i }).first()).toBeVisible();
   });
 
   test('displays good practices and top improvements', async ({ page }) => {
     await page.getByRole('button', { name: /Try sample resume/i }).click();
     await page.getByRole('button', { name: /Check My Resume/i }).click();
 
-    await expect(page.getByText(/Working well|Fix these first/)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/ATS Scan Report|Priority findings|Working well/)).toBeVisible({ timeout: 15000 });
   });
 
   /* ── Detailed Breakdown ──────────────────────────────────── */
@@ -127,7 +126,7 @@ test.describe('ATS Checker Page', () => {
     await page.getByRole('button', { name: /Check My Resume/i }).click();
 
     // Wait for results
-    await expect(page.getByText(/Score breakdown/)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/Detailed findings/)).toBeVisible({ timeout: 15000 });
 
     // Click on the first criterion accordion header
     const criterionBtn = page.getByRole('button', { name: /Section Structure|Contact Info|Bullet Points/ }).first();
@@ -149,20 +148,20 @@ test.describe('ATS Checker Page', () => {
     await page.getByRole('button', { name: /Try sample resume/i }).click();
     await page.getByRole('button', { name: /Check My Resume/i }).click();
 
-    await expect(page.getByText(/Score breakdown/)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/Detailed findings/)).toBeVisible({ timeout: 15000 });
 
     // Click copy button
     await page.getByRole('button', { name: /Copy results/i }).click();
-    await expect(page.getByText('Copied!')).toBeVisible();
+    await expect(page.getByText('Copied')).toBeVisible();
   });
 
-  test('check another resume button resets to input view', async ({ page }) => {
+  test('Check another button resets to input view', async ({ page }) => {
     await page.getByRole('button', { name: /Try sample resume/i }).click();
     await page.getByRole('button', { name: /Check My Resume/i }).click();
 
-    await expect(page.getByText(/Score breakdown/)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/Detailed findings/)).toBeVisible({ timeout: 15000 });
 
-    await page.getByRole('button', { name: /Check another resume/i }).click();
+    await page.getByRole('button', { name: /Check another/i }).click();
     // Should be back at the text input
     await expect(page.getByPlaceholder('Paste your full resume text here...')).toBeVisible();
     await expect(page.getByRole('button', { name: /Check My Resume/i })).toBeDisabled();
@@ -175,10 +174,10 @@ test.describe('ATS Checker Page', () => {
     await page.getByRole('button', { name: /Check My Resume/i }).click();
 
     // Wait for results
-    await expect(page.getByText(/Score breakdown/)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/Detailed findings/)).toBeVisible({ timeout: 15000 });
 
     // Go back to input
-    await page.getByRole('button', { name: /Check another resume/i }).click();
+    await page.getByRole('button', { name: /Check another/i }).click();
     // Should see history button with count
     await expect(page.getByText(/History \(1\)/)).toBeVisible();
   });
@@ -186,8 +185,8 @@ test.describe('ATS Checker Page', () => {
   test('history panel shows scored items', async ({ page }) => {
     await page.getByRole('button', { name: /Try sample resume/i }).click();
     await page.getByRole('button', { name: /Check My Resume/i }).click();
-    await expect(page.getByText(/Score breakdown/)).toBeVisible({ timeout: 15000 });
-    await page.getByRole('button', { name: /Check another resume/i }).click();
+    await expect(page.getByText(/Detailed findings/)).toBeVisible({ timeout: 15000 });
+    await page.getByRole('button', { name: /Check another/i }).click();
 
     // Open history
     await page.getByRole('button', { name: /History \(1\)/ }).click();
@@ -199,7 +198,7 @@ test.describe('ATS Checker Page', () => {
   test('escape key resets from results view', async ({ page }) => {
     await page.getByRole('button', { name: /Try sample resume/i }).click();
     await page.getByRole('button', { name: /Check My Resume/i }).click();
-    await expect(page.getByText(/Score breakdown/)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/Detailed findings/)).toBeVisible({ timeout: 15000 });
 
     // Press Escape
     await page.keyboard.press('Escape');
