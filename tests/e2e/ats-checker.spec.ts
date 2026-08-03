@@ -107,6 +107,12 @@ test.describe('ATS Checker Page', () => {
     await expect(page.getByText(/ATS Scan Report/i)).toBeVisible();
     await expect(page.getByText(/\d+ words/i)).toBeVisible();
     await expect(page.getByRole('button', { name: /Upgrade with AI|Polish with AI/i }).first()).toBeVisible();
+
+    // Full Enhancv-style breakdown with every check
+    await expect(page.getByText('Full report').first()).toBeVisible();
+    await expect(page.getByText('Spelling & Grammar').first()).toBeVisible();
+    await expect(page.getByText('Repetition').first()).toBeVisible();
+    await expect(page.getByText('Contact Information').first()).toBeVisible();
   });
 
   test('displays good practices and top improvements', async ({ page }) => {

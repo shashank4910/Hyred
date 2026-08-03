@@ -23,6 +23,20 @@ export interface AtsReportQuote {
   text: string;
 }
 
+/** Item extracted from the user's resume, e.g. "Email address: a@b.com" */
+export interface AtsReportFoundItem {
+  label: string;
+  value?: string;
+  ok: boolean;
+}
+
+/** A repeated word with replacement ideas (Enhancv-style). */
+export interface AtsReportRepetition {
+  word: string;
+  count: number;
+  suggestions: string[];
+}
+
 export interface AtsReportCheck {
   id: string;
   /** Maps to Fix Studio weakness when present */
@@ -36,7 +50,15 @@ export interface AtsReportCheck {
   summary: string;
   /** Longer explanation for the expanded card */
   detail: string;
+  /** One-liner: why this check matters for ATS/recruiters */
+  education?: string;
+  /** Success copy with the user's real data when the check passes */
+  passText?: string;
   quotes?: AtsReportQuote[];
+  /** Extracted per-user items (contact fields, sections found) */
+  foundItems?: AtsReportFoundItem[];
+  /** Repeated words with replacement pills */
+  repetitions?: AtsReportRepetition[];
   /** Optional “did you mean” pairs for spelling-like issues */
   suggestions?: Array<{ found: string; suggestion: string }>;
 }
@@ -171,6 +193,245 @@ export function findTopContactLines(resumeText: string, limit = 4): string[] {
     .map((l) => l.trim())
     .filter(Boolean)
     .slice(0, limit);
+}
+
+/** Overused verbs/phrases + replacement ideas (repetition check). */
+const REPETITION_SYNONYMS: Record<string, string[]> = {
+  managed: ['directed', 'oversaw', 'coordinated'],
+  developed: ['built', 'engineered', 'created'],
+  created: ['designed', 'established', 'produced'],
+  worked: ['collaborated', 'partnered', 'contributed'],
+  responsible: ['owned', 'led', 'drove'],
+  led: ['headed', 'directed', 'spearheaded'],
+  handled: ['resolved', 'processed', 'administered'],
+  used: ['applied', 'leveraged', 'utilized'],
+  implemented: ['deployed', 'rolled out', 'executed'],
+  conducted: ['performed', 'carried out', 'ran'],
+  assisted: ['supported', 'facilitated', 'enabled'],
+  helped: ['enabled', 'supported', 'guided'],
+  ensured: ['guaranteed', 'verified', 'maintained'],
+  improved: ['optimized', 'enhanced', 'strengthened'],
+  provided: ['delivered', 'supplied', 'offered'],
+  performed: ['executed', 'completed', 'carried out'],
+  involved: ['engaged', 'participated', 'contributed'],
+  supported: ['backed', 'facilitated', 'reinforced'],
+  maintained: ['sustained', 'upheld', 'preserved'],
+  designed: ['architected', 'crafted', 'devised'],
+  built: ['constructed', 'developed', 'assembled'],
+  tested: ['validated', 'verified', 'evaluated'],
+  various: ['specific', 'targeted', '(name them)'],
+};
+
+/**
+ * Words repeated too often (>= 3 uses) across the resume — recruiters and
+ * ATS keyword extractors both notice monotone verb use.
+ */
+export function findRepeatedWords(resumeText: string, minCount = 3): AtsReportRepetition[] {
+  const counts = new Map<string, number>();
+  for (const m of resumeText.toLowerCase().matchAll(/\b[a-z]{4,}\b/g)) {
+    const w = m[0];
+    if (!(w in REPETITION_SYNONYMS)) continue;
+    counts.set(w, (counts.get(w) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .filter(([, n]) => n >= minCount)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([word, count]) => ({ word, count, suggestions: REPETITION_SYNONYMS[word] ?? [] }));
+}
+
+/** Common resume misspellings (zero-LLM dictionary). */
+const MISSPELLINGS: Record<string, string> = {
+  knowledege: 'knowledge',
+  knowlege: 'knowledge',
+  recieve: 'receive',
+  recieved: 'received',
+  seperate: 'separate',
+  managment: 'management',
+  mangement: 'management',
+  enviroment: 'environment',
+  enviornment: 'environment',
+  occured: 'occurred',
+  acheive: 'achieve',
+  acheived: 'achieved',
+  achivement: 'achievement',
+  achievment: 'achievement',
+  sucessful: 'successful',
+  succesful: 'successful',
+  sucess: 'success',
+  succesfully: 'successfully',
+  sucessfully: 'successfully',
+  responsibilty: 'responsibility',
+  responsiblities: 'responsibilities',
+  experiance: 'experience',
+  experence: 'experience',
+  profesional: 'professional',
+  proffessional: 'professional',
+  developement: 'development',
+  devlopment: 'development',
+  maintainance: 'maintenance',
+  maintenence: 'maintenance',
+  buisness: 'business',
+  bussiness: 'business',
+  calender: 'calendar',
+  comittee: 'committee',
+  commitee: 'committee',
+  definately: 'definitely',
+  existance: 'existence',
+  independant: 'independent',
+  liason: 'liaison',
+  neccessary: 'necessary',
+  necessery: 'necessary',
+  occassion: 'occasion',
+  perseverence: 'perseverance',
+  priviledge: 'privilege',
+  recomend: 'recommend',
+  recomended: 'recommended',
+  refered: 'referred',
+  relevent: 'relevant',
+  untill: 'until',
+  wich: 'which',
+  teh: 'the',
+  adress: 'address',
+  begining: 'beginning',
+  beleive: 'believe',
+  collegue: 'colleague',
+  colleages: 'colleagues',
+  comunication: 'communication',
+  commuication: 'communication',
+  concious: 'conscious',
+  curiculum: 'curriculum',
+  curriculam: 'curriculum',
+  definite: 'definite',
+  efficent: 'efficient',
+  eficient: 'efficient',
+  finacial: 'financial',
+  goverment: 'government',
+  garantee: 'guarantee',
+  immediatly: 'immediately',
+  infrastucture: 'infrastructure',
+  intergration: 'integration',
+  langauge: 'language',
+  lenght: 'length',
+  libary: 'library',
+  paralell: 'parallel',
+  posession: 'possession',
+  prefered: 'preferred',
+  proccess: 'process',
+  proceses: 'processes',
+  publically: 'publicly',
+  reccomend: 'recommend',
+  reserach: 'research',
+  scheduel: 'schedule',
+  strenght: 'strength',
+  strenghts: 'strengths',
+  supercede: 'supersede',
+  tecnology: 'technology',
+  technlogy: 'technology',
+  tommorow: 'tomorrow',
+  transfered: 'transferred',
+  writting: 'writing',
+  accomodate: 'accommodate',
+  aquire: 'acquire',
+  aquired: 'acquired',
+  analysed: 'analyzed',
+  apparant: 'apparent',
+  archtecture: 'architecture',
+  athough: 'although',
+  benifit: 'benefit',
+  benifits: 'benefits',
+};
+
+/** Misspelled words with context line + correction. Case-preserving match. */
+export function findSpellingIssues(
+  resumeText: string,
+  limit = 6,
+): Array<{ found: string; suggestion: string; context: string }> {
+  const out: Array<{ found: string; suggestion: string; context: string }> = [];
+  const seen = new Set<string>();
+  for (const raw of resumeText.split('\n')) {
+    const line = raw.trim();
+    if (!line) continue;
+    for (const m of line.matchAll(/\b[A-Za-z]{3,}\b/g)) {
+      const lower = m[0].toLowerCase();
+      const fix = MISSPELLINGS[lower];
+      if (!fix || fix === lower || seen.has(lower)) continue;
+      seen.add(lower);
+      out.push({
+        found: m[0],
+        suggestion: fix,
+        context: line.length > 110 ? `${line.slice(0, 107)}…` : line,
+      });
+      if (out.length >= limit) return out;
+    }
+  }
+  return out;
+}
+
+/** Extract contact fields from the resume header (top ~15 lines + whole text for links). */
+export function extractContactInfo(resumeText: string): AtsReportFoundItem[] {
+  const email = resumeText.match(/[\w.+-]+@[\w-]+\.[\w.]+/)?.[0];
+  const phone = resumeText.match(
+    /(\+?\d{1,3}[\s.-]?)?(\(?\d{3,5}\)?[\s.-]?)?\d{3,5}[\s.-]?\d{4,6}\b/,
+  )?.[0]?.trim();
+  const linkedin = resumeText.match(/linkedin\.com\/[A-Za-z0-9/_-]+/i)?.[0];
+  const github = resumeText.match(/github\.com\/[A-Za-z0-9/_-]+/i)?.[0];
+  const topLines = resumeText
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .slice(0, 12)
+    .join(' ');
+  // Loose location heuristic: "City, ST" / "City, Country" in the header
+  const location = topLines.match(
+    /\b([A-Z][a-z]{2,}(?:\s[A-Z][a-z]+)?),\s*([A-Z][a-zA-Z]{1,}(?:\s[A-Z][a-z]+)*)\b/,
+  )?.[0];
+
+  const items: AtsReportFoundItem[] = [
+    { label: 'Email address', value: email, ok: Boolean(email) },
+    { label: 'Phone number', value: phone && phone.replace(/\D/g, '').length >= 8 ? phone : undefined, ok: Boolean(phone && phone.replace(/\D/g, '').length >= 8) },
+    { label: 'LinkedIn profile', value: linkedin, ok: Boolean(linkedin) },
+    { label: 'Location', value: location, ok: Boolean(location) },
+  ];
+  if (github) items.push({ label: 'GitHub profile', value: github, ok: true });
+  return items;
+}
+
+const ESSENTIAL_SECTIONS: Array<{ label: string; re: RegExp; required: boolean }> = [
+  {
+    label: 'Experience',
+    re: /^(professional\s+|work\s+)?experience\b|^employment(\s+history)?\b|^work\s+history\b/im,
+    required: true,
+  },
+  { label: 'Education', re: /^education\b|^academic/im, required: true },
+  {
+    label: 'Skills',
+    re: /^(technical\s+|core\s+|key\s+)?skills\b|^competencies\b|^technologies\b/im,
+    required: true,
+  },
+  {
+    label: 'Summary',
+    re: /^(professional\s+|career\s+)?summary\b|^profile\b|^objective\b|^about(\s+me)?\b/im,
+    required: false,
+  },
+  { label: 'Projects', re: /^(key\s+|personal\s+)?projects\b/im, required: false },
+  { label: 'Certifications', re: /^certifications?\b|^licenses?\b/im, required: false },
+];
+
+/**
+ * Which essential resume sections were detected as headings.
+ * Required sections always appear (pass/fail); optional ones only when found.
+ */
+export function findEssentialSections(resumeText: string): AtsReportFoundItem[] {
+  const lines = resumeText.split('\n').map((l) => l.trim());
+  const out: AtsReportFoundItem[] = [];
+  for (const { label, re, required } of ESSENTIAL_SECTIONS) {
+    const found = lines.some((l) => re.test(l));
+    if (required || found || label === 'Summary') {
+      out.push({ label, ok: found });
+    }
+  }
+  return out;
 }
 
 function parseRatePercent(result: AtsCheckResult): number {
@@ -397,6 +658,21 @@ export function buildAtsReport(
   const formatLines = findFormatIssueLines(resumeText);
   const topLines = findTopContactLines(resumeText);
   const parsePct = parseRatePercent(result);
+  const repetitions = findRepeatedWords(resumeText);
+  const spelling = findSpellingIssues(resumeText);
+  const contactItems = extractContactInfo(resumeText);
+  const sectionItems = findEssentialSections(resumeText);
+
+  const repetitionStatus: AtsReportCheckStatus =
+    repetitions.length >= 3 ? 'fail' : repetitions.length > 0 ? 'warn' : 'pass';
+  const repetitionScore = Math.max(30, 100 - repetitions.length * 18);
+  const worstRep = repetitions[0];
+
+  const spellingStatus: AtsReportCheckStatus =
+    spelling.length >= 3 ? 'fail' : spelling.length > 0 ? 'warn' : 'pass';
+  const spellingScore = Math.max(25, 100 - spelling.length * 20);
+
+  const wordCount = resumeText.split(/\s+/).filter(Boolean).length;
 
   const contentChecks: AtsReportCheck[] = [
     {
@@ -408,9 +684,12 @@ export function buildAtsReport(
       summary: statusSummary(
         result.parseQuality === 'good' ? 'pass' : result.parseQuality === 'degraded' ? 'warn' : 'fail',
       ),
+      education:
+        'An ATS reads your resume as plain text before a human sees it. If it can’t parse your file cleanly, your skills never reach the recruiter.',
       detail:
         result.parseWarning ??
         `We read about ${parsePct}% of your resume clearly — a high parse rate helps ATS systems surface your skills.`,
+      passText: `We parsed ${parsePct}% of your resume cleanly (${wordCount} words extracted). ATS systems will read this file without problems.`,
     },
     {
       id: 'content-quantify',
@@ -423,8 +702,43 @@ export function buildAtsReport(
         criterionStatus(b.quantifiableAchievements.score),
         unquantified.length,
       ),
+      education:
+        'Recruiters trust numbers. “Cut costs 18%” beats “reduced costs” — bullets without a metric read like duties, not achievements.',
       detail: b.quantifiableAchievements.feedback,
+      passText: 'Your bullets carry real numbers — recruiters can see the size of your impact.',
       quotes: impactEvidence.map((t) => ({ text: t })),
+    },
+    {
+      id: 'content-repetition',
+      criterionKey: 'bulletQuality',
+      label: 'Repetition',
+      score: repetitionScore,
+      status: repetitionStatus,
+      summary: statusSummary(repetitionStatus, repetitions.length),
+      education:
+        'Using the same verb again and again makes every role sound identical. Varied verbs signal range — and give ATS keyword extractors more to match.',
+      detail: worstRep
+        ? `You use “${worstRep.word}” ${worstRep.count} times${repetitions.length > 1 ? ` (and ${repetitions.length - 1} more overused word${repetitions.length > 2 ? 's' : ''})` : ''}. Swap some for stronger synonyms.`
+        : 'No overused words detected — your verb variety looks healthy.',
+      passText: 'No overused words detected — your verb variety looks healthy.',
+      repetitions,
+    },
+    {
+      id: 'content-spelling',
+      criterionKey: 'bulletQuality',
+      label: 'Spelling & Grammar',
+      score: spellingScore,
+      status: spellingStatus,
+      summary: statusSummary(spellingStatus, spelling.length),
+      education:
+        'A single typo can cost an interview — 77% of hiring managers reject resumes with spelling mistakes, and ATS keyword match fails on misspelled skills.',
+      detail:
+        spelling.length > 0
+          ? `We found ${spelling.length} likely misspelling${spelling.length === 1 ? '' : 's'} in your resume.`
+          : 'No common misspellings detected.',
+      passText: `We scanned all ${wordCount} words against common resume misspellings and found none.`,
+      suggestions: spelling.map(({ found, suggestion }) => ({ found, suggestion })),
+      quotes: spelling.map((s) => ({ text: s.context })),
     },
     {
       id: 'content-bullets',
@@ -437,7 +751,10 @@ export function buildAtsReport(
         criterionStatus(b.bulletQuality.score),
         bulletEvidence.length,
       ),
+      education:
+        'ATS and recruiters both scan bullets first. Bullets that are too short say nothing; long paragraphs get skipped entirely.',
       detail: b.bulletQuality.feedback,
+      passText: 'Your bullets are well-sized — scannable for recruiters and parseable for ATS.',
       quotes: bulletEvidence.map((t) => ({ text: t })),
     },
     {
@@ -448,12 +765,16 @@ export function buildAtsReport(
       score: b.skillsOptimization.score,
       status: criterionStatus(b.skillsOptimization.score),
       summary: statusSummary(criterionStatus(b.skillsOptimization.score)),
+      education:
+        'ATS filters shortlist resumes by matching skill keywords. A clear skills section is the easiest place for it to find them.',
       detail: b.skillsOptimization.feedback,
+      passText: 'Your skills section is clearly labeled and keyword-rich.',
       // Missing Skills section = absence evidence (UI shows "Not found")
       quotes: [],
     },
   ];
 
+  const missingSections = sectionItems.filter((s) => !s.ok);
   const sectionChecks: AtsReportCheck[] = [
     {
       id: 'sec-essential',
@@ -462,8 +783,15 @@ export function buildAtsReport(
       label: 'Essential Sections',
       score: b.sectionStructure.score,
       status: criterionStatus(b.sectionStructure.score),
-      summary: statusSummary(criterionStatus(b.sectionStructure.score)),
+      summary: statusSummary(
+        criterionStatus(b.sectionStructure.score),
+        missingSections.length,
+      ),
+      education:
+        'ATS systems map your resume into standard sections. Missing or oddly named headings mean whole blocks of your experience get skipped.',
       detail: b.sectionStructure.feedback,
+      passText: `We found all the standard sections: ${sectionItems.filter((s) => s.ok).map((s) => s.label).join(', ')}.`,
+      foundItems: sectionItems,
       quotes: [],
     },
     {
@@ -473,8 +801,15 @@ export function buildAtsReport(
       label: 'Contact Information',
       score: b.contactInfo.score,
       status: criterionStatus(b.contactInfo.score),
-      summary: statusSummary(criterionStatus(b.contactInfo.score)),
+      summary: statusSummary(
+        criterionStatus(b.contactInfo.score),
+        contactItems.filter((c) => !c.ok).length,
+      ),
+      education:
+        'Recruiters spend seconds looking for a way to reach you. Missing phone, email or LinkedIn is the fastest way to lose an interested reader.',
       detail: b.contactInfo.feedback,
+      passText: 'Your contact details are complete and easy to find.',
+      foundItems: contactItems,
       quotes:
         b.contactInfo.score < NEEDS_WORK_BELOW
           ? topLines.slice(0, 3).map((t) => ({ text: t }))
@@ -494,9 +829,12 @@ export function buildAtsReport(
         criterionStatus(b.formatCleanliness.score),
         formatLines.length,
       ),
+      education:
+        'Fancy characters, tables and text boxes confuse ATS parsers. Clean, simple formatting keeps every line readable.',
       detail: result.fileHints?.formatAdvice
         ? `${b.formatCleanliness.feedback} ${result.fileHints.formatAdvice}`
         : b.formatCleanliness.feedback,
+      passText: 'No formatting traps found — your layout parses cleanly.',
       quotes: formatLines.map((t) => ({ text: t })),
     },
     {
@@ -507,7 +845,10 @@ export function buildAtsReport(
       score: b.dateConsistency.score,
       status: criterionStatus(b.dateConsistency.score),
       summary: statusSummary(criterionStatus(b.dateConsistency.score), weakDates.length),
+      education:
+        'ATS systems calculate your years of experience from dates. “2021 – 2023” without months can shortchange you by almost a year.',
       detail: b.dateConsistency.feedback,
+      passText: 'Your dates use a consistent Month Year format — ATS can compute your experience correctly.',
       quotes: weakDates.map((t) => ({ text: t })),
     },
     {
@@ -518,7 +859,10 @@ export function buildAtsReport(
       score: b.lengthReadability.score,
       status: criterionStatus(b.lengthReadability.score),
       summary: statusSummary(criterionStatus(b.lengthReadability.score)),
+      education:
+        'Recruiters give a resume 6–8 seconds on the first pass. The right length and white space decide whether they keep reading.',
       detail: b.lengthReadability.feedback,
+      passText: `At ${wordCount} words, your resume length sits in the readable range.`,
     },
   ];
 
@@ -532,9 +876,12 @@ export function buildAtsReport(
       label: 'File Format & Size',
       status: fileStatus,
       summary: statusSummary(fileStatus),
+      education:
+        'PDF and DOCX parse best. Exotic formats (.pages, scanned images) often reach the ATS as empty files.',
       detail:
         result.fileHints.formatAdvice ??
         `Detected .${result.fileHints.extension || 'unknown'} upload.`,
+      passText: `You uploaded a .${result.fileHints.extension || 'pdf'} file — a format every major ATS reads reliably.`,
     });
   }
 
@@ -543,6 +890,8 @@ export function buildAtsReport(
   const freeContentScore = avg([
     parsePct,
     b.quantifiableAchievements.score,
+    repetitionScore,
+    spellingScore,
     b.bulletQuality.score,
     b.skillsOptimization.score,
   ]);
