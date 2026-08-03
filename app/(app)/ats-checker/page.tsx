@@ -4,34 +4,26 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import {
   Upload,
   FileText,
-  CheckCircle2,
-  AlertTriangle,
   XCircle,
-  RefreshCcw,
   Search,
   FileCheck,
   AtSign,
   ListChecks,
   Target,
-  Ruler,
   Calendar,
   Sparkles,
   Loader2,
-  Copy,
   Check,
   Keyboard,
   History,
   BookOpen,
   TrendingUp,
-  ArrowUp,
-  ChevronDown,
-  ChevronUp,
   Briefcase,
   Shield,
-  Lightbulb,
 } from 'lucide-react';
-import type { AtsCheckResult, ResumeStats, JdMatchResult } from '@/lib/ats-checker';
+import type { AtsCheckResult } from '@/lib/ats-checker';
 import { blobUrlToDataUrl, writeAtsFixSession } from '@/lib/ats-fix-session';
+import { AtsScanReport } from '@/app/_components/ats-report/AtsScanReport';
 
 /* ------------------------------------------------------------------ */
 /*  Sample data                                                        */
@@ -124,24 +116,6 @@ const HISTORY_KEY = 'ats-checker-history';
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
-function scoreColor(score: number): string {
-  if (score >= 80) return 'text-emerald-500';
-  if (score >= 50) return 'text-amber-500';
-  return 'text-red-500';
-}
-
-function scoreBg(score: number): string {
-  if (score >= 80) return 'bg-emerald-500';
-  if (score >= 50) return 'bg-amber-500';
-  return 'bg-red-500';
-}
-
-function scoreRing(score: number): string {
-  if (score >= 80) return 'stroke-emerald-500';
-  if (score >= 50) return 'stroke-amber-500';
-  return 'stroke-red-500';
-}
-
 function formatDate(): string {
   return new Date().toLocaleDateString('en-US', {
     month: 'short',
@@ -151,6 +125,23 @@ function formatDate(): string {
     minute: '2-digit',
   });
 }
+
+function scoreColor(score: number): string {
+  if (score >= 80) return 'text-emerald-500';
+  if (score >= 50) return 'text-amber-500';
+  return 'text-red-500';
+}
+
+const BREAKDOWN_COPY_LABELS: { key: keyof AtsCheckResult['breakdown']; label: string }[] = [
+  { key: 'sectionStructure', label: 'Section Structure' },
+  { key: 'contactInfo', label: 'Contact Info' },
+  { key: 'bulletQuality', label: 'Bullet Points' },
+  { key: 'quantifiableAchievements', label: 'Quantified Impact' },
+  { key: 'skillsOptimization', label: 'Skills Optimization' },
+  { key: 'lengthReadability', label: 'Length & Density' },
+  { key: 'formatCleanliness', label: 'Format Cleanliness' },
+  { key: 'dateConsistency', label: 'Date Formatting' },
+];
 
 function loadHistory(): ScoreHistoryItem[] {
   try {
@@ -165,157 +156,6 @@ function saveHistory(item: ScoreHistoryItem) {
   const history = loadHistory();
   history.unshift(item);
   localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, 20)));
-}
-
-/* ------------------------------------------------------------------ */
-/*  Criteria config                                                    */
-/* ------------------------------------------------------------------ */
-
-interface CriterionMeta {
-  key: keyof AtsCheckResult['breakdown'];
-  label: string;
-  icon: React.ReactNode;
-  description: string;
-  tip: string;
-}
-
-const CRITERIA: CriterionMeta[] = [
-  {
-    key: 'sectionStructure',
-    label: 'Section Structure',
-    icon: <ListChecks className="h-4 w-4" />,
-    description: 'Standard sections (Experience, Education, Skills) that ATS parsers recognize.',
-    tip: 'Include at minimum: Experience, Education, and Skills sections.',
-  },
-  {
-    key: 'contactInfo',
-    label: 'Contact Info',
-    icon: <AtSign className="h-4 w-4" />,
-    description: 'Name, email, phone, LinkedIn, and location clearly at the top.',
-    tip: 'Put your name, email, phone, LinkedIn, and location in the top 5 lines.',
-  },
-  {
-    key: 'bulletQuality',
-    label: 'Bullet Points',
-    icon: <FileText className="h-4 w-4" />,
-    description: 'Consistent formatting and sufficient detail in experience bullets.',
-    tip: 'Use "- " for all bullets. Aim for 10-15 total across your resume.',
-  },
-  {
-    key: 'quantifiableAchievements',
-    label: 'Quantified Impact',
-    icon: <Target className="h-4 w-4" />,
-    description: 'Numbers, percentages, and metrics that show measurable results.',
-    tip: 'Add numbers: % improvements, $ amounts, time saved, people managed.',
-  },
-  {
-    key: 'skillsOptimization',
-    label: 'Skills Optimization',
-    icon: <Sparkles className="h-4 w-4" />,
-    description: 'Concrete technical keywords, organized and contextualized in experience.',
-    tip: 'List 10-15 concrete skills and mention them in experience bullets too.',
-  },
-  {
-    key: 'lengthReadability',
-    label: 'Length & Density',
-    icon: <Ruler className="h-4 w-4" />,
-    description: 'Appropriate length (1–2 pages) with good content density.',
-    tip: 'Aim for 400-1000 words. This is roughly 1-2 pages.',
-  },
-  {
-    key: 'formatCleanliness',
-    label: 'Format Cleanliness',
-    icon: <FileCheck className="h-4 w-4" />,
-    description: 'Clean ASCII text — no smart quotes, unicode bullets, or special characters.',
-    tip: 'Use plain ASCII: " for quotes, - for bullets, -- for dashes.',
-  },
-  {
-    key: 'dateConsistency',
-    label: 'Date Formatting',
-    icon: <Calendar className="h-4 w-4" />,
-    description: 'Consistent and complete date ranges with month-level granularity.',
-    tip: 'Format dates as "Mon YYYY - Mon YYYY" for each role.',
-  },
-];
-
-/* ------------------------------------------------------------------ */
-/*  Animated Score Ring                                                 */
-/* ------------------------------------------------------------------ */
-
-function AnimatedScoreRing({ score, size = 120 }: { score: number; size?: number }) {
-  const [animatedScore, setAnimatedScore] = useState(0);
-  const r = (size / 2) - 8;
-  const circ = 2 * Math.PI * r;
-
-  useEffect(() => {
-    const duration = 800;
-    const steps = 30;
-    const increment = score / steps;
-    let current = 0;
-    const timer = setInterval(() => {
-      current += increment;
-      if (current >= score) {
-        setAnimatedScore(score);
-        clearInterval(timer);
-      } else {
-        setAnimatedScore(Math.round(current));
-      }
-    }, duration / steps);
-    return () => clearInterval(timer);
-  }, [score]);
-
-  const offset = circ * (1 - animatedScore / 100);
-
-  return (
-    <div className="relative shrink-0" style={{ width: size, height: size }}>
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="transform -rotate-90">
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          fill="none"
-          className="stroke-surface-container"
-          strokeWidth={7}
-        />
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          fill="none"
-          strokeWidth={7}
-          strokeDasharray={`${circ} ${circ}`}
-          strokeDashoffset={offset}
-          strokeLinecap="round"
-          className={scoreRing(score)}
-          style={{ transition: 'stroke-dashoffset 0.05s linear' }}
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className={`text-2xl font-bold ${scoreColor(score)} tabular-nums`}>
-          {animatedScore}
-        </span>
-        <span className="text-[9px] font-semibold text-text-muted uppercase tracking-widest">
-          / 100
-        </span>
-      </div>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Stat Card                                                          */
-/* ------------------------------------------------------------------ */
-
-function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string | number }) {
-  return (
-    <div className="flex items-center gap-2.5 rounded-xl bg-surface-container/50 px-3 py-2.5 border border-outline-variant/30">
-      <span className="text-text-muted">{icon}</span>
-      <div className="min-w-0">
-        <p className="text-xs text-text-muted truncate">{label}</p>
-        <p className="text-sm font-semibold text-on-surface tabular-nums">{value}</p>
-      </div>
-    </div>
-  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -340,7 +180,6 @@ export default function AtsCheckerPage() {
   const [history, setHistory] = useState<ScoreHistoryItem[]>([]);
   const [showJdInput, setShowJdInput] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-  const [expandedCriterion, setExpandedCriterion] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
   const resultRef = useRef<HTMLDivElement>(null);
@@ -502,7 +341,6 @@ export default function AtsCheckerPage() {
       return null;
     });
     setCopied(false);
-    setExpandedCriterion(null);
   }, []);
 
   // ── Copy results ──────────────────────────────────────────────
@@ -513,7 +351,7 @@ export default function AtsCheckerPage() {
       `ATS Resume Score: ${result.overallScore}/100`,
       '',
       'Breakdown:',
-      ...CRITERIA.map((c) => {
+      ...BREAKDOWN_COPY_LABELS.map((c) => {
         const cr = result.breakdown[c.key];
         return `  ${c.label}: ${cr.score}/100 - ${cr.feedback}`;
       }),
@@ -1084,364 +922,17 @@ export default function AtsCheckerPage() {
 
       {/* ── RESULTS VIEW ───────────────────────────────────────── */}
       {view === 'results' && result && (
-        <div ref={resultRef} className="space-y-5">
-          {/* Score hero card */}
-          <div
-            className="rounded-2xl border border-outline-variant/40 bg-surface-card p-6 shadow-sm overflow-hidden relative animate-slide-up"
-            style={{ animationDelay: '0ms', animationFillMode: 'both' }}
-          >
-            <div className="absolute top-0 right-0 w-64 h-64 bg-primary/3 rounded-full blur-3xl" />
-            <div className="relative flex flex-col sm:flex-row items-center gap-6">
-              <AnimatedScoreRing score={result.overallScore} size={130} />
-
-              <div className="flex-1 text-center sm:text-left">
-                <h2 className="text-headline-md font-bold text-on-surface">
-                  {result.overallScore >= 80
-                    ? 'ATS-ready'
-                    : result.overallScore >= 60
-                      ? 'Almost there'
-                      : result.overallScore >= 40
-                        ? 'Needs work'
-                        : 'High risk of ATS filter'}
-                </h2>
-                <p className="text-sm text-on-surface-variant mt-1.5">
-                  {result.overallScore >= 80
-                    ? 'Parsers should read this cleanly. Small polish can still help.'
-                    : result.overallScore >= 60
-                      ? 'Most fields parse fine — fix the gaps below before you apply.'
-                      : result.overallScore >= 40
-                        ? 'Several fields may parse poorly. Fix the top issues first.'
-                        : 'Key fields look missing or hard to parse. Start with the top 3 fixes.'}
-                </p>
-
-                {/* Filename badge */}
-                {filename && (
-                  <div className="inline-flex items-center gap-1.5 mt-2.5 text-xs text-text-muted bg-surface-container rounded-full px-3 py-1">
-                    <FileText className="h-3.5 w-3.5 text-primary" />
-                    {filename}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Stats row — only signals candidates care about */}
-            <div
-              className="grid grid-cols-3 gap-2 mt-6 pt-5 border-t border-outline-variant/30 animate-slide-up"
-              style={{ animationDelay: '50ms', animationFillMode: 'both' }}
-            >
-              <StatCard icon={<FileText className="h-4 w-4" />} label="Words" value={result.stats.wordCount.toLocaleString()} />
-              <StatCard icon={<ListChecks className="h-4 w-4" />} label="Bullets" value={result.stats.bulletCount} />
-              <StatCard icon={<FileCheck className="h-4 w-4" />} label="Sections" value={result.stats.sectionCount} />
-            </div>
-
-            {/* File hints */}
-            {result.fileHints && (
-              <div
-                className="flex flex-wrap gap-2 mt-4 animate-slide-up"
-                style={{ animationDelay: '100ms', animationFillMode: 'both' }}
-              >
-                {result.fileHints.isPdf && (
-                  <span className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full bg-surface-container text-text-muted border border-outline-variant/20">
-                    PDF format
-                  </span>
-                )}
-                {result.fileHints.isDocx && (
-                  <span className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full bg-emerald-500/8 text-emerald-600 font-medium border border-emerald-500/15">
-                    DOCX — best ATS format
-                  </span>
-                )}
-                {result.fileHints.isTxt && (
-                  <span className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full bg-amber-500/8 text-amber-600 font-medium border border-amber-500/15">
-                    TXT — limited formatting
-                  </span>
-                )}
-                {result.fileHints.mightBeScanned && (
-                  <span className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full bg-red-500/8 text-red-600 font-medium border border-red-500/15">
-                    <AlertTriangle className="h-3 w-3" />
-                    May be a scanned/image PDF
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Good practices & Top improvements row */}
-          <div
-            className="grid sm:grid-cols-2 gap-5 animate-slide-up"
-            style={{ animationDelay: '100ms', animationFillMode: 'both' }}
-          >
-            {/* Working well — always show so low scores aren't all bad news */}
-            <div className="rounded-2xl border border-outline-variant/40 bg-surface-card p-5 shadow-sm">
-              <h3 className="font-semibold text-on-surface flex items-center gap-2 mb-3">
-                <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                Working well
-              </h3>
-              <ul className="space-y-2">
-                {(result.goodPractices.length > 0
-                  ? result.goodPractices
-                  : [
-                      result.fileHints?.isDocx
-                        ? 'DOCX is a strong ATS-friendly format.'
-                        : result.stats.wordCount > 0
-                          ? 'We could read text from your file.'
-                          : 'File uploaded successfully.',
-                      result.breakdown.formatCleanliness.score >= 70
-                        ? 'Formatting is mostly clean for parsers.'
-                        : result.breakdown.contactInfo.score >= 50
-                          ? 'Some contact details were detected.'
-                          : null,
-                    ].filter((g): g is string => Boolean(g))
-                ).map((g, i) => (
-                  <li key={i} className="text-sm text-on-surface-variant flex items-start gap-2">
-                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-600 shrink-0 mt-0.5">
-                      <Check className="h-3 w-3" />
-                    </span>
-                    <span className="leading-snug">{g}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Top improvements */}
-            {result.topImprovements.length > 0 && (
-              <div className="rounded-2xl border border-outline-variant/40 bg-surface-card p-5 shadow-sm">
-                <h3 className="font-semibold text-on-surface flex items-center gap-2 mb-3">
-                  <TrendingUp className="h-4 w-4 text-amber-500" />
-                  Fix these first
-                </h3>
-                <ul className="space-y-2.5">
-                  {result.topImprovements.map((imp, i) => (
-                    <li key={i} className="text-sm text-on-surface-variant flex items-start gap-2">
-                      <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[11px] font-bold shrink-0 mt-0.5 ${
-                        i === 0
-                          ? 'bg-red-500/10 text-red-600'
-                          : i === 1
-                            ? 'bg-amber-500/10 text-amber-600'
-                            : 'bg-amber-500/8 text-amber-600'
-                      }`}>
-                        {i + 1}
-                      </span>
-                      <span className="leading-snug break-words">{imp}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-
-          {/* Primary actions — early so users don't scroll past the fold */}
-          <div
-            className="flex flex-col sm:flex-row gap-3 animate-slide-up"
-            style={{ animationDelay: '150ms', animationFillMode: 'both' }}
-          >
-            <div className="flex-1 space-y-1.5">
-              <button
-                type="button"
-                onClick={() => void openFixStudioInNewTab()}
-                disabled={openingFix || studioResume.trim().length < 50}
-                title={
-                  studioResume.trim().length < 50
-                    ? 'Need extractable resume text (scanned/image PDFs may fail)'
-                    : undefined
-                }
-                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-6 py-3 text-body-md font-semibold text-on-primary shadow-sm transition-all hover:bg-primary/90 hover:shadow-primary-glow disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {openingFix ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Sparkles className="h-4 w-4" />
-                )}
-                {result.overallScore < 80 ? 'Upgrade with AI' : 'Polish with AI'}
-              </button>
-              <p className="text-center text-[11px] text-text-muted">
-                {studioResume.trim().length < 50
-                  ? 'Needs readable text — paste text or upload a text PDF / DOCX.'
-                  : 'Opens in a new tab'}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={copyResults}
-              className="flex-1 flex items-center justify-center gap-2 rounded-2xl border border-outline-variant/40 bg-surface-card px-6 py-3 text-body-md font-semibold text-on-surface transition-all hover:bg-surface-container hover:shadow-sm"
-            >
-              {copied ? (
-                <>
-                  <Check className="h-4 w-4 text-emerald-500" />
-                  Copied!
-                </>
-              ) : (
-                <>
-                  <Copy className="h-4 w-4" />
-                  Copy results
-                </>
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={handleReset}
-              className="flex-1 flex items-center justify-center gap-2 rounded-2xl border border-outline-variant/40 bg-surface-card px-6 py-3 text-body-md font-semibold text-on-surface transition-all hover:bg-surface-container hover:shadow-sm"
-            >
-              <RefreshCcw className="h-4 w-4" />
-              Check another
-              <kbd className="hidden sm:inline-flex items-center text-[10px] text-on-surface-variant/60 bg-surface-container rounded-md px-1.5 py-0.5 font-mono">
-                Esc
-              </kbd>
-            </button>
-          </div>
-
-          {/* JD Match section */}
-          {result.jdMatch && (
-            <div
-              className="rounded-2xl border border-outline-variant/40 bg-surface-card p-5 shadow-sm animate-slide-up"
-              style={{ animationDelay: '200ms', animationFillMode: 'both' }}
-            >
-              <h3 className="font-semibold text-on-surface flex items-center gap-2 mb-4">
-                <Briefcase className="h-4 w-4 text-primary" />
-                Job Description Keyword Match
-              </h3>
-
-              <div className="flex items-center gap-4 mb-4">
-                <AnimatedScoreRing score={result.jdMatch.matchScore} size={72} />
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-on-surface">
-                    {result.jdMatch.matchScore >= 70
-                      ? 'Strong keyword match!'
-                      : result.jdMatch.matchScore >= 40
-                        ? 'Moderate keyword match'
-                        : 'Low keyword match'}
-                  </p>
-                  <p className="text-xs text-text-muted mt-0.5">
-                    {result.jdMatch.matched.length} keywords matched · {result.jdMatch.missing.length} missing
-                    {result.jdMatch.extra.length > 0 && ` · ${result.jdMatch.extra.length} extra skills`}
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                {result.jdMatch.matched.length > 0 && (
-                  <div>
-                    <p className="text-xs font-medium text-emerald-600 mb-1.5 flex items-center gap-1.5">
-                      <CheckCircle2 className="h-3 w-3" />
-                      Matched keywords ({result.jdMatch.matched.length})
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {result.jdMatch.matched.map((kw, i) => (
-                        <span key={i} className="text-[11px] bg-emerald-500/8 text-emerald-600 rounded-full px-2.5 py-0.5 border border-emerald-500/15 font-medium">
-                          {kw}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {result.jdMatch.missing.length > 0 && (
-                  <div>
-                    <p className="text-xs font-medium text-red-600 mb-1.5 flex items-center gap-1.5">
-                      <XCircle className="h-3 w-3" />
-                      Missing from resume ({result.jdMatch.missing.length})
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {result.jdMatch.missing.map((kw, i) => (
-                        <span key={i} className="text-[11px] bg-red-500/8 text-red-600 rounded-full px-2.5 py-0.5 border border-red-500/15">
-                          {kw}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {result.jdMatch.extra.length > 0 && (
-                  <div>
-                    <p className="text-xs font-medium text-amber-600 mb-1.5 flex items-center gap-1.5">
-                      <ArrowUp className="h-3 w-3" />
-                      Extra skills ({result.jdMatch.extra.length})
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {result.jdMatch.extra.map((kw, i) => (
-                        <span key={i} className="text-[11px] bg-amber-500/8 text-amber-600 rounded-full px-2.5 py-0.5 border border-amber-500/15">
-                          {kw}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Detailed breakdown */}
-          <div
-            className="animate-slide-up"
-            style={{ animationDelay: '300ms', animationFillMode: 'both' }}
-          >
-            <div className="rounded-2xl border border-outline-variant/40 bg-surface-card p-5 shadow-sm">
-              <h3 className="font-semibold text-on-surface flex items-center gap-2 mb-4">
-                <ListChecks className="h-4 w-4 text-primary" />
-                Score breakdown
-              </h3>
-              <div className="space-y-0.5">
-                {CRITERIA.map((c) => {
-                  const criterion = result.breakdown[c.key];
-                  const pct = criterion.score;
-                  const isOpen = expandedCriterion === c.key;
-
-                  return (
-                    <div key={c.key} className="border-b border-outline-variant/20 last:border-0">
-                      <button
-                        type="button"
-                        onClick={() => setExpandedCriterion(isOpen ? null : c.key)}
-                        className="w-full flex items-center justify-between py-2.5 px-1 rounded-lg hover:bg-surface-container/50 transition-colors text-left"
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <span className={scoreColor(pct)}>{c.icon}</span>
-                          <span className="text-sm font-medium text-on-surface truncate">
-                            {c.label}
-                          </span>
-                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full tabular-nums ${
-                            pct >= 80
-                              ? 'bg-emerald-500/10 text-emerald-600'
-                              : pct >= 40
-                                ? 'bg-amber-500/10 text-amber-600'
-                                : 'bg-red-500/10 text-red-600'
-                          }`}>
-                            {pct}
-                          </span>
-                        </div>
-                        {isOpen ? (
-                          <ChevronUp className="h-4 w-4 text-text-muted shrink-0" />
-                        ) : (
-                          <ChevronDown className="h-4 w-4 text-text-muted shrink-0" />
-                        )}
-                      </button>
-
-                      {isOpen && (
-                        <div className="pb-3 px-1 space-y-2.5 animate-fade-in">
-                          {/* Score bar */}
-                          <div className="h-2 rounded-full bg-surface-container overflow-hidden">
-                            <div
-                              className={`h-full rounded-full transition-all duration-700 ${scoreBg(pct)}`}
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
-                          <p className="text-xs text-text-muted leading-relaxed">
-                            {c.description}
-                          </p>
-                          <div className="flex items-start gap-2 rounded-lg bg-surface-container/50 p-2.5">
-                            <Lightbulb className="h-3.5 w-3.5 text-amber-500 mt-0.5 shrink-0" />
-                            <p className="text-xs text-on-surface-variant leading-relaxed">
-                              <span className="font-medium">Tip: </span>
-                              {criterion.feedback || c.tip}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
+        <div ref={resultRef}>
+          <AtsScanReport
+            result={result}
+            filename={filename}
+            studioResume={studioResume}
+            openingFix={openingFix}
+            copied={copied}
+            onUpgrade={() => void openFixStudioInNewTab()}
+            onCopy={copyResults}
+            onReset={handleReset}
+          />
         </div>
       )}
     </div>
