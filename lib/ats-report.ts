@@ -109,6 +109,70 @@ export function findThinBullets(resumeText: string, limit = 3): string[] {
   return out;
 }
 
+/**
+ * Experience/duty lines that are not proper "- " bullets — common when
+ * PDF extraction flattens bullets into plain paragraphs.
+ */
+export function findProseDutyLines(resumeText: string, limit = 3): string[] {
+  const lines = resumeText.split('\n');
+  const expIdx = lines.findIndex((l) =>
+    /^(professional\s+)?(work\s+)?experience$|^employment$|^work\s+history$/i.test(l.trim()),
+  );
+  const start = expIdx >= 0 ? expIdx + 1 : 0;
+  const bulletChars = '-•*→⁃▪▸▹►‣∙○●';
+  const bulletRe = new RegExp(`^[${bulletChars}]`);
+  const out: string[] = [];
+  for (let i = start; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (!t || t.length < 40) continue;
+    if (/^[A-Z][A-Z\s&/.-]{4,}$/.test(t)) break; // next ALL-CAPS section
+    if (/^(education|skills|projects|certifications)\b/i.test(t)) break;
+    if (bulletRe.test(t) || /^\d+[.)]\s/.test(t)) continue;
+    // Prefer duty-like lines (verbs / tools), skip contact-like
+    if (/@|linkedin\.com|^\+?\d[\d\s().-]{7,}/i.test(t)) continue;
+    out.push(t.length > 140 ? `${t.slice(0, 137)}…` : t);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+/** Lines with years but no month — weak for ATS date parsing. */
+export function findWeakDateLines(resumeText: string, limit = 3): string[] {
+  const monthRe = /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\b/i;
+  const yearRe = /\b(19|20)\d{2}\b/;
+  const out: string[] = [];
+  for (const raw of resumeText.split('\n')) {
+    const t = raw.trim();
+    if (!t || !yearRe.test(t)) continue;
+    if (monthRe.test(t)) continue;
+    out.push(t.length > 120 ? `${t.slice(0, 117)}…` : t);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+/** Lines with curly quotes / fancy dashes ATS may misread. */
+export function findFormatIssueLines(resumeText: string, limit = 3): string[] {
+  const fancy = /[\u2018\u2019\u201C\u201D\u2013\u2014]/;
+  const out: string[] = [];
+  for (const raw of resumeText.split('\n')) {
+    const t = raw.trim();
+    if (!t || !fancy.test(t)) continue;
+    out.push(t.length > 120 ? `${t.slice(0, 117)}…` : t);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+/** First lines that look like contact / header — used when contact is weak. */
+export function findTopContactLines(resumeText: string, limit = 4): string[] {
+  return resumeText
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
 function parseRatePercent(result: AtsCheckResult): number {
   if (result.parseQuality === 'good') return 90 + Math.min(9, Math.floor(result.overallScore / 12));
   if (result.parseQuality === 'degraded') return 55 + Math.floor(result.overallScore / 5);
@@ -325,6 +389,13 @@ export function buildAtsReport(
   const b = result.breakdown;
   const unquantified = findUnquantifiedBullets(resumeText);
   const thin = findThinBullets(resumeText);
+  const proseDuties = thin.length === 0 ? findProseDutyLines(resumeText) : [];
+  const bulletEvidence = thin.length > 0 ? thin : proseDuties;
+  const impactEvidence =
+    unquantified.length > 0 ? unquantified : proseDuties.length > 0 ? proseDuties : bulletEvidence;
+  const weakDates = findWeakDateLines(resumeText);
+  const formatLines = findFormatIssueLines(resumeText);
+  const topLines = findTopContactLines(resumeText);
   const parsePct = parseRatePercent(result);
 
   const contentChecks: AtsReportCheck[] = [
@@ -353,7 +424,7 @@ export function buildAtsReport(
         unquantified.length,
       ),
       detail: b.quantifiableAchievements.feedback,
-      quotes: unquantified.map((t) => ({ text: t })),
+      quotes: impactEvidence.map((t) => ({ text: t })),
     },
     {
       id: 'content-bullets',
@@ -362,9 +433,12 @@ export function buildAtsReport(
       label: 'Bullets Consistency',
       score: b.bulletQuality.score,
       status: criterionStatus(b.bulletQuality.score),
-      summary: statusSummary(criterionStatus(b.bulletQuality.score), thin.length),
+      summary: statusSummary(
+        criterionStatus(b.bulletQuality.score),
+        bulletEvidence.length,
+      ),
       detail: b.bulletQuality.feedback,
-      quotes: thin.map((t) => ({ text: t })),
+      quotes: bulletEvidence.map((t) => ({ text: t })),
     },
     {
       id: 'content-skills',
@@ -375,6 +449,8 @@ export function buildAtsReport(
       status: criterionStatus(b.skillsOptimization.score),
       summary: statusSummary(criterionStatus(b.skillsOptimization.score)),
       detail: b.skillsOptimization.feedback,
+      // Missing Skills section = absence evidence (UI shows "Not found")
+      quotes: [],
     },
   ];
 
@@ -388,6 +464,7 @@ export function buildAtsReport(
       status: criterionStatus(b.sectionStructure.score),
       summary: statusSummary(criterionStatus(b.sectionStructure.score)),
       detail: b.sectionStructure.feedback,
+      quotes: [],
     },
     {
       id: 'sec-contact',
@@ -398,6 +475,10 @@ export function buildAtsReport(
       status: criterionStatus(b.contactInfo.score),
       summary: statusSummary(criterionStatus(b.contactInfo.score)),
       detail: b.contactInfo.feedback,
+      quotes:
+        b.contactInfo.score < NEEDS_WORK_BELOW
+          ? topLines.slice(0, 3).map((t) => ({ text: t }))
+          : [],
     },
   ];
 
@@ -409,10 +490,14 @@ export function buildAtsReport(
       label: 'Design & Format',
       score: b.formatCleanliness.score,
       status: criterionStatus(b.formatCleanliness.score),
-      summary: statusSummary(criterionStatus(b.formatCleanliness.score)),
+      summary: statusSummary(
+        criterionStatus(b.formatCleanliness.score),
+        formatLines.length,
+      ),
       detail: result.fileHints?.formatAdvice
         ? `${b.formatCleanliness.feedback} ${result.fileHints.formatAdvice}`
         : b.formatCleanliness.feedback,
+      quotes: formatLines.map((t) => ({ text: t })),
     },
     {
       id: 'ats-dates',
@@ -421,8 +506,9 @@ export function buildAtsReport(
       label: 'Dates & Links',
       score: b.dateConsistency.score,
       status: criterionStatus(b.dateConsistency.score),
-      summary: statusSummary(criterionStatus(b.dateConsistency.score)),
+      summary: statusSummary(criterionStatus(b.dateConsistency.score), weakDates.length),
       detail: b.dateConsistency.feedback,
+      quotes: weakDates.map((t) => ({ text: t })),
     },
     {
       id: 'ats-length',
