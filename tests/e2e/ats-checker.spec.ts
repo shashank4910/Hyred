@@ -102,10 +102,10 @@ test.describe('ATS Checker Page', () => {
     await page.getByRole('button', { name: /Check My Resume/i }).click();
 
     // Wait for results to load
-    await expect(page.getByText(/ATS Ready|Minor Tweaks|Improvements Required|Significant Work/)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/ATS-ready|Almost there|Needs work|High risk of ATS filter/)).toBeVisible({ timeout: 15000 });
 
     // Score breakdown elements should be present
-    await expect(page.getByText(/80|90|100/).or(page.getByText(/Score overview/))).toBeVisible();
+    await expect(page.getByText(/80|90|100/).or(page.getByText(/Score breakdown/))).toBeVisible();
 
     // Stats row
     await expect(page.getByText('Words')).toBeVisible();
@@ -127,7 +127,7 @@ test.describe('ATS Checker Page', () => {
     await page.getByRole('button', { name: /Check My Resume/i }).click();
 
     // Wait for results
-    await expect(page.getByText(/Score overview/)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/Score breakdown/)).toBeVisible({ timeout: 15000 });
 
     // Click on the first criterion accordion header
     const criterionBtn = page.getByRole('button', { name: /Section Structure|Contact Info|Bullet Points/ }).first();
@@ -149,7 +149,7 @@ test.describe('ATS Checker Page', () => {
     await page.getByRole('button', { name: /Try sample resume/i }).click();
     await page.getByRole('button', { name: /Check My Resume/i }).click();
 
-    await expect(page.getByText(/Score overview/)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/Score breakdown/)).toBeVisible({ timeout: 15000 });
 
     // Click copy button
     await page.getByRole('button', { name: /Copy results/i }).click();
@@ -160,7 +160,7 @@ test.describe('ATS Checker Page', () => {
     await page.getByRole('button', { name: /Try sample resume/i }).click();
     await page.getByRole('button', { name: /Check My Resume/i }).click();
 
-    await expect(page.getByText(/Score overview/)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/Score breakdown/)).toBeVisible({ timeout: 15000 });
 
     await page.getByRole('button', { name: /Check another resume/i }).click();
     // Should be back at the text input
@@ -175,7 +175,7 @@ test.describe('ATS Checker Page', () => {
     await page.getByRole('button', { name: /Check My Resume/i }).click();
 
     // Wait for results
-    await expect(page.getByText(/Score overview/)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/Score breakdown/)).toBeVisible({ timeout: 15000 });
 
     // Go back to input
     await page.getByRole('button', { name: /Check another resume/i }).click();
@@ -186,7 +186,7 @@ test.describe('ATS Checker Page', () => {
   test('history panel shows scored items', async ({ page }) => {
     await page.getByRole('button', { name: /Try sample resume/i }).click();
     await page.getByRole('button', { name: /Check My Resume/i }).click();
-    await expect(page.getByText(/Score overview/)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/Score breakdown/)).toBeVisible({ timeout: 15000 });
     await page.getByRole('button', { name: /Check another resume/i }).click();
 
     // Open history
@@ -199,7 +199,7 @@ test.describe('ATS Checker Page', () => {
   test('escape key resets from results view', async ({ page }) => {
     await page.getByRole('button', { name: /Try sample resume/i }).click();
     await page.getByRole('button', { name: /Check My Resume/i }).click();
-    await expect(page.getByText(/Score overview/)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/Score breakdown/)).toBeVisible({ timeout: 15000 });
 
     // Press Escape
     await page.keyboard.press('Escape');

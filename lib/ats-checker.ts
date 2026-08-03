@@ -339,6 +339,84 @@ function clipAtWord(text: string, max: number): string {
   return `${(space > Math.floor(max * 0.5) ? cut.slice(0, space) : cut).trimEnd()}…`;
 }
 
+function joinEnglish(parts: string[]): string {
+  if (parts.length <= 1) return parts[0] ?? '';
+  if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
+  return `${parts.slice(0, -1).join(', ')}, and ${parts[parts.length - 1]}`;
+}
+
+/**
+ * Short human action for the "Fix these first" card.
+ * Prefer one clear next step over concatenated diagnostic sentences.
+ */
+function humanActionTip(
+  key: keyof AtsCheckResult['breakdown'],
+  feedback: string,
+): string {
+  if (key === 'sectionStructure') {
+    const missing: string[] = [];
+    if (/Missing both Experience and Education/i.test(feedback)) {
+      missing.push('Experience', 'Education');
+    } else {
+      if (/Missing Experience/i.test(feedback)) missing.push('Experience');
+      if (/Missing Education/i.test(feedback)) missing.push('Education');
+    }
+    if (/Missing both Skills and Summary/i.test(feedback)) {
+      missing.push('Skills', 'Summary');
+    } else {
+      if (/Missing Skills/i.test(feedback)) missing.push('Skills');
+      if (/Missing Summary/i.test(feedback)) missing.push('Summary');
+    }
+    if (missing.length > 0) {
+      return `Add ${joinEnglish(missing)} section headers.`;
+    }
+    return 'Use clear section headers ATS recognizes (Experience, Education, Skills).';
+  }
+
+  if (key === 'contactInfo') {
+    if (/No clear name/i.test(feedback) && /Email address missing/i.test(feedback)) {
+      return 'Put your name, email, and phone near the top.';
+    }
+    if (/Email address missing/i.test(feedback)) return 'Add a clear email near the top.';
+    if (/Phone number missing/i.test(feedback)) return 'Add a phone number near the top.';
+    if (/No clear name/i.test(feedback)) return 'Put your full name on the first line.';
+    if (/LinkedIn URL missing/i.test(feedback)) return 'Add your LinkedIn URL near the top.';
+    return 'Put name, email, and phone in the top few lines.';
+  }
+
+  if (key === 'bulletQuality') {
+    if (/No bullet/i.test(feedback)) {
+      return 'Rewrite experience as "- " bullets ATS can read.';
+    }
+    return 'Use consistent "- " bullets with enough detail.';
+  }
+
+  if (key === 'quantifiableAchievements') {
+    if (/No experience bullets/i.test(feedback)) {
+      return 'Add experience bullets that include numbers or scale.';
+    }
+    return 'Add numbers to more bullets (%, $, time, or team size).';
+  }
+
+  if (key === 'skillsOptimization') {
+    return 'Add a Skills section with role keywords.';
+  }
+
+  if (key === 'lengthReadability') {
+    return 'Keep the resume focused — about 1–2 pages.';
+  }
+
+  if (key === 'formatCleanliness') {
+    return 'Replace fancy quotes and symbols with plain text.';
+  }
+
+  if (key === 'dateConsistency') {
+    return 'Use consistent dates like Jan 2021 – Present.';
+  }
+
+  return clipAtWord(feedback, 110);
+}
+
 function scoreSectionStructure(text: string): CriterionResult {
   const lines = text.split('\n');
   const headers = findSectionHeaders(lines);
@@ -1561,14 +1639,14 @@ export function checkAtsCompatibility(
   ];
 
   const CRITERION_LABELS: Record<keyof AtsCheckResult['breakdown'], string> = {
-    sectionStructure: 'Section structure',
-    contactInfo: 'Contact information',
-    bulletQuality: 'Bullet point formatting',
-    quantifiableAchievements: 'Quantifiable achievements',
-    skillsOptimization: 'Skills optimization',
-    lengthReadability: 'Resume length',
-    formatCleanliness: 'Format cleanliness',
-    dateConsistency: 'Date formatting',
+    sectionStructure: 'Sections',
+    contactInfo: 'Contact',
+    bulletQuality: 'Bullets',
+    quantifiableAchievements: 'Impact',
+    skillsOptimization: 'Skills',
+    lengthReadability: 'Length',
+    formatCleanliness: 'Format',
+    dateConsistency: 'Dates',
   };
 
   const scoredCriteria: { key: keyof AtsCheckResult['breakdown']; result: CriterionResult }[] =
@@ -1576,7 +1654,7 @@ export function checkAtsCompatibility(
 
   const sortedByScore = [...scoredCriteria].sort((a, b) => a.result.score - b.result.score);
   const topImprovements = sortedByScore.slice(0, 3).map(({ key, result }) =>
-    `${CRITERION_LABELS[key]} — ${clipAtWord(result.feedback, 140)}`,
+    `${CRITERION_LABELS[key]} — ${humanActionTip(key, result.feedback)}`,
   );
 
   // JD keyword comparison

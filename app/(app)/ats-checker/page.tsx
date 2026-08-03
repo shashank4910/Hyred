@@ -174,7 +174,6 @@ function saveHistory(item: ScoreHistoryItem) {
 interface CriterionMeta {
   key: keyof AtsCheckResult['breakdown'];
   label: string;
-  shortLabel: string;
   icon: React.ReactNode;
   description: string;
   tip: string;
@@ -184,7 +183,6 @@ const CRITERIA: CriterionMeta[] = [
   {
     key: 'sectionStructure',
     label: 'Section Structure',
-    shortLabel: 'Sections',
     icon: <ListChecks className="h-4 w-4" />,
     description: 'Standard sections (Experience, Education, Skills) that ATS parsers recognize.',
     tip: 'Include at minimum: Experience, Education, and Skills sections.',
@@ -192,7 +190,6 @@ const CRITERIA: CriterionMeta[] = [
   {
     key: 'contactInfo',
     label: 'Contact Info',
-    shortLabel: 'Contact',
     icon: <AtSign className="h-4 w-4" />,
     description: 'Name, email, phone, LinkedIn, and location clearly at the top.',
     tip: 'Put your name, email, phone, LinkedIn, and location in the top 5 lines.',
@@ -200,7 +197,6 @@ const CRITERIA: CriterionMeta[] = [
   {
     key: 'bulletQuality',
     label: 'Bullet Points',
-    shortLabel: 'Bullets',
     icon: <FileText className="h-4 w-4" />,
     description: 'Consistent formatting and sufficient detail in experience bullets.',
     tip: 'Use "- " for all bullets. Aim for 10-15 total across your resume.',
@@ -208,7 +204,6 @@ const CRITERIA: CriterionMeta[] = [
   {
     key: 'quantifiableAchievements',
     label: 'Quantified Impact',
-    shortLabel: 'Metrics',
     icon: <Target className="h-4 w-4" />,
     description: 'Numbers, percentages, and metrics that show measurable results.',
     tip: 'Add numbers: % improvements, $ amounts, time saved, people managed.',
@@ -216,7 +211,6 @@ const CRITERIA: CriterionMeta[] = [
   {
     key: 'skillsOptimization',
     label: 'Skills Optimization',
-    shortLabel: 'Skills',
     icon: <Sparkles className="h-4 w-4" />,
     description: 'Concrete technical keywords, organized and contextualized in experience.',
     tip: 'List 10-15 concrete skills and mention them in experience bullets too.',
@@ -224,7 +218,6 @@ const CRITERIA: CriterionMeta[] = [
   {
     key: 'lengthReadability',
     label: 'Length & Density',
-    shortLabel: 'Length',
     icon: <Ruler className="h-4 w-4" />,
     description: 'Appropriate length (1–2 pages) with good content density.',
     tip: 'Aim for 400-1000 words. This is roughly 1-2 pages.',
@@ -232,7 +225,6 @@ const CRITERIA: CriterionMeta[] = [
   {
     key: 'formatCleanliness',
     label: 'Format Cleanliness',
-    shortLabel: 'Format',
     icon: <FileCheck className="h-4 w-4" />,
     description: 'Clean ASCII text — no smart quotes, unicode bullets, or special characters.',
     tip: 'Use plain ASCII: " for quotes, - for bullets, -- for dashes.',
@@ -240,141 +232,11 @@ const CRITERIA: CriterionMeta[] = [
   {
     key: 'dateConsistency',
     label: 'Date Formatting',
-    shortLabel: 'Dates',
     icon: <Calendar className="h-4 w-4" />,
     description: 'Consistent and complete date ranges with month-level granularity.',
     tip: 'Format dates as "Mon YYYY - Mon YYYY" for each role.',
   },
 ];
-
-/* ------------------------------------------------------------------ */
-/*  Radar Chart Component                                              */
-/* ------------------------------------------------------------------ */
-
-function RadarChart({ breakdown }: { breakdown: AtsCheckResult['breakdown'] }) {
-  const size = 220;
-  const cx = size / 2;
-  const cy = size / 2;
-  const radius = 85;
-  const levels = 5;
-
-  const values = CRITERIA.map((c) => breakdown[c.key].score / 100);
-  const angleStep = (2 * Math.PI) / values.length;
-
-  const gridPoints = (level: number) => {
-    const r = (radius / levels) * level;
-    return values
-      .map((_, i) => {
-        const a = angleStep * i - Math.PI / 2;
-        return `${cx + r * Math.cos(a)},${cy + r * Math.sin(a)}`;
-      })
-      .join(' ');
-  };
-
-  const dataPoints = values
-    .map((v, i) => {
-      const a = angleStep * i - Math.PI / 2;
-      const r = radius * v;
-      return `${cx + r * Math.cos(a)},${cy + r * Math.sin(a)}`;
-    })
-    .join(' ');
-
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0">
-      {/* Grid rings */}
-      {[1, 2, 3, 4, 5].map((level) => (
-        <polygon
-          key={level}
-          points={gridPoints(level)}
-          fill="none"
-          className="stroke-surface-container-highest"
-          strokeWidth={1}
-        />
-      ))}
-
-      {/* Axis lines */}
-      {values.map((_, i) => {
-        const a = angleStep * i - Math.PI / 2;
-        const x2 = cx + radius * Math.cos(a);
-        const y2 = cy + radius * Math.sin(a);
-        return (
-          <line
-            key={i}
-            x1={cx}
-            y1={cy}
-            x2={x2}
-            y2={y2}
-            className="stroke-surface-container-highest"
-            strokeWidth={1}
-          />
-        );
-      })}
-
-      {/* Data area */}
-      <polygon
-        points={dataPoints}
-        fill="url(#radarGradient)"
-        fillOpacity={0.35}
-        className="transition-all duration-700"
-      />              <polygon
-                    points={dataPoints}
-                    fill="none"
-                    className="stroke-primary transition-all duration-700"
-                    strokeWidth={2}
-                    strokeLinejoin="round"
-      />
-
-      {/* Data points */}
-      {values.map((v, i) => {
-        const a = angleStep * i - Math.PI / 2;
-        const r = radius * v;
-        const x = cx + r * Math.cos(a);
-        const y = cy + r * Math.sin(a);
-        return (
-          <circle
-            key={i}
-            cx={x}
-            cy={y}
-            r={3.5}
-            className="fill-primary stroke-surface-bright stroke-[2px] transition-all duration-700"
-          />
-        );
-      })}
-
-      {/* Labels */}
-      {CRITERIA.map((c, i) => {
-        const a = angleStep * i - Math.PI / 2;
-        const labelR = radius + 18;
-        const x = cx + labelR * Math.cos(a);
-        const y = cy + labelR * Math.sin(a);
-        const anchor =
-          Math.abs(Math.cos(a)) < 0.1 ? 'middle' : Math.cos(a) > 0 ? 'start' : 'end';
-        const dy = Math.abs(Math.sin(a)) < 0.3 ? '0.35em' : Math.sin(a) > 0 ? '1em' : '-0.2em';
-        return (
-          <text
-            key={i}
-            x={x}
-            y={y}
-            textAnchor={anchor}
-            dy={dy}
-            className="fill-text-muted"
-            fontSize={10}
-            fontWeight={500}
-          >
-            {c.shortLabel}
-          </text>
-        );
-      })}
-
-      <defs>
-        <linearGradient id="radarGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#006a65" stopOpacity={0.6} />
-          <stop offset="100%" stopColor="#2cc9c0" stopOpacity={0.3} />
-        </linearGradient>
-      </defs>
-    </svg>
-  );
-}
 
 /* ------------------------------------------------------------------ */
 /*  Animated Score Ring                                                 */
@@ -894,32 +756,33 @@ export default function AtsCheckerPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 animate-fade-in">
-      {/* Header */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/5 via-surface-card to-surface-card p-6 border border-outline-variant/40 shadow-sm">
-        <div className="absolute top-0 right-0 w-48 h-48 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-        <div className="relative">
-          <h1 className="font-headline text-heading-sm font-bold text-on-background flex items-center gap-2.5">
-            <span className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-primary text-on-primary shadow-sm">
-              <Search className="h-5 w-5" />
-            </span>
-            ATS Resume Checker
-          </h1>
-          <p className="text-body-md text-on-surface-variant mt-2 max-w-xl">
-            See how ATS systems read your resume — then fix weak spots before you apply.
-          </p>
-          {/* Stats bar */}
-          <div className="flex flex-wrap items-center gap-3 mt-4">
-            <span className="inline-flex items-center gap-1.5 text-xs text-text-muted bg-surface-container rounded-full px-3 py-1">
-              <FileCheck className="h-3.5 w-3.5 text-primary" />
-              8 ATS checks
-            </span>
-            <span className="inline-flex items-center gap-1.5 text-xs text-text-muted bg-surface-container rounded-full px-3 py-1">
-              <Shield className="h-3.5 w-3.5 text-emerald-500" />
-              Not stored
-            </span>
+      {/* Marketing header — input only so results own the screen */}
+      {view === 'input' && (
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/5 via-surface-card to-surface-card p-6 border border-outline-variant/40 shadow-sm">
+          <div className="absolute top-0 right-0 w-48 h-48 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
+          <div className="relative">
+            <h1 className="font-headline text-heading-sm font-bold text-on-background flex items-center gap-2.5">
+              <span className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-primary text-on-primary shadow-sm">
+                <Search className="h-5 w-5" />
+              </span>
+              ATS Resume Checker
+            </h1>
+            <p className="text-body-md text-on-surface-variant mt-2 max-w-xl">
+              See how ATS systems read your resume — then fix weak spots before you apply.
+            </p>
+            <div className="flex flex-wrap items-center gap-3 mt-4">
+              <span className="inline-flex items-center gap-1.5 text-xs text-text-muted bg-surface-container rounded-full px-3 py-1">
+                <FileCheck className="h-3.5 w-3.5 text-primary" />
+                8 ATS checks
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-xs text-text-muted bg-surface-container rounded-full px-3 py-1">
+                <Shield className="h-3.5 w-3.5 text-emerald-500" />
+                Not stored
+              </span>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* ── INPUT VIEW ─────────────────────────────────────────── */}
       {view === 'input' && (
@@ -1261,15 +1124,14 @@ export default function AtsCheckerPage() {
               </div>
             </div>
 
-            {/* Stats row */}
+            {/* Stats row — only signals candidates care about */}
             <div
-              className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-6 pt-5 border-t border-outline-variant/30 animate-slide-up"
+              className="grid grid-cols-3 gap-2 mt-6 pt-5 border-t border-outline-variant/30 animate-slide-up"
               style={{ animationDelay: '50ms', animationFillMode: 'both' }}
             >
               <StatCard icon={<FileText className="h-4 w-4" />} label="Words" value={result.stats.wordCount.toLocaleString()} />
               <StatCard icon={<ListChecks className="h-4 w-4" />} label="Bullets" value={result.stats.bulletCount} />
               <StatCard icon={<FileCheck className="h-4 w-4" />} label="Sections" value={result.stats.sectionCount} />
-              <StatCard icon={<Calendar className="h-4 w-4" />} label="Chars" value={result.stats.charCount.toLocaleString()} />
             </div>
 
             {/* File hints */}
@@ -1308,25 +1170,37 @@ export default function AtsCheckerPage() {
             className="grid sm:grid-cols-2 gap-5 animate-slide-up"
             style={{ animationDelay: '100ms', animationFillMode: 'both' }}
           >
-            {/* Good practices */}
-            {result.goodPractices.length > 0 && (
-              <div className="rounded-2xl border border-outline-variant/40 bg-surface-card p-5 shadow-sm">
-                <h3 className="font-semibold text-on-surface flex items-center gap-2 mb-3">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                  Working well
-                </h3>
-                <ul className="space-y-2">
-                  {result.goodPractices.map((g, i) => (
-                    <li key={i} className="text-sm text-on-surface-variant flex items-start gap-2">
-                      <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-600 shrink-0 mt-0.5">
-                        <Check className="h-3 w-3" />
-                      </span>
-                      <span className="leading-snug">{g}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            {/* Working well — always show so low scores aren't all bad news */}
+            <div className="rounded-2xl border border-outline-variant/40 bg-surface-card p-5 shadow-sm">
+              <h3 className="font-semibold text-on-surface flex items-center gap-2 mb-3">
+                <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                Working well
+              </h3>
+              <ul className="space-y-2">
+                {(result.goodPractices.length > 0
+                  ? result.goodPractices
+                  : [
+                      result.fileHints?.isDocx
+                        ? 'DOCX is a strong ATS-friendly format.'
+                        : result.stats.wordCount > 0
+                          ? 'We could read text from your file.'
+                          : 'File uploaded successfully.',
+                      result.breakdown.formatCleanliness.score >= 70
+                        ? 'Formatting is mostly clean for parsers.'
+                        : result.breakdown.contactInfo.score >= 50
+                          ? 'Some contact details were detected.'
+                          : null,
+                    ].filter((g): g is string => Boolean(g))
+                ).map((g, i) => (
+                  <li key={i} className="text-sm text-on-surface-variant flex items-start gap-2">
+                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-600 shrink-0 mt-0.5">
+                      <Check className="h-3 w-3" />
+                    </span>
+                    <span className="leading-snug">{g}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
 
             {/* Top improvements */}
             {result.topImprovements.length > 0 && (
@@ -1353,6 +1227,66 @@ export default function AtsCheckerPage() {
                 </ul>
               </div>
             )}
+          </div>
+
+          {/* Primary actions — early so users don't scroll past the fold */}
+          <div
+            className="flex flex-col sm:flex-row gap-3 animate-slide-up"
+            style={{ animationDelay: '150ms', animationFillMode: 'both' }}
+          >
+            <div className="flex-1 space-y-1.5">
+              <button
+                type="button"
+                onClick={() => void openFixStudioInNewTab()}
+                disabled={openingFix || studioResume.trim().length < 50}
+                title={
+                  studioResume.trim().length < 50
+                    ? 'Need extractable resume text (scanned/image PDFs may fail)'
+                    : undefined
+                }
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-6 py-3 text-body-md font-semibold text-on-primary shadow-sm transition-all hover:bg-primary/90 hover:shadow-primary-glow disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {openingFix ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="h-4 w-4" />
+                )}
+                {result.overallScore < 80 ? 'Upgrade with AI' : 'Polish with AI'}
+              </button>
+              <p className="text-center text-[11px] text-text-muted">
+                {studioResume.trim().length < 50
+                  ? 'Needs readable text — paste text or upload a text PDF / DOCX.'
+                  : 'Opens in a new tab'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={copyResults}
+              className="flex-1 flex items-center justify-center gap-2 rounded-2xl border border-outline-variant/40 bg-surface-card px-6 py-3 text-body-md font-semibold text-on-surface transition-all hover:bg-surface-container hover:shadow-sm"
+            >
+              {copied ? (
+                <>
+                  <Check className="h-4 w-4 text-emerald-500" />
+                  Copied!
+                </>
+              ) : (
+                <>
+                  <Copy className="h-4 w-4" />
+                  Copy results
+                </>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={handleReset}
+              className="flex-1 flex items-center justify-center gap-2 rounded-2xl border border-outline-variant/40 bg-surface-card px-6 py-3 text-body-md font-semibold text-on-surface transition-all hover:bg-surface-container hover:shadow-sm"
+            >
+              <RefreshCcw className="h-4 w-4" />
+              Check another
+              <kbd className="hidden sm:inline-flex items-center text-[10px] text-on-surface-variant/60 bg-surface-container rounded-md px-1.5 py-0.5 font-mono">
+                Esc
+              </kbd>
+            </button>
           </div>
 
           {/* JD Match section */}
@@ -1435,28 +1369,15 @@ export default function AtsCheckerPage() {
             </div>
           )}
 
-          {/* Radar + Detailed breakdown */}
+          {/* Detailed breakdown */}
           <div
-            className="grid md:grid-cols-5 gap-5 animate-slide-up"
+            className="animate-slide-up"
             style={{ animationDelay: '300ms', animationFillMode: 'both' }}
           >
-            {/* Radar chart */}
-            <div className="md:col-span-2 rounded-2xl border border-outline-variant/40 bg-surface-card p-5 shadow-sm flex flex-col items-center justify-center">
-              <h3 className="font-semibold text-on-surface flex items-center gap-2 mb-3 self-start">
-                <Target className="h-4 w-4 text-primary" />
-                Score overview
-              </h3>
-              <RadarChart breakdown={result.breakdown} />
-              <p className="text-xs text-text-muted text-center mt-3 max-w-[200px]">
-                Each axis represents one of the 8 ATS criteria checked
-              </p>
-            </div>
-
-            {/* Breakdown accordion */}
-            <div className="md:col-span-3 rounded-2xl border border-outline-variant/40 bg-surface-card p-5 shadow-sm">
+            <div className="rounded-2xl border border-outline-variant/40 bg-surface-card p-5 shadow-sm">
               <h3 className="font-semibold text-on-surface flex items-center gap-2 mb-4">
                 <ListChecks className="h-4 w-4 text-primary" />
-                Detailed breakdown
+                Score breakdown
               </h3>
               <div className="space-y-0.5">
                 {CRITERIA.map((c) => {
@@ -1509,12 +1430,9 @@ export default function AtsCheckerPage() {
                             <Lightbulb className="h-3.5 w-3.5 text-amber-500 mt-0.5 shrink-0" />
                             <p className="text-xs text-on-surface-variant leading-relaxed">
                               <span className="font-medium">Tip: </span>
-                              {c.tip}
+                              {criterion.feedback || c.tip}
                             </p>
                           </div>
-                          <p className="text-xs text-text-muted leading-relaxed italic">
-                            &ldquo;{criterion.feedback}&rdquo;
-                          </p>
                         </div>
                       )}
                     </div>
@@ -1524,67 +1442,6 @@ export default function AtsCheckerPage() {
             </div>
           </div>
 
-          {/* Action buttons */}
-          <div
-            className="flex flex-col sm:flex-row gap-3 animate-slide-up"
-            style={{ animationDelay: '400ms', animationFillMode: 'both' }}
-          >
-            <div className="flex-1 space-y-2">
-              <button
-                type="button"
-                onClick={() => void openFixStudioInNewTab()}
-                disabled={openingFix || studioResume.trim().length < 50}
-                title={
-                  studioResume.trim().length < 50
-                    ? 'Need extractable resume text (scanned/image PDFs may fail)'
-                    : undefined
-                }
-                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-6 py-3 text-body-md font-semibold text-on-primary shadow-sm transition-all hover:bg-primary/90 hover:shadow-primary-glow disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {openingFix ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Sparkles className="h-4 w-4" />
-                )}
-                {result.overallScore < 80
-                  ? 'Upgrade with AI'
-                  : 'Polish with AI'}
-              </button>
-              <p className="text-center text-[11px] text-text-muted">
-                {studioResume.trim().length < 50
-                  ? 'Needs readable text from your file — paste text or use a text PDF / DOCX.'
-                  : 'Opens in a new tab. Report stays here. Download PDF after you upgrade.'}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={copyResults}
-              className="flex-1 flex items-center justify-center gap-2 rounded-2xl border border-outline-variant/40 bg-surface-card px-6 py-3 text-body-md font-semibold text-on-surface transition-all hover:bg-surface-container hover:shadow-sm"
-            >
-              {copied ? (
-                <>
-                  <Check className="h-4 w-4 text-emerald-500" />
-                  Copied!
-                </>
-              ) : (
-                <>
-                  <Copy className="h-4 w-4" />
-                  Copy results
-                </>
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={handleReset}
-              className="flex-1 flex items-center justify-center gap-2 rounded-2xl border border-outline-variant/40 bg-surface-card px-6 py-3 text-body-md font-semibold text-on-surface transition-all hover:bg-surface-container hover:shadow-sm"
-            >
-              <RefreshCcw className="h-4 w-4" />
-              Check another
-              <kbd className="hidden sm:inline-flex items-center text-[10px] text-on-surface-variant/60 bg-surface-container rounded-md px-1.5 py-0.5 font-mono">
-                Esc
-              </kbd>
-            </button>
-          </div>
         </div>
       )}
     </div>
