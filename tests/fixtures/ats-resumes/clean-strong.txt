@@ -1,0 +1,30 @@
+Priya Sharma
+Senior Software Engineer
+Bengaluru, India
+priya.sharma@email.com | +91 98765 43210
+linkedin.com/in/priyasharma | github.com/priya-dev
+
+SUMMARY
+Backend engineer with 6 years building APIs and data pipelines for fintech products.
+
+EXPERIENCE
+Senior Software Engineer
+PayStack Labs
+Jan 2021 - Present
+- Built payment reconciliation service that cut settlement errors by 42% across 3 markets
+- Led a team of 4 engineers shipping Kafka-based event pipelines handling 2M events/day
+- Reduced API p95 latency from 480ms to 120ms by redesigning caching and query plans
+
+Software Engineer
+CloudNest
+Mar 2018 - Dec 2020
+- Designed REST APIs in Node.js and TypeScript used by 12 internal product teams
+- Automated deployment with Jenkins and Terraform, cutting release time by 60%
+
+EDUCATION
+B.Tech Computer Science
+VIT University
+Aug 2014 - May 2018
+
+SKILLS
+TypeScript, Node.js, PostgreSQL, Kafka, AWS, Docker, Terraform, Jest, GraphQL

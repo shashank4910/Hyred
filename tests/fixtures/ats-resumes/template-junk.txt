@@ -1,0 +1,20 @@
+Alex Candidate
+alex@example.com
+9999999999
+
+WORK EXPERIENCE
+Engineer
+Acme
+01/2020 - Present
+
+Achievements/Tasks
+Achievements/Tasks
+Achievements/Tasks
+Courses
+
+EDUCATION
+B.S.
+2015 - 2019
+
+SKILLS
+Java

@@ -1,31 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { parseResume } from '@/lib/resume';
-import { checkAtsCompatibility } from '@/lib/ats-checker';
+import { getCurrentProfile } from '@/lib/current-user';
+import { runEvidenceGroundedAts } from '@/lib/ats-evidence-engine';
 
 export const runtime = 'nodejs';
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 /**
  * POST /api/ats-checker
  *
- * Accepts a resume (file upload or pasted text) and returns ATS-friendliness
- * analysis. Zero LLM calls — pure deterministic scoring.
+ * Accepts a resume (file upload or pasted text) and returns ATS analysis.
  *
- * Body (multipart):
- *   resume: File (.pdf, .doc, .docx, .txt)
- *   job_description?: string (optional)
+ * - Logged-in users → hybrid evidence-grounded engine (facts + LLM semantic + gate)
+ * - Anonymous / public widget → structural only (fast, zero LLM)
+ * - Body/query `engine=structural|hybrid` can override (hybrid requires auth)
  *
- * Body (JSON):
- *   { "resume_text": "...", "job_description": "..." }
- *
- * Response:
- *   { overallScore, breakdown, topImprovements, detectedIssues, goodPractices, fileHints?, jdMatch?, stats }
+ * Body (multipart): resume file + optional job_description
+ * Body (JSON): { resume_text, job_description?, engine? }
  */
 export async function POST(req: NextRequest) {
   const contentType = req.headers.get('content-type') ?? '';
   let resumeText: string;
   let filename: string | undefined;
   let jobDescription: string | undefined;
+  let engineOverride: 'structural' | 'hybrid' | undefined;
 
   try {
     if (contentType.includes('multipart/form-data')) {
@@ -43,11 +41,14 @@ export async function POST(req: NextRequest) {
       filename = file.name;
       const buffer = Buffer.from(await file.arrayBuffer());
       resumeText = await parseResume({ buffer, filename, mimeType: file.type });
-      jobDescription = form.get('job_description') as string | undefined;
+      jobDescription = (form.get('job_description') as string | undefined) || undefined;
+      const eng = form.get('engine');
+      if (eng === 'structural' || eng === 'hybrid') engineOverride = eng;
     } else {
       const body = (await req.json().catch(() => ({}))) as {
         resume_text?: string;
         job_description?: string;
+        engine?: string;
       };
       if (!body.resume_text || body.resume_text.trim().length < 50) {
         return NextResponse.json(
@@ -57,6 +58,9 @@ export async function POST(req: NextRequest) {
       }
       resumeText = body.resume_text;
       jobDescription = body.job_description;
+      if (body.engine === 'structural' || body.engine === 'hybrid') {
+        engineOverride = body.engine;
+      }
     }
   } catch (e) {
     return NextResponse.json(
@@ -67,18 +71,46 @@ export async function POST(req: NextRequest) {
 
   if (resumeText.trim().length < 50) {
     return NextResponse.json(
-      { error: 'Parsed resume content is too short to analyze. The file may be scanned/image-based.' },
+      {
+        error:
+          'Parsed resume content is too short to analyze. The file may be scanned/image-based.',
+      },
       { status: 400 },
     );
   }
 
-  const result = checkAtsCompatibility(resumeText, filename, jobDescription);
+  const profile = await getCurrentProfile();
+  const urlEngine = req.nextUrl.searchParams.get('engine');
+  if (urlEngine === 'structural' || urlEngine === 'hybrid') {
+    engineOverride = urlEngine;
+  }
+
+  let mode: 'structural' | 'hybrid' = profile ? 'hybrid' : 'structural';
+  if (engineOverride === 'structural') mode = 'structural';
+  if (engineOverride === 'hybrid') {
+    if (!profile) {
+      return NextResponse.json(
+        { error: 'Hybrid engine requires sign-in.' },
+        { status: 401 },
+      );
+    }
+    mode = 'hybrid';
+  }
+
+  const evidence = await runEvidenceGroundedAts(resumeText, {
+    filename,
+    jobDescription,
+    profileId: profile?.id,
+    mode,
+  });
 
   return NextResponse.json({
-    ...result,
-    /** Parsed resume body — needed for Fix Studio after file upload */
-    resume_text: resumeText,
-    resume_chars: resumeText.length,
+    ...evidence.result,
+    engine: evidence.engine,
+    report: evidence.report,
+    /** Parsed / normalized resume body — needed for Fix Studio after file upload */
+    resume_text: evidence.resumeText,
+    resume_chars: evidence.resumeText.length,
     filename: filename ?? null,
   });
 }

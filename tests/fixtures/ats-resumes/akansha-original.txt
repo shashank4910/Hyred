@@ -1,0 +1,112 @@
+Akansha Tomar 
+Quality Analyst 
+Professional Software Tester with 5.8 years of experience in software testing process.Involved in product
+testing of diﬀerent domains. 
+akanshatomar08@gmail.com 
+7011088137 
+Sector 78 NOida, Noida, India 
+WORK EXPERIENCE 
+Senior Quality Analyst 
+Noida/Ontic Technology 
+11/2022 - Present
+, 
+ 
+Involved in system development like SRS 
+Involved in Functional Testing,Regression,Smoke,Load
+Testing 
+Involved in writing test cases and executing test cases. 
+Involved in Backened Testing. 
+Tracking Bugs on ALM, jira,zoho,redmine. 
+Involved in meeting with client. 
+Quality Analyst 
+Noida/Telus International 
+09/2021 - 07/2022
+, 
+ 
+Involved in functional testing of product. 
+Tracking Bugs on zoho and redmine. 
+Involved in build deployment on jenkins. 
+Associate Quality Analyst 
+Noida/Appinventiv 
+09/2020 - 09/2021
+, 
+ 
+Involved in functional testing, 
+Involved in mobile testing for both ios & Android 
+Associate Quality Anal 
+Noida/Ebix software india pvt ltd 
+01/2019 - 08/2020
+, 
+ 
+Involved in functional testing. 
+Involved in mobile testing for both ios & Android 
+EDUCATION 
+B.Tech 
+AKTU University/UP 
+04/2013 - 06/2017
+, 
+ 
+Computer Science 
+SKILLS 
+Manual Testing 
+Smoke testing 
+Regresion 
+Functional testing 
+Testlink 
+ALM 
+JIRA 
+Agile methodlogy 
+Scrum 
+API testing using Postman 
+Sql 
+Soap UI 
+Splunk 
+Postman 
+PERSONAL PROJECTS 
+Charter Outage Management
+ (10/2021 - Present)
+ 
+This project is basically from Telecom domain, which is used to
+manage outage in diﬀerent area and its a public company to use
+internet,tv,phone services in given areas. 
+KFC /Hardees Application Testing(09/2020-07/2021) 
+This project is basically from E-commerce domain, which is used to
+place food order across seven counteries using multiple plateforms.
+Egreen
+ (08/2020 - 09/2020)
+ 
+This project is basically from E-commerce domain, which is used to
+maintain stock module/purchase module/sales module. 
+Via.com
+ (04/2019 - 07/2020)
+ 
+Contribute to a project's overall test strategy and test plan. 
+Identify test data requirements and generate required data to
+support testing. 
+Create test deliverables required by company and project testing
+standards 
+Ebixcash.com
+ (03/2020 - 07/2020)
+ 
+. 
+Perform Build testing on release and Production servers on regular
+basis. 
+Perform Testing of product on Desktop , Android Application and
+IOS application. 
+ACHIEVEMENTS 
+Tester of the Month Award
+ (04/2020 - 04/2020)
+ 
+LANGUAGES 
+English 
+Full Professional Proﬁciency 
+Hindi 
+Full Professional Proﬁciency 
+INTERESTS 
+Travelling diﬀerent places 
+Cooking 
+Achievements/Tasks 
+Achievements/Tasks 
+Achievements/Tasks 
+Achievements/Tasks 
+Courses 

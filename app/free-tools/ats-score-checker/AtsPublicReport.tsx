@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, Copy, Check } from 'lucide-react';
 import type { AtsCheckResult } from '@/lib/ats-checker';
-import { buildAtsReport, type AtsReportCheck } from '@/lib/ats-report';
+import { buildAtsReport, type AtsReport, type AtsReportCheck } from '@/lib/ats-report';
 import { AtsIssueDetail, AtsReportRail } from '@/app/_components/ats-report/AtsReportRail';
 import { AtsResumeTwinPreview } from '@/app/_components/ats-report/AtsResumeTwinPreview';
 import { HyredResumePreview } from '@/app/_components/ats-report/HyredResumePreview';
@@ -13,15 +13,17 @@ export function AtsPublicReport({
   result,
   resumeText,
   onReset,
+  report: reportProp,
 }: {
   result: AtsCheckResult;
   resumeText: string;
   onReset: () => void;
+  report?: AtsReport | null;
 }) {
-  const report = useMemo(
-    () => buildAtsReport(result, resumeText, { isPremium: false }),
-    [result, resumeText],
-  );
+  const report = useMemo(() => {
+    if (reportProp) return reportProp;
+    return buildAtsReport(result, resumeText, { isPremium: false });
+  }, [reportProp, result, resumeText]);
   const [activeCheckId, setActiveCheckId] = useState<string | null>(
     () =>
       report.categories

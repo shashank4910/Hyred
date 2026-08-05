@@ -22,6 +22,7 @@ import {
   Shield,
 } from 'lucide-react';
 import type { AtsCheckResult } from '@/lib/ats-checker';
+import type { AtsReport } from '@/lib/ats-report';
 import { blobUrlToDataUrl, writeAtsFixSession } from '@/lib/ats-fix-session';
 import { AtsScanReport } from '@/app/_components/ats-report/AtsScanReport';
 
@@ -167,6 +168,7 @@ export default function AtsCheckerPage() {
   const [resumeText, setResumeText] = useState('');
   const [jobDescriptionText, setJobDescriptionText] = useState('');
   const [result, setResult] = useState<AtsCheckResult | null>(null);
+  const [serverReport, setServerReport] = useState<AtsReport | null>(null);
   const [studioResume, setStudioResume] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [filename, setFilename] = useState<string | null>(null);
@@ -185,6 +187,7 @@ export default function AtsCheckerPage() {
   const resultRef = useRef<HTMLDivElement>(null);
   const [pendingResult, setPendingResult] = useState<AtsCheckResult | null>(null);
   const pendingResumeRef = useRef<string>('');
+  const pendingReportRef = useRef<AtsReport | null>(null);
   const displayFilenameRef = useRef<string | null>(null);
   const [completedMilestones, setCompletedMilestones] = useState<number[]>([]);
   const [milestonesDone, setMilestonesDone] = useState(false);
@@ -251,11 +254,15 @@ export default function AtsCheckerPage() {
       }
 
       displayFilenameRef.current = displayFilename || 'Pasted text';
-      const payloadData = data as AtsCheckResult & { resume_text?: string };
+      const payloadData = data as AtsCheckResult & {
+        resume_text?: string;
+        report?: AtsReport;
+      };
       pendingResumeRef.current =
         (payloadData.resume_text && String(payloadData.resume_text)) ||
         text ||
         '';
+      pendingReportRef.current = payloadData.report ?? null;
       setPendingResult(payloadData);
       // View transitions to 'results' via useEffect when milestones complete
     } catch (e) {
@@ -333,6 +340,7 @@ export default function AtsCheckerPage() {
   const handleReset = useCallback(() => {
     setView('input');
     setResult(null);
+    setServerReport(null);
     setStudioResume('');
     setError(null);
     setFilename(null);
@@ -543,6 +551,8 @@ export default function AtsCheckerPage() {
       const data = pendingResult;
       setPendingResult(null);
       setResult(data);
+      setServerReport(pendingReportRef.current);
+      pendingReportRef.current = null;
       setStudioResume(pendingResumeRef.current || '');
       if (pendingResumeRef.current && !resumeText.trim()) {
         setResumeText(pendingResumeRef.current);
@@ -925,6 +935,7 @@ export default function AtsCheckerPage() {
         <div ref={resultRef}>
           <AtsScanReport
             result={result}
+            report={serverReport}
             filename={filename}
             studioResume={studioResume}
             openingFix={openingFix}
