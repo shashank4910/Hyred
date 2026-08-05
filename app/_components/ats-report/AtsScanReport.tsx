@@ -9,6 +9,7 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
+  FileText,
   Loader2,
   RefreshCcw,
   Sparkles,
@@ -27,6 +28,12 @@ function scoreColor(score: number): string {
   if (score >= 80) return 'text-emerald-600';
   if (score >= 50) return 'text-amber-600';
   return 'text-red-600';
+}
+
+function scoreBar(score: number): string {
+  if (score >= 80) return 'bg-emerald-500';
+  if (score >= 50) return 'bg-amber-500';
+  return 'bg-red-500';
 }
 
 function verdictFor(score: number): { title: string; body: string; short: string } {
@@ -99,7 +106,19 @@ function lineMatchesQuote(line: string, quote: string): boolean {
   return l.includes(needle) || needle.includes(l.slice(0, 32));
 }
 
-function StatusIcon({ status, className = 'h-4 w-4' }: { status: AtsReportCheck['status']; className?: string }) {
+function statusAccent(status: AtsReportCheck['status']): string {
+  if (status === 'pass') return 'border-l-emerald-500';
+  if (status === 'warn') return 'border-l-amber-500';
+  return 'border-l-red-500';
+}
+
+function StatusIcon({
+  status,
+  className = 'h-4 w-4',
+}: {
+  status: AtsReportCheck['status'];
+  className?: string;
+}) {
   if (status === 'pass') return <CheckCircle2 className={`${className} text-emerald-600`} />;
   if (status === 'warn') return <AlertTriangle className={`${className} text-amber-600`} />;
   return <XCircle className={`${className} text-red-600`} />;
@@ -108,18 +127,203 @@ function StatusIcon({ status, className = 'h-4 w-4' }: { status: AtsReportCheck[
 function statusPill(status: AtsReportCheck['status'], summary: string) {
   const cls =
     status === 'pass'
-      ? 'bg-emerald-500/10 text-emerald-700'
+      ? 'bg-emerald-500/12 text-emerald-800 ring-1 ring-inset ring-emerald-500/20'
       : status === 'warn'
-        ? 'bg-amber-500/10 text-amber-700'
-        : 'bg-red-500/10 text-red-700';
+        ? 'bg-amber-500/12 text-amber-900 ring-1 ring-inset ring-amber-500/25'
+        : 'bg-red-500/12 text-red-800 ring-1 ring-inset ring-red-500/25';
   return (
-    <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${cls}`}>
+    <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-wide ${cls}`}>
       {summary}
     </span>
   );
 }
 
-/** One check as an Enhancv-style expandable card with per-user evidence. */
+function KpiCard({
+  label,
+  value,
+  tone = 'neutral',
+}: {
+  label: string;
+  value: string;
+  tone?: 'neutral' | 'good' | 'warn' | 'bad';
+}) {
+  const valueCls =
+    tone === 'good'
+      ? 'text-emerald-700'
+      : tone === 'warn'
+        ? 'text-amber-700'
+        : tone === 'bad'
+          ? 'text-red-700'
+          : 'text-on-surface';
+  return (
+    <div className="rounded-2xl bg-surface-container-lowest px-4 py-3.5 shadow-card ring-1 ring-outline-variant/30">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-text-muted">{label}</p>
+      <p className={`mt-1.5 font-headline text-xl font-bold tabular-nums tracking-tight ${valueCls}`}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function CheckEvidenceBody({
+  check,
+  onQuoteClick,
+}: {
+  check: AtsReportCheck;
+  onQuoteClick?: (quote: string) => void;
+}) {
+  const hasIssue = check.status === 'fail' || check.status === 'warn';
+  const quotes = check.quotes ?? [];
+  const failedItems = (check.foundItems ?? []).filter((f) => !f.ok);
+
+  if (!hasIssue) {
+    return (
+      <div className="flex items-start gap-3 rounded-xl bg-emerald-500/[0.07] px-4 py-3.5 ring-1 ring-inset ring-emerald-500/15">
+        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-emerald-900">Looking good</p>
+          <p className="mt-1 text-sm leading-relaxed text-emerald-900/85">
+            {check.passText ?? check.detail}
+          </p>
+          {check.foundItems && check.foundItems.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {check.foundItems.map((item) => (
+                <span
+                  key={item.label}
+                  className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-semibold ${
+                    item.ok
+                      ? 'bg-emerald-500/12 text-emerald-800'
+                      : 'bg-amber-500/12 text-amber-800'
+                  }`}
+                >
+                  {item.ok ? <Check className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+                  {item.label}
+                  {item.ok && item.value ? (
+                    <span className="font-medium text-emerald-700/80 truncate max-w-[140px]">
+                      {item.value}
+                    </span>
+                  ) : null}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {check.education && (
+        <p className="text-sm leading-relaxed text-on-surface-variant">{check.education}</p>
+      )}
+      <p className="text-sm leading-relaxed text-on-surface">{check.detail}</p>
+
+      {check.foundItems && check.foundItems.length > 0 && (
+        <ul className="grid gap-2 sm:grid-cols-2">
+          {check.foundItems.map((item) => (
+            <li
+              key={item.label}
+              className={`flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-xs shadow-glass ring-1 ${
+                item.ok
+                  ? 'bg-emerald-500/[0.06] text-emerald-900 ring-emerald-500/20'
+                  : 'bg-red-500/[0.06] text-red-900 ring-red-500/20'
+              }`}
+            >
+              {item.ok ? (
+                <Check className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+              ) : (
+                <XCircle className="h-3.5 w-3.5 shrink-0 text-red-500" />
+              )}
+              <span className="font-semibold">{item.label}</span>
+              {item.ok && item.value && (
+                <span className="truncate text-emerald-800/80">{item.value}</span>
+              )}
+              {!item.ok && <span className="text-red-700/80">not found</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {check.repetitions && check.repetitions.length > 0 && (
+        <ul className="space-y-2.5">
+          {check.repetitions.map((rep) => (
+            <li
+              key={rep.word}
+              className="rounded-xl bg-surface-container-lowest px-4 py-3 shadow-glass ring-1 ring-red-500/15"
+            >
+              <p className="text-sm text-on-surface">
+                <span className="font-bold text-red-700">“{rep.word}”</span> appears{' '}
+                <span className="font-bold tabular-nums">{rep.count}</span> times
+              </p>
+              {rep.suggestions.length > 0 && (
+                <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] font-medium text-text-muted">Try instead</span>
+                  {rep.suggestions.map((s) => (
+                    <span
+                      key={s}
+                      className="rounded-full bg-emerald-500/12 px-2.5 py-1 text-[11px] font-semibold text-emerald-800 ring-1 ring-inset ring-emerald-500/15"
+                    >
+                      {s}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {check.suggestions && check.suggestions.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {check.suggestions.map((s) => (
+            <span
+              key={s.found}
+              className="inline-flex items-center gap-2 rounded-xl bg-surface-container-lowest px-3 py-2 text-xs shadow-glass ring-1 ring-red-500/15"
+            >
+              <span className="font-semibold text-red-700 line-through decoration-red-400/80">
+                {s.found}
+              </span>
+              <ArrowRight className="h-3 w-3 text-text-muted" />
+              <span className="font-semibold text-emerald-700">{s.suggestion}</span>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {quotes.length > 0 && (
+        <ul className="space-y-2">
+          {quotes.slice(0, 3).map((q) => (
+            <li key={q.text}>
+              <button
+                type="button"
+                onClick={() => onQuoteClick?.(q.text)}
+                className="group w-full cursor-pointer rounded-xl border-l-[3px] border-l-red-500 bg-red-500/[0.06] px-3.5 py-3 text-left transition-colors duration-200 hover:bg-red-500/[0.1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+              >
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-red-700">
+                  From your resume
+                </span>
+                <p className="mt-1 text-[13px] leading-snug text-red-950 italic">“{q.text}”</p>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {quotes.length === 0 &&
+        failedItems.length === 0 &&
+        (!check.repetitions || check.repetitions.length === 0) &&
+        (!check.suggestions || check.suggestions.length === 0) && (
+          <p className="inline-flex items-center gap-2 rounded-xl bg-red-500/[0.06] px-3.5 py-2.5 text-[13px] font-semibold text-red-800 ring-1 ring-red-500/15">
+            <XCircle className="h-3.5 w-3.5 shrink-0" />
+            Not found in your resume
+          </p>
+        )}
+    </div>
+  );
+}
+
+/** Standalone premium check card — Enhancv-style issue/success tile. */
 function CheckCard({
   check,
   onQuoteClick,
@@ -129,218 +333,106 @@ function CheckCard({
 }) {
   const hasIssue = check.status === 'fail' || check.status === 'warn';
   const [open, setOpen] = useState(hasIssue);
-  const quotes = check.quotes ?? [];
-  const failedItems = (check.foundItems ?? []).filter((f) => !f.ok);
 
   return (
-    <div
+    <article
       id={`check-${check.id}`}
-      className="border-b border-outline-variant/20 last:border-b-0 scroll-mt-24"
+      className={`scroll-mt-24 overflow-hidden rounded-2xl bg-surface-container-lowest shadow-card ring-1 ring-outline-variant/35 transition-shadow duration-200 hover:shadow-elevated border-l-[3px] ${statusAccent(check.status)}`}
     >
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-3 px-4 sm:px-5 py-3.5 text-left transition-colors hover:bg-surface-container/40"
+        className="flex w-full cursor-pointer items-center gap-3 px-4 py-4 text-left transition-colors duration-200 hover:bg-surface-container/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/25 sm:px-5"
         aria-expanded={open}
       >
-        <StatusIcon status={check.status} />
-        <span className="flex-1 text-sm font-semibold text-on-surface">{check.label}</span>
-        {statusPill(check.status, check.summary)}
+        <span
+          className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+            check.status === 'pass'
+              ? 'bg-emerald-500/12'
+              : check.status === 'warn'
+                ? 'bg-amber-500/12'
+                : 'bg-red-500/12'
+          }`}
+        >
+          <StatusIcon status={check.status} className="h-4.5 w-4.5 h-[18px] w-[18px]" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h5 className="text-[15px] font-bold tracking-tight text-on-surface">{check.label}</h5>
+            {statusPill(check.status, check.summary)}
+          </div>
+          {typeof check.score === 'number' && (
+            <div className="mt-2 flex items-center gap-2.5 max-w-[200px]">
+              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-container">
+                <div
+                  className={`h-full rounded-full transition-all duration-300 ${scoreBar(check.score)}`}
+                  style={{ width: `${Math.max(4, Math.min(100, check.score))}%` }}
+                />
+              </div>
+              <span className={`text-[11px] font-bold tabular-nums ${scoreColor(check.score)}`}>
+                {check.score}
+              </span>
+            </div>
+          )}
+        </div>
         <ChevronDown
-          className={`h-4 w-4 shrink-0 text-text-muted transition-transform ${open ? 'rotate-180' : ''}`}
+          className={`h-4 w-4 shrink-0 text-text-muted transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
         />
       </button>
 
       {open && (
-        <div className="px-4 sm:px-5 pb-4 pl-11 sm:pl-12 space-y-3">
-          {check.education && (
-            <p className="text-xs text-text-muted leading-relaxed">{check.education}</p>
-          )}
-
-          {hasIssue ? (
-            <>
-              <p className="text-sm text-on-surface-variant leading-relaxed">{check.detail}</p>
-
-              {/* Extracted items with pass/fail marks (contact, sections) */}
-              {check.foundItems && check.foundItems.length > 0 && (
-                <ul className="grid gap-1.5 sm:grid-cols-2">
-                  {check.foundItems.map((item) => (
-                    <li
-                      key={item.label}
-                      className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs ${
-                        item.ok
-                          ? 'border-emerald-500/20 bg-emerald-500/[0.05] text-emerald-800'
-                          : 'border-red-500/25 bg-red-500/[0.06] text-red-800'
-                      }`}
-                    >
-                      {item.ok ? (
-                        <Check className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
-                      ) : (
-                        <XCircle className="h-3.5 w-3.5 shrink-0 text-red-500" />
-                      )}
-                      <span className="font-medium">{item.label}</span>
-                      {item.ok && item.value && (
-                        <span className="truncate text-emerald-700/80">{item.value}</span>
-                      )}
-                      {!item.ok && <span className="text-red-600/80">not found</span>}
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              {/* Repeated words with replacement pills */}
-              {check.repetitions && check.repetitions.length > 0 && (
-                <ul className="space-y-2">
-                  {check.repetitions.map((rep) => (
-                    <li
-                      key={rep.word}
-                      className="rounded-lg border border-red-500/20 bg-red-500/[0.05] px-3 py-2"
-                    >
-                      <p className="text-xs text-red-800">
-                        <span className="font-bold">“{rep.word}”</span> appears{' '}
-                        <span className="font-bold">{rep.count} times</span>
-                      </p>
-                      {rep.suggestions.length > 0 && (
-                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                          <span className="text-[11px] text-text-muted">Try instead:</span>
-                          {rep.suggestions.map((s) => (
-                            <span
-                              key={s}
-                              className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700"
-                            >
-                              {s}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              {/* Spelling-style corrections */}
-              {check.suggestions && check.suggestions.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {check.suggestions.map((s) => (
-                    <span
-                      key={s.found}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 bg-red-500/[0.05] px-2.5 py-1 text-xs"
-                    >
-                      <span className="font-semibold text-red-700 line-through decoration-red-400">
-                        {s.found}
-                      </span>
-                      <ArrowRight className="h-3 w-3 text-text-muted" />
-                      <span className="font-semibold text-emerald-700">{s.suggestion}</span>
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {/* Red evidence quotes from the user's resume */}
-              {quotes.length > 0 && (
-                <ul className="space-y-1.5">
-                  {quotes.slice(0, 3).map((q) => (
-                    <li key={q.text}>
-                      <button
-                        type="button"
-                        onClick={() => onQuoteClick?.(q.text)}
-                        className="w-full rounded-lg border border-red-500/25 bg-red-500/[0.08] px-2.5 py-2 text-left text-[12px] leading-snug text-red-900 transition-colors hover:bg-red-500/[0.12]"
-                      >
-                        <span className="font-medium text-red-700">From your resume: </span>
-                        <span className="italic">“{q.text}”</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              {quotes.length === 0 &&
-                failedItems.length === 0 &&
-                (!check.repetitions || check.repetitions.length === 0) &&
-                (!check.suggestions || check.suggestions.length === 0) && (
-                  <p className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/25 bg-red-500/[0.08] px-2.5 py-2 text-[12px] font-medium text-red-800">
-                    <XCircle className="h-3.5 w-3.5 shrink-0" />
-                    Not found in your resume
-                  </p>
-                )}
-            </>
-          ) : (
-            <div className="flex items-start gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.06] px-3 py-2.5">
-              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-              <div className="min-w-0">
-                <p className="text-xs font-semibold text-emerald-800">Good job!</p>
-                <p className="mt-0.5 text-xs text-emerald-800/90 leading-relaxed">
-                  {check.passText ?? check.detail}
-                </p>
-                {check.foundItems && check.foundItems.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {check.foundItems.map((item) => (
-                      <span
-                        key={item.label}
-                        className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium ${
-                          item.ok
-                            ? 'bg-emerald-500/10 text-emerald-700'
-                            : 'bg-amber-500/10 text-amber-700'
-                        }`}
-                      >
-                        {item.ok ? <Check className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
-                        {item.label}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+        <div className="border-t border-outline-variant/25 px-4 py-4 sm:px-5 sm:pl-[4.25rem]">
+          <CheckEvidenceBody check={check} onQuoteClick={onQuoteClick} />
         </div>
       )}
-    </div>
+    </article>
   );
 }
 
-/** Sticky left rail — score + per-check status, click to jump. */
 function ReportRail({ report }: { report: AtsReport }) {
   const scrollTo = (id: string) => {
     document.getElementById(`check-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 
   return (
-    <nav className="rounded-2xl border border-outline-variant/40 bg-surface-card shadow-sm p-4">
-      <div className="flex items-center gap-3 pb-3 border-b border-outline-variant/25">
-        <span className={`text-2xl font-extrabold tabular-nums ${scoreColor(report.overallScore)}`}>
-          {report.overallScore}
-        </span>
-        <div className="text-[11px] leading-tight text-text-muted">
-          <p className="font-semibold text-on-surface-variant">Your score</p>
-          <p>
+    <nav className="rounded-2xl bg-surface-container-lowest p-5 shadow-card ring-1 ring-outline-variant/35">
+      <div className="flex items-center gap-3 pb-4 border-b border-outline-variant/30">
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/8 ring-1 ring-primary/15">
+          <span className={`text-xl font-extrabold tabular-nums ${scoreColor(report.overallScore)}`}>
+            {report.overallScore}
+          </span>
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-bold text-on-surface">Your score</p>
+          <p className="mt-0.5 text-xs text-text-muted">
             {report.issueCount} issue{report.issueCount === 1 ? '' : 's'} found
           </p>
         </div>
       </div>
 
-      <div className="mt-3 space-y-3">
+      <div className="mt-4 space-y-4">
         {report.categories
           .filter((c) => !c.locked)
           .map((cat) => (
             <div key={cat.id}>
-              <p className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+              <p className="flex items-center justify-between text-[11px] font-bold uppercase tracking-[0.12em] text-text-muted">
                 {cat.label}
                 {cat.score != null && (
-                  <span className={`tabular-nums normal-case ${scoreColor(cat.score)}`}>
+                  <span className={`tabular-nums normal-case tracking-normal ${scoreColor(cat.score)}`}>
                     {cat.score}%
                   </span>
                 )}
               </p>
-              <ul className="mt-1.5 space-y-0.5">
+              <ul className="mt-2 space-y-1">
                 {cat.checks.map((check) => (
                   <li key={check.id}>
                     <button
                       type="button"
                       onClick={() => scrollTo(check.id)}
-                      className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs text-on-surface-variant transition-colors hover:bg-surface-container/50"
+                      className="flex w-full cursor-pointer items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-[13px] text-on-surface-variant transition-colors duration-200 hover:bg-surface-container/70 hover:text-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
                     >
                       <StatusIcon status={check.status} className="h-3.5 w-3.5" />
-                      <span className="truncate">{check.label}</span>
+                      <span className="truncate font-medium">{check.label}</span>
                     </button>
                   </li>
                 ))}
@@ -352,7 +444,6 @@ function ReportRail({ report }: { report: AtsReport }) {
   );
 }
 
-/** One category container with its checks. */
 function CategoryBlock({
   category,
   onQuoteClick,
@@ -361,29 +452,41 @@ function CategoryBlock({
   onQuoteClick?: (quote: string) => void;
 }) {
   return (
-    <section className="rounded-2xl border border-outline-variant/40 bg-surface-card shadow-sm overflow-hidden">
-      <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-3.5 bg-surface-container/30 border-b border-outline-variant/25">
-        <div className="flex items-center gap-2.5">
-          <h4 className="text-sm font-bold text-on-surface tracking-tight">{category.label}</h4>
+    <section className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-0.5">
+        <div className="flex items-center gap-3">
+          <h4 className="font-headline text-base font-bold tracking-tight text-on-surface">
+            {category.label}
+          </h4>
           {category.score != null && (
-            <span className={`text-xs font-bold tabular-nums ${scoreColor(category.score)}`}>
+            <span
+              className={`rounded-full px-2.5 py-1 text-xs font-bold tabular-nums ring-1 ring-inset ${
+                category.score >= 80
+                  ? 'bg-emerald-500/10 text-emerald-800 ring-emerald-500/20'
+                  : category.score >= 50
+                    ? 'bg-amber-500/10 text-amber-900 ring-amber-500/20'
+                    : 'bg-red-500/10 text-red-800 ring-red-500/20'
+              }`}
+            >
               {category.score}%
             </span>
           )}
         </div>
         {category.issueCount > 0 ? (
-          <span className="rounded-full bg-red-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-red-700">
-            {category.issueCount} issue{category.issueCount === 1 ? '' : 's'} found
+          <span className="rounded-full bg-red-500/10 px-3 py-1 text-[11px] font-bold text-red-800 ring-1 ring-inset ring-red-500/20">
+            {category.issueCount} issue{category.issueCount === 1 ? '' : 's'}
           </span>
         ) : (
-          <span className="rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700">
-            All good
+          <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-[11px] font-bold text-emerald-800 ring-1 ring-inset ring-emerald-500/20">
+            All clear
           </span>
         )}
       </div>
-      {category.checks.map((check) => (
-        <CheckCard key={check.id} check={check} onQuoteClick={onQuoteClick} />
-      ))}
+      <div className="space-y-3">
+        {category.checks.map((check) => (
+          <CheckCard key={check.id} check={check} onQuoteClick={onQuoteClick} />
+        ))}
+      </div>
     </section>
   );
 }
@@ -403,7 +506,7 @@ function UpgradeButton({
 }) {
   const label = score < 80 ? 'Upgrade with AI' : 'Polish with AI';
   const sizeCls =
-    size === 'lg' ? 'h-12 px-6 text-sm rounded-xl' : 'h-10 px-4 text-sm rounded-lg';
+    size === 'lg' ? 'h-12 px-7 text-sm rounded-xl' : 'h-10 px-4 text-sm rounded-xl';
 
   return (
     <button
@@ -411,7 +514,7 @@ function UpgradeButton({
       onClick={onClick}
       disabled={opening || disabled}
       title={disabled ? 'Need extractable resume text (scanned/image PDFs may fail)' : undefined}
-      className={`inline-flex items-center justify-center gap-2 font-semibold text-on-primary bg-primary shadow-sm transition-all hover:bg-primary/90 hover:shadow-primary-glow disabled:cursor-not-allowed disabled:opacity-50 ${sizeCls}`}
+      className={`inline-flex cursor-pointer items-center justify-center gap-2 font-semibold text-on-primary teal-gradient shadow-primary-glow transition-all duration-200 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50 ${sizeCls}`}
     >
       {opening ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
       {label}
@@ -419,7 +522,6 @@ function UpgradeButton({
   );
 }
 
-/** Scrollable resume with red-highlighted issue lines. */
 function ResumeEvidencePreview({
   resumeText,
   highlightQuotes,
@@ -439,15 +541,15 @@ function ResumeEvidencePreview({
 
   if (!resumeText.trim()) {
     return (
-      <p className="text-sm text-text-muted px-4 py-8 text-center">
+      <p className="px-4 py-10 text-center text-sm text-text-muted">
         No readable resume text to preview.
       </p>
     );
   }
 
   return (
-    <div className="max-h-[420px] overflow-y-auto rounded-xl border border-outline-variant/40 bg-white">
-      <div className="px-3 py-3 font-mono text-[11px] sm:text-xs leading-relaxed text-slate-800">
+    <div className="max-h-[440px] overflow-y-auto rounded-xl bg-[#fcfcfd] shadow-inner ring-1 ring-outline-variant/40">
+      <div className="px-4 py-4 font-mono text-[11px] sm:text-xs leading-[1.7] text-slate-800">
         {lines.map((line, i) => {
           const isHit = highlightQuotes.some((q) => lineMatchesQuote(line, q));
           const isActive = activeQuote ? lineMatchesQuote(line, activeQuote) : false;
@@ -455,11 +557,11 @@ function ResumeEvidencePreview({
             <div
               key={i}
               ref={isActive ? activeRef : undefined}
-              className={`px-2 py-0.5 whitespace-pre-wrap break-words rounded-sm transition-colors ${
+              className={`px-2.5 py-0.5 whitespace-pre-wrap break-words rounded-md transition-colors duration-200 ${
                 isActive
-                  ? 'bg-red-500/20 text-red-900 ring-1 ring-red-500/40'
+                  ? 'bg-red-500/18 text-red-950 ring-1 ring-red-500/35'
                   : isHit
-                    ? 'bg-red-500/10 text-red-800 border-l-2 border-red-500 pl-1.5'
+                    ? 'bg-red-500/10 text-red-900 border-l-2 border-red-500 pl-2'
                     : 'text-slate-700'
               }`}
             >
@@ -529,6 +631,8 @@ export function AtsScanReport({
   const strengths = workingWellItems(result);
   const fmt = formatLabel(result);
   const upgradeLabel = result.overallScore < 80 ? 'Upgrade with AI' : 'Polish with AI';
+  const issueTone =
+    report.issueCount === 0 ? 'good' : report.issueCount <= 3 ? 'warn' : 'bad';
 
   useEffect(() => {
     const hero = heroCtaRef.current;
@@ -556,104 +660,114 @@ export function AtsScanReport({
     return () => io.disconnect();
   }, []);
 
-  return (
-    <div className="space-y-8 animate-fade-in pb-24 lg:pb-8">
-      {/* ── 1. Report surface ────────────────────────────────────── */}
-      <section className="relative overflow-hidden rounded-2xl border border-outline-variant/40 bg-surface-card shadow-sm">
-        <div className="absolute inset-0 bg-gradient-to-b from-primary/[0.06] via-transparent to-transparent pointer-events-none" />
+  const scrollToEvidence = (quote: string) => {
+    setActiveQuote(quote);
+    document
+      .getElementById('resume-evidence-panel')
+      ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
 
-        <div className="relative px-5 pt-5 pb-6 sm:px-7 sm:pt-6 sm:pb-7">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted">
-            <span className="text-primary">ATS Scan Report</span>
-            <span className="text-outline-variant">·</span>
-            <span className="inline-flex items-center gap-1.5 normal-case tracking-normal font-medium text-emerald-700">
+  return (
+    <div className="space-y-8 animate-fade-in pb-24 lg:pb-10">
+      {/* ── Hero report card ─────────────────────────────────────── */}
+      <section className="relative overflow-hidden rounded-[1.35rem] bg-surface-container-lowest shadow-elevated ring-1 ring-outline-variant/40">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(0,106,101,0.08),transparent_55%)]" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
+
+        <div className="relative px-5 pt-6 pb-6 sm:px-8 sm:pt-8 sm:pb-8">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-primary ring-1 ring-inset ring-primary/20">
+              ATS Scan Report
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-800 ring-1 ring-inset ring-emerald-500/20">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
               Scan complete
             </span>
-            {filename && (
-              <>
-                <span className="text-outline-variant">·</span>
-                <span className="normal-case tracking-normal font-medium text-on-surface-variant truncate max-w-[220px]">
-                  {filename}
-                </span>
-              </>
-            )}
             {fmt && (
-              <>
-                <span className="text-outline-variant">·</span>
-                <span className="normal-case tracking-normal font-medium text-on-surface-variant">
-                  {fmt}
-                </span>
-              </>
+              <span className="rounded-full bg-surface-container px-2.5 py-1 text-[11px] font-semibold text-on-surface-variant ring-1 ring-inset ring-outline-variant/40">
+                {fmt}
+              </span>
+            )}
+            {filename && (
+              <span className="truncate max-w-[220px] text-xs font-medium text-text-muted">
+                {filename}
+              </span>
             )}
           </div>
 
-          <p className="mt-2 text-xs text-text-muted">
-            {result.stats.wordCount.toLocaleString()} words
-            {' · '}
-            {result.stats.bulletCount} bullets
-            {' · '}
-            {result.stats.sectionCount} sections
-            {findings.length > 0 && (
-              <>
-                {' · '}
-                <span className="text-red-600 font-medium">
-                  {findings.length} priority issue{findings.length === 1 ? '' : 's'}
-                </span>
-              </>
-            )}
-          </p>
-
           {result.fileHints?.mightBeScanned && (
-            <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-red-600">
+            <p className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-red-500/8 px-3 py-2 text-xs font-medium text-red-700 ring-1 ring-red-500/15">
               <AlertTriangle className="h-3.5 w-3.5" />
               Little text extracted — this may be a scanned or image PDF.
             </p>
           )}
 
-          <div className="mt-7 flex flex-col items-center gap-6 sm:flex-row sm:items-center">
-            <AtsScoreRing score={result.overallScore} size={128} stroke={9} />
+          <div className="mt-8 flex flex-col items-center gap-7 sm:flex-row sm:items-center">
+            <div className="relative">
+              <div className="absolute inset-0 rounded-full bg-primary/10 blur-2xl" />
+              <AtsScoreRing score={result.overallScore} size={140} stroke={10} />
+            </div>
             <div className="flex-1 text-center sm:text-left min-w-0">
-              <h2 className="font-headline text-2xl sm:text-3xl font-bold text-on-surface tracking-tight">
+              <h2 className="font-headline text-3xl sm:text-[2.1rem] font-extrabold tracking-tight text-on-surface">
                 {verdict.title}
               </h2>
-              <p className="mt-2 text-sm text-on-surface-variant leading-relaxed max-w-md mx-auto sm:mx-0">
+              <p className="mt-2.5 text-[15px] text-on-surface-variant leading-relaxed max-w-md mx-auto sm:mx-0">
                 {verdict.body}
               </p>
+              <div ref={heroCtaRef} className="mt-6 flex flex-col items-stretch sm:items-start gap-1.5">
+                <UpgradeButton
+                  score={result.overallScore}
+                  opening={openingFix}
+                  disabled={!canUpgrade}
+                  onClick={onUpgrade}
+                />
+                <p className="text-[11px] text-text-muted sm:pl-0.5">
+                  {canUpgrade
+                    ? 'Opens Fix Studio in a new tab'
+                    : 'Needs readable text — paste text or upload a text PDF / DOCX.'}
+                </p>
+              </div>
             </div>
           </div>
 
-          <div ref={heroCtaRef} className="mt-7 flex flex-col items-stretch sm:items-start gap-1.5">
-            <UpgradeButton
-              score={result.overallScore}
-              opening={openingFix}
-              disabled={!canUpgrade}
-              onClick={onUpgrade}
+          {/* KPI bento */}
+          <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <KpiCard
+              label="Score"
+              value={String(result.overallScore)}
+              tone={
+                result.overallScore >= 80 ? 'good' : result.overallScore >= 50 ? 'warn' : 'bad'
+              }
             />
-            <p className="text-[11px] text-text-muted sm:pl-0.5">
-              {canUpgrade
-                ? 'Opens in a new tab'
-                : 'Needs readable text — paste text or upload a text PDF / DOCX.'}
-            </p>
+            <KpiCard
+              label="Issues"
+              value={String(report.issueCount)}
+              tone={issueTone}
+            />
+            <KpiCard label="Parse rate" value={`${report.parseRatePercent}%`} tone="neutral" />
+            <KpiCard
+              label="Words"
+              value={result.stats.wordCount.toLocaleString()}
+              tone="neutral"
+            />
           </div>
         </div>
       </section>
 
-      {/* ── 2. Findings + resume evidence ─────────────────────────── */}
+      {/* ── Priority findings — paired cards ─────────────────────── */}
       {findings.length > 0 && (
-        <section className="rounded-2xl border border-outline-variant/40 bg-surface-card shadow-sm overflow-hidden">
-          <div className="px-5 sm:px-7 pt-5 pb-3">
-            <h3 className="text-sm font-bold text-on-surface tracking-tight">
+        <section className="space-y-4">
+          <div className="px-0.5">
+            <h3 className="font-headline text-lg font-bold tracking-tight text-on-surface">
               Priority findings
             </h3>
-            <p className="mt-0.5 text-xs text-text-muted">
-              Red lines are taken from your resume — tap a finding to jump to the evidence.
+            <p className="mt-1 text-sm text-text-muted">
+              The top issues holding your score down — tap a card to highlight evidence on the resume.
             </p>
           </div>
 
-          <div className="grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] gap-0 lg:gap-0 border-t border-outline-variant/25">
-            {/* Findings list */}
-            <ol className="lg:border-r border-outline-variant/25">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] lg:items-start">
+            <ol className="space-y-3">
               {findings.map((check, i) => {
                 const selected = activeCheck?.id === check.id;
                 const quotes = check.quotes ?? [];
@@ -662,50 +776,56 @@ export function AtsScanReport({
                     ? 'border-l-red-500'
                     : i === 1
                       ? 'border-l-amber-500'
-                      : 'border-l-amber-400/70';
+                      : 'border-l-amber-400';
 
                 return (
-                  <li key={check.id} className="border-b border-outline-variant/20 last:border-b-0">
+                  <li key={check.id}>
                     <button
                       type="button"
                       onClick={() => {
                         setActiveCheckId(check.id);
                         setActiveQuote(quotes[0]?.text ?? null);
                       }}
-                      className={`w-full text-left border-l-[3px] ${accent} px-4 sm:px-5 py-4 transition-colors ${
-                        selected ? 'bg-red-500/[0.04]' : 'hover:bg-surface-container/40'
+                      className={`w-full cursor-pointer rounded-2xl border-l-[3px] ${accent} bg-surface-container-lowest px-4 py-4 text-left shadow-card ring-1 transition-all duration-200 sm:px-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
+                        selected
+                          ? 'ring-primary/25 shadow-elevated'
+                          : 'ring-outline-variant/35 hover:shadow-elevated hover:ring-outline-variant/50'
                       }`}
                     >
-                      <div className="flex items-start gap-3">
+                      <div className="flex items-start gap-3.5">
                         <span
-                          className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
+                          className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-[12px] font-bold ${
                             i === 0
-                              ? 'bg-red-500/10 text-red-600'
-                              : 'bg-amber-500/10 text-amber-700'
+                              ? 'bg-red-500/12 text-red-700'
+                              : 'bg-amber-500/12 text-amber-800'
                           }`}
                         >
                           {i + 1}
                         </span>
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-semibold text-on-surface">{check.label}</p>
-                          <p className="mt-1 text-xs text-on-surface-variant leading-snug">
+                          <p className="text-[15px] font-bold tracking-tight text-on-surface">
+                            {check.label}
+                          </p>
+                          <p className="mt-1.5 text-sm leading-snug text-on-surface-variant">
                             {check.detail}
                           </p>
 
                           {quotes.length > 0 ? (
-                            <ul className="mt-2.5 space-y-1.5">
+                            <ul className="mt-3 space-y-2">
                               {quotes.slice(0, 2).map((q) => (
                                 <li
                                   key={q.text}
-                                  className="rounded-lg border border-red-500/25 bg-red-500/[0.08] px-2.5 py-2 text-[12px] leading-snug text-red-900"
+                                  className="rounded-xl border-l-[3px] border-l-red-500 bg-red-500/[0.06] px-3 py-2.5 text-[12px] leading-snug text-red-950"
                                 >
-                                  <span className="font-medium text-red-700 not-italic">From your resume: </span>
+                                  <span className="font-semibold text-red-700 not-italic">
+                                    From your resume:{' '}
+                                  </span>
                                   <span className="italic">“{q.text}”</span>
                                 </li>
                               ))}
                             </ul>
                           ) : (
-                            <p className="mt-2.5 inline-flex items-center gap-1.5 rounded-lg border border-red-500/25 bg-red-500/[0.08] px-2.5 py-2 text-[12px] font-medium text-red-800">
+                            <p className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-red-500/[0.06] px-3 py-2 text-[12px] font-semibold text-red-800 ring-1 ring-red-500/15">
                               <XCircle className="h-3.5 w-3.5 shrink-0" />
                               Not found in your resume
                             </p>
@@ -718,15 +838,16 @@ export function AtsScanReport({
               })}
             </ol>
 
-            {/* Resume preview */}
-            <div id="resume-evidence-panel" className="px-4 sm:px-5 py-4 bg-surface-container/20 scroll-mt-24">
-              <div className="flex items-center justify-between gap-2 mb-2.5">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+            <div
+              id="resume-evidence-panel"
+              className="scroll-mt-24 rounded-2xl bg-surface-container-lowest p-4 shadow-card ring-1 ring-outline-variant/35 sm:p-5"
+            >
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <p className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.12em] text-text-muted">
+                  <FileText className="h-3.5 w-3.5 text-primary" />
                   Your resume
                 </p>
-                <p className="text-[10px] text-red-600 font-medium">
-                  Red = issue evidence
-                </p>
+                <p className="text-[10px] font-semibold text-red-700">Red = issue evidence</p>
               </div>
               <ResumeEvidencePreview
                 resumeText={resumeText}
@@ -734,7 +855,7 @@ export function AtsScanReport({
                 activeQuote={activeQuote}
               />
               {activeCheck && (
-                <p className="mt-2.5 text-[11px] text-on-surface-variant">
+                <p className="mt-3 text-xs text-on-surface-variant">
                   Showing evidence for{' '}
                   <span className="font-semibold text-on-surface">{activeCheck.label}</span>
                 </p>
@@ -743,17 +864,17 @@ export function AtsScanReport({
           </div>
 
           {strengths.length > 0 && (
-            <div className="border-t border-outline-variant/25 px-5 sm:px-7 py-4">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-text-muted mb-2">
+            <div className="rounded-2xl bg-surface-container-lowest px-5 py-4 shadow-card ring-1 ring-outline-variant/35">
+              <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-text-muted mb-3">
                 Working well
               </p>
               <div className="flex flex-wrap gap-2">
                 {strengths.map((g) => (
                   <span
                     key={g}
-                    className="inline-flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-500/8 px-2.5 py-1 rounded-md"
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-800 ring-1 ring-inset ring-emerald-500/15"
                   >
-                    <Check className="h-3 w-3 shrink-0" />
+                    <Check className="h-3.5 w-3.5 shrink-0" />
                     {g}
                   </span>
                 ))}
@@ -763,48 +884,45 @@ export function AtsScanReport({
         </section>
       )}
 
-      {/* ── 3. Full report — every check, per-user evidence ──────── */}
-      <section>
-        <div className="px-1 pb-3">
-          <h3 className="text-sm font-bold text-on-surface tracking-tight">Full report</h3>
-          <p className="mt-0.5 text-xs text-text-muted">
-            Every check we ran on your resume — open any row to see the exact evidence.
+      {/* ── Full report — card stack + rail ──────────────────────── */}
+      <section className="space-y-5">
+        <div className="px-0.5">
+          <h3 className="font-headline text-lg font-bold tracking-tight text-on-surface">
+            Full report
+          </h3>
+          <p className="mt-1 text-sm text-text-muted">
+            Every check on your resume — open a card for the exact evidence.
           </p>
         </div>
-        <div className="grid gap-4 lg:grid-cols-[230px_minmax(0,1fr)] lg:items-start">
+        <div className="grid gap-6 lg:grid-cols-[248px_minmax(0,1fr)] lg:items-start">
           <div className="hidden lg:block lg:sticky lg:top-20">
             <ReportRail report={report} />
           </div>
-          <div className="space-y-4 min-w-0">
+          <div className="space-y-8 min-w-0">
             {report.categories
               .filter((c) => !c.locked)
               .map((cat) => (
                 <CategoryBlock
                   key={cat.id}
                   category={cat}
-                  onQuoteClick={(quote) => {
-                    setActiveQuote(quote);
-                    document
-                      .getElementById('resume-evidence-panel')
-                      ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                  }}
+                  onQuoteClick={scrollToEvidence}
                 />
               ))}
           </div>
         </div>
       </section>
 
-      {/* ── 4. Quiet next-step ───────────────────────────────────── */}
+      {/* ── Quiet next-step ──────────────────────────────────────── */}
       <div
         ref={quietRowRef}
-        className="flex flex-wrap items-center justify-between gap-3 px-1"
+        className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-primary/[0.04] px-5 py-4 ring-1 ring-primary/10"
       >
-        <p className="text-sm text-on-surface-variant">Ready to fix these?</p>
+        <p className="text-sm font-medium text-on-surface-variant">Ready to fix these?</p>
         <button
           type="button"
           onClick={onUpgrade}
           disabled={openingFix || !canUpgrade}
-          className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:text-primary/80 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          className="inline-flex cursor-pointer items-center gap-1.5 text-sm font-bold text-primary transition-colors duration-200 hover:text-primary/80 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {openingFix ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
           {upgradeLabel}
@@ -814,39 +932,41 @@ export function AtsScanReport({
 
       {/* ── JD match ─────────────────────────────────────────────── */}
       {result.jdMatch && (
-        <section className="rounded-2xl border border-outline-variant/40 bg-surface-card p-5 sm:p-6 shadow-sm">
-          <h3 className="text-sm font-bold text-on-surface flex items-center gap-2 mb-4">
-            <Briefcase className="h-4 w-4 text-primary" />
+        <section className="rounded-2xl bg-surface-container-lowest p-5 sm:p-6 shadow-card ring-1 ring-outline-variant/35">
+          <h3 className="text-base font-bold text-on-surface flex items-center gap-2 mb-5">
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10">
+              <Briefcase className="h-4 w-4 text-primary" />
+            </span>
             Job description match
           </h3>
-          <div className="flex items-center gap-4 mb-4">
+          <div className="flex items-center gap-4 mb-5">
             <AtsScoreRing score={result.jdMatch.matchScore} size={72} stroke={7} />
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-on-surface">
+              <p className="text-sm font-bold text-on-surface">
                 {result.jdMatch.matchScore >= 70
                   ? 'Strong keyword match'
                   : result.jdMatch.matchScore >= 40
                     ? 'Moderate keyword match'
                     : 'Low keyword match'}
               </p>
-              <p className="text-xs text-text-muted mt-0.5">
+              <p className="text-xs text-text-muted mt-1">
                 {result.jdMatch.matched.length} matched · {result.jdMatch.missing.length} missing
                 {result.jdMatch.extra.length > 0 && ` · ${result.jdMatch.extra.length} extra`}
               </p>
             </div>
           </div>
-          <div className="space-y-3">
+          <div className="space-y-4">
             {result.jdMatch.matched.length > 0 && (
               <div>
-                <p className="text-xs font-medium text-emerald-600 mb-1.5 flex items-center gap-1.5">
-                  <CheckCircle2 className="h-3 w-3" />
+                <p className="text-xs font-bold text-emerald-700 mb-2 flex items-center gap-1.5">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
                   Matched ({result.jdMatch.matched.length})
                 </p>
-                <div className="flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap gap-2">
                   {result.jdMatch.matched.map((kw) => (
                     <span
                       key={kw}
-                      className="text-[11px] bg-emerald-500/8 text-emerald-700 rounded-md px-2 py-0.5 font-medium"
+                      className="rounded-lg bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-800 ring-1 ring-inset ring-emerald-500/15"
                     >
                       {kw}
                     </span>
@@ -856,15 +976,15 @@ export function AtsScanReport({
             )}
             {result.jdMatch.missing.length > 0 && (
               <div>
-                <p className="text-xs font-medium text-red-600 mb-1.5 flex items-center gap-1.5">
-                  <XCircle className="h-3 w-3" />
+                <p className="text-xs font-bold text-red-700 mb-2 flex items-center gap-1.5">
+                  <XCircle className="h-3.5 w-3.5" />
                   Missing ({result.jdMatch.missing.length})
                 </p>
-                <div className="flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap gap-2">
                   {result.jdMatch.missing.map((kw) => (
                     <span
                       key={kw}
-                      className="text-[11px] bg-red-500/8 text-red-700 rounded-md px-2 py-0.5"
+                      className="rounded-lg bg-red-500/10 px-2.5 py-1 text-[11px] font-medium text-red-800 ring-1 ring-inset ring-red-500/15"
                     >
                       {kw}
                     </span>
@@ -874,15 +994,15 @@ export function AtsScanReport({
             )}
             {result.jdMatch.extra.length > 0 && (
               <div>
-                <p className="text-xs font-medium text-amber-700 mb-1.5 flex items-center gap-1.5">
-                  <ArrowUp className="h-3 w-3" />
+                <p className="text-xs font-bold text-amber-800 mb-2 flex items-center gap-1.5">
+                  <ArrowUp className="h-3.5 w-3.5" />
                   Extra ({result.jdMatch.extra.length})
                 </p>
-                <div className="flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap gap-2">
                   {result.jdMatch.extra.map((kw) => (
                     <span
                       key={kw}
-                      className="text-[11px] bg-amber-500/8 text-amber-800 rounded-md px-2 py-0.5"
+                      className="rounded-lg bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-900 ring-1 ring-inset ring-amber-500/15"
                     >
                       {kw}
                     </span>
@@ -899,7 +1019,7 @@ export function AtsScanReport({
         <button
           type="button"
           onClick={onCopy}
-          className="text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors"
+          className="cursor-pointer text-sm font-semibold text-on-surface-variant transition-colors duration-200 hover:text-on-surface"
         >
           {copied ? 'Copied' : 'Copy results'}
         </button>
@@ -907,11 +1027,11 @@ export function AtsScanReport({
         <button
           type="button"
           onClick={onReset}
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors"
+          className="inline-flex cursor-pointer items-center gap-1.5 text-sm font-semibold text-on-surface-variant transition-colors duration-200 hover:text-on-surface"
         >
           <RefreshCcw className="h-3.5 w-3.5" />
           Check another
-          <kbd className="hidden sm:inline-flex text-[10px] text-text-muted bg-surface-container rounded px-1.5 py-0.5 font-mono ml-0.5">
+          <kbd className="hidden sm:inline-flex text-[10px] text-text-muted bg-surface-container rounded-md px-1.5 py-0.5 font-mono ml-0.5 ring-1 ring-outline-variant/40">
             Esc
           </kbd>
         </button>
@@ -920,9 +1040,11 @@ export function AtsScanReport({
       {/* ── Sticky Upgrade ────────────────────────────────────────── */}
       {showSticky && (
         <div className="fixed inset-x-0 bottom-16 lg:bottom-4 z-40 px-3 sm:px-4 pointer-events-none animate-slide-up">
-          <div className="mx-auto max-w-3xl pointer-events-auto flex items-center justify-between gap-3 rounded-2xl border border-outline-variant/40 bg-surface-card/90 backdrop-blur-md px-4 py-3 shadow-lg">
+          <div className="mx-auto max-w-3xl pointer-events-auto flex items-center justify-between gap-3 rounded-2xl border border-outline-variant/40 bg-surface-container-lowest/95 backdrop-blur-md px-4 py-3 shadow-elevated">
             <div className="min-w-0 flex items-center gap-3">
-              <span className={`text-lg font-extrabold tabular-nums ${scoreColor(result.overallScore)}`}>
+              <span
+                className={`text-lg font-extrabold tabular-nums ${scoreColor(result.overallScore)}`}
+              >
                 {result.overallScore}
               </span>
               <span className="text-xs text-text-muted truncate hidden sm:inline">
