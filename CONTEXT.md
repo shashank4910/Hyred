@@ -60,7 +60,7 @@ JobRadar / Hyred is a personalized AI-powered job-search dashboard that:
 
 **Pages using Luminous tokens everywhere (PR #104):** Job detail, onboarding, Stats, Admin, Import, apply-profile, error/not-found — all inherit refreshed typography, cards, and form controls from `globals.css`. Dashboard-specific patterns (bento insights, 7-col status grid) live only on `/`.
 
-**ATS Checker (PR #129 app UI; PR #187 v9 engine + public widget):** Logged-in `/ats-checker` — score ring, radar chart, JD comparison, sample, history. Public `/free-tools/ats-score-checker` — upload **or paste**, Try sample, JD match %, parse warnings (PR #187). Zero LLM.
+**ATS Checker (PR #129 / #187 / #266–#269):** Logged-in `/ats-checker` — premium scan report (`AtsScanReport`), evidence quotes + resume preview, Fix Studio entry; **hybrid evidence-grounded engine** (facts + LLM semantic + quote gate, PR **#269**). Public `/free-tools/ats-score-checker` — structural (zero LLM) + gated fact report; upload/paste, Try sample, JD match %.
 
 ### Design tokens
 
@@ -107,22 +107,31 @@ app/_components/
   LegalDocumentLayout.tsx / LegalFooterLinks.tsx ← public /privacy, /terms only
 
 app/(app)/ats-checker/
-  page.tsx               ← ATS Resume Checker (score ring, radar, JD, Fix Studio entry)
+  page.tsx               ← ATS Resume Checker (AtsScanReport, history, Fix Studio entry)
   AtsFixStudio.tsx       ← AI Fix Studio + Resume Studio credit meter + paywall panel
+app/_components/ats-report/
+  AtsScanReport.tsx      ← Logged-in scan report (premium cards, evidence, full report rail)
 app/(app)/settings/
   page.tsx               ← Plan + Resume Studio usage + upgrade placeholder
 app/_components/
   PremiumUpgradePanel.tsx ← Shared Premium hard-wall / upgrade CTA
 
 lib/
-  ats-checker.ts         ← Pure deterministic ATS scoring engine (8 criteria, regex/heuristic, zero LLM)
+  ats-checker.ts         ← Legacy 8-criterion deterministic scores (Fix Studio / structural base)
+  ats-evidence-engine.ts ← Orchestrator: hybrid (logged-in) vs structural (public) → result + gated report
+  ats-resume-parse.ts    ← Normalize + structured extract (contact, sections, bullets, dates)
+  ats-fact-checks.ts     ← Layer A deterministic fact checks
+  ats-semantic-review.ts ← Layer B LLM semantic review + quote grounding
+  ats-consistency.ts     ← Layer C gate (no ungrounded fails; no pass with missing foundItems)
+  ats-report.ts          ← AtsReport model + buildAtsReport (legacy / premium categories)
   ats-checker-samples.ts ← Shared sample resume + JD (India perf engineer) for app + public widget
 
 app/free-tools/ats-score-checker/
-  AtsCheckerWidget.tsx   ← Public widget: upload/paste, Try sample, JD match, parse warnings (PR #187)
+  AtsCheckerWidget.tsx   ← Public widget: upload/paste, Try sample, structural report (zero LLM)
+  AtsPublicReport.tsx    ← Public report UI (prefers API `report` when present)
 
 app/api/ats-checker/
-  route.ts               ← POST /api/ats-checker (accepts file upload or pasted text + optional job_description)
+  route.ts               ← POST hybrid if signed in, else structural; returns report + resume_text
 
 lib/
   scan-toast-id.ts       ← stable Sonner id for scan-started toast
@@ -152,6 +161,10 @@ lib/
 
 | Date | PR | Summary |
 |---|---|---|
+| Aug 6, 2026 | **#269** | **Evidence-grounded ATS engine** — hybrid facts + LLM semantic + quote gate (logged-in); structural gated facts for public widget; server `report` on API |
+| Aug 5, 2026 | **#268** | **ATS scan report premium cards** — KPI bento, elevated check cards, document resume preview (`AtsScanReport`) |
+| Aug 5, 2026 | **#267** | **ATS full report** — dynamic repetition/spelling/contact/sections checks, sticky rail, category issue cards |
+| Aug 5, 2026 | **#266** | **ATS resume evidence** — red quotes + highlighted resume preview; removed redundant detailed-findings accordion |
 | June 18, 2026 | **#187** | **ATS Checker v9** — word-boundary keywords, JD aliases, India contact/location, length calibration, public widget paste/sample parity |
 | June 8, 2026 | **#129 (cont.)** | **ATS scoring optimized** — 3 fixes from 1200 synthetic resume analysis: Length bands for entry-level, Skills contextualization threshold lowered, Soft Skills header added |
 | June 8, 2026 | **#129** | **ATS Checker overhaul** — JD comparison, radar chart, animated UI, sample data, sample resume, keyboard shortcuts, score history, copy results |
@@ -1219,8 +1232,14 @@ lib/resume.ts              ← Server-only resume parsers (.pdf / .doc / .docx /
 lib/resume-upload.ts       ← Client-safe upload helpers (`RESUME_FILE_ACCEPT`, `isResumeFilename`) — use from `'use client'` forms
 lib/matcher.ts             ← Cosine similarity + embedding text builder
 lib/top-companies.ts       ← MNC company name list for /top-mnc filter
-lib/ats-checker.ts         ← Free ATS score engine (zero LLM; PR #129 + v9 #187)
+lib/ats-checker.ts         ← Legacy 8-criterion ATS scores (PR #129 + v9 #187); still used by Fix Studio / structural base
+lib/ats-evidence-engine.ts ← Evidence-grounded orchestrator (PR #269) — hybrid vs structural
+lib/ats-resume-parse.ts / ats-fact-checks.ts / ats-semantic-review.ts / ats-consistency.ts ← parse → facts → LLM → gate
+lib/ats-report.ts          ← AtsReport categories/checks + buildAtsReport
 lib/ats-checker-samples.ts   ← Shared Try-sample resume + JD
+app/_components/ats-report/AtsScanReport.tsx ← Logged-in scan report UI (PRs #266–#268)
+tests/fixtures/ats-resumes/  ← Golden corpus (Akansha, clean, empty, template-junk)
+tests/unit/ats-evidence-engine.test.ts ← Grounding + gate + hybrid fixture tests
 lib/premium.ts               ← Premium entitlements + quota helpers (interview_prep, match_intelligence, resume_studio)
 lib/match-intelligence.ts    ← Apply/Stretch/Skip verdict generation (LLM JSON)
 lib/interview-prep.ts        ← Interview prep pack generation (questions + STAR hints)
@@ -1229,7 +1248,7 @@ app/(app)/jobs/[id]/        ← Job detail: JobActions.tsx, ReferralRadar.tsx, A
 app/(app)/onboarding/       ← First-run resume upload + profile setup
 app/(app)/top-mnc/          ← Top MNC filtered job list (lib/top-companies.ts)
 app/(app)/import/           ← Manual job URL import UI
-app/(app)/ats-checker/      ← Logged-in ATS checker (radar chart, history)
+app/(app)/ats-checker/      ← Logged-in ATS checker (AtsScanReport + Fix Studio + history)
 app/(app)/apply-profile/    ← Application profile form (memory store for auto-apply)
 app/(app)/_components/      ← AppShell (sidebar), MatchCard, MatchScoreRing, StatusFilter, DashboardInsights, HeaderSearch, RunIngestButton, MatchList (paginated, infinite-scroll, sessionStorage snapshot for back-nav)
 app/(app)/admin/            ← Admin Center: AdminDashboard (JobsPipe/JobDataLake/JSearch keys + bulk paste), JobApiUsagePanel.tsx, LlmKeysPanel.tsx, JobsControlPanel.tsx, CompanyCatalogRequestsPanel
@@ -1374,6 +1393,7 @@ supabase/migrations/0009_llm_keys.sql ← (Session 16) llm_keys + llm_usage_log 
 | **GlobalLogic / WP custom dropdown `.trim()` crash (Jun 2026, PR #186)** | Tier B clicked visible div triggers; site `common.js` threw `Cannot read properties of undefined (reading 'trim')` — errors fire in site handlers **after** our click, so `safeFillOp` does not catch them. Gender / notice period missed. | Prefer hidden native `<select>` in field group via `findNativeSelectForControl` + `setSelectBySemantic`; discover `select` elements first in `tier-b-form.js`. Do **not** assume div-click listbox path for Tier B. |
 | **Tier B skeleton is not cross-user answer memory (Jun 2026)** | Expectation that manual submit teaches the next user's values. | Skeleton stores **structure + semantic keys + option labels** only. Values always from current user's apply profile via `resolveProfileSemanticValue`. Never store filled values in `domain_form_templates`. |
 | **ATS Checker JD keywords use word boundaries (PR #187)** | Substring `includes()` on tech keywords inflated JD match (`go` in "ago", `r` in "performance"). | Always use `keywordInText()` from `lib/ats-checker.ts` for keyword presence. JD compare uses `KEYWORD_EQUIVALENTS` for aliases — do not reintroduce naive substring matching. |
+| **Dictionary patches for ATS spelling/skills/dates false-pass** (Aug 2026, PR **#269**) | Growing `MISSPELLINGS` / skill keyword lists / date regex “fixed” one resume and broke another (e.g. MM/YYYY marked years-only; LinkedIn missing but Contact “No issues”; QA tools under-counted as “2 skills”). | **Do not grow dictionaries as the accuracy strategy.** Use evidence-grounded pipeline: `ats-resume-parse` → `ats-fact-checks` → `ats-semantic-review` (LLM + exact quotes) → `ats-consistency` gate. Drop claims whose evidence is not a resume substring; never `pass` if any `foundItem.ok === false`. Logged-in = hybrid; public = structural. |
 | **JobsPipe GET `/v1/jobs` returns 404** (Jun 2026, PR #222) | Hyred called GET with `?query=&country=IN` first — burned API credits, zero jobs. POST `/v1/jobs/search` works. | **POST only** in `lib/sources/jobspipe.ts`. Never re-add GET as primary. |
 | **JobsPipe POST omitted `job_country_code_or`** (Jun 2026, PR #222) | Indian users got global results; credits used but wrong geography. Manual PowerShell test with `job_country_code_or: ["IN"]` worked; app batch POST did not send country. | Always build POST body via `buildSearchBody()` — include `job_country_code_or` when `buildJobCountryCodes()` returns codes. Log label: `POST titles @IN`. |
 | **Hardcoded `country=IN` on JobsPipe** (Jun 2026, PR #217) | US/UK users got India-filtered jobs or empty sets. | Use `buildJobCountryCodes(preferences, insights)` everywhere for JobsPipe, JobDataLake, JSearch. Adzuna stays `adzuna_in` only. |
@@ -1434,12 +1454,35 @@ supabase/migrations/0009_llm_keys.sql ← (Session 16) llm_keys + llm_usage_log 
 
 ## ATS Resume Checker
 
-> **PR #129** — Complete overhaul of the free, instant, no-LLM ATS compatibility checker.  
-> **PR #187 (Jun 2026)** — v9 accuracy pass: word-boundary keywords, India contact, length calibration, public widget parity.
+> **PR #129** — Free instant ATS checker (8 criteria).  
+> **PR #187 (Jun 2026)** — v9 accuracy: word-boundary keywords, India contact, length calibration, public widget parity.  
+> **PRs #266–#268 (Aug 2026)** — Scan report UX: resume evidence, full dynamic report, premium cards.  
+> **PR #269 (Aug 6, 2026)** — Evidence-grounded hybrid engine (facts + LLM + quote gate). See Session **30**.
 
 ### What it does
 
-Pastes or uploads a resume → analyses 8 ATS criteria → gives 0–100 score + improvement suggestions. Zero LLM calls, zero API costs, fully private (in-memory processing). Optional JD paste → keyword gap analysis (`jdMatch`).
+Pastes or uploads a resume → score + Enhancv-style report with per-check evidence. Optional JD paste → keyword gap analysis (`jdMatch`).
+
+| Path | Engine | LLM? |
+|---|---|---|
+| Logged-in `/ats-checker` | **Hybrid** — Layer A facts + Layer B semantic LLM + Layer C gate | Yes (one structured `chat` call, op `ats_semantic_review`) |
+| Public `/free-tools/ats-score-checker` | **Structural** — Layer A facts + Layer C gate (legacy 8-criterion base scores) | No |
+
+Every fail/warn on the hybrid path must carry an **exact resume substring** (or allowed absence). Ungrounded LLM claims are dropped. Contact cannot show “No issues” if LinkedIn/email/phone is missing.
+
+### Evidence-grounded pipeline (PR #269)
+
+```
+resume text → normalize/parse → fact checks → (LLM semantic) → consistency gate → AtsReport
+```
+
+| Module | Role |
+|---|---|
+| `lib/ats-resume-parse.ts` | Ligatures, contact, sections, bullets, date tokens (MM/YYYY OK) |
+| `lib/ats-fact-checks.ts` | Deterministic fact checks only |
+| `lib/ats-semantic-review.ts` | Spelling, skills inventory, impact, repetition, template junk, truncated lines, verbs, JD |
+| `lib/ats-consistency.ts` | Ground quotes; demote contradictory passes |
+| `lib/ats-evidence-engine.ts` | `runEvidenceGroundedAts` / `runStructuralAts` |
 
 ### Resume Fix Studio (logged-in)
 
@@ -1472,14 +1515,21 @@ Credits: generate/regenerate cost 1 Resume Studio credit each; apply/undo/copy d
 
 | File | Purpose |
 |---|---|
-| `lib/ats-checker.ts` | Scoring engine — `checkAtsCompatibility()`, `keywordInText()`, `extractKeywords()`, `compareWithJobDescription()` |
+| `lib/ats-evidence-engine.ts` | Hybrid/structural orchestrator — returns `result` + gated `report` |
+| `lib/ats-resume-parse.ts` / `ats-fact-checks.ts` / `ats-semantic-review.ts` / `ats-consistency.ts` | Parse → facts → LLM → gate |
+| `lib/ats-checker.ts` | Legacy 8-criterion scores — `checkAtsCompatibility()`, JD keywords; Fix Studio re-score base |
+| `lib/ats-report.ts` | `AtsReport` model + `buildAtsReport` (premium categories still use this) |
 | `lib/ats-checker-samples.ts` | Shared sample resume + JD (India perf engineer) for Try sample buttons |
-| `app/api/ats-checker/route.ts` | API endpoint — accepts file upload or JSON with optional `job_description` |
-| `app/(app)/ats-checker/page.tsx` | Logged-in UI — score ring, radar chart, JD match, history, Fix Studio entry |
+| `app/api/ats-checker/route.ts` | Hybrid if authenticated, else structural; body/query `engine=` override (hybrid needs auth) |
+| `app/(app)/ats-checker/page.tsx` | Logged-in UI — `AtsScanReport`, history, Fix Studio entry |
+| `app/_components/ats-report/AtsScanReport.tsx` | Scan report UI (KPIs, priority findings, full report cards) |
 | `app/(app)/ats-checker/AtsFixStudio.tsx` | AI Fix Studio (suggest / apply / undo / paywall) |
-| `app/free-tools/ats-score-checker/AtsCheckerWidget.tsx` | Public widget — upload/paste, Try sample, JD match, Sign-in CTA |
+| `app/free-tools/ats-score-checker/AtsCheckerWidget.tsx` | Public widget — upload/paste, Try sample, structural report |
+| `app/free-tools/ats-score-checker/AtsPublicReport.tsx` | Public report (uses API `report` when present) |
 | `app/(app)/settings/page.tsx` | Plan + Resume Studio credit meter + upgrade placeholder |
-| `tests/unit/ats-checker.test.ts` | Engine tests (55 total with API route tests) |
+| `tests/fixtures/ats-resumes/` | Golden corpus (Akansha, clean-strong, nearly-empty, template-junk) |
+| `tests/unit/ats-evidence-engine.test.ts` | Grounding, gate, hybrid fixture assertions |
+| `tests/unit/ats-checker.test.ts` | Legacy engine tests |
 | `tests/unit/ats-fix.test.ts` | Apply/undo + weakness list tests |
 
 ### Features (PR #129 + #187)
@@ -1568,6 +1618,8 @@ When a feature seems broken:
 - New "pitfalls" or rules learned
 - Changes to the file map
 - **Keep the `AGENTS.md` Index in sync** when you add/rename a `##` section here, and append new dated session logs to `docs/context/session-log.md` (not here).
+
+**Last updated:** Aug 6, 2026 — **Session 30:** ATS scan report UX (PRs #266–#268) + evidence-grounded hybrid engine (PR **#269**). File Map / ATS section / Known Pitfalls / UI change log / `AGENTS.md` Index updated. See `docs/context/session-log.md` Session 30.
 
 **Last updated:** June 20, 2026 — **Doc bridge audit:** restored `## Key Architecture Decisions` heading; added `## Core App Features` (job detail, onboarding, Top MNC, import, outreach, apply profile); expanded File Map + `AGENTS.md` Index rows; fixed Tier 3 pointer to `session-log.md`; Sessions 17–18 + 26 in archive. See Session 26.
 

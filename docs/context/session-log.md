@@ -2,6 +2,42 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 30 — ATS scan report UX + evidence-grounded hybrid engine (Aug 3–6, 2026)
+
+**Goal:** Make the post-scan ATS report feel like a premium product (Enhancv-level detail, real resume evidence, proper CTAs), then stop fixing accuracy with brittle dictionaries — rebuild scoring as facts + LLM + quote grounding so false passes/fails cannot slip through.
+
+### Shipped — Report UX & dynamic evidence (Aug 3–5)
+
+| PR | What |
+|---|---|
+| **#266** | Red resume evidence on scan report — priority findings with quotes + side-by-side highlighted resume preview; removed redundant “Detailed findings” bars/accordion. |
+| **#267** | Enhancv-level full report — dynamic per-resume checks (repetition, spelling dictionary era, contact extraction, essential sections), sticky score rail, category containers, expandable check cards with education/passText. |
+| **#268** | Premium card UI — Executive/Bento layout on Luminous tokens: KPI tiles, elevated check cards with score bars, document-style resume panel, teal-gradient CTA (content unchanged). |
+
+### Shipped — Evidence-grounded hybrid engine (Aug 6, PR **#269**)
+
+Replaces “add one more word to the spelling list” as the accuracy strategy.
+
+| Layer | Module | Role |
+|---|---|---|
+| Parse | `lib/ats-resume-parse.ts` | Ligature normalize, contact/sections/bullets/date tokens |
+| A — Facts | `lib/ats-fact-checks.ts` | Deterministic only (contact, sections, bullets, MM/YYYY OK, length, file/parse) |
+| B — Semantic | `lib/ats-semantic-review.ts` | LLM JSON review (spelling, skills, impact, repetition, template junk, truncated lines, verbs, JD) |
+| C — Gate | `lib/ats-consistency.ts` | Drop ungrounded quotes; forbid `pass` when any `foundItem` fails |
+| Orchestrator | `lib/ats-evidence-engine.ts` | `runEvidenceGroundedAts` / `runStructuralAts` → `AtsCheckResult` + gated `AtsReport` |
+
+**API / UI wiring:** `POST /api/ats-checker` — logged-in → `engine: hybrid` (facts + LLM + gate); anonymous public widget → `engine: structural` (facts + gate, zero LLM). Response includes `report` + normalized `resume_text`. `AtsScanReport` / `AtsPublicReport` prefer server `report` when present.
+
+**Fixtures / tests:** `tests/fixtures/ats-resumes/` (Akansha original, clean-strong, nearly-empty, template-junk) + `tests/unit/ats-evidence-engine.test.ts` (grounding, LinkedIn warn-not-pass, MM/YYYY pass, hybrid with injected semantic).
+
+### Key decisions / gotchas
+
+1. **No more dictionary patches as product strategy** for spelling/skills/vague language — those live in Layer B with mandatory exact resume substrings; ungrounded claims are dropped.
+2. **Public free tool stays structural** (cost). Same gate still kills contradictory UI (e.g. LinkedIn missing + “No issues”).
+3. **MM/YYYY and Month YYYY are both valid** in Layer A — do not reintroduce “years only” false warns for `11/2022 - Present`.
+4. **Legacy** `checkAtsCompatibility` / `buildAtsReport` still power Fix Studio scores and premium locked categories; free Content/Sections/ATS Essentials on hybrid come from gated checks.
+5. **Session 29 note #4** (deterministic-only engine gap) is closed for logged-in scans by this hybrid path.
+
 ## Session 29 — Dashboard city filter + ATS Fix Studio (suggest/apply, paywall, real-resume preview) (Aug 1, 2026)
 
 **Goal:** Let users filter matches by city; build a NextRaise/Resume-Worded-style "fix my resume after the ATS score" loop on `/ats-checker`, make it production-grade, wire it for a future paywall, and show the user's real CV (not a text dump) in preview.
@@ -38,7 +74,7 @@
 1. **Shared credit pool:** Fix Studio generate/regenerate **and** job-detail tailored resume both consume 1 `resume_studio` event. Apply/undo/copy are free. One meter in `/settings`.
 2. **Free window is lifetime, not monthly** until Stripe exists — product copy says "3 free"; code counts all events for free `resume_studio`.
 3. **`.docx` originals** can't render client-side — would need server-side PDF conversion (not built).
-4. **Deeper gap still open:** scoring engine is the deterministic 8-criterion `checkAtsCompatibility` (no LLM). Competitors (Resume Worded) run 30+ line-level content checks (weak verbs, missing metrics, filler). A richer line-anchored quality engine is the next big lever, not the UI.
+4. **Deeper gap (closed in Session 30):** scoring was deterministic-only `checkAtsCompatibility`. Logged-in scans now use the evidence-grounded hybrid engine (PR **#269**) — facts + LLM semantic + quote gate. Public free tool remains structural.
 5. **Branch/PR:** repo enforces `cursor/<name>-7446` branch prefix for agent PRs; merge is squash + delete, mark draft PRs ready before merge.
 
 ## Session 28 — Job APIs, location filters, Dream Company, LLM scale (June 21, 2026)
