@@ -583,6 +583,8 @@ export function AtsScanReport({
   onUpgrade,
   onCopy,
   onReset,
+  /** Server-built evidence-grounded report (hybrid). Falls back to client buildAtsReport. */
+  report: reportProp,
 }: {
   result: AtsCheckResult;
   filename: string | null;
@@ -592,6 +594,7 @@ export function AtsScanReport({
   onUpgrade: () => void;
   onCopy: () => void;
   onReset: () => void;
+  report?: AtsReport | null;
 }) {
   const [showSticky, setShowSticky] = useState(false);
   const [activeCheckId, setActiveCheckId] = useState<string | null>(null);
@@ -600,10 +603,10 @@ export function AtsScanReport({
   const quietRowRef = useRef<HTMLDivElement>(null);
 
   const resumeText = studioResume;
-  const report = useMemo(
-    () => buildAtsReport(result, resumeText, { isPremium: true }),
-    [result, resumeText],
-  );
+  const report = useMemo(() => {
+    if (reportProp) return reportProp;
+    return buildAtsReport(result, resumeText, { isPremium: true });
+  }, [reportProp, result, resumeText]);
 
   const allChecks = useMemo(
     () => report.categories.flatMap((c) => c.checks),

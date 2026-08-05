@@ -12,6 +12,7 @@ import {
   ClipboardPaste,
 } from 'lucide-react';
 import type { AtsCheckResult } from '@/lib/ats-checker';
+import type { AtsReport } from '@/lib/ats-report';
 import { ATS_SAMPLE_JD, ATS_SAMPLE_RESUME } from '@/lib/ats-checker-samples';
 import { isResumeFilename, RESUME_FILE_ACCEPT } from '@/lib/resume-upload';
 import { AtsPublicReport } from './AtsPublicReport';
@@ -25,6 +26,7 @@ export function AtsCheckerWidget() {
   const [jdText, setJdText] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AtsCheckResult | null>(null);
+  const [serverReport, setServerReport] = useState<AtsReport | null>(null);
   const [resumeText, setResumeText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -69,6 +71,7 @@ export function AtsCheckerWidget() {
     if (!canSubmit) return;
     setLoading(true);
     setResult(null);
+    setServerReport(null);
     setError(null);
 
     try {
@@ -97,6 +100,7 @@ export function AtsCheckerWidget() {
       const data = await res.json();
       const text = typeof data.resume_text === 'string' ? data.resume_text : pasteText.trim();
       setResumeText(text);
+      setServerReport(data.report ?? null);
       setResult(data);
     } catch (e) {
       setError((e as Error).message || 'Something went wrong');
@@ -107,6 +111,7 @@ export function AtsCheckerWidget() {
 
   const reset = () => {
     setResult(null);
+    setServerReport(null);
     setResumeText('');
     setResumeFile(null);
     setPasteText('');
@@ -117,7 +122,12 @@ export function AtsCheckerWidget() {
   if (result && resumeText) {
     return (
       <div className="rounded-2xl border bg-white p-4 shadow-xl sm:p-6">
-        <AtsPublicReport result={result} resumeText={resumeText} onReset={reset} />
+        <AtsPublicReport
+          result={result}
+          resumeText={resumeText}
+          report={serverReport}
+          onReset={reset}
+        />
       </div>
     );
   }

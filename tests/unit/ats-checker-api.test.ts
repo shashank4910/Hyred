@@ -40,6 +40,10 @@ vi.mock('@/lib/resume', () => ({
   }),
 }));
 
+vi.mock('@/lib/current-user', () => ({
+  getCurrentProfile: vi.fn(async () => null),
+}));
+
 // Import after mocks
 const { POST } = await import('@/app/api/ats-checker/route');
 
@@ -118,6 +122,9 @@ describe('POST /api/ats-checker (JSON)', () => {
     expect(Array.isArray(data.detectedIssues)).toBe(true);
     expect(data.resume_chars).toBeGreaterThan(0);
     expect(data.filename).toBeNull();
+    expect(data.engine).toBe('structural');
+    expect(data.report).toBeDefined();
+    expect(Array.isArray(data.report.categories)).toBe(true);
   });
 
   it('accepts optional job_description and returns jdMatch', async () => {
