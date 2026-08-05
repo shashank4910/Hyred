@@ -218,4 +218,80 @@ describe('evidence-grounded engine', () => {
     expect(report.parseRatePercent).toBeGreaterThan(50);
     expect(report.categories.find((c) => c.id === 'content')).toBeTruthy();
   });
+
+  it('dedupes overlapping Involved-in content cards and aligns Skill Evidence', () => {
+    const text = fixture('akansha-original.txt');
+    const semantic: AtsReportCheck[] = [
+      {
+        id: 'semantic-skills',
+        label: 'Skills Optimization',
+        status: 'pass',
+        summary: 'No issues',
+        detail: 'Skills include JIRA, Postman, SQL.',
+        foundItems: [
+          { label: 'JIRA', ok: true },
+          { label: 'Postman', ok: true },
+          { label: 'SQL', ok: true },
+        ],
+      },
+      {
+        id: 'semantic-impact',
+        label: 'Quantifying Impact',
+        status: 'fail',
+        summary: '2 issues',
+        detail: 'Lines lack metrics.',
+        quotes: [{ text: 'Involved in writing test cases and executing test cases.' }],
+      },
+      {
+        id: 'semantic-repetition',
+        label: 'Repetition',
+        status: 'fail',
+        summary: '1 issue',
+        detail: 'Overuses involved.',
+        repetitions: [
+          { word: 'involved', count: 11, suggestions: ['executed', 'validated'] },
+        ],
+      },
+      {
+        id: 'semantic-vague',
+        label: 'Vague Phrases',
+        status: 'fail',
+        summary: '1 issue',
+        detail: 'Vague duty filler.',
+        quotes: [{ text: 'Involved in functional testing of product.' }],
+      },
+      {
+        id: 'semantic-verbs',
+        label: 'Action Verbs',
+        status: 'fail',
+        summary: '1 issue',
+        detail: 'Weak openings with involved.',
+        quotes: [{ text: 'Involved in Backened Testing.' }],
+      },
+    ];
+
+    const legacy = checkAtsCompatibility(text, 'akashnka original.pdf');
+    const parsed = parseResumeStructure(text);
+    const facts = buildFactChecks(parsed, legacy);
+    const gated = gateAtsChecks([...facts, ...semantic], parsed.text);
+    const report = assembleEvidenceReport(gated, legacy, parsed.text, {
+      isPremium: true,
+    });
+    const checks = report.categories.flatMap((c) => c.checks);
+
+    expect(byId(checks, 'semantic-repetition')?.status).toBe('fail');
+    expect(byId(checks, 'semantic-impact')?.status).toBe('fail');
+    expect(byId(checks, 'semantic-vague')).toBeUndefined();
+    expect(byId(checks, 'semantic-verbs')).toBeUndefined();
+
+    const skillEvidence = byId(checks, 'sen-skill-evidence');
+    expect(skillEvidence?.status).toBe('pass');
+    expect(skillEvidence?.detail.toLowerCase()).toMatch(/jira|postman|sql/);
+
+    const credibility = byId(checks, 'hr-credibility');
+    expect(credibility?.status).not.toBe('pass');
+
+    const hardSkills = byId(checks, 'tailor-hard');
+    expect(hardSkills?.emptyHint).toMatch(/job description/i);
+  });
 });
