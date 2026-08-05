@@ -84,6 +84,162 @@ function category(
   };
 }
 
+function mentionsInvolved(check: AtsReportCheck): boolean {
+  const blob = [
+    check.detail,
+    ...(check.quotes ?? []).map((q) => q.text),
+    ...(check.repetitions ?? []).map((r) => r.word),
+  ]
+    .join(' ')
+    .toLowerCase();
+  return /\binvolved\b/.test(blob);
+}
+
+/**
+ * When several Content cards all hammer the same “Involved in” filler,
+ * keep the strongest angles (repetition + impact) and drop the rest.
+ */
+export function dedupeContentChecks(checks: AtsReportCheck[]): AtsReportCheck[] {
+  const byId = new Map(checks.map((c) => [c.id, c]));
+  const repetition = byId.get('semantic-repetition');
+  const impact = byId.get('semantic-impact');
+  const repetitionHits =
+    repetition != null &&
+    (repetition.status === 'fail' || repetition.status === 'warn') &&
+    mentionsInvolved(repetition);
+  const impactHits =
+    impact != null &&
+    (impact.status === 'fail' || impact.status === 'warn') &&
+    mentionsInvolved(impact);
+
+  if (repetitionHits || impactHits) {
+    for (const id of ['semantic-vague', 'semantic-verbs'] as const) {
+      const c = byId.get(id);
+      if (c && (c.status === 'fail' || c.status === 'warn') && mentionsInvolved(c)) {
+        byId.delete(id);
+      }
+    }
+  }
+
+  // Prefer semantic-repetition over a thin bullets warn that only echoes “involved”
+  if (repetitionHits) {
+    const bullets = byId.get('fact-bullets');
+    if (
+      bullets &&
+      (bullets.status === 'fail' || bullets.status === 'warn') &&
+      mentionsInvolved(bullets) &&
+      (bullets.quotes?.length ?? 0) === 0
+    ) {
+      byId.delete('fact-bullets');
+    }
+  }
+
+  return checks.filter((c) => byId.has(c.id));
+}
+
+/**
+ * Align premium heuristic cards with gated semantic facts so the report
+ * does not contradict itself (e.g. Skills pass + Seniority “only 2 skills”).
+ */
+export function reconcilePremiumWithGated(
+  premium: AtsReportCategory[],
+  gated: AtsReportCheck[],
+): void {
+  const skills = gated.find((c) => c.id === 'semantic-skills');
+  const impact = gated.find((c) => c.id === 'semantic-impact');
+  const repetition = gated.find((c) => c.id === 'semantic-repetition');
+  const vague = gated.find((c) => c.id === 'semantic-vague');
+  const fillerFail =
+    (repetition != null &&
+      (repetition.status === 'fail' || repetition.status === 'warn') &&
+      mentionsInvolved(repetition)) ||
+    (vague != null &&
+      (vague.status === 'fail' || vague.status === 'warn') &&
+      mentionsInvolved(vague));
+
+  for (const cat of premium) {
+    cat.checks = cat.checks.map((check) => {
+      if (check.id === 'sen-skill-evidence' && skills?.status === 'pass') {
+        const skillLabels = (skills.foundItems ?? [])
+          .filter((f) => f.ok)
+          .map((f) => f.label)
+          .slice(0, 6);
+        return {
+          ...check,
+          status: 'pass' as const,
+          summary: 'No issues',
+          score: typeof skills.score === 'number' ? skills.score : 88,
+          detail:
+            skillLabels.length > 0
+              ? `Concrete skills show up in your resume: ${skillLabels.join(', ')}.`
+              : skills.detail ||
+                'Concrete technical skills show up in your resume (same as Content → Skills).',
+          foundItems: skills.foundItems,
+          emptyHint: null,
+        };
+      }
+
+      if (check.id === 'hr-credibility' && fillerFail && check.status === 'pass') {
+        const source =
+          repetition &&
+          (repetition.status === 'fail' || repetition.status === 'warn') &&
+          mentionsInvolved(repetition)
+            ? repetition
+            : vague;
+        if (!source) return check;
+        return {
+          ...check,
+          status: source.status === 'fail' ? ('fail' as const) : ('warn' as const),
+          summary: source.status === 'fail' ? '1 issue' : '1 tip',
+          detail:
+            source.detail ||
+            'Duty filler (“involved in”) weakens credibility — swap for outcomes.',
+          quotes: source.quotes?.slice(0, 2) ?? check.quotes,
+          repetitions: source.repetitions ?? check.repetitions,
+        };
+      }
+
+      if (
+        check.id === 'hr-interview' &&
+        impact &&
+        (impact.status === 'fail' || impact.status === 'warn')
+      ) {
+        return {
+          ...check,
+          status: 'warn' as const,
+          summary: '1 tip',
+          detail:
+            check.detail ||
+            'Thin metrics invite hard interview follow-ups. Add numbers recruiters can probe.',
+          quotes: impact.quotes?.slice(0, 2) ?? check.quotes,
+          emptyHint: null,
+        };
+      }
+
+      // Action Verbs in Tailoring overlaps Content repetition when “involved” dominates
+      if (
+        check.id === 'tailor-verbs' &&
+        fillerFail &&
+        (check.status === 'fail' || check.status === 'warn')
+      ) {
+        return {
+          ...check,
+          status: 'warn' as const,
+          summary: 'See Content → Repetition',
+          detail:
+            'Duty fillers like “involved in” crowd out strong verbs. Fix that first — then lead with built / validated / delivered.',
+          quotes: repetition?.quotes?.slice(0, 1) ?? check.quotes,
+          emptyHint: null,
+        };
+      }
+
+      return check;
+    });
+    cat.issueCount = issueCount(cat.checks);
+    cat.score = avg(cat.checks.map(scoreOf));
+  }
+}
+
 /**
  * Assemble gated checks into AtsReport categories.
  */
@@ -93,28 +249,42 @@ export function assembleEvidenceReport(
   resumeText: string,
   opts: { isPremium?: boolean } = {},
 ): AtsReport {
-  const content = pick(gated, [
-    'fact-parse',
-    'semantic-impact',
-    'semantic-repetition',
-    'semantic-spelling',
-    'semantic-vague',
-    'fact-bullets',
-    'semantic-skills',
-    'semantic-verbs',
-    'semantic-template',
-    'semantic-truncated',
-  ]);
+  const content = dedupeContentChecks(
+    pick(gated, [
+      'fact-parse',
+      'semantic-impact',
+      'semantic-repetition',
+      'semantic-spelling',
+      'semantic-vague',
+      'fact-bullets',
+      'semantic-skills',
+      'semantic-verbs',
+      'semantic-template',
+      'semantic-truncated',
+    ]),
+  );
   const contentIds = new Set(content.map((c) => c.id));
   for (const id of ['fact-parse', 'fact-bullets'] as const) {
     if (!contentIds.has(id)) {
       const fallback = gated.find((c) => c.id === id);
-      if (fallback) content.unshift(fallback);
+      if (fallback && !content.some((c) => c.id === id)) {
+        // Only re-add bullets if dedupe did not intentionally drop them
+        if (id === 'fact-bullets') {
+          const repetition = gated.find((c) => c.id === 'semantic-repetition');
+          if (
+            repetition &&
+            (repetition.status === 'fail' || repetition.status === 'warn') &&
+            mentionsInvolved(repetition) &&
+            mentionsInvolved(fallback) &&
+            (fallback.quotes?.length ?? 0) === 0
+          ) {
+            continue;
+          }
+        }
+        content.unshift(fallback);
+      }
     }
   }
-
-  // Ensure quantify/skills placeholders if semantic omitted (from facts we don't have them —
-  // leave as-is; semantic should supply when hybrid)
 
   const sections = pick(gated, ['fact-sections', 'fact-contact']);
   const ats = pick(gated, ['fact-file', 'fact-format', 'fact-dates', 'fact-length']);
@@ -123,6 +293,7 @@ export function assembleEvidenceReport(
     isPremium: Boolean(opts.isPremium),
   });
   const premium = structural.categories.filter((c) => c.tier === 'premium');
+  reconcilePremiumWithGated(premium, gated);
 
   const jdCheck = gated.find((c) => c.id === 'semantic-jd');
   if (jdCheck) {

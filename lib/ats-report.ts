@@ -61,6 +61,13 @@ export interface AtsReportCheck {
   repetitions?: AtsReportRepetition[];
   /** Optional “did you mean” pairs for spelling-like issues */
   suggestions?: Array<{ found: string; suggestion: string }>;
+  /**
+   * When fail/warn has no resume quotes/foundItems:
+   * - string → show this tip instead of “Not found in your resume”
+   * - null → hide the red empty chip (detail is enough)
+   * - undefined → default “Not found…” for true absences
+   */
+  emptyHint?: string | null;
 }
 
 export interface AtsReportCategory {
@@ -477,14 +484,17 @@ function buildPremiumHeuristics(
   'hr' | 'discrimination' | 'seniority' | 'tailoring'
 > {
   const lower = resumeText.toLowerCase();
-  const vague = [
+  const vaguePhrases = [
     'responsible for',
     'various',
     'helped with',
     'worked on',
     'participated in',
     'assisted',
-  ].filter((p) => lower.includes(p));
+    'involved in',
+  ];
+  const vague = vaguePhrases.filter((p) => lower.includes(p));
+  const involvedCount = (lower.match(/\binvolved\b/g) ?? []).length;
 
   const yearMatches = [...resumeText.matchAll(/\b((19|20)\d{2})\b/g)].map((m) => Number(m[1]));
   const oldest = yearMatches.length ? Math.min(...yearMatches) : null;
@@ -506,21 +516,36 @@ function buildPremiumHeuristics(
     ) ?? []
   ).length;
 
+  const credibilityFail = vague.length >= 3 || involvedCount >= 8;
+  const credibilityWarn = !credibilityFail && (vague.length > 0 || involvedCount >= 3);
+  const credibilityStatus: AtsReportCheckStatus = credibilityFail
+    ? 'fail'
+    : credibilityWarn
+      ? 'warn'
+      : 'pass';
+  const credibilityIssues = Math.max(
+    vague.length,
+    involvedCount >= 3 ? 1 : 0,
+  );
+
   const hr: AtsReportCheck[] = [
     {
       id: 'hr-credibility',
       criterionKey: 'premium',
       label: 'Credibility',
-      status: vague.length >= 3 ? 'fail' : vague.length > 0 ? 'warn' : 'pass',
-      summary: statusSummary(
-        vague.length >= 3 ? 'fail' : vague.length > 0 ? 'warn' : 'pass',
-        vague.length,
-      ),
-      detail:
-        vague.length > 0
+      status: credibilityStatus,
+      summary: statusSummary(credibilityStatus, credibilityIssues),
+      detail: credibilityFail
+        ? involvedCount >= 8
+          ? `“Involved” appears about ${involvedCount} times — duty filler without outcomes weakens credibility.`
+          : 'Some lines sound vague. Swap filler phrases for concrete outcomes.'
+        : credibilityWarn
           ? 'Some lines sound vague. Swap filler phrases for concrete outcomes.'
           : 'Language looks specific enough for a first HR screen.',
-      quotes: vague.slice(0, 2).map((v) => ({ text: `…${v}…` })),
+      quotes:
+        involvedCount >= 3
+          ? [{ text: 'Involved in' }]
+          : vague.slice(0, 2).map((v) => ({ text: `…${v}…` })),
     },
     {
       id: 'hr-interview',
@@ -531,8 +556,10 @@ function buildPremiumHeuristics(
         result.breakdown.quantifiableAchievements.score < 50 ? '1 issue' : 'No issues',
       detail:
         result.breakdown.quantifiableAchievements.score < 50
-          ? 'Weak metrics can trigger follow-up questions about impact.'
+          ? 'Weak metrics can trigger follow-up questions about impact. Add numbers recruiters can probe in interviews.'
           : 'Impact language looks interview-ready.',
+      education: 'Interviewers dig into quantified claims. Thin metrics invite hard follow-ups.',
+      emptyHint: null,
     },
   ];
 
@@ -568,6 +595,7 @@ function buildPremiumHeuristics(
         leadership >= 2
           ? 'Leadership verbs show up in your experience.'
           : 'Add ownership verbs (led, mentored, owned) if you have that experience.',
+      emptyHint: 'No ownership verbs like led / mentored / owned showed up yet.',
     },
     {
       id: 'sen-skill-evidence',
@@ -577,6 +605,7 @@ function buildPremiumHeuristics(
       summary: statusSummary(criterionStatus(result.breakdown.skillsOptimization.score)),
       detail: result.breakdown.skillsOptimization.feedback,
       weaknessId: 'skillsOptimization',
+      emptyHint: null,
     },
   ];
 
@@ -604,6 +633,7 @@ function buildPremiumHeuristics(
           ? `Missing from the JD: ${jd.missing.slice(0, 6).join(', ')}.`
           : `Strong hard-skill overlap (${jd.matchScore}% match).`,
       weaknessId: jd?.missing?.[0] ? `jd:${jd.missing[0].toLowerCase()}` : undefined,
+      emptyHint: !jd ? 'Add a job description to unlock this check.' : null,
     },
     {
       id: 'tailor-soft',
@@ -615,6 +645,7 @@ function buildPremiumHeuristics(
         softHits >= 3
           ? 'Soft skills appear in context.'
           : 'Weave collaboration / communication / leadership into bullets — not only a skills list.',
+      emptyHint: 'Try naming soft skills in context (e.g. collaborated with…), not only in a list.',
     },
     {
       id: 'tailor-verbs',
@@ -626,6 +657,7 @@ function buildPremiumHeuristics(
         actionHits >= 5
           ? 'Strong action-verb coverage.'
           : 'Start more bullets with concrete verbs (built, improved, delivered).',
+      emptyHint: 'Swap duty fillers for verbs like built, improved, delivered.',
     },
     {
       id: 'tailor-title',
@@ -635,6 +667,7 @@ function buildPremiumHeuristics(
       summary: 'Review',
       detail:
         'Align your headline / summary title with the target role wording when you apply.',
+      emptyHint: 'Add a target JD, then mirror its title language in your headline.',
     },
   ];
 

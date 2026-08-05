@@ -81,6 +81,43 @@ function workingWellItems(result: AtsCheckResult): string[] {
   ].filter((g): g is string => Boolean(g));
 }
 
+/** Prefer gated pass labels over thin legacy goodPractices. */
+function workingWellFromReport(report: AtsReport, result: AtsCheckResult): string[] {
+  const preferredIds = [
+    'fact-dates',
+    'fact-contact',
+    'semantic-skills',
+    'fact-sections',
+    'fact-file',
+    'fact-format',
+    'fact-length',
+    'fact-parse',
+  ];
+  const passes = report.categories
+    .filter((c) => !c.locked)
+    .flatMap((c) => c.checks)
+    .filter((c) => c.status === 'pass');
+  const byId = new Map(passes.map((c) => [c.id, c]));
+  const labels: string[] = [];
+  for (const id of preferredIds) {
+    const c = byId.get(id);
+    if (c) labels.push(c.label);
+  }
+  for (const c of passes) {
+    if (labels.length >= 5) break;
+    if (!labels.includes(c.label)) labels.push(c.label);
+  }
+  if (labels.length > 0) return labels.slice(0, 5);
+  return workingWellItems(result);
+}
+
+/** Empty-state tip for fail/warn cards with no resume quotes. */
+function emptyEvidenceHint(check: AtsReportCheck): string | null {
+  if (check.emptyHint === null) return null;
+  if (typeof check.emptyHint === 'string') return check.emptyHint;
+  return 'Not found in your resume';
+}
+
 function formatLabel(result: AtsCheckResult): string | null {
   if (!result.fileHints) return null;
   if (result.fileHints.mightBeScanned) return 'May be scanned PDF';
@@ -175,6 +212,13 @@ function CheckEvidenceBody({
   const hasIssue = check.status === 'fail' || check.status === 'warn';
   const quotes = check.quotes ?? [];
   const failedItems = (check.foundItems ?? []).filter((f) => !f.ok);
+  const emptyHint = emptyEvidenceHint(check);
+  const showEmptyHint =
+    quotes.length === 0 &&
+    failedItems.length === 0 &&
+    (!check.repetitions || check.repetitions.length === 0) &&
+    (!check.suggestions || check.suggestions.length === 0) &&
+    Boolean(emptyHint);
 
   if (!hasIssue) {
     return (
@@ -310,15 +354,12 @@ function CheckEvidenceBody({
         </ul>
       )}
 
-      {quotes.length === 0 &&
-        failedItems.length === 0 &&
-        (!check.repetitions || check.repetitions.length === 0) &&
-        (!check.suggestions || check.suggestions.length === 0) && (
-          <p className="inline-flex items-center gap-2 rounded-xl bg-red-500/[0.06] px-3.5 py-2.5 text-[13px] font-semibold text-red-800 ring-1 ring-red-500/15">
-            <XCircle className="h-3.5 w-3.5 shrink-0" />
-            Not found in your resume
-          </p>
-        )}
+      {showEmptyHint && (
+        <p className="inline-flex items-center gap-2 rounded-xl bg-red-500/[0.06] px-3.5 py-2.5 text-[13px] font-semibold text-red-800 ring-1 ring-red-500/15">
+          <XCircle className="h-3.5 w-3.5 shrink-0" />
+          {emptyHint}
+        </p>
+      )}
     </div>
   );
 }
@@ -631,7 +672,7 @@ export function AtsScanReport({
 
   const canUpgrade = studioResume.trim().length >= 50;
   const verdict = verdictFor(result.overallScore);
-  const strengths = workingWellItems(result);
+  const strengths = workingWellFromReport(report, result);
   const fmt = formatLabel(result);
   const upgradeLabel = result.overallScore < 80 ? 'Upgrade with AI' : 'Polish with AI';
   const issueTone =
@@ -828,10 +869,16 @@ export function AtsScanReport({
                               ))}
                             </ul>
                           ) : (
-                            <p className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-red-500/[0.06] px-3 py-2 text-[12px] font-semibold text-red-800 ring-1 ring-red-500/15">
-                              <XCircle className="h-3.5 w-3.5 shrink-0" />
-                              Not found in your resume
-                            </p>
+                            (() => {
+                              const hint = emptyEvidenceHint(check);
+                              if (!hint) return null;
+                              return (
+                                <p className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-red-500/[0.06] px-3 py-2 text-[12px] font-semibold text-red-800 ring-1 ring-red-500/15">
+                                  <XCircle className="h-3.5 w-3.5 shrink-0" />
+                                  {hint}
+                                </p>
+                              );
+                            })()
                           )}
                         </div>
                       </div>
