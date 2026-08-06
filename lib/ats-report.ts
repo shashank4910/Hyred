@@ -407,26 +407,27 @@ export function extractContactInfo(resumeText: string): AtsReportFoundItem[] {
 const ESSENTIAL_SECTIONS: Array<{ label: string; re: RegExp; required: boolean }> = [
   {
     label: 'Experience',
-    re: /^(professional\s+|work\s+)?experience\b|^employment(\s+history)?\b|^work\s+history\b/im,
+    // Heading may include employer name ("Accenture Experience")
+    re: /\b(experiences?|employment|work\s+history)\b/im,
     required: true,
   },
   {
     label: 'Education',
-    re: /^educations?\b|^educational\b|^academic(\s+background|\s+qualifications?)?\b/im,
+    re: /\b(educations?|educational|academic)\b/im,
     required: true,
   },
   {
     label: 'Skills',
-    re: /^(technical\s+|core\s+|key\s+)?skills\b|^competencies\b|^technologies\b/im,
+    re: /\b(skills?|expertise|competencies|technologies)\b/im,
     required: true,
   },
   {
     label: 'Summary',
-    re: /^(professional\s+|career\s+)?summary\b|^profile\b|^objective\b|^about(\s+me)?\b/im,
+    re: /\b(summary|profile|objective)\b/im,
     required: false,
   },
-  { label: 'Projects', re: /^(key\s+|personal\s+)?projects\b/im, required: false },
-  { label: 'Certifications', re: /^certifications?\b|^licenses?\b/im, required: false },
+  { label: 'Projects', re: /\bprojects?\b/im, required: false },
+  { label: 'Certifications', re: /\b(certifications?|licenses?)\b/im, required: false },
 ];
 
 /**
@@ -434,7 +435,21 @@ const ESSENTIAL_SECTIONS: Array<{ label: string; re: RegExp; required: boolean }
  * Required sections always appear (pass/fail); optional ones only when found.
  */
 export function findEssentialSections(resumeText: string): AtsReportFoundItem[] {
-  const lines = resumeText.split('\n').map((l) => l.trim());
+  const lines = resumeText
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => {
+      if (l.length < 3 || l.length > 72) return false;
+      if (/[.!?]$/.test(l)) return false;
+      if (/@|https?:\/\//i.test(l)) return false;
+      if (/^[\d•\-*]/.test(l)) return false;
+      const words = l.split(/\s+/).filter(Boolean);
+      if (words.length === 0 || words.length > 10) return false;
+      if (words.length >= 6 && /^(the|a|an|i|my|with|over|demonstrated)\b/i.test(l)) {
+        return false;
+      }
+      return true;
+    });
   const out: AtsReportFoundItem[] = [];
   for (const { label, re, required } of ESSENTIAL_SECTIONS) {
     const found = lines.some((l) => re.test(l));

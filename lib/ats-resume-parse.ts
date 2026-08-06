@@ -39,30 +39,67 @@ export interface ParsedResume {
 const BULLET_CHARS = '-•*→⁃▪▸▹►‣∙○●';
 const BULLET_RE = new RegExp(`^[${BULLET_CHARS}]`);
 
-const ESSENTIAL_SECTIONS: Array<{ label: string; re: RegExp; required: boolean }> = [
+/**
+ * Canonical section tokens — NOT a synonym zoo of company/resume quirks.
+ * A short heading line that CONTAINS these words counts (e.g. "Accenture Experience").
+ */
+const CANONICAL_SECTIONS: Array<{
+  label: string;
+  token: RegExp;
+  required: boolean;
+}> = [
   {
     label: 'Experience',
-    re: /^(professional\s+|work\s+)?experience\b|^employment(\s+history)?\b|^work\s+history\b/i,
+    token: /\b(experiences?|employment|work\s+history)\b/i,
     required: true,
   },
   {
     label: 'Education',
-    re: /^educations?\b|^educational\b|^academic(\s+background|\s+qualifications?)?\b/i,
+    token: /\b(educations?|educational|academic)\b/i,
     required: true,
   },
   {
     label: 'Skills',
-    re: /^(technical\s+|core\s+|key\s+)?skills\b|^competencies\b|^technologies\b/i,
+    token: /\b(skills?|expertise|competencies|technologies)\b/i,
     required: true,
   },
   {
     label: 'Summary',
-    re: /^(professional\s+|career\s+)?summary\b|^profile\b|^objective\b|^about(\s+me)?\b/i,
+    token: /\b(summary|profile|objective)\b/i,
     required: false,
   },
-  { label: 'Projects', re: /^(key\s+|personal\s+|personal\s+)?projects\b/i, required: false },
-  { label: 'Certifications', re: /^certifications?\b|^licenses?\b/i, required: false },
+  { label: 'Projects', token: /\bprojects?\b/i, required: false },
+  {
+    label: 'Certifications',
+    token: /\b(certifications?|licenses?)\b/i,
+    required: false,
+  },
 ];
+
+/** Short line that looks like a section heading (not a body sentence). */
+export function isLikelySectionHeading(line: string): boolean {
+  const t = line.trim();
+  if (t.length < 3 || t.length > 72) return false;
+  if (/[.!?]$/.test(t)) return false;
+  if (/@|https?:\/\//i.test(t)) return false;
+  if (/^[\d•\-*]/.test(t)) return false;
+  const words = t.split(/\s+/).filter(Boolean);
+  if (words.length === 0 || words.length > 10) return false;
+  // Reject long prose that happens to include "experience"
+  if (words.length >= 6 && /^(the|a|an|i|my|with|over|demonstrated)\b/i.test(t)) {
+    return false;
+  }
+  return true;
+}
+
+function extractSections(lines: string[]): ParsedSection[] {
+  const headings = lines.map((l) => l.trim()).filter(isLikelySectionHeading);
+  return CANONICAL_SECTIONS.map(({ label, token, required }) => ({
+    label,
+    required,
+    found: headings.some((h) => token.test(h)),
+  }));
+}
 
 /** Normalize PDF ligatures and line endings so substring grounding works. */
 export function normalizeResumeText(raw: string): string {
@@ -112,14 +149,6 @@ function extractContact(text: string): ParsedContact {
   };
 }
 
-function extractSections(lines: string[]): ParsedSection[] {
-  return ESSENTIAL_SECTIONS.map(({ label, re, required }) => ({
-    label,
-    required,
-    found: lines.some((l) => re.test(l.trim())),
-  }));
-}
-
 function countBullets(lines: string[]): number {
   return lines.filter((l) => {
     const t = l.trim();
@@ -129,16 +158,16 @@ function countBullets(lines: string[]): number {
 
 function findProseDutyLines(text: string, limit = 5): string[] {
   const lines = text.split('\n');
-  const expIdx = lines.findIndex((l) =>
-    /^(professional\s+)?(work\s+)?experience$|^employment$|^work\s+history$/i.test(l.trim()),
-  );
+  const expIdx = lines.findIndex((l) => {
+    const t = l.trim();
+    return isLikelySectionHeading(t) && /\b(experiences?|employment|work\s+history)\b/i.test(t);
+  });
   const start = expIdx >= 0 ? expIdx + 1 : 0;
   const out: string[] = [];
   for (let i = start; i < lines.length; i++) {
     const t = lines[i].trim();
     if (!t || t.length < 28) continue;
-    if (/^[A-Z][A-Z\s&/.-]{4,}$/.test(t)) break;
-    if (/^(education|skills|projects|certifications|achievements|languages)\b/i.test(t)) break;
+    if (isLikelySectionHeading(t)) break;
     if (BULLET_RE.test(t) || /^\d+[.)]\s/.test(t)) continue;
     if (/@|linkedin\.com|^\+?\d[\d\s().-]{7,}/i.test(t)) continue;
     if (/^\d{1,2}\/\d{4}/.test(t) || /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(t))

@@ -60,6 +60,70 @@ describe('ats-resume-parse', () => {
     expect(parsed.sections.find((s) => s.label === 'Education')?.found).toBe(true);
   });
 
+  it('token-matches odd headings without synonym patches (Ankit-style)', () => {
+    const text = [
+      'Area of expertise',
+      '1. SpringBoot APIs',
+      'PROFFESSINAL SUMMARY',
+      'Senior analyst with 5 years in telecom.',
+      'Accenture Experience',
+      'Designed Restful APIs for project modules.',
+      'TCS EXPERINECE',
+      'Enhanced UI with Angular 6.',
+    ].join('\n');
+    const parsed = parseResumeStructure(text);
+    expect(parsed.sections.find((s) => s.label === 'Experience')?.found).toBe(true);
+    expect(parsed.sections.find((s) => s.label === 'Skills')?.found).toBe(true);
+    expect(parsed.sections.find((s) => s.label === 'Summary')?.found).toBe(true);
+    expect(parsed.sections.find((s) => s.label === 'Education')?.found).toBe(false);
+  });
+
+  it('LLM section map overrides fact-sections when headings are grounded', () => {
+    const text = [
+      'Area of expertise',
+      'Spring Boot, Angular',
+      'PROFFESSINAL SUMMARY',
+      'Senior analyst.',
+      'Accenture Experience',
+      'Built APIs.',
+      'TCS EXPERINECE',
+      'UI work.',
+    ].join('\n');
+    const legacy = checkAtsCompatibility(text);
+    const facts = buildFactChecks(parseResumeStructure(text), legacy);
+    const semantic: AtsReportCheck[] = [
+      {
+        id: 'semantic-sections',
+        label: 'Essential Sections',
+        status: 'fail',
+        summary: '1 issue',
+        detail: 'Missing Education',
+        foundItems: [
+          { label: 'Experience', ok: true, value: 'Accenture Experience' },
+          { label: 'Education', ok: false },
+          { label: 'Skills', ok: true, value: 'Area of expertise' },
+          { label: 'Summary', ok: true, value: 'PROFFESSINAL SUMMARY' },
+        ],
+        quotes: [
+          { text: 'Accenture Experience' },
+          { text: 'Area of expertise' },
+          { text: 'PROFFESSINAL SUMMARY' },
+        ],
+      },
+    ];
+    // Simulate grounded semantic-sections via gate path used by assemble
+    const gated = gateAtsChecks([...facts, ...semantic], text);
+    const report = assembleEvidenceReport(gated, legacy, text, { isPremium: false });
+    const sections = report.categories.find((c) => c.id === 'sections')?.checks ?? [];
+    const essential = sections.find(
+      (c) => c.id === 'semantic-sections' || c.id === 'fact-sections',
+    );
+    expect(essential?.id).toBe('semantic-sections');
+    expect(essential?.foundItems?.find((f) => f.label === 'Experience')?.ok).toBe(true);
+    expect(essential?.foundItems?.find((f) => f.label === 'Skills')?.ok).toBe(true);
+    expect(essential?.foundItems?.find((f) => f.label === 'Education')?.ok).toBe(false);
+  });
+
   it('resumeContainsEvidence matches across whitespace', () => {
     const hay = 'Involved in Functional Testing,\nRegression';
     expect(resumeContainsEvidence(hay, 'Involved in Functional Testing, Regression')).toBe(

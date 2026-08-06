@@ -16,9 +16,10 @@ const ABSENCE_OK_IDS = new Set([
   'fact-parse',
   'fact-format',
   'fact-dates',
-  // Skills/JD may fail on absence without a quote
+  // Skills/JD/sections may fail on absence without a quote
   'semantic-skills',
   'semantic-jd',
+  'semantic-sections',
 ]);
 
 function issueCountFromFoundItems(check: AtsReportCheck): number {
