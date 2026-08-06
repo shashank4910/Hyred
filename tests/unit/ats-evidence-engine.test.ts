@@ -124,6 +124,48 @@ describe('ats-resume-parse', () => {
     expect(essential?.foundItems?.find((f) => f.label === 'Education')?.ok).toBe(false);
   });
 
+  it('incomplete LLM section map does not wipe token-found Skills/Summary', () => {
+    const text = [
+      'Area of expertise',
+      'Spring Boot, Angular',
+      'PROFFESSINAL SUMMARY',
+      'Senior analyst.',
+      'Accenture Experience',
+      'Built APIs.',
+    ].join('\n');
+    const legacy = checkAtsCompatibility(text);
+    const facts = buildFactChecks(parseResumeStructure(text), legacy);
+    // LLM only found Experience (the live Ankit failure mode)
+    const semantic: AtsReportCheck[] = [
+      {
+        id: 'semantic-sections',
+        label: 'Section mapping',
+        status: 'fail',
+        summary: '3 issues',
+        detail: 'Missing Education and Skills. Found Experience.',
+        foundItems: [
+          { label: 'Experience', ok: true, value: 'Accenture Experience' },
+          { label: 'Education', ok: false },
+          { label: 'Skills', ok: false },
+          { label: 'Summary', ok: false },
+        ],
+        quotes: [{ text: 'Accenture Experience' }],
+      },
+    ];
+    const gated = gateAtsChecks([...facts, ...semantic], text);
+    const report = assembleEvidenceReport(gated, legacy, text, { isPremium: false });
+    const essential = report.categories
+      .find((c) => c.id === 'sections')
+      ?.checks.find((c) => c.id === 'semantic-sections' || c.id === 'fact-sections');
+    expect(essential?.foundItems?.find((f) => f.label === 'Experience')?.ok).toBe(true);
+    expect(essential?.foundItems?.find((f) => f.label === 'Skills')?.ok).toBe(true);
+    expect(essential?.foundItems?.find((f) => f.label === 'Summary')?.ok).toBe(true);
+    expect(essential?.foundItems?.find((f) => f.label === 'Education')?.ok).toBe(false);
+    expect(essential?.detail).toMatch(/Missing required sections: Education/);
+    expect(essential?.detail).toMatch(/Skills/);
+    expect(essential?.detail).not.toMatch(/Missing required sections: Education, Skills/i);
+  });
+
   it('resumeContainsEvidence matches across whitespace', () => {
     const hay = 'Involved in Functional Testing,\nRegression';
     expect(resumeContainsEvidence(hay, 'Involved in Functional Testing, Regression')).toBe(

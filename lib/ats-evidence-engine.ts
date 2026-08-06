@@ -17,6 +17,7 @@ import {
   type AtsReportCategory,
   type AtsReportCheck,
   type AtsReportCategoryId,
+  type AtsReportFoundItem,
 } from './ats-report';
 import type { chat } from './gemini';
 
@@ -271,6 +272,112 @@ export function reconcilePremiumWithGated(
 }
 
 /**
+ * Prefer LLM heading quotes when grounded, but never drop a section the
+ * token fallback already found. Incomplete LLM maps must not wipe facts.
+ */
+export function mergeSectionChecks(
+  fact?: AtsReportCheck,
+  semantic?: AtsReportCheck,
+): AtsReportCheck | undefined {
+  if (!semantic && !fact) return undefined;
+  if (!semantic) return fact;
+  if (!fact) return semantic;
+
+  const labels = ['Experience', 'Education', 'Skills', 'Summary'] as const;
+  const byLabel = new Map<string, AtsReportFoundItem>();
+
+  for (const item of fact.foundItems ?? []) {
+    byLabel.set(item.label, { ...item });
+  }
+  for (const item of semantic.foundItems ?? []) {
+    const prev = byLabel.get(item.label);
+    if (item.ok) {
+      byLabel.set(item.label, {
+        label: item.label,
+        ok: true,
+        value: item.value || prev?.value,
+      });
+    } else if (!prev) {
+      byLabel.set(item.label, { ...item });
+    }
+    // if LLM says missing but fact says ok — keep fact (already set)
+  }
+
+  // Preserve any extra labels from either side
+  for (const item of [...(fact.foundItems ?? []), ...(semantic.foundItems ?? [])]) {
+    if (!byLabel.has(item.label)) byLabel.set(item.label, { ...item });
+  }
+
+  const foundItems = labels
+    .map((label) => byLabel.get(label) ?? { label, ok: false })
+    .concat(
+      [...byLabel.values()].filter(
+        (i) => !(labels as readonly string[]).includes(i.label),
+      ),
+    );
+
+  const missingRequired = foundItems.filter(
+    (i) =>
+      (i.label === 'Experience' || i.label === 'Education' || i.label === 'Skills') &&
+      !i.ok,
+  );
+  const missingSummary = foundItems.some((i) => i.label === 'Summary' && !i.ok);
+
+  let status: AtsReportCheck['status'] = 'pass';
+  let score = 100;
+  if (missingRequired.length > 0) {
+    status = 'fail';
+    score = Math.max(20, 100 - missingRequired.length * 30);
+  } else if (missingSummary) {
+    status = 'warn';
+    score = 70;
+  }
+
+  const foundBits = foundItems
+    .filter((i) => i.ok)
+    .map((i) => (i.value ? `${i.label} (“${i.value}”)` : i.label));
+
+  const detail =
+    missingRequired.length > 0
+      ? `Missing required sections: ${missingRequired.map((m) => m.label).join(', ')}.${
+          foundBits.length ? ` Found: ${foundBits.join(', ')}.` : ''
+        }`
+      : missingSummary
+        ? `Found Experience, Education, and Skills. No Summary / Profile heading — optional but helps ATS.`
+        : `We mapped your headings: ${foundBits.join(', ')}.`;
+
+  const quotes = [
+    ...(semantic.quotes ?? []),
+    ...foundItems.filter((i) => i.ok && i.value).map((i) => ({ text: i.value! })),
+  ]
+    .filter((q, idx, arr) => arr.findIndex((x) => x.text === q.text) === idx)
+    .slice(0, 4);
+
+  return {
+    id: 'semantic-sections',
+    weaknessId: 'sectionStructure',
+    criterionKey: 'sectionStructure',
+    label: 'Section mapping',
+    status,
+    score,
+    summary:
+      status === 'pass'
+        ? 'No issues'
+        : `${missingRequired.length || (missingSummary ? 1 : 0)} issue${
+            (missingRequired.length || (missingSummary ? 1 : 0)) === 1 ? '' : 's'
+          }`,
+    detail,
+    education:
+      semantic.education ||
+      fact.education ||
+      'ATS systems map your resume into standard sections. Odd headings are fine if we can still recognize them.',
+    passText: detail,
+    foundItems,
+    quotes,
+  };
+}
+
+/**
  * Assemble gated checks into AtsReport categories.
  */
 export function assembleEvidenceReport(
@@ -316,9 +423,10 @@ export function assembleEvidenceReport(
     }
   }
 
-  const sectionsCheck =
-    gated.find((c) => c.id === 'semantic-sections') ??
-    gated.find((c) => c.id === 'fact-sections');
+  const sectionsCheck = mergeSectionChecks(
+    gated.find((c) => c.id === 'fact-sections'),
+    gated.find((c) => c.id === 'semantic-sections'),
+  );
   const contactCheck = gated.find((c) => c.id === 'fact-contact');
   const sections = [sectionsCheck, contactCheck].filter(
     (c): c is AtsReportCheck => Boolean(c),
