@@ -136,14 +136,20 @@ function buildUserPrompt(resumeText: string, jobDescription?: string): string {
         : jobDescription;
     prompt += `\nJOB DESCRIPTION:\n"""\n${jd}\n"""\n`;
   } else {
-    prompt += `\n(No job description provided — omit semantic-jd or mark it pass with detail "Add a job description".)\n`;
+    prompt += `\n(No job description provided — omit semantic-jd entirely. Do not invent a pass for it.)\n`;
   }
   prompt += `\nReturn the JSON object now.`;
   return prompt;
 }
 
-function groundCheck(raw: LlmCheckPayload, resumeText: string): AtsReportCheck | null {
+function groundCheck(
+  raw: LlmCheckPayload,
+  resumeText: string,
+  opts: { hasJd?: boolean } = {},
+): AtsReportCheck | null {
   if (!ALLOWED_IDS.has(raw.id)) return null;
+  // Never invent a green JD check when the user did not paste a job description
+  if (raw.id === 'semantic-jd' && !opts.hasJd) return null;
   const status = raw.status;
   if (status !== 'pass' && status !== 'warn' && status !== 'fail') return null;
 
@@ -290,7 +296,9 @@ export async function runSemanticReview(
     const seen = new Set<string>();
     for (const item of parsed.checks) {
       if (!item?.id || seen.has(item.id)) continue;
-      const check = groundCheck(item, resumeText);
+      const check = groundCheck(item, resumeText, {
+        hasJd: Boolean(opts.jobDescription?.trim()),
+      });
       if (!check) continue;
       seen.add(check.id);
       grounded.push(check);

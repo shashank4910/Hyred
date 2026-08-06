@@ -98,9 +98,11 @@ const STANDARD_HEADERS = [
   /^relevant\s+experience$/i,
   // Education
   /^education$/i,
+  /^educations?$/i,
+  /^educational(\s+qualifications?)?$/i,
   /^education\s+and\s+training$/i,
   /^degrees?$/i,
-  /^academic\s+(background|qualifications)$/i,
+  /^academic\s+(background|qualifications?)$/i,
   // Skills
   /^(technical\s+)?skills$/i,
   /^technical\s+competencies$/i,
@@ -134,7 +136,7 @@ const STANDARD_HEADERS = [
 
 const REQUIRED_HEADERS = [
   /^(professional\s+)?(work\s+)?experience$/i,
-  /^education$/i,
+  /^(educations?|educational(\s+qualifications?)?|academic\s+(background|qualifications?))$/i,
 ];
 
 const STRONGLY_RECOMMENDED_HEADERS = [

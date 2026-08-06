@@ -98,8 +98,11 @@ export function buildFactChecks(
     score: contactScore,
     status: contactStatus,
     summary: statusSummary(contactStatus, contactIssueCount),
-    education:
-      'Recruiters spend seconds looking for a way to reach you. Missing phone, email or LinkedIn is the fastest way to lose an interested reader.',
+    education: missingRequired.length
+      ? 'Recruiters spend seconds looking for a way to reach you. Missing phone or email is the fastest way to lose an interested reader.'
+      : missingLinkedIn
+        ? 'Phone and email look fine — add LinkedIn so recruiters can verify you quickly.'
+        : 'Recruiters spend seconds looking for a way to reach you. Keep phone, email, and LinkedIn easy to find.',
     detail:
       contactStatus === 'pass'
         ? 'Your contact details are complete and easy to find.'
