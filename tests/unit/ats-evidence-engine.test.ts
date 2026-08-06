@@ -40,6 +40,26 @@ describe('ats-resume-parse', () => {
     expect(parsed.sections.find((s) => s.label === 'Skills')?.found).toBe(true);
   });
 
+  it('recognizes EDUCATIONAL QUALIFICATION as Education', () => {
+    const text = [
+      'Jane Doe',
+      'jane@example.com',
+      '+1 555 0100',
+      'Profile',
+      'QA engineer.',
+      'Technical Skills',
+      'Selenium, JIRA',
+      'Experience Summary',
+      'Acme — QA Lead',
+      'Lead QA project for CRM migration.',
+      'Training of new Resources on Domain.',
+      'EDUCATIONAL QUALIFICATION',
+      'B.Tech, E&C - 2013 Batch.',
+    ].join('\n');
+    const parsed = parseResumeStructure(text);
+    expect(parsed.sections.find((s) => s.label === 'Education')?.found).toBe(true);
+  });
+
   it('resumeContainsEvidence matches across whitespace', () => {
     const hay = 'Involved in Functional Testing,\nRegression';
     expect(resumeContainsEvidence(hay, 'Involved in Functional Testing, Regression')).toBe(
@@ -217,6 +237,56 @@ describe('evidence-grounded engine', () => {
     const report = assembleEvidenceReport(gated, legacy, text, { isPremium: false });
     expect(report.parseRatePercent).toBeGreaterThan(50);
     expect(report.categories.find((c) => c.id === 'content')).toBeTruthy();
+  });
+
+  it('dedupes Vague when it re-quotes the same Impact duty lines', () => {
+    const text = [
+      'Priya Sharma',
+      'priya@example.com',
+      '+91 98765 43210',
+      'linkedin.com/in/priya',
+      'Summary',
+      'QA engineer.',
+      'Skills',
+      'JIRA, Selenium',
+      'Experience',
+      'Acme — Senior QA',
+      'Test Estimations , Requirement clarification.',
+      'Defect management at Rally.',
+      'Education',
+      'B.Tech 2018',
+    ].join('\n');
+    const legacy = checkAtsCompatibility(text);
+    const facts = buildFactChecks(parseResumeStructure(text), legacy);
+    const semantic: AtsReportCheck[] = [
+      {
+        id: 'semantic-impact',
+        label: 'Quantifying Impact',
+        status: 'fail',
+        summary: '2 issues',
+        detail: 'No metrics.',
+        quotes: [
+          { text: 'Test Estimations , Requirement clarification.' },
+          { text: 'Defect management at Rally.' },
+        ],
+      },
+      {
+        id: 'semantic-vague',
+        label: 'Vague Phrases',
+        status: 'fail',
+        summary: '2 issues',
+        detail: 'Vague duties.',
+        quotes: [
+          { text: 'Test Estimations , Requirement clarification.' },
+          { text: 'Defect management at Rally.' },
+        ],
+      },
+    ];
+    const gated = gateAtsChecks([...facts, ...semantic], text);
+    const report = assembleEvidenceReport(gated, legacy, text, { isPremium: true });
+    const checks = report.categories.flatMap((c) => c.checks);
+    expect(byId(checks, 'semantic-impact')?.status).toBe('fail');
+    expect(byId(checks, 'semantic-vague')).toBeUndefined();
   });
 
   it('dedupes overlapping Involved-in content cards and aligns Skill Evidence', () => {

@@ -410,7 +410,11 @@ const ESSENTIAL_SECTIONS: Array<{ label: string; re: RegExp; required: boolean }
     re: /^(professional\s+|work\s+)?experience\b|^employment(\s+history)?\b|^work\s+history\b/im,
     required: true,
   },
-  { label: 'Education', re: /^education\b|^academic/im, required: true },
+  {
+    label: 'Education',
+    re: /^educations?\b|^educational\b|^academic(\s+background|\s+qualifications?)?\b/im,
+    required: true,
+  },
   {
     label: 'Skills',
     re: /^(technical\s+|core\s+|key\s+)?skills\b|^competencies\b|^technologies\b/im,
@@ -501,12 +505,14 @@ function buildPremiumHeuristics(
   const ageismRisk = oldest != null && oldest < 2010;
 
   const leadership = (
-    resumeText.match(/\b(led|managed|mentored|owned|directed|supervised|head of)\b/gi) ?? []
+    resumeText.match(
+      /\b(led|leads?|leading|managed|mentored|owned|directed|supervised|head of|trained|training)\b/gi,
+    ) ?? []
   ).length;
 
   const softHits = (
     resumeText.match(
-      /\b(communication|collaboration|teamwork|leadership|problem[- ]solving|stakeholder)\b/gi,
+      /\b(communication|communicate[ds]?|collaboration|collaborat(?:ed|ion|ing)|teamwork|leadership|problem[- ]solving|stakeholder|coordinat(?:ed|ion|ing)|scrum)\b/gi,
     ) ?? []
   ).length;
 
@@ -594,8 +600,8 @@ function buildPremiumHeuristics(
       detail:
         leadership >= 2
           ? 'Leadership verbs show up in your experience.'
-          : 'Add ownership verbs (led, mentored, owned) if you have that experience.',
-      emptyHint: 'No ownership verbs like led / mentored / owned showed up yet.',
+          : 'Add ownership verbs (lead, led, mentored, owned, trained) if you have that experience.',
+      emptyHint: 'No ownership verbs like lead / led / mentored / owned showed up yet.',
     },
     {
       id: 'sen-skill-evidence',
@@ -808,6 +814,13 @@ export function buildAtsReport(
   ];
 
   const missingSections = sectionItems.filter((s) => !s.ok);
+  const contactMissingCore = contactItems.filter(
+    (c) =>
+      (c.label === 'Email address' || c.label === 'Phone number') && !c.ok,
+  );
+  const contactMissingLinkedIn = contactItems.some(
+    (c) => c.label === 'LinkedIn profile' && !c.ok,
+  );
   const sectionChecks: AtsReportCheck[] = [
     {
       id: 'sec-essential',
@@ -838,8 +851,11 @@ export function buildAtsReport(
         criterionStatus(b.contactInfo.score),
         contactItems.filter((c) => !c.ok).length,
       ),
-      education:
-        'Recruiters spend seconds looking for a way to reach you. Missing phone, email or LinkedIn is the fastest way to lose an interested reader.',
+      education: contactMissingCore.length
+        ? 'Recruiters spend seconds looking for a way to reach you. Missing phone or email is the fastest way to lose an interested reader.'
+        : contactMissingLinkedIn
+          ? 'Phone and email look fine — add LinkedIn so recruiters can verify you quickly.'
+          : 'Recruiters spend seconds looking for a way to reach you. Keep phone, email, and LinkedIn easy to find.',
       detail: b.contactInfo.feedback,
       passText: 'Your contact details are complete and easy to find.',
       foundItems: contactItems,

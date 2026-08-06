@@ -45,7 +45,11 @@ const ESSENTIAL_SECTIONS: Array<{ label: string; re: RegExp; required: boolean }
     re: /^(professional\s+|work\s+)?experience\b|^employment(\s+history)?\b|^work\s+history\b/i,
     required: true,
   },
-  { label: 'Education', re: /^education\b|^academic/i, required: true },
+  {
+    label: 'Education',
+    re: /^educations?\b|^educational\b|^academic(\s+background|\s+qualifications?)?\b/i,
+    required: true,
+  },
   {
     label: 'Skills',
     re: /^(technical\s+|core\s+|key\s+)?skills\b|^competencies\b|^technologies\b/i,

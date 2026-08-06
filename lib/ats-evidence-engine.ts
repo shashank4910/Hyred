@@ -95,28 +95,58 @@ function mentionsInvolved(check: AtsReportCheck): boolean {
   return /\binvolved\b/.test(blob);
 }
 
+function normalizedQuotes(check: AtsReportCheck): string[] {
+  return (check.quotes ?? [])
+    .map((q) => q.text.toLowerCase().replace(/\s+/g, ' ').trim())
+    .filter((t) => t.length >= 12);
+}
+
+/** True when two checks cite the same resume lines (duty filler duplicates). */
+function quotesOverlap(a: AtsReportCheck, b: AtsReportCheck): boolean {
+  const aq = normalizedQuotes(a);
+  const bq = normalizedQuotes(b);
+  if (aq.length === 0 || bq.length === 0) return false;
+  for (const x of aq) {
+    for (const y of bq) {
+      if (x.includes(y.slice(0, 40)) || y.includes(x.slice(0, 40))) return true;
+    }
+  }
+  return false;
+}
+
 /**
- * When several Content cards all hammer the same “Involved in” filler,
+ * When several Content cards hammer the same duty lines,
  * keep the strongest angles (repetition + impact) and drop the rest.
  */
 export function dedupeContentChecks(checks: AtsReportCheck[]): AtsReportCheck[] {
   const byId = new Map(checks.map((c) => [c.id, c]));
   const repetition = byId.get('semantic-repetition');
   const impact = byId.get('semantic-impact');
+  const vague = byId.get('semantic-vague');
+  const verbs = byId.get('semantic-verbs');
   const repetitionHits =
     repetition != null &&
     (repetition.status === 'fail' || repetition.status === 'warn') &&
     mentionsInvolved(repetition);
-  const impactHits =
-    impact != null &&
-    (impact.status === 'fail' || impact.status === 'warn') &&
-    mentionsInvolved(impact);
+  const impactIssue =
+    impact != null && (impact.status === 'fail' || impact.status === 'warn');
+  const impactInvolved = impactIssue && mentionsInvolved(impact!);
 
-  if (repetitionHits || impactHits) {
+  if (repetitionHits || impactInvolved) {
     for (const id of ['semantic-vague', 'semantic-verbs'] as const) {
       const c = byId.get(id);
       if (c && (c.status === 'fail' || c.status === 'warn') && mentionsInvolved(c)) {
         byId.delete(id);
+      }
+    }
+  }
+
+  // Drop Vague / Weak verbs when they only re-quote Impact’s same duty lines
+  if (impactIssue) {
+    for (const c of [vague, verbs]) {
+      if (!c || (c.status !== 'fail' && c.status !== 'warn')) continue;
+      if (quotesOverlap(impact!, c) || mentionsInvolved(c)) {
+        byId.delete(c.id);
       }
     }
   }
@@ -295,7 +325,10 @@ export function assembleEvidenceReport(
   const premium = structural.categories.filter((c) => c.tier === 'premium');
   reconcilePremiumWithGated(premium, gated);
 
-  const jdCheck = gated.find((c) => c.id === 'semantic-jd');
+  // Only surface semantic-jd when a real JD was scored — never a green "Job description" with no JD
+  const jdCheck = legacy.jdMatch
+    ? gated.find((c) => c.id === 'semantic-jd')
+    : undefined;
   if (jdCheck) {
     const tailor = premium.find((c) => c.id === 'tailoring');
     if (tailor && !tailor.locked) {
