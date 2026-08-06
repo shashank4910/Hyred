@@ -316,7 +316,13 @@ export function assembleEvidenceReport(
     }
   }
 
-  const sections = pick(gated, ['fact-sections', 'fact-contact']);
+  const sectionsCheck =
+    gated.find((c) => c.id === 'semantic-sections') ??
+    gated.find((c) => c.id === 'fact-sections');
+  const contactCheck = gated.find((c) => c.id === 'fact-contact');
+  const sections = [sectionsCheck, contactCheck].filter(
+    (c): c is AtsReportCheck => Boolean(c),
+  );
   const ats = pick(gated, ['fact-file', 'fact-format', 'fact-dates', 'fact-length']);
 
   const structural = buildAtsReport(legacy, resumeText, {

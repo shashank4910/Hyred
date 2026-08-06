@@ -25,11 +25,22 @@ interface LlmCheckPayload {
   suggestions?: Array<{ found: string; suggestion: string }>;
   repetitions?: Array<{ word: string; count: number; suggestions?: string[] }>;
   skills_found?: string[];
+  /** Exact heading text mapped to a canonical ATS section */
+  sections_mapped?: Array<{ canonical: string; heading: string }>;
 }
 
 interface LlmPayload {
   checks?: LlmCheckPayload[];
 }
+
+const ALLOWED_CANONICAL = new Set([
+  'Experience',
+  'Education',
+  'Skills',
+  'Summary',
+  'Projects',
+  'Certifications',
+]);
 
 const ALLOWED_IDS = new Set([
   'semantic-spelling',
@@ -41,6 +52,7 @@ const ALLOWED_IDS = new Set([
   'semantic-truncated',
   'semantic-verbs',
   'semantic-jd',
+  'semantic-sections',
 ]);
 
 const LABEL_FALLBACK: Record<string, string> = {
@@ -53,6 +65,7 @@ const LABEL_FALLBACK: Record<string, string> = {
   'semantic-truncated': 'Truncated Lines',
   'semantic-verbs': 'Action Verbs',
   'semantic-jd': 'Hard Skills (JD)',
+  'semantic-sections': 'Essential Sections',
 };
 
 function scoreForStatus(status: AtsReportCheckStatus): number {
@@ -65,6 +78,7 @@ function scoreForStatus(status: AtsReportCheckStatus): number {
 function weaknessFor(id: string): string | undefined {
   if (id === 'semantic-impact') return 'quantifiableAchievements';
   if (id === 'semantic-skills') return 'skillsOptimization';
+  if (id === 'semantic-sections') return 'sectionStructure';
   if (id === 'semantic-spelling' || id === 'semantic-repetition' || id === 'semantic-vague')
     return 'bulletQuality';
   return undefined;
@@ -76,6 +90,7 @@ function criterionFor(
   if (id === 'semantic-impact') return 'quantifiableAchievements';
   if (id === 'semantic-skills') return 'skillsOptimization';
   if (id === 'semantic-jd') return 'jdKeywords';
+  if (id === 'semantic-sections') return 'sectionStructure';
   if (
     id === 'semantic-spelling' ||
     id === 'semantic-repetition' ||
@@ -97,7 +112,7 @@ Required JSON shape:
 {
   "checks": [
     {
-      "id": "semantic-spelling|semantic-skills|semantic-impact|semantic-repetition|semantic-vague|semantic-template|semantic-truncated|semantic-verbs|semantic-jd",
+      "id": "semantic-spelling|semantic-skills|semantic-impact|semantic-repetition|semantic-vague|semantic-template|semantic-truncated|semantic-verbs|semantic-jd|semantic-sections",
       "label": "short label",
       "status": "pass|warn|fail",
       "summary": "e.g. 3 issues",
@@ -106,24 +121,26 @@ Required JSON shape:
       "evidence": ["EXACT substring copied from the resume"],
       "suggestions": [{"found":"typo","suggestion":"fix"}],
       "repetitions": [{"word":"involved","count":12,"suggestions":["executed","owned"]}],
-      "skills_found": ["JIRA","Postman"]
+      "skills_found": ["JIRA","Postman"],
+      "sections_mapped": [{"canonical":"Experience","heading":"Accenture Experience"}]
     }
   ]
 }
 
 Rules:
-1. Every fail/warn MUST include evidence[] with EXACT quotes copied from the resume (character-accurate). If you cannot quote it, use status pass or omit the check.
+1. Every fail/warn MUST include evidence[] with EXACT quotes copied from the resume (character-accurate). If you cannot quote it, use status pass or omit the check. Exception: semantic-sections may fail on missing required sections without quotes.
 2. semantic-spelling: real typos/misspellings only (e.g. Regresion, methodlogy, Backened). Ignore proper nouns.
 3. semantic-skills: list skills_found from the resume. pass if 6+ real skills/tools; warn if 3-5; fail if under 3. Never say "only 2 skills" if more appear in evidence/skills_found.
 4. semantic-impact: fail/warn when experience lines lack numbers/metrics; quote those lines.
-5. semantic-repetition: overused verbs/phrases (e.g. "involved" 8+ times).
+5. semantic-repetition: overused verbs/phrases (e.g. "involved" 8+ times) OR near-duplicate paragraphs copied across sections.
 6. semantic-vague: duty filler ("involved in", "responsible for") without outcomes.
 7. semantic-template: leftover template labels (Achievements/Tasks, empty Courses).
 8. semantic-truncated: cut-off titles/words (e.g. "Associate Quality Anal").
 9. semantic-verbs: weak/missing action verbs at start of duties.
 10. semantic-jd: only if a job description is provided — missing hard skills.
-11. Keep checks array to at most 9 items. Prefer fail/warn with evidence over vague passes.
-12. Write simple English. No markdown fences.`;
+11. semantic-sections (ALWAYS include): map odd/misspelled headings to canonical ATS sections. canonical must be one of Experience|Education|Skills|Summary|Projects|Certifications. heading MUST be an EXACT short heading line copied from the resume (e.g. "Accenture Experience", "PROFFESSINAL SUMMARY", "Area of expertise", "TCS EXPERINECE"). Do NOT invent headings. Required: Experience, Education, Skills. Summary is optional. status fail if any required is missing; warn if only Summary missing; pass if Experience+Education+Skills found. Put mapped headings in sections_mapped; list missing required names in detail.
+12. Keep checks array to at most 10 items. Prefer fail/warn with evidence over vague passes.
+13. Write simple English. No markdown fences.`;
 }
 
 function buildUserPrompt(resumeText: string, jobDescription?: string): string {
@@ -142,6 +159,96 @@ function buildUserPrompt(resumeText: string, jobDescription?: string): string {
   return prompt;
 }
 
+const REQUIRED_SECTION_LABELS = ['Experience', 'Education', 'Skills'] as const;
+
+/**
+ * Build Essential Sections from LLM heading map — only keep headings that
+ * appear verbatim in the resume. Status is recomputed from grounded map.
+ */
+function groundSemanticSections(
+  raw: LlmCheckPayload,
+  resumeText: string,
+): AtsReportCheck {
+  const mapped = new Map<string, string>();
+  for (const row of raw.sections_mapped ?? []) {
+    const canonical = String(row?.canonical || '').trim();
+    const heading = String(row?.heading || '').trim();
+    if (!ALLOWED_CANONICAL.has(canonical) || heading.length < 3) continue;
+    if (!resumeContainsEvidence(resumeText, heading)) continue;
+    // Prefer first grounded heading per canonical
+    if (!mapped.has(canonical)) mapped.set(canonical, heading);
+  }
+
+  const foundItems = [
+    ...REQUIRED_SECTION_LABELS.map((label) => ({
+      label,
+      ok: mapped.has(label),
+      value: mapped.get(label),
+    })),
+    {
+      label: 'Summary',
+      ok: mapped.has('Summary'),
+      value: mapped.get('Summary'),
+    },
+  ];
+  for (const label of ['Projects', 'Certifications'] as const) {
+    if (mapped.has(label)) {
+      foundItems.push({ label, ok: true, value: mapped.get(label) });
+    }
+  }
+
+  const missingRequired = REQUIRED_SECTION_LABELS.filter((l) => !mapped.has(l));
+  const missingSummary = !mapped.has('Summary');
+  let finalStatus: AtsReportCheckStatus = 'pass';
+  let score = 100;
+  if (missingRequired.length > 0) {
+    finalStatus = 'fail';
+    score = Math.max(20, 100 - missingRequired.length * 30);
+  } else if (missingSummary) {
+    finalStatus = 'warn';
+    score = 70;
+  }
+
+  const issueN =
+    missingRequired.length > 0
+      ? missingRequired.length
+      : missingSummary
+        ? 1
+        : 0;
+
+  const foundNames = [...mapped.entries()].map(([c, h]) => `${c} (“${h}”)`);
+  const detail =
+    missingRequired.length > 0
+      ? `Missing required sections: ${missingRequired.join(', ')}.${
+          foundNames.length ? ` Found: ${foundNames.join(', ')}.` : ''
+        }`
+      : missingSummary
+        ? `Found Experience, Education, and Skills. No Summary / Profile heading — optional but helps ATS.`
+        : `We mapped your headings: ${foundNames.join(', ')}.`;
+
+  const quotes = [...mapped.values()].slice(0, 4).map((text) => ({ text }));
+
+  return {
+    id: 'semantic-sections',
+    weaknessId: 'sectionStructure',
+    criterionKey: 'sectionStructure',
+    label: raw.label?.trim() || LABEL_FALLBACK['semantic-sections'],
+    status: finalStatus,
+    score,
+    summary:
+      finalStatus === 'pass'
+        ? 'No issues'
+        : `${issueN} issue${issueN === 1 ? '' : 's'}`,
+    detail,
+    education:
+      raw.education?.trim() ||
+      'ATS systems map your resume into standard sections. Odd or misspelled headings are fine if we can still recognize them.',
+    passText: detail,
+    foundItems,
+    quotes,
+  };
+}
+
 function groundCheck(
   raw: LlmCheckPayload,
   resumeText: string,
@@ -152,6 +259,11 @@ function groundCheck(
   if (raw.id === 'semantic-jd' && !opts.hasJd) return null;
   const status = raw.status;
   if (status !== 'pass' && status !== 'warn' && status !== 'fail') return null;
+
+  // Section mapping — always rebuild from grounded headings (ignore model status)
+  if (raw.id === 'semantic-sections') {
+    return groundSemanticSections(raw, resumeText);
+  }
 
   const evidence = (raw.evidence ?? [])
     .map((e) => String(e || '').trim())
