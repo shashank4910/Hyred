@@ -2,6 +2,28 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 31 — ATS report polish + semantic section mapping (Aug 6–7, 2026)
+
+**Goal:** Stop the endless “one more heading synonym / dictionary patch” loop. Make the hybrid report consistent at volume (100 scans/hour mindset): hard facts stay code; odd headings map by meaning in the **same** LLM call; never let a weak LLM map wipe stronger token facts.
+
+### Shipped
+
+| PR | What |
+|---|---|
+| **#271** | Report polish — Skill Evidence aligned with gated skills; Involved-in content dedupe; Credibility sync; empty-state tips instead of misleading “Not found”; richer Working well chips. |
+| **#272** | Cursor user-global rule `run-commands-yourself` (moved out of repo → `~/.cursor/rules`). |
+| **#273** | False positives from Shashank Kukreti review — Educational Qualification tokens, Lead/Leading leadership, LinkedIn-only contact tip, no green JD without JD, Vague↔Impact quote dedupe. |
+| **#274** | **Semantic section mapping** — `semantic-sections` in same `ats_semantic_review` call; grounded heading quotes; token fallback on short headings that *contain* experience/summary/expertise/… (not company-name synonym lists). |
+| **#275** | **Merge LLM map ∪ token facts** — incomplete LLM section map must not wipe Skills/Summary the token layer already found (Ankit live regression). |
+
+### Key decisions / gotchas
+
+1. **No new “add this heading synonym” PRs** — odd headings → `semantic-sections` (+ token contains for structural). Company-prefixed titles (`Accenture Experience`) and typo headings (`PROFFESSINAL SUMMARY`) are meaning problems, not dictionary growth.
+2. **One LLM call** — section mapping folds into existing Layer B JSON (`sections_mapped`). Do not add a second round-trip for 100/hr cost/latency.
+3. **Union merge** (`mergeSectionChecks`) — LLM headings win when grounded; token `fact-sections` fill gaps. Preferring LLM alone caused Ankit Skills/Summary false-miss.
+4. **Real absences still fail** — Ankit with no email/phone/education/dates correctly stays low score; only false “section missing” was the bug.
+5. Open follow-ups (not shipped): PDF bullet soft-detect, jargon-safe spelling (e.g. “Comar”), ageism empty-state when DOB *was* found.
+
 ## Session 30 — ATS scan report UX + evidence-grounded hybrid engine (Aug 3–6, 2026)
 
 **Goal:** Make the post-scan ATS report feel like a premium product (Enhancv-level detail, real resume evidence, proper CTAs), then stop fixing accuracy with brittle dictionaries — rebuild scoring as facts + LLM + quote grounding so false passes/fails cannot slip through.
