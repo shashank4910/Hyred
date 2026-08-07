@@ -60,7 +60,7 @@ JobRadar / Hyred is a personalized AI-powered job-search dashboard that:
 
 **Pages using Luminous tokens everywhere (PR #104):** Job detail, onboarding, Stats, Admin, Import, apply-profile, error/not-found — all inherit refreshed typography, cards, and form controls from `globals.css`. Dashboard-specific patterns (bento insights, 7-col status grid) live only on `/`.
 
-**ATS Checker (PR #129 / #187 / #266–#269):** Logged-in `/ats-checker` — premium scan report (`AtsScanReport`), evidence quotes + resume preview, Fix Studio entry; **hybrid evidence-grounded engine** (facts + LLM semantic + quote gate, PR **#269**). Public `/free-tools/ats-score-checker` — structural (zero LLM) + gated fact report; upload/paste, Try sample, JD match %.
+**ATS Checker (PR #129 / #187 / #266–#275):** Logged-in `/ats-checker` — premium scan report (`AtsScanReport`), evidence quotes + resume preview, Fix Studio entry; **hybrid evidence-grounded engine** (facts + LLM semantic + quote gate, PR **#269**) + **semantic section mapping** (PRs **#274–#275**, Session **31**). Public `/free-tools/ats-score-checker` — structural (zero LLM) + gated fact report; upload/paste, Try sample, JD match %.
 
 ### Design tokens
 
@@ -161,6 +161,8 @@ lib/
 
 | Date | PR | Summary |
 |---|---|---|
+| Aug 6–7, 2026 | **#274–#275** | **ATS section mapping** — LLM `semantic-sections` in same call + token heading contains; merge LLM∪facts so incomplete maps don’t wipe Skills/Summary |
+| Aug 6, 2026 | **#271 / #273** | **ATS report polish** — Skill Evidence sync, Involved-in / Vague dedupe, LinkedIn-only contact tip, no green JD without JD, empty-state tips |
 | Aug 6, 2026 | **#269** | **Evidence-grounded ATS engine** — hybrid facts + LLM semantic + quote gate (logged-in); structural gated facts for public widget; server `report` on API |
 | Aug 5, 2026 | **#268** | **ATS scan report premium cards** — KPI bento, elevated check cards, document resume preview (`AtsScanReport`) |
 | Aug 5, 2026 | **#267** | **ATS full report** — dynamic repetition/spelling/contact/sections checks, sticky rail, category issue cards |
@@ -1233,8 +1235,8 @@ lib/resume-upload.ts       ← Client-safe upload helpers (`RESUME_FILE_ACCEPT`,
 lib/matcher.ts             ← Cosine similarity + embedding text builder
 lib/top-companies.ts       ← MNC company name list for /top-mnc filter
 lib/ats-checker.ts         ← Legacy 8-criterion ATS scores (PR #129 + v9 #187); still used by Fix Studio / structural base
-lib/ats-evidence-engine.ts ← Evidence-grounded orchestrator (PR #269) — hybrid vs structural
-lib/ats-resume-parse.ts / ats-fact-checks.ts / ats-semantic-review.ts / ats-consistency.ts ← parse → facts → LLM → gate
+lib/ats-evidence-engine.ts ← Evidence-grounded orchestrator (PR #269) — hybrid vs structural; `mergeSectionChecks` (PR #275)
+lib/ats-resume-parse.ts / ats-fact-checks.ts / ats-semantic-review.ts / ats-consistency.ts ← parse → facts → LLM → gate; token headings + `semantic-sections` (PRs #274–#275)
 lib/ats-report.ts          ← AtsReport categories/checks + buildAtsReport
 lib/ats-checker-samples.ts   ← Shared Try-sample resume + JD
 app/_components/ats-report/AtsScanReport.tsx ← Logged-in scan report UI (PRs #266–#268)
@@ -1394,6 +1396,7 @@ supabase/migrations/0009_llm_keys.sql ← (Session 16) llm_keys + llm_usage_log 
 | **Tier B skeleton is not cross-user answer memory (Jun 2026)** | Expectation that manual submit teaches the next user's values. | Skeleton stores **structure + semantic keys + option labels** only. Values always from current user's apply profile via `resolveProfileSemanticValue`. Never store filled values in `domain_form_templates`. |
 | **ATS Checker JD keywords use word boundaries (PR #187)** | Substring `includes()` on tech keywords inflated JD match (`go` in "ago", `r` in "performance"). | Always use `keywordInText()` from `lib/ats-checker.ts` for keyword presence. JD compare uses `KEYWORD_EQUIVALENTS` for aliases — do not reintroduce naive substring matching. |
 | **Dictionary patches for ATS spelling/skills/dates false-pass** (Aug 2026, PR **#269**) | Growing `MISSPELLINGS` / skill keyword lists / date regex “fixed” one resume and broke another (e.g. MM/YYYY marked years-only; LinkedIn missing but Contact “No issues”; QA tools under-counted as “2 skills”). | **Do not grow dictionaries as the accuracy strategy.** Use evidence-grounded pipeline: `ats-resume-parse` → `ats-fact-checks` → `ats-semantic-review` (LLM + exact quotes) → `ats-consistency` gate. Drop claims whose evidence is not a resume substring; never `pass` if any `foundItem.ok === false`. Logged-in = hybrid; public = structural. |
+| **Heading synonym patches for ATS sections** (Aug 2026, PRs **#274–#275**) | Adding `Accenture Experience` / `EDUCATIONAL QUALIFICATION` / `Area of expertise` as one-off regex synonyms is an endless loop at 100 scans/hour. Preferring incomplete LLM `semantic-sections` alone wiped token-found Skills/Summary (Ankit). | **Do not grow heading synonym lists.** Short headings that *contain* canonical tokens (experience, summary, expertise…) for structural; hybrid maps odd/misspelled headings via `semantic-sections` in the **same** LLM call with exact heading quotes. Always **`mergeSectionChecks`** (LLM ∪ token facts). |
 | **JobsPipe GET `/v1/jobs` returns 404** (Jun 2026, PR #222) | Hyred called GET with `?query=&country=IN` first — burned API credits, zero jobs. POST `/v1/jobs/search` works. | **POST only** in `lib/sources/jobspipe.ts`. Never re-add GET as primary. |
 | **JobsPipe POST omitted `job_country_code_or`** (Jun 2026, PR #222) | Indian users got global results; credits used but wrong geography. Manual PowerShell test with `job_country_code_or: ["IN"]` worked; app batch POST did not send country. | Always build POST body via `buildSearchBody()` — include `job_country_code_or` when `buildJobCountryCodes()` returns codes. Log label: `POST titles @IN`. |
 | **Hardcoded `country=IN` on JobsPipe** (Jun 2026, PR #217) | US/UK users got India-filtered jobs or empty sets. | Use `buildJobCountryCodes(preferences, insights)` everywhere for JobsPipe, JobDataLake, JSearch. Adzuna stays `adzuna_in` only. |
@@ -1457,7 +1460,8 @@ supabase/migrations/0009_llm_keys.sql ← (Session 16) llm_keys + llm_usage_log 
 > **PR #129** — Free instant ATS checker (8 criteria).  
 > **PR #187 (Jun 2026)** — v9 accuracy: word-boundary keywords, India contact, length calibration, public widget parity.  
 > **PRs #266–#268 (Aug 2026)** — Scan report UX: resume evidence, full dynamic report, premium cards.  
-> **PR #269 (Aug 6, 2026)** — Evidence-grounded hybrid engine (facts + LLM + quote gate). See Session **30**.
+> **PR #269 (Aug 6, 2026)** — Evidence-grounded hybrid engine (facts + LLM + quote gate). See Session **30**.  
+> **PRs #271–#275 (Aug 6–7, 2026)** — Report polish + semantic section mapping (no heading-synonym loop). See Session **31**.
 
 ### What it does
 
@@ -1478,11 +1482,21 @@ resume text → normalize/parse → fact checks → (LLM semantic) → consisten
 
 | Module | Role |
 |---|---|
-| `lib/ats-resume-parse.ts` | Ligatures, contact, sections, bullets, date tokens (MM/YYYY OK) |
+| `lib/ats-resume-parse.ts` | Ligatures, contact, **token section headings**, bullets, date tokens (MM/YYYY OK) |
 | `lib/ats-fact-checks.ts` | Deterministic fact checks only |
-| `lib/ats-semantic-review.ts` | Spelling, skills inventory, impact, repetition, template junk, truncated lines, verbs, JD |
+| `lib/ats-semantic-review.ts` | Spelling, skills, impact, repetition, vague, template, truncated, verbs, JD, **`semantic-sections`** |
 | `lib/ats-consistency.ts` | Ground quotes; demote contradictory passes |
-| `lib/ats-evidence-engine.ts` | `runEvidenceGroundedAts` / `runStructuralAts` |
+| `lib/ats-evidence-engine.ts` | `runEvidenceGroundedAts` / `runStructuralAts`; **`mergeSectionChecks`** |
+
+### Section mapping (PRs #274–#275, Session 31)
+
+| Layer | Behavior |
+|---|---|
+| Structural / token | Short heading lines that **contain** canonical tokens (`experience`, `summary`, `expertise`, `educational`…) — not company-name synonym lists |
+| Hybrid LLM | Same call returns `sections_mapped: [{ canonical, heading }]` with **exact** heading quotes; status recomputed from grounded map |
+| Assemble | Prefer `mergeSectionChecks(fact-sections, semantic-sections)` — union; never let incomplete LLM wipe token-found Skills/Summary |
+
+**Do not** ship PRs that only add one more heading string (`Accenture Experience`, etc.).
 
 ### Resume Fix Studio (logged-in)
 
@@ -1515,8 +1529,8 @@ Credits: generate/regenerate cost 1 Resume Studio credit each; apply/undo/copy d
 
 | File | Purpose |
 |---|---|
-| `lib/ats-evidence-engine.ts` | Hybrid/structural orchestrator — returns `result` + gated `report` |
-| `lib/ats-resume-parse.ts` / `ats-fact-checks.ts` / `ats-semantic-review.ts` / `ats-consistency.ts` | Parse → facts → LLM → gate |
+| `lib/ats-evidence-engine.ts` | Hybrid/structural orchestrator — `result` + gated `report`; `mergeSectionChecks` |
+| `lib/ats-resume-parse.ts` / `ats-fact-checks.ts` / `ats-semantic-review.ts` / `ats-consistency.ts` | Parse → facts → LLM (incl. sections) → gate |
 | `lib/ats-checker.ts` | Legacy 8-criterion scores — `checkAtsCompatibility()`, JD keywords; Fix Studio re-score base |
 | `lib/ats-report.ts` | `AtsReport` model + `buildAtsReport` (premium categories still use this) |
 | `lib/ats-checker-samples.ts` | Shared sample resume + JD (India perf engineer) for Try sample buttons |
@@ -1619,7 +1633,7 @@ When a feature seems broken:
 - Changes to the file map
 - **Keep the `AGENTS.md` Index in sync** when you add/rename a `##` section here, and append new dated session logs to `docs/context/session-log.md` (not here).
 
-**Last updated:** Aug 6, 2026 — **Session 30:** ATS scan report UX (PRs #266–#268) + evidence-grounded hybrid engine (PR **#269**). File Map / ATS section / Known Pitfalls / UI change log / `AGENTS.md` Index updated. See `docs/context/session-log.md` Session 30.
+**Last updated:** Aug 7, 2026 — **Session 31:** ATS report polish + semantic section mapping (PRs **#271–#275**). `AGENTS.md` Index / ATS section / Known Pitfalls / UI change log / session-log updated. See Session 31 (and Session 30 for hybrid engine).
 
 **Last updated:** June 20, 2026 — **Doc bridge audit:** restored `## Key Architecture Decisions` heading; added `## Core App Features` (job detail, onboarding, Top MNC, import, outreach, apply profile); expanded File Map + `AGENTS.md` Index rows; fixed Tier 3 pointer to `session-log.md`; Sessions 17–18 + 26 in archive. See Session 26.
 
