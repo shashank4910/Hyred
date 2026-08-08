@@ -1,4 +1,5 @@
 import { getCurrentProfile } from '@/lib/current-user';
+import { supabaseAdmin } from '@/lib/supabase/server';
 import { OnboardingForm } from './OnboardingForm';
 import type { ResumeInsights } from '@/lib/types';
 
@@ -7,6 +8,22 @@ export const metadata = { title: 'Profile' };
 
 export default async function OnboardingPage() {
   const profile = await getCurrentProfile();
+
+  let hasOriginalResume = false;
+  let originalFilename: string | null = null;
+  if (profile) {
+    const { data } = await supabaseAdmin()
+      .from('profiles')
+      .select('resume_original_path, resume_original_filename')
+      .eq('id', profile.id)
+      .maybeSingle();
+    const row = data as {
+      resume_original_path?: string | null;
+      resume_original_filename?: string | null;
+    } | null;
+    hasOriginalResume = !!row?.resume_original_path;
+    originalFilename = row?.resume_original_filename ?? null;
+  }
 
   return (
     <div className="space-y-4">
@@ -25,6 +42,8 @@ export default async function OnboardingPage() {
           preferences: profile?.preferences ?? {},
           insights: (profile?.insights as ResumeInsights | null) ?? null,
           resumeChars: (profile?.resume_text ?? '').length,
+          hasOriginalResume,
+          originalFilename,
         }}
       />
     </div>

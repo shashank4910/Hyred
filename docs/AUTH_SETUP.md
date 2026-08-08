@@ -125,6 +125,7 @@ Supabase → **Authentication → URL Configuration**:
 ## ⚠️ Before sharing a PUBLIC link (not done yet — see CONTEXT.md)
 
 - ✅ **`resumes` storage bucket is private** (migration **0019** + `lib/resume-storage.ts` signed URLs). **Run `0019_private_resumes_bucket.sql` in the Supabase SQL Editor** on each environment if not applied yet.
+- ✅ **Original resume file download** (migration **0020**) — run `0020_profile_original_resume.sql` so My Resume can store/download the exact uploaded PDF/DOCX (not a re-styled text PDF).
 - **No per-user quotas** → on a shared OpenAI key, an active stranger spends your money. Add quotas/BYOK before a public launch (Phase 3/4). See the Groq capacity + OpenAI cost analysis in `CONTEXT.md` Phase 3.
 - **Legal:** Privacy Policy + Terms exist; add in-app "delete account" before collecting strangers' resumes (Phase 4).
 
