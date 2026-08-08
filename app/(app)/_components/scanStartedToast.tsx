@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { X, Zap } from 'lucide-react';
 
 import { SCAN_STARTED_TOAST_ID } from '@/lib/scan-toast-id';
+import { setScanUiActive } from '@/lib/scan-ui-active';
 
 /**
  * Progressive scan steps — short, punchy lines that keep the user
@@ -89,7 +90,10 @@ function ScanCard() {
         {/* Dismiss */}
         <button
           type="button"
-          onClick={() => toast.dismiss(SCAN_STARTED_TOAST_ID)}
+          onClick={() => {
+            setScanUiActive(false);
+            toast.dismiss(SCAN_STARTED_TOAST_ID);
+          }}
           className="shrink-0 rounded p-0.5 text-on-surface-variant/60 hover:text-on-surface transition-colors"
           aria-label="Dismiss"
         >
@@ -111,14 +115,18 @@ function ScanCard() {
  */
 export function showScanStartedToast(options?: { onboarding?: boolean }) {
   void options; // onboarding flag reserved for future copy variants
+  setScanUiActive(true);
   toast.custom(() => <ScanCard />, {
     id: SCAN_STARTED_TOAST_ID,
     duration: Infinity,
     dismissible: true,
+    // ScanCard has its own dismiss control; Sonner's chrome would look like a 2nd card
+    closeButton: false,
   });
 }
 
 /** Dismiss the scan card. Sonner unmounts ScanCard → useEffect cleanup fires. */
 export function dismissScanStartedToast() {
+  setScanUiActive(false);
   toast.dismiss(SCAN_STARTED_TOAST_ID);
 }

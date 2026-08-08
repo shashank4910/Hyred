@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useTransition, useRef, useEffect } from 'react';
+import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, RefreshCw, ChevronDown, Zap, X } from 'lucide-react';
 import { toast } from 'sonner';
+import { dismissScanStartedToast } from './scanStartedToast';
 import { triggerJobScan } from './triggerJobScan';
 
 const ALL_SOURCES = [
@@ -16,44 +17,6 @@ const ALL_SOURCES = [
   { id: 'remoteok', label: 'RemoteOK', tokens: 'free' },
   { id: 'hn', label: 'HN Who is Hiring', tokens: 'free' },
   { id: 'arbeitnow', label: 'Arbeitnow', tokens: 'free' },
-];
-
-/**
- * Progressive scan status messages — shown at staggered intervals so
- * the user always knows what's happening and never feels ghosted.
- * Each message replaces the previous one (same toast ID).
- */
-const PROGRESS_MESSAGES = [
-  // Immediately (0s)
-  {
-    delay: 0,
-    message: 'Scan started \u2014 we\u2019re fetching fresh roles from job boards and scoring them against your resume. This usually takes 1\u20135 minutes depending on your roles, locations, and how many sources we\u2019re scanning.',
-    icon: '\uD83D\uDD0D',
-  },
-  // 30s
-  {
-    delay: 30_000,
-    message: 'Still working \u2014 fetching jobs from multiple sources and filtering out irrelevant ones. Your personalized matches are being prepared.',
-    icon: '\u2699\uFE0F',
-  },
-  // 1.5 min
-  {
-    delay: 90_000,
-    message: 'Scoring jobs against your resume now \u2014 each job gets individually analyzed by AI to check how well it matches your experience. Almost there!',
-    icon: '\uD83E\uDDE0',
-  },
-  // 3 min
-  {
-    delay: 180_000,
-    message: 'Still scoring \u2014 looks like there are quite a few potential matches this time. The AI is being thorough. Hang tight, results are coming!',
-    icon: '\u23F3',
-  },
-  // 4.5 min
-  {
-    delay: 270_000,
-    message: 'This is taking a bit longer than usual \u2014 likely because your profile matches many roles across sources. We\u2019re in the final stretch. Your matches will appear any moment.',
-    icon: '\uD83C\uDFC1',
-  },
 ];
 
 export function RunIngestButton({
@@ -70,14 +33,6 @@ export function RunIngestButton({
   const router = useRouter();
   const [showSourcePicker, setShowSourcePicker] = useState(false);
   const [selectedSources, setSelectedSources] = useState<string[]>([]);
-  const progressTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
-
-  // Cleanup timers on unmount
-  useEffect(() => {
-    return () => {
-      progressTimers.current.forEach(clearTimeout);
-    };
-  }, []);
 
   function toggleSource(id: string) {
     setSelectedSources((prev) =>
@@ -85,32 +40,8 @@ export function RunIngestButton({
     );
   }
 
-  function startProgressMessages() {
-    // Clear any existing timers
-    progressTimers.current.forEach(clearTimeout);
-    progressTimers.current = [];
-
-    for (const step of PROGRESS_MESSAGES) {
-      const timer = setTimeout(() => {
-        toast.info(step.message, {
-          id: 'scan-progress',
-          duration: Infinity, // stays until replaced or dismissed
-          icon: step.icon,
-        });
-      }, step.delay);
-      progressTimers.current.push(timer);
-    }
-  }
-
-  function stopProgressMessages() {
-    progressTimers.current.forEach(clearTimeout);
-    progressTimers.current = [];
-    toast.dismiss('scan-progress');
-  }
-
   async function run() {
     setRunning(true);
-    startProgressMessages();
 
     try {
       await triggerJobScan({
@@ -122,7 +53,6 @@ export function RunIngestButton({
     } finally {
       setRunning(false);
       setShowCancelConfirm(false);
-      stopProgressMessages();
     }
   }
 
@@ -132,10 +62,10 @@ export function RunIngestButton({
       const res = await fetch('/api/ingest/cancel', { method: 'POST' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Cancel failed');
+      dismissScanStartedToast();
       toast.success('Scan cancelled. Any matches already found are still on your dashboard.', { duration: 6000 });
       setRunning(false);
       setShowCancelConfirm(false);
-      stopProgressMessages();
       startTransition(() => router.refresh());
     } catch (e) {
       toast.error((e as Error).message);

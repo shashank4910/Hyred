@@ -1,11 +1,10 @@
-import Link from 'next/link';
-import { Inbox } from 'lucide-react';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { getCurrentProfile } from '@/lib/current-user';
 import { applyMatchSort } from '@/lib/apply-match-sort';
 import { resolveMatchSort } from '@/lib/ui';
 import { enrichMatchListSkills } from '@/lib/match-skill-enrich';
 import { sanitizeCityFilter } from '@/lib/match-location-filter';
+import { EmptyMatches } from './EmptyMatches';
 import { MatchList } from './MatchList';
 
 const PAGE_SIZE = 20;
@@ -150,61 +149,5 @@ export async function DashboardMatchResults({
       showSource={isAdmin}
       highlightId={highlightId}
     />
-  );
-}
-
-
-
-function EmptyMatches({
-  status,
-  totalMatches,
-  hiddenBelowThreshold,
-  effectiveMinScore,
-}: {
-  status: string;
-  totalMatches: number;
-  hiddenBelowThreshold: number;
-  effectiveMinScore: number;
-}) {
-  if (hiddenBelowThreshold > 0) {
-    return (
-      <div className="rounded-2xl bg-surface-container-lowest px-6 py-10 text-center shadow-card">
-        <div className="mx-auto inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-          <Inbox className="h-5 w-5" />
-        </div>
-        <p className="text-sm text-on-surface">
-          <span className="font-semibold">{hiddenBelowThreshold}</span> match
-          {hiddenBelowThreshold === 1 ? ' is' : 'es are'} hidden because{' '}
-          {hiddenBelowThreshold === 1 ? 'its score is' : 'their scores are'} below your threshold of{' '}
-          <span className="text-primary font-semibold">{effectiveMinScore}</span>.
-        </p>
-        <p className="text-xs text-on-surface-variant">
-          Lower the threshold in your{' '}
-          <Link href="/onboarding" className="font-medium text-primary hover:underline">
-            profile
-          </Link>{' '}
-          to view them, or wait for the next scan to bring fresher jobs.
-        </p>
-        <Link href={`/?status=${status}&min=0`} className="btn inline-flex" scroll={false}>
-          Show all scores anyway
-        </Link>
-      </div>
-    );
-  }
-
-  return (
-    <div className="rounded-2xl bg-surface-container-lowest px-6 py-12 text-center shadow-card">
-      <div className="mx-auto inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-surface-container text-text-muted">
-        <Inbox className="h-5 w-5" />
-      </div>
-      <p className="mt-3 text-sm text-on-surface">
-        No matches in <span className="font-medium text-primary">{status}</span> yet.
-      </p>
-      <p className="mt-1 text-xs text-on-surface-variant">
-        {totalMatches > 0
-          ? 'Try a different status or run a scan to find more.'
-          : 'Click "Run scan" to find jobs matched to your resume.'}
-      </p>
-    </div>
   );
 }
