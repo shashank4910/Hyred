@@ -25,6 +25,9 @@ type Initial = {
   preferences: Preferences;
   insights: ResumeInsights | null;
   resumeChars: number;
+  /** True when we have the exact last-uploaded file in private storage. */
+  hasOriginalResume?: boolean;
+  originalFilename?: string | null;
 };
 
 type AiField = 'email' | 'fullName' | 'roles' | 'locations' | 'phone';
@@ -60,39 +63,45 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
   const [analyzing, setAnalyzing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [hasOriginalResume, setHasOriginalResume] = useState(
+    !!initial.hasOriginalResume,
+  );
+  const [originalFilename, setOriginalFilename] = useState<string | null>(
+    initial.originalFilename ?? null,
+  );
   const [aiFields, setAiFields] = useState<Set<AiField>>(new Set());
 
   const mainResumeText = (parsedText || resumeText).trim();
-  const canDownloadResume = mainResumeText.length >= 50;
+  const canDownloadResume = hasOriginalResume || mainResumeText.length >= 50;
 
-  async function downloadMainResumePdf() {
-    if (!canDownloadResume) {
-      toast.error('No resume on file to download yet.');
-      return;
-    }
+  async function downloadMainResume() {
     setDownloading(true);
-    const id = toast.loading('Preparing your resume PDF…');
+    const id = toast.loading(
+      hasOriginalResume
+        ? 'Preparing your uploaded file…'
+        : 'Checking for your uploaded file…',
+    );
     try {
-      const { generateBeautifulPdf } = await import('@/lib/pdf-resume');
-      const doc = generateBeautifulPdf(mainResumeText);
-      const safe =
-        (fullName || 'resume')
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '-')
-          .replace(/^-|-$/g, '')
-          .slice(0, 40) || 'resume';
-      const filename = `${safe}-hyred.pdf`;
-      const blob = doc.output('blob');
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.rel = 'noopener';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      toast.success('Resume downloaded', { id });
+      const res = await fetch('/api/profile/resume/original');
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.url) {
+        const a = document.createElement('a');
+        a.href = data.url as string;
+        a.download = (data.filename as string) || 'resume';
+        a.rel = 'noopener';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setHasOriginalResume(true);
+        if (data.filename) setOriginalFilename(String(data.filename));
+        toast.success('Downloaded your uploaded resume', { id });
+        return;
+      }
+      toast.error(
+        (data.message as string) ||
+          'No original file yet. Upload your resume again and click Save — then Download will match that file.',
+        { id, duration: 10000 },
+      );
     } catch (e) {
       toast.error(`Download failed: ${(e as Error).message}`, { id });
     } finally {
@@ -224,6 +233,10 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Save failed');
       if (data.profile?.insights) setInsights(data.profile.insights);
+      if (data.original_file_saved) {
+        setHasOriginalResume(true);
+        if (resumeFile?.name) setOriginalFilename(resumeFile.name);
+      }
       const isFirstResume = initial.resumeChars === 0 && data.reembedded;
       toast.success(
         data.reembedded
@@ -323,25 +336,33 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
 
         {canDownloadResume && !resumeFile && (
           <div className="flex flex-wrap items-center gap-2 justify-between">
-            <p className="text-xs text-on-surface-variant inline-flex items-center gap-1">
+            <p className="text-xs text-on-surface-variant inline-flex items-center gap-1 min-w-0">
               <CheckCircle2 className="h-3.5 w-3.5 text-match-success shrink-0" />
-              {initial.resumeChars > 0
-                ? `Resume on file (${mainResumeText.length.toLocaleString()} chars). Upload a new file to replace.`
-                : `Resume ready (${mainResumeText.length.toLocaleString()} chars). Save to use it for job scans.`}
+              <span>
+                {hasOriginalResume
+                  ? `Uploaded file ready${originalFilename ? ` (${originalFilename})` : ''}. Download gives you that exact file.`
+                  : initial.resumeChars > 0
+                    ? `Resume text on file (${mainResumeText.length.toLocaleString()} chars). Re-upload + Save once to keep the exact file for download.`
+                    : `Resume ready (${mainResumeText.length.toLocaleString()} chars). Save after uploading a file to enable exact download.`}
+              </span>
             </p>
             <button
               type="button"
-              onClick={downloadMainResumePdf}
+              onClick={downloadMainResume}
               disabled={downloading}
               className="btn btn-secondary text-xs shrink-0"
-              title="Download the resume Hyred uses for job scans"
+              title={
+                hasOriginalResume
+                  ? 'Download the exact file you last uploaded'
+                  : 'Download original file (re-upload + Save if missing)'
+              }
             >
               {downloading ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
                 <Download className="h-3.5 w-3.5" />
               )}
-              Download PDF
+              Download
             </button>
           </div>
         )}

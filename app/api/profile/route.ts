@@ -8,6 +8,11 @@ import {
   stripSearchProfile,
   clearMatchesForResumeChange,
 } from '@/lib/profile-insights';
+import {
+  guessResumeMime,
+  profileOriginalResumePath,
+  uploadResumeFile,
+} from '@/lib/resume-storage';
 import type { Preferences, ResumeInsights } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -21,6 +26,12 @@ type JsonBody = {
   insights?: ResumeInsights;
 };
 
+type OriginalUpload = {
+  buffer: Buffer;
+  filename: string;
+  mime: string;
+};
+
 export async function POST(req: NextRequest) {
   const contentType = req.headers.get('content-type') ?? '';
   let email: string;
@@ -28,6 +39,7 @@ export async function POST(req: NextRequest) {
   let resumeText: string;
   let preferences: Preferences = {};
   let providedInsights: ResumeInsights | null = null;
+  let originalUpload: OriginalUpload | null = null;
 
   if (contentType.includes('multipart/form-data')) {
     // File upload path
@@ -71,6 +83,11 @@ export async function POST(req: NextRequest) {
           filename: file.name,
           mimeType: file.type,
         });
+        originalUpload = {
+          buffer,
+          filename: file.name,
+          mime: guessResumeMime(file.name, file.type),
+        };
       } catch (e) {
         return NextResponse.json(
           { error: `Could not parse resume: ${(e as Error).message}` },
@@ -161,7 +178,7 @@ export async function POST(req: NextRequest) {
     ? existing.email
     : email || existing.email;
 
-  const updatePayload = {
+  const updatePayload: Record<string, unknown> = {
     email: canonicalEmail,
     full_name: fullName,
     resume_text: resumeText,
@@ -170,7 +187,29 @@ export async function POST(req: NextRequest) {
     preferences,
   };
 
-  const { data, error } = await sb
+  let originalSaved = false; // may flip false again if DB columns missing
+  if (originalUpload) {
+    const objectPath = profileOriginalResumePath(
+      profile.id,
+      originalUpload.filename,
+    );
+    const { error: uploadErr } = await uploadResumeFile(
+      sb,
+      objectPath,
+      originalUpload.buffer,
+      originalUpload.mime,
+    );
+    if (uploadErr) {
+      console.warn('[profile] original resume upload failed:', uploadErr.message);
+    } else {
+      updatePayload.resume_original_path = objectPath;
+      updatePayload.resume_original_filename = originalUpload.filename;
+      updatePayload.resume_original_mime = originalUpload.mime;
+      originalSaved = true;
+    }
+  }
+
+  let { data, error } = await sb
     .from('profiles')
     .update(updatePayload)
     .eq('id', profile.id)
@@ -178,7 +217,29 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    // Migration 0020 not applied yet — retry without original-file columns.
+    if (originalSaved && /resume_original_/i.test(error.message)) {
+      delete updatePayload.resume_original_path;
+      delete updatePayload.resume_original_filename;
+      delete updatePayload.resume_original_mime;
+      const retry = await sb
+        .from('profiles')
+        .update(updatePayload)
+        .eq('id', profile.id)
+        .select('id, email, insights')
+        .single();
+      if (retry.error) {
+        return NextResponse.json({ error: retry.error.message }, { status: 500 });
+      }
+      console.warn(
+        '[profile] Saved resume text but could not store original-file columns — run migration 0020.',
+      );
+      data = retry.data;
+      error = null;
+      originalSaved = false;
+    } else {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
   }
 
   if (resumeChanged) {
@@ -197,5 +258,6 @@ export async function POST(req: NextRequest) {
     profile: data,
     reembedded: resumeChanged,
     resume_chars: resumeText.length,
+    original_file_saved: originalSaved,
   });
 }

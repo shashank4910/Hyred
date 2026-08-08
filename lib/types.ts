@@ -5,6 +5,10 @@ export type Profile = {
   full_name: string | null;
   resume_text: string | null;
   resume_embedding: number[] | null;
+  /** Private Storage path for the last uploaded source file (exact download). */
+  resume_original_path?: string | null;
+  resume_original_filename?: string | null;
+  resume_original_mime?: string | null;
   preferences: Preferences;
   insights: ResumeInsights | null;
   created_at: string;

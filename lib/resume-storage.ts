@@ -61,12 +61,52 @@ export async function uploadResumePdf(
   objectPath: string,
   pdfBuffer: Buffer,
 ): Promise<{ error: Error | null }> {
+  return uploadResumeFile(sb, objectPath, pdfBuffer, 'application/pdf');
+}
+
+/** Upload any resume source file (PDF/DOCX/…) into the private resumes bucket. */
+export async function uploadResumeFile(
+  sb: SupabaseClient,
+  objectPath: string,
+  buffer: Buffer,
+  contentType: string,
+): Promise<{ error: Error | null }> {
   await ensureResumesBucketPrivate(sb);
-  const { error } = await sb.storage.from(RESUMES_BUCKET).upload(objectPath, pdfBuffer, {
-    contentType: 'application/pdf',
+  const { error } = await sb.storage.from(RESUMES_BUCKET).upload(objectPath, buffer, {
+    contentType: contentType || 'application/octet-stream',
     upsert: true,
   });
   return { error: error ? new Error(error.message) : null };
+}
+
+/** Stable path for the user's last onboarding upload. */
+export function profileOriginalResumePath(
+  profileId: string,
+  filename: string,
+): string {
+  const base = filename.split(/[/\\]/).pop() || 'resume';
+  const safe = base
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 80);
+  return `${profileId}/original/${safe || 'resume.bin'}`;
+}
+
+export function guessResumeMime(
+  filename: string,
+  fallback?: string | null,
+): string {
+  if (fallback && fallback !== 'application/octet-stream') return fallback;
+  const lower = filename.toLowerCase();
+  if (lower.endsWith('.pdf')) return 'application/pdf';
+  if (lower.endsWith('.docx')) {
+    return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  }
+  if (lower.endsWith('.doc')) return 'application/msword';
+  if (lower.endsWith('.txt')) return 'text/plain';
+  return 'application/octet-stream';
 }
 
 /**
