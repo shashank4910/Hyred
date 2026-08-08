@@ -85,11 +85,12 @@ create index if not exists idx_apply_profiles_profile_id
 --   1. Go to Storage in Supabase dashboard
 --   2. Click "New bucket"
 --   3. Name: resumes
---   4. Toggle "Public bucket" ON
+--   4. Toggle "Public bucket" OFF (private — signed URLs; see 0019)
 --   5. Click Save
 --
 -- The SQL below creates the bucket programmatically — run it only
--- if you prefer SQL over the dashboard UI.
+-- if you prefer SQL over the dashboard UI. Do NOT force public=true on
+-- conflict (that would undo migration 0019).
 insert into storage.buckets (id, name, public)
-values ('resumes', 'resumes', true)
-on conflict (id) do update set public = true;
+values ('resumes', 'resumes', false)
+on conflict (id) do nothing;

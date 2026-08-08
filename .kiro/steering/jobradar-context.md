@@ -16,7 +16,7 @@
 |---|---|---|
 | **0** | Strategic decisions (auth provider, cost model, scope) | ✅ Done |
 | **1** | Real auth & identity (Supabase Auth, replace first-profile pattern) | ✅ Done (session 7) |
-| **2** | Data isolation & security (RLS, ownership checks, private resume bucket) | 🟡 Partial — scoping+ownership+RLS done; **resumes bucket still public (TODO)** |
+| **2** | Data isolation & security (RLS, ownership checks, private resume bucket) | ✅ Done — scoping+ownership+RLS; resumes private + signed URLs (migration 0019) |
 | **3** | Scalable ingest & cost control (split shared vs per-user, quotas, **pub/sub by role topic**) | ⬜ Not started — design note in `CONTEXT.md` |
 | **4** | Monetization & abuse protection (tiers, rate limits, legal) | ⬜ Not started |
 | **5** | Scale & ops (pgvector, observability, auto-apply queue) | ⬜ Not started |
