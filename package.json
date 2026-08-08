@@ -29,6 +29,7 @@
     "react-dom": "^19.0.0",
     "server-only": "^0.0.1",
     "sonner": "^2.0.7",
+    "unpdf": "^1.8.0",
     "word-extractor": "^1.0.4"
   },
   "devDependencies": {

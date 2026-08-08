@@ -21,8 +21,7 @@ export async function parseResume(args: {
     mime === 'application/pdf' ||
     isPdfBuffer(args.buffer)
   ) {
-    const result = await pdfParse(args.buffer);
-    return cleanWhitespace(result.text ?? '');
+    return await parsePdfBuffer(args.buffer);
   }
 
   if (
@@ -54,6 +53,40 @@ export async function parseResume(args: {
 
 function isPdfBuffer(buffer: Buffer): boolean {
   return buffer.length >= 4 && buffer.subarray(0, 4).toString() === '%PDF';
+}
+
+/**
+ * Primary: pdf-parse-fork. Fallback: unpdf (modern pdf.js) for PDFs that
+ * trip "bad XRef entry" / "Illegal character" on the older parser.
+ */
+async function parsePdfBuffer(buffer: Buffer): Promise<string> {
+  try {
+    const result = await pdfParse(buffer);
+    const text = cleanWhitespace(result.text ?? '');
+    if (text.length >= 50) return text;
+  } catch (e) {
+    console.warn(
+      '[resume] pdf-parse-fork failed, trying unpdf:',
+      (e as Error).message,
+    );
+  }
+
+  const text = await extractPdfTextWithUnpdf(buffer);
+  if (text.length < 50) {
+    throw new Error(
+      'Could not read enough text from this PDF. If it is a scanned/image PDF, export a text PDF or .docx and try again.',
+    );
+  }
+  return text;
+}
+
+async function extractPdfTextWithUnpdf(buffer: Buffer): Promise<string> {
+  const { extractText } = await import('unpdf');
+  const result = await extractText(new Uint8Array(buffer));
+  const raw = Array.isArray(result.text)
+    ? result.text.join('\n')
+    : (result.text ?? '');
+  return cleanWhitespace(raw);
 }
 
 /** ZIP / OOXML (modern Word .docx). */
