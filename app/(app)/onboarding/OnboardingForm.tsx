@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   Save,
   Wand2,
+  Download,
 } from 'lucide-react';
 import type { Preferences, ResumeInsights } from '@/lib/types';
 import { isResumeFilename, RESUME_FILE_ACCEPT } from '@/lib/resume-upload';
@@ -58,7 +59,46 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
   const [insights, setInsights] = useState<ResumeInsights | null>(initial.insights);
   const [analyzing, setAnalyzing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [aiFields, setAiFields] = useState<Set<AiField>>(new Set());
+
+  const mainResumeText = (parsedText || resumeText).trim();
+  const canDownloadResume = mainResumeText.length >= 50;
+
+  async function downloadMainResumePdf() {
+    if (!canDownloadResume) {
+      toast.error('No resume on file to download yet.');
+      return;
+    }
+    setDownloading(true);
+    const id = toast.loading('Preparing your resume PDF…');
+    try {
+      const { generateBeautifulPdf } = await import('@/lib/pdf-resume');
+      const doc = generateBeautifulPdf(mainResumeText);
+      const safe =
+        (fullName || 'resume')
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-|-$/g, '')
+          .slice(0, 40) || 'resume';
+      const filename = `${safe}-hyred.pdf`;
+      const blob = doc.output('blob');
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      toast.success('Resume downloaded', { id });
+    } catch (e) {
+      toast.error(`Download failed: ${(e as Error).message}`, { id });
+    } finally {
+      setDownloading(false);
+    }
+  }
 
 
   function markAiFilled(...fields: AiField[]) {
@@ -281,11 +321,29 @@ export function OnboardingForm({ initial }: { initial: Initial }) {
           )}
         </div>
 
-        {initial.resumeChars > 0 && !resumeFile && (
-          <p className="text-xs text-on-surface-variant inline-flex items-center gap-1">
-            <CheckCircle2 className="h-3.5 w-3.5 text-match-success" />
-            Resume on file ({initial.resumeChars.toLocaleString()} chars). Upload a new file to replace.
-          </p>
+        {canDownloadResume && !resumeFile && (
+          <div className="flex flex-wrap items-center gap-2 justify-between">
+            <p className="text-xs text-on-surface-variant inline-flex items-center gap-1">
+              <CheckCircle2 className="h-3.5 w-3.5 text-match-success shrink-0" />
+              {initial.resumeChars > 0
+                ? `Resume on file (${mainResumeText.length.toLocaleString()} chars). Upload a new file to replace.`
+                : `Resume ready (${mainResumeText.length.toLocaleString()} chars). Save to use it for job scans.`}
+            </p>
+            <button
+              type="button"
+              onClick={downloadMainResumePdf}
+              disabled={downloading}
+              className="btn btn-secondary text-xs shrink-0"
+              title="Download the resume Hyred uses for job scans"
+            >
+              {downloading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Download className="h-3.5 w-3.5" />
+              )}
+              Download PDF
+            </button>
+          </div>
         )}
 
         <details className="text-xs">
