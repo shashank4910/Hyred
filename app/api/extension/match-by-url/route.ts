@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { isExtAuthed } from '@/lib/extension/auth';
 import { corsPreflight, corsResponse } from '@/lib/extension/cors';
+import { signResumeUrl } from '@/lib/resume-storage';
 
 export const runtime = 'nodejs';
 
@@ -180,6 +181,11 @@ export async function GET(req: NextRequest) {
     match.tailored_resume_url
   );
 
+  const signedResumeUrl = await signResumeUrl(
+    sb,
+    (match as { tailored_resume_url?: string | null }).tailored_resume_url,
+  );
+
   return corsResponse({
     ok: true,
     match: {
@@ -190,7 +196,7 @@ export async function GET(req: NextRequest) {
       cover_letter: match.cover_letter,
       matched_skills: match.matched_skills ?? [],
       missing_skills: match.missing_skills ?? [],
-      tailored_resume_url: match.tailored_resume_url ?? null,
+      tailored_resume_url: signedResumeUrl,
       has_tailored_resume: hasTailored,
       job: {
         id: job.id,

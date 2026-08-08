@@ -63,7 +63,7 @@ class ApplyRequest(BaseModel):
     company: str | None = None
 
     # Resume
-    resume_pdf_url: str          # Public Supabase Storage URL
+    resume_pdf_url: str          # Short-lived signed Supabase Storage URL (private bucket)
     resume_text: str             # Plain text fallback for text fields
 
     # Cover letter (optional)

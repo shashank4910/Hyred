@@ -212,7 +212,7 @@ When you ship UI work: add a row here, link the PR, and update **Current UI** if
 |---|---|---|
 | **0** | Strategic decisions (auth provider, cost model, scope) | ✅ Done |
 | **1** | Real authentication & identity (Supabase Auth, replace first-profile pattern) | ✅ Done (session 7) |
-| **2** | Data isolation & security (RLS, ownership checks, private resume bucket) | 🟡 Partial — per-user scoping + ownership checks + RLS shipped; **resumes bucket still public (TODO)** |
+| **2** | Data isolation & security (RLS, ownership checks, private resume bucket) | ✅ Done — per-user scoping + ownership checks + RLS; **resumes bucket private + signed URLs** (migration **0019**, `lib/resume-storage.ts`) |
 | **3** | Scalable ingest & cost control (split shared vs per-user, quotas) | ⬜ Not started |
 | **4** | Monetization & abuse protection (tiers, rate limits, legal) | ⬜ Not started |
 | **5** | Scale & operations (pgvector, observability, queue for auto-apply) | ⬜ Not started |
@@ -439,7 +439,7 @@ Shipped the full single-user → multi-user transformation. Anyone can sign up (
 5. First login with Shashank's existing email auto-adopts the existing profile (so current data/matches stay yours).
 
 **Deferred (carried forward):**
-- ⚠️ **`resumes` storage bucket is still PUBLIC** (PII leak risk for a real public launch) → make private + signed URLs in Phase 2.
+- ✅ **`resumes` storage bucket is private** (migration **0019**) — app stores object paths and mints short-lived signed URLs via `lib/resume-storage.ts` (no `getPublicUrl` for resume PDFs).
 - Extension routes (`/api/extension/*`) still resolve the first profile (owner tool, separate Bearer auth) — fine for now.
 - `scripts/backfill-jds.ts` still single-profile (manual owner maintenance tool).
 - Per-user cron currently re-fetches/re-embeds per profile (cost) → split shared vs per-user in Phase 3.

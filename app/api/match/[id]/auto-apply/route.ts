@@ -16,6 +16,12 @@ import { getCurrentProfile } from '@/lib/current-user';
 import { generateAtsResume } from '@/lib/gemini';
 import { ensureFullDescription } from '@/lib/jd-fetcher';
 import { generateBeautifulPdf } from '@/lib/pdf-resume';
+import {
+  RESUME_SIGN_TTL_AGENT_SEC,
+  resumeObjectPath,
+  signResumeUrl,
+  uploadResumePdf,
+} from '@/lib/resume-storage';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -104,9 +110,9 @@ export async function POST(
     await sb.from('matches').update({ tailored_resume_text: resume }).eq('id', id);
   }
 
-  // ── 5. Ensure PDF URL exists ──────────────────────────────────────────────
-  let pdfUrl = m.tailored_resume_url;
-  if (!pdfUrl) {
+  // ── 5. Ensure PDF exists in private storage, then mint a signed URL ───────
+  let storedPath = resumeObjectPath(m.tailored_resume_url);
+  if (!storedPath) {
     const pdfDoc = generateBeautifulPdf(resumeText);
     const pdfBuffer = Buffer.from(pdfDoc.output('arraybuffer'));
 
@@ -114,20 +120,22 @@ export async function POST(
       .toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').slice(0, 40);
     const filename = `${profile.id}/${id}-${safeName}.pdf`;
 
-    const { error: uploadErr } = await sb.storage
-      .from('resumes')
-      .upload(filename, pdfBuffer, { contentType: 'application/pdf', upsert: true });
-
+    const { error: uploadErr } = await uploadResumePdf(sb, filename, pdfBuffer);
     if (!uploadErr) {
-      const { data: urlData } = sb.storage.from('resumes').getPublicUrl(filename);
-      pdfUrl = urlData.publicUrl;
-      await sb.from('matches').update({ tailored_resume_url: pdfUrl }).eq('id', id);
+      storedPath = filename;
+      await sb.from('matches').update({ tailored_resume_url: filename }).eq('id', id);
     } else {
       // Non-fatal — agent will note it can't upload
       console.warn('PDF upload failed:', uploadErr.message);
-      pdfUrl = '';
     }
+  } else if (m.tailored_resume_url !== storedPath) {
+    // Migrate legacy public URL → path so future reads stay private-safe
+    await sb.from('matches').update({ tailored_resume_url: storedPath }).eq('id', id);
   }
+
+  const pdfUrl = storedPath
+    ? (await signResumeUrl(sb, storedPath, RESUME_SIGN_TTL_AGENT_SEC)) ?? ''
+    : '';
 
   // ── 6. Cover letter (on-demand only — never auto-generate here) ───────────
   const coverLetter = m.cover_letter;

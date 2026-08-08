@@ -124,9 +124,9 @@ Supabase → **Authentication → URL Configuration**:
 
 ## ⚠️ Before sharing a PUBLIC link (not done yet — see CONTEXT.md)
 
-- **`resumes` storage bucket is still PUBLIC** → make it private + signed URLs (Phase 2). Today, uploaded resume PDFs sit on guessable-but-unlisted public URLs.
+- ✅ **`resumes` storage bucket is private** (migration **0019** + `lib/resume-storage.ts` signed URLs). **Run `0019_private_resumes_bucket.sql` in the Supabase SQL Editor** on each environment if not applied yet.
 - **No per-user quotas** → on a shared OpenAI key, an active stranger spends your money. Add quotas/BYOK before a public launch (Phase 3/4). See the Groq capacity + OpenAI cost analysis in `CONTEXT.md` Phase 3.
-- **Legal:** Privacy Policy + Terms + "delete account" before collecting strangers' resumes (Phase 4).
+- **Legal:** Privacy Policy + Terms exist; add in-app "delete account" before collecting strangers' resumes (Phase 4).
 
 For testing among a few known people, the current state is fine.
 
