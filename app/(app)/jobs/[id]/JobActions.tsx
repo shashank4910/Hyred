@@ -75,10 +75,12 @@ export function JobActions({
   const [hasTailoredResume, setHasTailoredResume] = useState(initialHasTailored);
 
   // Keyword state. jdKeywords = the stable JD keyword universe (from GET).
-  // alreadyHaveKeywords = the subset present in the master resume.
+  // alreadyHaveKeywords = exact phrase hits in the master resume (green).
+  // closeHaveKeywords = close/near wording (amber) — not counted in ATS score.
   // selectedKeywords = the user's current "weave these in" intent (staged).
   const [jdKeywords, setJdKeywords] = useState<string[]>([]);
   const [alreadyHaveKeywords, setAlreadyHaveKeywords] = useState<string[]>([]);
+  const [closeHaveKeywords, setCloseHaveKeywords] = useState<string[]>([]);
   const [selectedKeywords, setSelectedKeywords] = useState<string[]>([]);
   // Synchronous mirror — optimize() reads this so Add-all → Optimize never
   // posts a stale selectedKeywords snapshot before React re-renders.
@@ -158,6 +160,7 @@ export function JobActions({
         if (d?.keywords) {
           setJdKeywords(d.keywords);
           setAlreadyHaveKeywords(d.alreadyHave ?? []);
+          setCloseHaveKeywords(d.closeHave ?? []);
           setKeywordTypes(d.keywordTypes ?? {});
           setSelectedKeywords([]);
           selectedKeywordsRef.current = [];
@@ -684,6 +687,7 @@ export function JobActions({
           <KeywordManager
             jdKeywords={jdKeywords}
             originalPresent={alreadyHaveKeywords}
+            closePresent={closeHaveKeywords}
             result={keywords}
             staged={selectedKeywords}
             generating={generatingResume}

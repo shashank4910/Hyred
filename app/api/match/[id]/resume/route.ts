@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { getCurrentProfile } from '@/lib/current-user';
 import { ensureFullDescription } from '@/lib/jd-fetcher';
-import { generateAtsResume, extractJdKeywordsTyped, keywordInText, type KeywordType } from '@/lib/gemini';
+import { generateAtsResume, extractJdKeywordsTyped, keywordInText, keywordCloseInText, type KeywordType } from '@/lib/gemini';
 import { requireFeatureAccess, recordFeatureUsage } from '@/lib/premium';
 
 export const runtime = 'nodejs';
@@ -44,7 +44,15 @@ export async function GET(
     jobId: job.id, currentDescription: job.description, url: job.url,
   });
 
-  if (!fullDescription) return NextResponse.json({ keywords: [], alreadyHave: [], keywordTypes: {}, versions: [] });
+  if (!fullDescription) {
+    return NextResponse.json({
+      keywords: [],
+      alreadyHave: [],
+      closeHave: [],
+      keywordTypes: {},
+      versions: [],
+    });
+  }
 
   // LLM-based extraction + per-keyword type (tool vs activity) — the same
   // typed function the generator uses. The type is decided by the model here,
@@ -63,15 +71,16 @@ export async function GET(
   for (const t of finalTyped) keywordTypes[t.keyword] = t.type;
   const finalKeywords = finalTyped.map((t) => t.keyword);
 
-  // Whole-token matching (keywordInText) — same matcher the generator uses for
-  // its ATS score — so the picker's "already have" split agrees with the
-  // generator instead of diverging on substring false positives.
+  // Exact = green (ATS score). Close = amber (same idea, different words).
+  // Neither path uses LLM for presence — deterministic only.
   const resumeText = profile?.resume_text ?? '';
   const alreadyHave: string[] = [];
+  const closeHave: string[] = [];
   const available: string[] = [];
 
   for (const kw of finalKeywords) {
     if (keywordInText(kw, resumeText)) alreadyHave.push(kw);
+    else if (keywordCloseInText(kw, resumeText)) closeHave.push(kw);
     else available.push(kw);
   }
 
@@ -84,8 +93,9 @@ export async function GET(
     .limit(10);
 
   return NextResponse.json({
-    keywords: [...new Set([...available, ...alreadyHave])],
+    keywords: [...new Set([...available, ...closeHave, ...alreadyHave])],
     alreadyHave: [...new Set(alreadyHave)],
+    closeHave: [...new Set(closeHave)],
     keywordTypes,
     versions: versions ?? [],
   });
