@@ -22,24 +22,26 @@ export type GenResult = {
 
 /**
  * The single ATS-keyword surface. Same layout before AND after optimizing — only
- * the chips change colour/bucket. Four buckets, derived purely from:
- *   - jdKeywords     : the stable JD keyword universe
- *   - originalPresent: keywords already in the master resume (never changes)
- *   - result         : the last generation's added / already_had / missing
- *   - staged         : what the user currently wants woven in (their intent)
+ * the chips change colour/bucket. Derived from:
+ *   - jdKeywords      : the stable JD keyword universe
+ *   - originalPresent : exact phrase hits in the master resume (green)
+ *   - closePresent    : close/near wording in the master resume (amber)
+ *   - result          : the last generation's added / already_had / missing
+ *   - staged          : what the user currently wants woven in (their intent)
  *
  * Buckets:
- *   IN YOUR RESUME      green, read-only     present AND in the master resume
- *   ADDED               green, click to undo present, not original, still wanted
- *   WILL BE ADDED NEXT  amber, click to undo staged but not yet in the resume
- *   MISSING             red,   click to add  everything else (incl. pending removals)
+ *   IN YOUR RESUME      green, read-only     exact + in master resume
+ *   ADDED               green, click to undo exact woven, still wanted
+ *   WILL BE ADDED NEXT  primary, click undo  staged but not yet exact in resume
+ *   CLOSE MATCH         amber, click to add  same skill, different words
+ *   MISSING             red,   click to add  no match
  *
- * "Pending" = staged-but-not-present (add) OR present-woven-but-unstaged (remove).
- * When anything is pending we show a banner + an active Optimize button.
+ * ATS Match Score stays exact-only (amber does not inflate it).
  */
 export function KeywordManager({
   jdKeywords,
   originalPresent,
+  closePresent = [],
   result,
   staged,
   generating,
@@ -52,6 +54,7 @@ export function KeywordManager({
 }: {
   jdKeywords: string[];
   originalPresent: string[];
+  closePresent?: string[];
   result: GenResult;
   staged: string[];
   generating: boolean;
@@ -66,12 +69,16 @@ export function KeywordManager({
     () => new Set(originalPresent.map((k) => k.toLowerCase())),
     [originalPresent],
   );
+  const closeSet = useMemo(
+    () => new Set(closePresent.map((k) => k.toLowerCase())),
+    [closePresent],
+  );
   const stagedSet = useMemo(
     () => new Set(staged.map((k) => k.toLowerCase())),
     [staged],
   );
-  // Keywords present in the CURRENT resume. Before the first optimize there is
-  // no result yet, so "present" == what's already in the master resume.
+  // Keywords present as EXACT phrases in the CURRENT resume. Before the first
+  // optimize there is no result yet, so "present" == master exact hits.
   const presentSet = useMemo(() => {
     if (!result) return originalSet;
     const s = new Set<string>();
@@ -95,10 +102,11 @@ export function KeywordManager({
     return out;
   }, [jdKeywords, staged]);
 
-  const { inResume, added, willAdd, missing, dirty } = useMemo(() => {
+  const { inResume, added, willAdd, closeMatch, missing, dirty } = useMemo(() => {
     const inResume: string[] = [];
     const added: string[] = [];
     const willAdd: string[] = [];
+    const closeMatch: string[] = [];
     const missing: string[] = [];
     let dirty = false;
     for (const kw of universe) {
@@ -106,6 +114,7 @@ export function KeywordManager({
       const isStaged = stagedSet.has(lc);
       const isPresent = presentSet.has(lc);
       const isOriginal = originalSet.has(lc);
+      const isClose = closeSet.has(lc);
 
       if (isPresent && isOriginal) {
         inResume.push(kw);
@@ -114,19 +123,17 @@ export function KeywordManager({
       } else if (isStaged && !isPresent) {
         willAdd.push(kw);
         dirty = true; // pending add
+      } else if (isClose && !isPresent) {
+        closeMatch.push(kw);
       } else {
         missing.push(kw);
         if (isPresent && !isOriginal && !isStaged) dirty = true; // pending removal
       }
     }
-    return { inResume, added, willAdd, missing, dirty };
-  }, [universe, stagedSet, presentSet, originalSet]);
+    return { inResume, added, willAdd, closeMatch, missing, dirty };
+  }, [universe, stagedSet, presentSet, originalSet, closeSet]);
 
-  const matchedNow = useMemo(
-    () => jdKeywords.filter((k) => presentSet.has(k.toLowerCase())).length,
-    [jdKeywords, presentSet],
-  );
-
+  const exactCount = inResume.length + added.length;
   const score = result?.ats_match_score ?? null;
   const total = result?.total_jd_keywords ?? jdKeywords.length;
   const scoreTone =
@@ -142,20 +149,20 @@ export function KeywordManager({
     ? hasResume
       ? 'Optimizing...'
       : 'Generating...'
-    : hasResume
-      ? 'Optimize My Resume'
-      : 'Optimize My Resume';
+    : 'Optimize My Resume';
+
+  const countsLine = `${exactCount} exact · ${closeMatch.length} close · ${missing.length} missing of ${total}`;
 
   return (
     <div className="space-y-3">
       {/* Score / status header */}
       <div className={`relative flex items-center justify-between rounded-card border px-3 py-2 ${scoreTone}`}>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           <Zap className="h-4 w-4 shrink-0" />
-          <div>
+          <div className="min-w-0">
             {score != null ? (
               <>
-                <div className="text-xs font-semibold leading-tight flex items-center gap-1.5">
+                <div className="text-xs font-semibold leading-tight flex items-center gap-1.5 flex-wrap">
                   ATS Match Score: {score}%
                   {scoreDelta != null && scoreDelta !== 0 && (
                     <span
@@ -168,23 +175,35 @@ export function KeywordManager({
                     </span>
                   )}
                 </div>
-                <div className="text-[10px] opacity-80 leading-tight">
-                  {matchedNow} of {total} JD keywords in your resume
-                </div>
+                <div className="text-[10px] opacity-80 leading-tight">{countsLine}</div>
               </>
             ) : (
               <>
-                <div className="text-xs font-semibold leading-tight">
-                  {matchedNow} of {total} JD keywords already in your resume
-                </div>
+                <div className="text-xs font-semibold leading-tight">{countsLine}</div>
                 <div className="text-[10px] opacity-80 leading-tight">
-                  Add the missing ones below, then optimize to tailor your resume.
+                  Add close or missing keywords below, then optimize to tailor your resume.
                 </div>
               </>
             )}
           </div>
         </div>
-        {score != null && <div className="text-2xl font-bold tabular-nums">{score}</div>}
+        {score != null && <div className="text-2xl font-bold tabular-nums shrink-0">{score}</div>}
+      </div>
+
+      {/* Color key — short reference for green / amber / red */}
+      <div className="rounded-xl border border-outline-variant/40 bg-surface-container-low/60 px-3 py-2 text-[10px] text-on-surface-variant leading-relaxed space-y-0.5">
+        <div className="flex items-start gap-1.5">
+          <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-emerald-500" aria-hidden />
+          <span><span className="font-semibold text-emerald-700">Green</span> = exact wording already in your resume</span>
+        </div>
+        <div className="flex items-start gap-1.5">
+          <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-hidden />
+          <span><span className="font-semibold text-amber-700">Amber</span> = same skill, different words — Optimize adds the JD phrase</span>
+        </div>
+        <div className="flex items-start gap-1.5">
+          <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-red-500" aria-hidden />
+          <span><span className="font-semibold text-error">Red</span> = not found — tap to add</span>
+        </div>
       </div>
 
       {/* Pending-changes banner */}
@@ -199,7 +218,7 @@ export function KeywordManager({
       {inResume.length > 0 && (
         <div>
           <div className="text-[10px] uppercase tracking-wide text-emerald-700 mb-1.5 font-medium">
-            In your resume ({inResume.length})
+            Exact match — in your resume ({inResume.length})
           </div>
           <div className="flex flex-wrap gap-1.5">
             {inResume.map((kw) => (
@@ -265,6 +284,40 @@ export function KeywordManager({
         </div>
       )}
 
+      {/* CLOSE MATCH (amber, click to add JD exact wording) */}
+      {closeMatch.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between flex-wrap gap-2 mb-1.5">
+            <div className="text-[10px] uppercase tracking-wide text-amber-700 font-medium">
+              Close match — tap to add JD wording ({closeMatch.length})
+            </div>
+            <button
+              type="button"
+              onClick={() => onStageMany(closeMatch)}
+              disabled={generating}
+              className="text-[11px] font-semibold text-primary hover:text-on-surface underline-offset-2 hover:underline disabled:opacity-50"
+            >
+              + Add all
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {closeMatch.map((kw) => (
+              <button
+                key={kw}
+                type="button"
+                onClick={() => onStage(kw)}
+                disabled={generating}
+                title="You likely have this skill already. Click to weave the JD’s exact phrase on next optimize."
+                className="inline-flex items-center gap-1 rounded-badge border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs text-amber-800 transition-all duration-150 cursor-pointer hover:border-primary/40 hover:bg-primary/10 hover:text-on-surface disabled:cursor-wait disabled:opacity-60"
+              >
+                <Plus className="h-3 w-3" />
+                {kw}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* MISSING (red, click to add) */}
       {missing.length > 0 && (
         <div>
@@ -299,11 +352,11 @@ export function KeywordManager({
         </div>
       )}
 
-      {/* All-matched celebratory empty state */}
-      {missing.length === 0 && willAdd.length === 0 && jdKeywords.length > 0 && (
+      {/* All clear — no close, missing, or pending adds */}
+      {missing.length === 0 && closeMatch.length === 0 && willAdd.length === 0 && jdKeywords.length > 0 && (
         <div className="flex items-center gap-1.5 text-xs text-emerald-700">
           <CheckCircle2 className="h-3.5 w-3.5" />
-          Every JD keyword is in your resume.
+          Every JD keyword is covered in your resume.
         </div>
       )}
 

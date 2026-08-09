@@ -1646,6 +1646,82 @@ function keywordLiteralInText(keyword: string, text: string): boolean {
 }
 
 /**
+ * Tiny alias map for close (not exact) JD↔resume wording. Keep this small —
+ * do not grow into a synonym zoo. Exact matches still use keywordInText().
+ */
+const KEYWORD_CLOSE_ALIASES: Record<string, string[]> = {
+  appd: ['appdynamics'],
+  appdynamics: ['appd'],
+  k8s: ['kubernetes'],
+  kubernetes: ['k8s'],
+  postgres: ['postgresql'],
+  postgresql: ['postgres'],
+  'capacity analysis': ['capacity planning'],
+  'capacity planning': ['capacity analysis'],
+};
+
+/** Strip a trailing testing/tests/test token → the activity stem ("load"). */
+function testingActivityStem(keyword: string): string | null {
+  const m = keyword.trim().match(/^(.+?)\s+(testing|tests|test)$/i);
+  if (!m) return null;
+  const stem = m[1].trim();
+  return stem.length >= 2 ? stem : null;
+}
+
+/**
+ * Close (near) match: same skill idea, different wording than the JD phrase.
+ * Never returns true when keywordInText already matches — callers should check
+ * exact first. Used for amber chips; does NOT inflate ATS Match Score.
+ */
+export function keywordCloseInText(keyword: string, text: string): boolean {
+  const kw = keyword.trim();
+  if (!kw || !text) return false;
+  if (keywordInText(kw, text)) return false;
+
+  const lower = kw.toLowerCase();
+  const aliases = KEYWORD_CLOSE_ALIASES[lower] ?? [];
+  for (const alias of aliases) {
+    if (keywordInText(alias, text)) return true;
+  }
+
+  // testing ↔ tests / test (irregular; keywordInText only toggles trailing "s")
+  const stem = testingActivityStem(kw);
+  if (stem) {
+    if (keywordInText(`${stem} testing`, text)) return true;
+    if (keywordInText(`${stem} tests`, text)) return true;
+    if (keywordInText(`${stem} test`, text)) return true;
+
+    // Comma/and list cover: "load, stress, endurance, and scalability"
+    const listRe =
+      /\b(?:[a-z][\w-]{1,24}\s*,\s*){1,8}(?:and\s+|or\s+)?[a-z][\w-]{1,24}\b/gi;
+    const testingSiblings = new Set([
+      'load',
+      'stress',
+      'endurance',
+      'scalability',
+      'spike',
+      'soak',
+      'volume',
+      'performance',
+      'baseline',
+      'peak',
+    ]);
+    const stemLc = stem.toLowerCase();
+    for (const m of text.matchAll(listRe)) {
+      const tokens = m[0]
+        .toLowerCase()
+        .split(/[\s,]+/)
+        .filter((t) => t && t !== 'and' && t !== 'or');
+      if (tokens.length < 2 || !tokens.includes(stemLc)) continue;
+      const siblingHits = tokens.filter((t) => testingSiblings.has(t)).length;
+      if (siblingHits >= 2) return true;
+    }
+  }
+
+  return false;
+}
+
+/**
  * Defense-in-depth safety net for the "model added a keyword I never selected"
  * bug. Unselected JD tool/tech keywords (e.g. Grafana, InfluxDB) that the model
  * invents almost always land as comma-separated items on a TECHNICAL SKILLS
