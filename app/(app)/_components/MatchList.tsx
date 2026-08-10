@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Loader2, ChevronDown } from 'lucide-react';
 import { resolveMatchSort } from '@/lib/ui';
@@ -42,14 +42,17 @@ type Props = {
   highlightId?: string | null;
 };
 
-export function MatchList({ initialMatches, total, initialHasMore, showSource = false, highlightId }: Props) {
+export function MatchList({ initialMatches, total: initialTotal, initialHasMore, showSource = false, highlightId }: Props) {
   const [matches, setMatches] = useState<MatchItem[]>(initialMatches);
+  const [total, setTotal] = useState(initialTotal);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const sp = useSearchParams();
   const sentinelRef = useRef<HTMLDivElement>(null);
   const highlightRef = useRef<HTMLLIElement>(null);
+  const seenFilterKey = useRef<string | null>(null);
 
   const scrollKey = `hyred_scroll_${sp.toString()}`;
 
@@ -67,8 +70,10 @@ export function MatchList({ initialMatches, total, initialHasMore, showSource = 
     return params.toString();
   }, [sp]);
 
+  const filterKey = useMemo(() => buildQuery(1), [buildQuery]);
+
   const loadMore = useCallback(async () => {
-    if (loading || !hasMore) return;
+    if (loading || refreshing || !hasMore) return;
     setLoading(true);
     try {
       const nextPage = page + 1;
@@ -82,9 +87,54 @@ export function MatchList({ initialMatches, total, initialHasMore, showSource = 
       });
       setPage(nextPage);
       setHasMore(data.hasMore ?? false);
+      if (typeof data.total === 'number') setTotal(data.total);
     } catch { /* retry on next scroll */ }
     finally { setLoading(false); }
-  }, [loading, hasMore, page, buildQuery]);
+  }, [loading, refreshing, hasMore, page, buildQuery]);
+
+  // Filter/sort/status change: hit the lightweight API immediately (do not wait
+  // for the full dashboard RSC round-trip — that was the perceived lag).
+  useEffect(() => {
+    if (seenFilterKey.current === null) {
+      seenFilterKey.current = filterKey;
+      return;
+    }
+    if (seenFilterKey.current === filterKey) return;
+    seenFilterKey.current = filterKey;
+
+    const controller = new AbortController();
+    setRefreshing(true);
+    setPage(1);
+
+    fetch(`/api/matches?${filterKey}`, { signal: controller.signal, cache: 'default' })
+      .then((res) => {
+        if (!res.ok) throw new Error('Failed');
+        return res.json();
+      })
+      .then((data) => {
+        setMatches((data.matches ?? []) as MatchItem[]);
+        setHasMore(Boolean(data.hasMore));
+        setTotal(typeof data.total === 'number' ? data.total : 0);
+        setPage(1);
+      })
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setRefreshing(false);
+      });
+
+    return () => controller.abort();
+  }, [filterKey]);
+
+  // When SSR catches up with the same filters, adopt its payload (skills, etc.).
+  useEffect(() => {
+    setMatches(initialMatches);
+    setTotal(initialTotal);
+    setPage(1);
+    setHasMore(initialHasMore);
+    setRefreshing(false);
+  }, [initialMatches, initialHasMore, initialTotal]);
 
   // Infinite scroll observer
   useEffect(() => {
@@ -128,19 +178,34 @@ export function MatchList({ initialMatches, total, initialHasMore, showSource = 
     }
   }, [highlightId]);
 
-  // Reset on filter change
-  useEffect(() => {
-    setMatches(initialMatches);
-    setPage(1);
-    setHasMore(initialHasMore);
-  }, [initialMatches, initialHasMore]);
-
-  if (matches.length === 0) return null;
+  if (matches.length === 0) {
+    if (refreshing) {
+      return (
+        <div className="flex items-center gap-2 py-8 text-sm text-on-surface-variant">
+          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+          Updating matches…
+        </div>
+      );
+    }
+    return (
+      <p className="py-8 text-sm text-on-surface-variant">
+        No matches for these filters. Try another city or lower the score filter.
+      </p>
+    );
+  }
 
   return (
-    <>
-      <p className="text-xs text-text-muted mb-2">
-        Showing {matches.length} of {total}
+    <div className={refreshing ? 'opacity-80 transition-opacity duration-150' : undefined}>
+      <p className="text-xs text-text-muted mb-2 flex items-center gap-2">
+        <span>
+          Showing {matches.length} of {total}
+        </span>
+        {refreshing && (
+          <span className="inline-flex items-center gap-1 text-primary">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Updating…
+          </span>
+        )}
       </p>
       <ul className="grid grid-cols-1 gap-6">
         {matches.map((m) => {
@@ -176,7 +241,7 @@ export function MatchList({ initialMatches, total, initialHasMore, showSource = 
         </div>
       )}
 
-      {hasMore && !loading && (
+      {hasMore && !loading && !refreshing && (
         <div className="flex justify-center py-4">
           <button onClick={loadMore} className="btn text-xs inline-flex items-center gap-1.5">
             <ChevronDown className="h-3.5 w-3.5" /> Load more ({total - matches.length} remaining)
@@ -187,6 +252,6 @@ export function MatchList({ initialMatches, total, initialHasMore, showSource = 
       {!hasMore && matches.length >= 20 && (
         <p className="text-center text-xs text-text-muted py-4">All {total} matches loaded</p>
       )}
-    </>
+    </div>
   );
 }
