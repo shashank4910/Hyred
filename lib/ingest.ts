@@ -705,21 +705,16 @@ async function upsertJobs(rawJobs: RawJob[]): Promise<string[]> {
   if (!rawJobs.length) return [];
   const sb = supabaseAdmin();
 
-  // Add fetched_at timestamp to all jobs being upserted
-  const now = new Date().toISOString();
-  const jobsWithTimestamp = rawJobs.map(job => ({
-    ...job,
-    fetched_at: now
-  }));
-
+  // Do NOT set fetched_at on upsert — DB default now() on INSERT only.
+  // Refreshing fetched_at on every scan made old listings jump to "today"
+  // and fought the dashboard freshness rules (see Known Pitfalls).
   const ids: string[] = [];
-  for (let i = 0; i < jobsWithTimestamp.length; i += 100) {
-    const chunk = jobsWithTimestamp.slice(i, i + 100);
+  for (let i = 0; i < rawJobs.length; i += 100) {
+    const chunk = rawJobs.slice(i, i + 100);
     const { data, error } = await sb
       .from('jobs')
       .upsert(chunk, {
         onConflict: 'source,source_id',
-        // Update on conflict to refresh fetched_at and other fields
         ignoreDuplicates: false,
       })
       .select('id');

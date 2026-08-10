@@ -3,6 +3,7 @@ import {
   MAX_JOB_AGE_DAYS,
   dashboardMinScore,
   staleJobCutoffIso,
+  jobFreshnessOrFilter,
   DEFAULT_DASHBOARD_MIN_SCORE,
 } from '@/lib/match-stats';
 
@@ -15,6 +16,14 @@ describe('PR #33 #92 stats/dashboard alignment', () => {
     const cutoff = new Date(staleJobCutoffIso()).getTime();
     const expected = Date.now() - 45 * 24 * 60 * 60 * 1000;
     expect(Math.abs(cutoff - expected)).toBeLessThan(60_000);
+  });
+
+  it('jobFreshnessOrFilter keeps recently fetched jobs even with old posted_at', () => {
+    const cutoff = '2026-06-26T00:00:00.000Z';
+    const filter = jobFreshnessOrFilter(cutoff);
+    expect(filter).toContain(`posted_at.gte.${cutoff}`);
+    expect(filter).toContain('posted_at.is.null');
+    expect(filter).toContain(`fetched_at.gte.${cutoff}`);
   });
 
   it('PR #092 dashboardMinScore uses preference or default 50', () => {

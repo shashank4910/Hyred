@@ -5,6 +5,7 @@ import { resolveMatchSort } from '@/lib/ui';
 import { enrichMatchListSkills } from '@/lib/match-skill-enrich';
 import { sanitizeCityFilter } from '@/lib/match-location-filter';
 import { MATCH_LIST_SELECT } from '@/lib/match-list-select';
+import { jobFreshnessOrFilter, staleJobCutoffIso } from '@/lib/match-stats';
 import { EmptyMatches } from './EmptyMatches';
 import { MatchList } from './MatchList';
 
@@ -59,8 +60,8 @@ export async function DashboardMatchResults({
     .eq('profile_id', profileId)
     .gte('llm_score', effectiveMinScore);
 
-  const staleCutoff = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString();
-  query = query.or(`posted_at.gte.${staleCutoff},posted_at.is.null`, { foreignTable: 'job' });
+  const staleCutoff = staleJobCutoffIso();
+  query = query.or(jobFreshnessOrFilter(staleCutoff), { foreignTable: 'job' });
 
   query = applyMatchSort(query, sort);
 
