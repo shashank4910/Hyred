@@ -27,6 +27,23 @@ export function staleJobCutoffIso(): string {
   ).toISOString();
 }
 
+/**
+ * PostgREST `or` filter on `jobs` (use with `{ foreignTable: 'job' }`).
+ *
+ * Keep a match visible if ANY of:
+ * - posted_at is unknown
+ * - posted_at is within the freshness window
+ * - fetched_at is within the window (Hyred discovered it recently)
+ *
+ * Why fetched_at: the card date uses discovery time, but some sources (JobsPipe,
+ * Adzuna) write unreliable/old posted_at on upsert — which used to hide jobs
+ * (and drop their city from the location dropdown) even though they were
+ * found today.
+ */
+export function jobFreshnessOrFilter(cutoffIso: string = staleJobCutoffIso()): string {
+  return `posted_at.gte.${cutoffIso},posted_at.is.null,fetched_at.gte.${cutoffIso}`;
+}
+
 /** Matches the Matches page default list: score floor + fresh jobs only. */
 function visibleOnDashboardQuery(
   sb: AdminClient,
@@ -39,7 +56,7 @@ function visibleOnDashboardQuery(
     .select('id, job:jobs!inner(posted_at)', { count: 'exact', head: true })
     .eq('profile_id', profileId)
     .gte('llm_score', minScore)
-    .or(`posted_at.gte.${staleCutoff},posted_at.is.null`, { foreignTable: 'job' });
+    .or(jobFreshnessOrFilter(staleCutoff), { foreignTable: 'job' });
 }
 
 export async function countVisibleOnDashboard(
@@ -63,7 +80,7 @@ export async function countVisibleInbox(
     .eq('profile_id', profileId)
     .gte('llm_score', minScore)
     .in('status', ['new', 'viewed'])
-    .or(`posted_at.gte.${staleCutoff},posted_at.is.null`, { foreignTable: 'job' });
+    .or(jobFreshnessOrFilter(staleCutoff), { foreignTable: 'job' });
   return count ?? 0;
 }
 
@@ -112,7 +129,7 @@ export async function getDashboardCounts(
       .eq('profile_id', profileId)
       .gte('llm_score', minScore);
 
-    q = q.or(`posted_at.gte.${staleCutoff},posted_at.is.null`, { foreignTable: 'job' });
+    q = q.or(jobFreshnessOrFilter(staleCutoff), { foreignTable: 'job' });
 
     if (isAdmin && params.source) {
       q = q.eq('job.source', params.source);
@@ -171,10 +188,10 @@ export async function listMatchCities(
 
   let q = sb
     .from('matches')
-    .select('job:jobs!inner(location, posted_at, title, company, source)')
+    .select('job:jobs!inner(location, posted_at, fetched_at, title, company, source)')
     .eq('profile_id', profileId)
     .gte('llm_score', minScore)
-    .or(`posted_at.gte.${staleCutoff},posted_at.is.null`, { foreignTable: 'job' });
+    .or(jobFreshnessOrFilter(staleCutoff), { foreignTable: 'job' });
 
   if (onlyBookmarked) {
     q = q.eq('bookmarked', true);
@@ -194,8 +211,11 @@ export async function listMatchCities(
     });
   }
 
-  // Cap for safety — city labels only, so a few hundred rows is enough.
-  const { data } = await q.limit(1000);
+  // Prefer recently discovered jobs so rare cities (e.g. Noida) are not
+  // dropped when the account has more than the sample cap.
+  const { data } = await q
+    .order('fetched_at', { ascending: false, foreignTable: 'job' })
+    .limit(1000);
 
   const locations = (data ?? []).map((row) => {
     const job = row.job as unknown as { location: string | null } | null;
