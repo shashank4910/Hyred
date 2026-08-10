@@ -2,6 +2,42 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 32 — Dashboard freshness, filter UX/perf, keyword close-match, LinkedIn recruiting (Aug 10, 2026)
+
+**Goal:** Stop double-toast scan noise; make Optimize keywords honest (green/amber/red); fix LinkedIn recruiting search; speed up dashboard filters; stop cities like Noida vanishing when APIs write bad `posted_at`; let users opt in to older/expired jobs.
+
+### Shipped — Scan toast + keyword chips + outreach
+
+| PR | What |
+|---|---|
+| **#282** | Scan UI — one compact progress toast; empty inbox “Finding jobs…” while scanning (no stacked long toast). |
+| **#283** | Scan toast copy — real en-dash / middle-dot chars (not literal `\u2013` / `\u00B7`). |
+| **#284** | Optimize keywords — `keywordCloseInText` + GET `closeHave`; green exact / amber close / red missing + legend. ATS score stays **exact-only**. |
+| **#285** | Amber chips use `orange-*` (theme remaps `amber` → teal). |
+| **#286** | LinkedIn Recruiting team search — quoted company + role OR group; safe `%22` encoding; **no** 1st/2nd network filter. `lib/linkedin-people-search.ts`. |
+
+### Shipped — Dashboard filter UX / performance
+
+| PR | What |
+|---|---|
+| **#287** | Filter changes keep the list visible with a small “Updating…” instead of a full-page skeleton. |
+| **#288** | `MatchList` client-fetches `/api/matches` on filter change; slim `MATCH_LIST_SELECT` (no JD body); don’t await `closeStaleIngestRuns`; pass `topSkills` from page. |
+
+### Shipped — Freshness / expired jobs (Noida RCA)
+
+| PR | What |
+|---|---|
+| **#289** | Freshness = (`posted_at` fresh **or** null) **OR** `fetched_at` within 45 days (`jobFreshnessOrFilter`). City list orders by `fetched_at` desc. Stop refreshing `fetched_at` on job upsert in `lib/ingest.ts`. |
+| **#290** | **Include older jobs** — URL `expired=1` skips the 45-day window on counts / cities / list / API. `MatchFilters` freshness dropdown; **Older** badge on cards past the window. Helpers: `includeExpiredJobs`, `isJobPastFreshnessWindow`. |
+
+### Key decisions / gotchas
+
+1. **UI date ≠ hide filter** — cards show `fetched_at`; hide used to key off `posted_at` only. JobsPipe/etc. can upsert ancient/wrong `posted_at` → job + city disappear while the card still looked “recent.” Always use `jobFreshnessOrFilter` (posted fresh/null **or** fetched within window).
+2. **Do not bump `fetched_at` on conflict upsert** — re-scanning must not rewrite discovery time (reinforces older Session 5/20 omit-`fetched_at` rule).
+3. **`expired=1` cannot resurrect deleted rows** — stale-job cleanup that hard-deletes jobs older than the window leaves nothing to show; filter only unhides stored matches outside the recent window.
+4. **Close-match aliases stay tiny** — `KEYWORD_CLOSE_ALIASES` / morphology in `keywordCloseInText`; do not grow a synonym zoo. Amber never inflates ATS Match Score.
+5. **Theme:** prefer `orange-*` for “amber” UI; Tailwind `amber` is remapped to teal in Hyred tokens.
+
 ## Session 31 — ATS report polish + semantic section mapping (Aug 6–7, 2026)
 
 **Goal:** Stop the endless “one more heading synonym / dictionary patch” loop. Make the hybrid report consistent at volume (100 scans/hour mindset): hard facts stay code; odd headings map by meaning in the **same** LLM call; never let a weak LLM map wipe stronger token facts.
