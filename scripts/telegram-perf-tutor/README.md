@@ -55,3 +55,5 @@ This **deletes** the cloud webhook while it runs. Prefer always-on webhook for d
 | `/curriculum` | Topic map |
 | `/reset` | Wipe progress |
 | `/help` | Command list |
+
+Answer by **typing** or sending a **voice note** (transcribed with Whisper, then graded like text).
