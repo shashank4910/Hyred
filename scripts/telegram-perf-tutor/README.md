@@ -57,3 +57,7 @@ This **deletes** the cloud webhook while it runs. Prefer always-on webhook for d
 | `/help` | Command list |
 
 Answer by **typing** or sending a **voice note** (transcribed with Whisper, then graded like text).
+
+## How leveling works
+
+After each answer, an AI coach **reassesses** your expertise from that answer + recent history and recommends a level (1–10). There is **no** “two scores above 80” streak rule. Change is limited to ±1 per answer so one noisy grade cannot leap many levels.

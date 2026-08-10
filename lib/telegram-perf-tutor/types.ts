@@ -35,6 +35,10 @@ export interface AnswerRecord {
   verdict: 'strong' | 'partial' | 'weak';
   feedbackSummary: string;
   answeredAt: string;
+  /** Level before / after AI reassessment for this answer. */
+  levelBefore?: Difficulty;
+  levelAfter?: Difficulty;
+  levelReason?: string;
 }
 
 export interface LearnerProfile {
@@ -45,12 +49,16 @@ export interface LearnerProfile {
   weaknesses: string[];
   topicsSeen: TopicId[];
   topicScores: Partial<Record<TopicId, number>>;
+  /** @deprecated Kept for old saved profiles; no longer used for leveling. */
   consecutiveStrong: number;
+  /** @deprecated Kept for old saved profiles; no longer used for leveling. */
   consecutiveWeak: number;
   totalAnswered: number;
   pending: PendingQuestion | null;
   history: AnswerRecord[];
   notes: string;
+  /** Latest AI note about how it reads your expertise. */
+  expertiseSummary?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -65,4 +73,10 @@ export interface GradeResult {
   suggestedFocus: string;
   detectedStrengths: string[];
   detectedWeaknesses: string[];
+}
+
+export interface LevelAssessment {
+  recommendedLevel: Difficulty;
+  reason: string;
+  expertiseSummary: string;
 }
