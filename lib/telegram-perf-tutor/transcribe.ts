@@ -1,5 +1,30 @@
 import OpenAI, { toFile } from 'openai';
 
+const ALLOWED_EXT = new Set([
+  'flac',
+  'mp3',
+  'mp4',
+  'mpeg',
+  'mpga',
+  'm4a',
+  'ogg',
+  'opus',
+  'wav',
+  'webm',
+]);
+
+/** Telegram voice notes are often `.oga` — Whisper APIs reject that extension name. */
+function whisperSafeFilename(filename: string): string {
+  const base = (filename || 'voice').split(/[\\/]/).pop() || 'voice';
+  const dot = base.lastIndexOf('.');
+  const ext = (dot >= 0 ? base.slice(dot + 1) : '').toLowerCase();
+
+  if (ext === 'oga' || ext === 'ogg' || ext === 'opus') return 'voice.ogg';
+  if (ALLOWED_EXT.has(ext)) return `audio.${ext}`;
+  // Telegram voice is Ogg Opus under the hood even when the name is odd.
+  return 'voice.ogg';
+}
+
 /**
  * Transcribe a Telegram voice/audio buffer with Groq Whisper (preferred) or OpenAI Whisper.
  */
@@ -9,6 +34,7 @@ export async function transcribeAudioBuffer(
 ): Promise<string> {
   const groqKey = process.env.GROQ_API_KEY?.trim();
   const openaiKey = process.env.OPENAI_API_KEY?.trim();
+  const safeName = whisperSafeFilename(filename);
 
   const attempts: Array<{
     label: string;
@@ -38,7 +64,7 @@ export async function transcribeAudioBuffer(
   let lastErr: unknown;
   for (const attempt of attempts) {
     try {
-      const file = await toFile(buffer, filename);
+      const file = await toFile(buffer, safeName, { type: 'audio/ogg' });
       const result = await attempt.client.audio.transcriptions.create({
         file,
         model: attempt.model,
@@ -90,6 +116,6 @@ export async function downloadTelegramFile(
     throw new Error(`Telegram file download failed (${fileRes.status})`);
   }
   const arrayBuf = await fileRes.arrayBuffer();
-  const base = filePath.split('/').pop() || 'voice.ogg';
-  return { buffer: Buffer.from(arrayBuf), filename: base };
+  const base = filePath.split('/').pop() || 'voice.oga';
+  return { buffer: Buffer.from(arrayBuf), filename: whisperSafeFilename(base) };
 }
