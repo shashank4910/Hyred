@@ -27,3 +27,6 @@ ext.zip
 ext/
 Hyred/
 .env*
+data/telegram-perf-learners.json
+data/
+
