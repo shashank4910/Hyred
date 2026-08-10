@@ -197,8 +197,8 @@ export function KeywordManager({
           <span><span className="font-semibold text-emerald-700">Green</span> = exact wording already in your resume</span>
         </div>
         <div className="flex items-start gap-1.5">
-          <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-hidden />
-          <span><span className="font-semibold text-amber-700">Amber</span> = same skill, different words — Optimize adds the JD phrase</span>
+          <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-orange-500" aria-hidden />
+          <span><span className="font-semibold text-orange-700">Amber</span> = same skill, different words — Optimize adds the JD phrase</span>
         </div>
         <div className="flex items-start gap-1.5">
           <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-red-500" aria-hidden />
@@ -288,7 +288,7 @@ export function KeywordManager({
       {closeMatch.length > 0 && (
         <div>
           <div className="flex items-center justify-between flex-wrap gap-2 mb-1.5">
-            <div className="text-[10px] uppercase tracking-wide text-amber-700 font-medium">
+            <div className="text-[10px] uppercase tracking-wide text-orange-700 font-medium">
               Close match — tap to add JD wording ({closeMatch.length})
             </div>
             <button
@@ -308,7 +308,7 @@ export function KeywordManager({
                 onClick={() => onStage(kw)}
                 disabled={generating}
                 title="You likely have this skill already. Click to weave the JD’s exact phrase on next optimize."
-                className="inline-flex items-center gap-1 rounded-badge border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs text-amber-800 transition-all duration-150 cursor-pointer hover:border-primary/40 hover:bg-primary/10 hover:text-on-surface disabled:cursor-wait disabled:opacity-60"
+                className="inline-flex items-center gap-1 rounded-badge border border-orange-300 bg-orange-50 px-2 py-0.5 text-xs text-orange-800 transition-all duration-150 cursor-pointer hover:border-primary/40 hover:bg-primary/10 hover:text-on-surface disabled:cursor-wait disabled:opacity-60"
               >
                 <Plus className="h-3 w-3" />
                 {kw}
