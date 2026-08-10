@@ -23,6 +23,7 @@ export function MatchFilters({
   const minScore = sp.get('min') ?? '';
   const remote = sp.get('remote') ?? '';
   const city = sp.get('city') ?? '';
+  const expired = sp.get('expired') ?? '';
   const sortParam = sp.get('sort');
   const sort = resolveMatchSort(sortParam);
 
@@ -55,6 +56,7 @@ export function MatchFilters({
     minScore ||
     remote ||
     city ||
+    expired === '1' ||
     (sortParam != null && sortParam !== '' && sort !== DEFAULT_MATCH_SORT);
 
   // Keep a selected city visible even if it drops out of the current option list.
@@ -109,6 +111,16 @@ export function MatchFilters({
             ))}
           </optgroup>
         )}
+      </select>
+
+      <select
+        value={expired === '1' ? '1' : ''}
+        onChange={(e) => setParam('expired', e.target.value)}
+        className="input w-auto"
+        title="Show jobs outside the usual 45-day window"
+      >
+        <option value="">Recent jobs only</option>
+        <option value="1">Include older jobs</option>
       </select>
 
       <select

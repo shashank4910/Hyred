@@ -15,6 +15,29 @@ export interface MatchFilterParams {
   city?: string;
   source?: string;
   q?: string;
+  /** When "1", skip the 45-day freshness window (show older/expired jobs too). */
+  expired?: string;
+}
+
+export function includeExpiredJobs(params: { expired?: string | null } | null | undefined): boolean {
+  return params?.expired === '1';
+}
+
+/**
+ * True when a job would normally be hidden by the dashboard freshness window.
+ * Used for the "Older" badge when Include older jobs is on.
+ */
+export function isJobPastFreshnessWindow(job: {
+  posted_at?: string | null;
+  fetched_at?: string | null;
+}, cutoffIso: string = staleJobCutoffIso()): boolean {
+  const cutoff = new Date(cutoffIso).getTime();
+  if (Number.isNaN(cutoff)) return false;
+  const posted = job.posted_at ? new Date(job.posted_at).getTime() : null;
+  const fetched = job.fetched_at ? new Date(job.fetched_at).getTime() : null;
+  const postedOk = posted == null || Number.isNaN(posted) || posted >= cutoff;
+  const fetchedOk = fetched != null && !Number.isNaN(fetched) && fetched >= cutoff;
+  return !(postedOk || fetchedOk);
 }
 
 export function dashboardMinScore(preferences?: Preferences | null): number {
@@ -129,7 +152,9 @@ export async function getDashboardCounts(
       .eq('profile_id', profileId)
       .gte('llm_score', minScore);
 
-    q = q.or(jobFreshnessOrFilter(staleCutoff), { foreignTable: 'job' });
+    if (!includeExpiredJobs(params)) {
+      q = q.or(jobFreshnessOrFilter(staleCutoff), { foreignTable: 'job' });
+    }
 
     if (isAdmin && params.source) {
       q = q.eq('job.source', params.source);
@@ -190,8 +215,11 @@ export async function listMatchCities(
     .from('matches')
     .select('job:jobs!inner(location, posted_at, fetched_at, title, company, source)')
     .eq('profile_id', profileId)
-    .gte('llm_score', minScore)
-    .or(jobFreshnessOrFilter(staleCutoff), { foreignTable: 'job' });
+    .gte('llm_score', minScore);
+
+  if (!includeExpiredJobs(params)) {
+    q = q.or(jobFreshnessOrFilter(staleCutoff), { foreignTable: 'job' });
+  }
 
   if (onlyBookmarked) {
     q = q.eq('bookmarked', true);

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Loader2, ChevronDown } from 'lucide-react';
 import { resolveMatchSort } from '@/lib/ui';
+import { isJobPastFreshnessWindow } from '@/lib/match-stats';
 import { MatchCard } from './MatchCard';
 
 type MatchJob = {
@@ -67,10 +68,12 @@ export function MatchList({ initialMatches, total: initialTotal, initialHasMore,
     if (sp.get('city')) params.set('city', sp.get('city')!);
     if (sp.get('bookmarked')) params.set('bookmarked', sp.get('bookmarked')!);
     if (sp.get('source')) params.set('source', sp.get('source')!);
+    if (sp.get('expired') === '1') params.set('expired', '1');
     return params.toString();
   }, [sp]);
 
   const filterKey = useMemo(() => buildQuery(1), [buildQuery]);
+  const showExpired = sp.get('expired') === '1';
 
   const loadMore = useCallback(async () => {
     if (loading || refreshing || !hasMore) return;
@@ -226,6 +229,7 @@ export function MatchList({ initialMatches, total: initialTotal, initialHasMore,
                 missingSkills={m.missing_skills ?? []}
                 job={m.job as unknown as MatchJob}
                 showSource={showSource}
+                isOlder={showExpired && isJobPastFreshnessWindow(m.job)}
               />
             </li>
           );

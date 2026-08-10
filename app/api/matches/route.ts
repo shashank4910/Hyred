@@ -6,7 +6,7 @@ import { resolveMatchSort } from '@/lib/ui';
 import { enrichMatchListSkills } from '@/lib/match-skill-enrich';
 import { sanitizeCityFilter } from '@/lib/match-location-filter';
 import { MATCH_LIST_SELECT } from '@/lib/match-list-select';
-import { jobFreshnessOrFilter, staleJobCutoffIso } from '@/lib/match-stats';
+import { includeExpiredJobs, jobFreshnessOrFilter, staleJobCutoffIso } from '@/lib/match-stats';
 
 export const runtime = 'nodejs';
 
@@ -36,6 +36,7 @@ export async function GET(req: NextRequest) {
   const remote = url.searchParams.get('remote') === '1';
   const city = sanitizeCityFilter(url.searchParams.get('city'));
   const bookmarked = url.searchParams.get('bookmarked') === '1';
+  const showExpired = includeExpiredJobs({ expired: url.searchParams.get('expired') });
 
   const sb = supabaseAdmin();
   const offset = (page - 1) * PAGE_SIZE;
@@ -48,7 +49,9 @@ export async function GET(req: NextRequest) {
     .gte('llm_score', minScore);
 
   const staleCutoff = staleJobCutoffIso();
-  query = query.or(jobFreshnessOrFilter(staleCutoff), { foreignTable: 'job' });
+  if (!showExpired) {
+    query = query.or(jobFreshnessOrFilter(staleCutoff), { foreignTable: 'job' });
+  }
 
   if (bookmarked) {
     query = query.eq('bookmarked', true);

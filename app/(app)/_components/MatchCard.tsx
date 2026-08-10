@@ -37,6 +37,8 @@ type Props = {
   matchedSkills?: string[];
   missingSkills?: string[];
   showSource?: boolean;
+  /** Job is outside the usual 45-day freshness window */
+  isOlder?: boolean;
   /** When set, job detail "back" returns here (e.g. /top-mnc?category=...) */
   returnHref?: string;
 };
@@ -52,6 +54,7 @@ export function MatchCard({
   matchedSkills = [],
   missingSkills = [],
   showSource = false,
+  isOlder = false,
   returnHref,
 }: Props) {
   const fullDate = formatFullDate(job.fetched_at);
@@ -121,6 +124,14 @@ export function MatchCard({
               {isNew && (
                 <span className="inline-flex rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">
                   New
+                </span>
+              )}
+              {isOlder && (
+                <span
+                  className="inline-flex rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-orange-700 border border-orange-200"
+                  title="Outside the usual 45-day window — listing may be closed"
+                >
+                  Older
                 </span>
               )}
               {showSource && (

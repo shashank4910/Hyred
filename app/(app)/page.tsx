@@ -24,6 +24,7 @@ type SearchParams = {
   bookmarked?: string;
   sort?: 'newest' | 'score' | 'activity';
   from?: string; // match ID to highlight on back-navigation
+  expired?: string; // "1" = include older/expired jobs
 };
 
 export default async function Dashboard({
@@ -44,6 +45,7 @@ export default async function Dashboard({
     sp.remote ?? '',
     sp.city ?? '',
     sp.source ?? '',
+    sp.expired ?? '',
     sp.from ?? '',
   ].join('|');
 
@@ -75,6 +77,7 @@ export default async function Dashboard({
         city: sp.city,
         source: sp.source,
         q: sp.q,
+        expired: sp.expired,
       },
       isAdmin,
     ),
@@ -87,6 +90,7 @@ export default async function Dashboard({
         q: sp.q,
         status,
         bookmarked: sp.bookmarked,
+        expired: sp.expired,
       },
       isAdmin,
     ),
