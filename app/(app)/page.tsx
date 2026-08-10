@@ -55,7 +55,8 @@ export default async function Dashboard({
     return <EmptyOnboarding />;
   }
 
-  await closeStaleIngestRuns(sb, profile.id);
+  // Don't block the dashboard on cleanup — filters felt slow waiting on this.
+  void closeStaleIngestRuns(sb, profile.id);
 
   // Status counts + city options (aligned with active dashboard filters)
   const [
@@ -179,6 +180,11 @@ export default async function Dashboard({
               isAdmin={isAdmin}
               totalMatches={totalMatches ?? 0}
               searchParams={sp}
+              topSkills={
+                Array.isArray((profile.insights as { top_skills?: string[] } | null)?.top_skills)
+                  ? (profile.insights as { top_skills: string[] }).top_skills
+                  : []
+              }
             />
           </DashboardMatchesSection>
         </DashboardNavProvider>

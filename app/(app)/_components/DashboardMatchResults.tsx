@@ -4,6 +4,7 @@ import { applyMatchSort } from '@/lib/apply-match-sort';
 import { resolveMatchSort } from '@/lib/ui';
 import { enrichMatchListSkills } from '@/lib/match-skill-enrich';
 import { sanitizeCityFilter } from '@/lib/match-location-filter';
+import { MATCH_LIST_SELECT } from '@/lib/match-list-select';
 import { EmptyMatches } from './EmptyMatches';
 import { MatchList } from './MatchList';
 
@@ -26,11 +27,14 @@ export async function DashboardMatchResults({
   isAdmin,
   totalMatches,
   searchParams,
+  topSkills: topSkillsProp,
 }: {
   profileId: string;
   isAdmin: boolean;
   totalMatches: number;
   searchParams: DashboardMatchSearchParams;
+  /** Prefer passing from the page to avoid a second getCurrentProfile(). */
+  topSkills?: string[];
 }) {
   const status = searchParams.status ?? 'inbox';
   const onlyBookmarked = searchParams.bookmarked === '1';
@@ -40,20 +44,18 @@ export async function DashboardMatchResults({
 
   const sb = supabaseAdmin();
 
-  // Fetch profile top_skills so we can compute matched/missing for cards
-  // that pre-date the skills backfill (matched_skills is null).
-  const profile = await getCurrentProfile();
-  const topSkills: string[] = Array.isArray((profile?.insights as any)?.top_skills)
-    ? (profile!.insights as any).top_skills
-    : [];
+  let topSkills = topSkillsProp ?? [];
+  if (!topSkillsProp) {
+    const profile = await getCurrentProfile();
+    topSkills = Array.isArray((profile?.insights as { top_skills?: string[] } | null)?.top_skills)
+      ? (profile!.insights as { top_skills: string[] }).top_skills
+      : [];
+  }
 
+  // Slim list select — skip JD description (large) for dashboard cards.
   let query = sb
     .from('matches')
-    .select(
-      `id, llm_score, similarity, reason, status, bookmarked, matched_skills, missing_skills, applied_at, created_at, updated_at,
-       job:jobs!inner(id, title, company, location, remote, url, source, salary, posted_at, fetched_at, description, tags)`,
-      { count: 'exact' },
-    )
+    .select(MATCH_LIST_SELECT, { count: 'exact' })
     .eq('profile_id', profileId)
     .gte('llm_score', effectiveMinScore);
 
@@ -110,14 +112,14 @@ export async function DashboardMatchResults({
     const raw = m as unknown as {
       matched_skills: string[] | null;
       missing_skills: string[] | null;
-      job: { title: string; description: string | null };
+      job: { title: string };
     };
     const skills = enrichMatchListSkills(
       raw.matched_skills,
       raw.missing_skills,
       topSkills,
       raw.job?.title ?? '',
-      raw.job?.description,
+      null,
     );
 
     return {
