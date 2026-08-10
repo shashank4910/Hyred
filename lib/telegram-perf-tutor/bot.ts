@@ -60,10 +60,21 @@ function statusCard(p: LearnerProfile): string {
   );
 }
 
-async function askNext(ctx: Context) {
+async function askNext(ctx: Context, opts?: { replacePending?: boolean }) {
   const profile = await ensureProfile(ctx);
+  const previous = profile.pending?.question;
+  const recentQs = profile.history
+    .slice(-3)
+    .map((h) => h.question)
+    .filter(Boolean);
+  const avoid = [previous, ...recentQs].filter((q): q is string => Boolean(q));
+
+  if (opts?.replacePending && profile.pending) {
+    profile.pending = null;
+  }
+
   await ctx.reply('🧠 Crafting a question for your level…');
-  const q = await generateQuestion(profile);
+  const q = await generateQuestion(profile, { avoidQuestions: avoid });
   profile.pending = q;
   if (!profile.topicsSeen.includes(q.topic)) {
     profile.topicsSeen.push(q.topic);
@@ -248,21 +259,13 @@ export function createPerfTutorBot(): Telegraf {
   });
 
   bot.command('next', async (ctx) => {
-    const profile = await ensureProfile(ctx);
-    if (profile.pending) {
-      await ctx.reply('You still have an open question. Answer it, or /skip to get a new one.');
-      await ctx.reply(`❓ ${profile.pending.question}`);
-      return;
-    }
-    await askNext(ctx);
+    await ctx.reply('Okay — new question…');
+    await askNext(ctx, { replacePending: true });
   });
 
   bot.command('skip', async (ctx) => {
-    const profile = await ensureProfile(ctx);
-    profile.pending = null;
-    await saveLearner(profile);
     await ctx.reply('Skipped. Next question coming up…');
-    await askNext(ctx);
+    await askNext(ctx, { replacePending: true });
   });
 
   bot.command('hint', async (ctx) => {
@@ -287,9 +290,9 @@ export function createPerfTutorBot(): Telegraf {
     await ctx.reply(
       `Commands:\n` +
         `/start — begin / resume tutor\n` +
-        `/next — next question\n` +
+        `/next — new question (replaces the open one)\n` +
         `/hint — nudge without full answer\n` +
-        `/skip — skip current question\n` +
+        `/skip — skip and get a different question\n` +
         `/level — your adaptive level + strengths\n` +
         `/curriculum — topic map\n` +
         `/reset — wipe progress\n\n` +
