@@ -10,9 +10,7 @@
     "ingest": "tsx scripts/ingest.ts",
     "backfill:jds": "tsx scripts/backfill-jds.ts",
     "backfill:skills": "tsx scripts/repopulate-stale-skills.ts",
-    "typecheck": "tsc --noEmit",
-    "telegram:tutor": "tsx scripts/telegram-perf-tutor/index.ts",
-    "telegram:set-webhook": "tsx scripts/telegram-perf-tutor/set-webhook.ts"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.0",
@@ -31,7 +29,6 @@
     "react-dom": "^19.0.0",
     "server-only": "^0.0.1",
     "sonner": "^2.0.7",
-    "telegraf": "^4.16.3",
     "unpdf": "^1.8.0",
     "word-extractor": "^1.0.4"
   },
