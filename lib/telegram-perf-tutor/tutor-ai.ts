@@ -77,9 +77,13 @@ function learnerContext(profile: LearnerProfile): string {
   );
 }
 
-export async function generateQuestion(profile: LearnerProfile): Promise<PendingQuestion> {
+export async function generateQuestion(
+  profile: LearnerProfile,
+  opts?: { avoidQuestions?: string[] },
+): Promise<PendingQuestion> {
   const topic = pickTopic(profile.level, profile.topicsSeen, profile.weaknesses);
   const difficulty = profile.level;
+  const avoid = (opts?.avoidQuestions || []).filter(Boolean).slice(0, 5);
 
   const system = `You are an expert performance testing & performance engineering tutor.
 Ask ONE interview-style question. Return strict JSON only:
@@ -95,20 +99,33 @@ Rules:
 - One clear question. No multiple choice. No spoilers or answer hints.
 - If learner is beginner, keep language simple and concrete.
 - If senior+, ask design / diagnosis / trade-off questions.
-- Personalize lightly using learner strengths/weaknesses when useful.`;
+- Personalize lightly using learner strengths/weaknesses when useful.
+- MUST ask a DIFFERENT question than any listed under "Do not repeat".`;
 
   const data = await chatJson<{ question: string; topic?: string; difficulty?: number }>(
     system,
-    `Learner profile:\n${learnerContext(profile)}\n\nGenerate the next question.`,
+    `Learner profile:\n${learnerContext(profile)}\n\n` +
+      (avoid.length
+        ? `Do not repeat these questions:\n${avoid.map((q, i) => `${i + 1}. ${q}`).join('\n')}\n\n`
+        : '') +
+      `Generate the next question.`,
   );
+
+  let question =
+    (data.question || '').trim() ||
+    `Explain the main goal of ${topic.title} in performance engineering.`;
+
+  // Soft guard if the model echoes the previous question.
+  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+  if (avoid.some((a) => norm(a) === norm(question))) {
+    question = `In the context of ${topic.title}: give a practical example of how you would measure success, and what signal would tell you something is wrong.`;
+  }
 
   return {
     id: `q_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     topic: (data.topic as TopicId) || topic.id,
     difficulty: Math.max(1, Math.min(10, data.difficulty ?? difficulty)) as Difficulty,
-    question:
-      (data.question || '').trim() ||
-      `Explain the main goal of ${topic.title} in performance engineering.`,
+    question,
     askedAt: new Date().toISOString(),
   };
 }

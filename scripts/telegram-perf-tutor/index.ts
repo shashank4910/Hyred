@@ -33,8 +33,9 @@ if (!hasGroq && !hasOpenAI) {
 }
 
 if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-  console.error('Need NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY (progress is stored in Supabase).');
-  process.exit(1);
+  console.warn('Supabase env missing — progress will use local file store (data/telegram-perf-learners.json).');
+} else {
+  console.log('Learner store: Supabase if table exists, else local file fallback.');
 }
 
 // Local polling cannot share the bot with a cloud webhook.

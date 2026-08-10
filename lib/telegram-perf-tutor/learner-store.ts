@@ -1,5 +1,14 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { supabaseAdmin } from '../supabase/admin';
 import type { Difficulty, LearnerProfile } from './types';
+
+const DATA_DIR = path.join(process.cwd(), 'data');
+const STORE_PATH = path.join(DATA_DIR, 'telegram-perf-learners.json');
+
+type StoreFile = Record<string, LearnerProfile>;
+
+let supabaseAvailable: boolean | null = null;
 
 function blankProfile(telegramId: number, displayName: string): LearnerProfile {
   const now = new Date().toISOString();
@@ -22,16 +31,56 @@ function blankProfile(telegramId: number, displayName: string): LearnerProfile {
   };
 }
 
+function readFileStore(): StoreFile {
+  try {
+    if (!fs.existsSync(STORE_PATH)) return {};
+    return JSON.parse(fs.readFileSync(STORE_PATH, 'utf8')) as StoreFile;
+  } catch {
+    return {};
+  }
+}
+
+function writeFileStore(store: StoreFile): void {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(STORE_PATH, JSON.stringify(store, null, 2), 'utf8');
+}
+
+async function canUseSupabase(): Promise<boolean> {
+  if (supabaseAvailable != null) return supabaseAvailable;
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    supabaseAvailable = false;
+    return false;
+  }
+  try {
+    const sb = supabaseAdmin();
+    const { error } = await sb.from('telegram_perf_learners').select('telegram_id').limit(1);
+    if (error) {
+      console.warn('[learner-store] Supabase unavailable, using local file store:', error.message);
+      supabaseAvailable = false;
+      return false;
+    }
+    supabaseAvailable = true;
+    return true;
+  } catch (err) {
+    console.warn('[learner-store] Supabase check failed, using local file store:', err);
+    supabaseAvailable = false;
+    return false;
+  }
+}
+
 export async function getLearner(telegramId: number): Promise<LearnerProfile | null> {
-  const sb = supabaseAdmin();
-  const { data, error } = await sb
-    .from('telegram_perf_learners')
-    .select('profile')
-    .eq('telegram_id', telegramId)
-    .maybeSingle();
-  if (error) throw new Error(`Learner load failed: ${error.message}`);
-  if (!data?.profile) return null;
-  return data.profile as LearnerProfile;
+  if (await canUseSupabase()) {
+    const sb = supabaseAdmin();
+    const { data, error } = await sb
+      .from('telegram_perf_learners')
+      .select('profile')
+      .eq('telegram_id', telegramId)
+      .maybeSingle();
+    if (error) throw new Error(`Learner load failed: ${error.message}`);
+    if (!data?.profile) return null;
+    return data.profile as LearnerProfile;
+  }
+  return readFileStore()[String(telegramId)] ?? null;
 }
 
 export async function createLearner(
@@ -48,18 +97,26 @@ export async function saveLearner(profile: LearnerProfile): Promise<void> {
   if (profile.history.length > 80) {
     profile.history = profile.history.slice(-80);
   }
-  const sb = supabaseAdmin();
-  const { error } = await sb.from('telegram_perf_learners').upsert(
-    {
-      telegram_id: profile.telegramId,
-      display_name: profile.displayName,
-      profile,
-      updated_at: profile.updatedAt,
-      created_at: profile.createdAt,
-    },
-    { onConflict: 'telegram_id' },
-  );
-  if (error) throw new Error(`Learner save failed: ${error.message}`);
+
+  if (await canUseSupabase()) {
+    const sb = supabaseAdmin();
+    const { error } = await sb.from('telegram_perf_learners').upsert(
+      {
+        telegram_id: profile.telegramId,
+        display_name: profile.displayName,
+        profile,
+        updated_at: profile.updatedAt,
+        created_at: profile.createdAt,
+      },
+      { onConflict: 'telegram_id' },
+    );
+    if (error) throw new Error(`Learner save failed: ${error.message}`);
+    return;
+  }
+
+  const store = readFileStore();
+  store[String(profile.telegramId)] = profile;
+  writeFileStore(store);
 }
 
 export async function resetLearner(
