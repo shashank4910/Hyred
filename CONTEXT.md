@@ -98,7 +98,7 @@ app/(app)/_components/
   MatchCard.tsx          ← Luminous job card (score ring, insight quote, skills)
   MatchScoreRing.tsx     ← SVG circular match %
   StatusFilter.tsx       ← 7-col grid tabs (Inbox / Applied / … / Saved), one row
-  MatchFilters.tsx       ← score, remote, sort (+ admin source)
+  MatchFilters.tsx       ← score, remote, city, freshness (expired), sort (+ admin source)
   DashboardInsights.tsx  ← right column widgets on dashboard (xl+)
 
 app/_components/
@@ -1140,6 +1140,23 @@ preferences.locations + resume current_location
 
 **Pitfalls:** ATS keyword flow (Sessions 9–11), owner PII in prompts, JD HTML sanitization, hallucinated skill chips (Session 19). See Known Pitfalls rows for `generateAtsResume`. Premium verdict GET returns `locked: false` for users who can generate (premium plan); free users see locked preview until they upgrade.
 
+**Optimize keyword chips (Session 32, PRs #284–#285):** green = exact (`keywordInText` / `alreadyHave`); amber = close (`keywordCloseInText` / `closeHave`, tap to weave exact JD phrase); red = missing. ATS Match Score stays exact-only. Use `orange-*` for amber UI (theme remaps `amber` → teal). Keep `KEYWORD_CLOSE_ALIASES` tiny — no synonym zoo.
+
+**Find an insider / LinkedIn (PR #286):** `lib/linkedin-people-search.ts` — recruiting search uses quoted company + role OR group, proper `%22` encoding, **no** network filter (TA/HR often outside 1st/2nd).
+
+### Dashboard — filters, freshness, older jobs
+
+**Route:** `/` · **UI:** `MatchFilters`, `MatchList`, `DashboardMatchesSection`, `MatchCard` · **API:** `GET /api/matches` · **Stats:** `lib/match-stats.ts`
+
+| Piece | Role |
+|---|---|
+| City filter | `city` search param + `listMatchCities()` / `lib/match-location-filter.ts` (Session 29) |
+| Freshness window | Default hide if outside 45 days via `jobFreshnessOrFilter` — (`posted_at` ≥ cutoff **or** null) **OR** `fetched_at` ≥ cutoff (PR **#289**) |
+| Include older jobs | `expired=1` → `includeExpiredJobs()` skips window on counts / cities / list; **Older** badge via `isJobPastFreshnessWindow` (PR **#290**) |
+| Filter UX | Keep list visible + “Updating…” (PR **#287**); client refetch `/api/matches` + slim select (PR **#288**) |
+
+**Do not** key hide-only on `posted_at` (paid APIs can write ancient/wrong dates). **Do not** bump `fetched_at` on job upsert conflict. `expired=1` cannot bring back hard-deleted cleanup rows.
+
 ### Premium Tier 1 — Match Intelligence, Interview Prep, Resume Studio Pro
 
 **Roadmap:** `docs/features-jun26-to-be-built.md` · **Entitlements:** `lib/premium.ts` · **Migration:** `0015_hyred_premium_tier1.sql` (**manual run** in Supabase)
@@ -1215,6 +1232,9 @@ lib/ingest-runs.ts         ← Ingest run progress/finalize/stale cleanup (Stats
 lib/profile-insights.ts    ← Resume-change helpers: strip cached search_profile, refresh preferences.roles
 lib/current-user.ts        ← getCurrentProfile(), isCurrentUserAdmin(), orphan purge on re-signup
 lib/dashboard-data.ts      ← (Session 16) Cached (React `cache()`) per-request helpers: getDashboardCounts, getLastScanInfo
+lib/match-stats.ts         ← Dashboard counts + city list + freshness (`jobFreshnessOrFilter`, `includeExpiredJobs`, `expired=1` / Session 32)
+lib/match-location-filter.ts ← City label extract / sanitize (Session 29)
+lib/linkedin-people-search.ts ← Find-an-insider LinkedIn URLs; recruiting query quoted + no network filter (PR #286)
 lib/sources/adzuna.ts      ← Adzuna API (multi-query, pagination, dedup) — always India path
 lib/sources/jobspipe.ts    ← JobsPipe POST /v1/jobs/search; job_country_code_or from user; batched titlePatterns (PR #222)
 lib/sources/jobdatalake.ts ← JobDataLake GET /v1/jobs; user countryCodes on query
@@ -1252,7 +1272,7 @@ app/(app)/top-mnc/          ← Top MNC filtered job list (lib/top-companies.ts)
 app/(app)/import/           ← Manual job URL import UI
 app/(app)/ats-checker/      ← Logged-in ATS checker (AtsScanReport + Fix Studio + history)
 app/(app)/apply-profile/    ← Application profile form (memory store for auto-apply)
-app/(app)/_components/      ← AppShell (sidebar), MatchCard, MatchScoreRing, StatusFilter, DashboardInsights, HeaderSearch, RunIngestButton, MatchList (paginated, infinite-scroll, sessionStorage snapshot for back-nav)
+app/(app)/_components/      ← AppShell (sidebar), MatchCard, MatchScoreRing, StatusFilter, MatchFilters (score/remote/city/freshness), DashboardInsights, HeaderSearch, RunIngestButton, MatchList (paginated, infinite-scroll, client filter refetch, sessionStorage snapshot for back-nav)
 app/(app)/admin/            ← Admin Center: AdminDashboard (JobsPipe/JobDataLake/JSearch keys + bulk paste), JobApiUsagePanel.tsx, LlmKeysPanel.tsx, JobsControlPanel.tsx, CompanyCatalogRequestsPanel
 app/(app)/dream-alerts/     ← Dream Company watchlist + alert feed (migration 0016+)
 app/api/admin/job-api-usage/ ← GET usage logs by date range + source
@@ -1354,6 +1374,8 @@ supabase/migrations/0009_llm_keys.sql ← (Session 16) llm_keys + llm_usage_log 
 | `ignoreDuplicates: false` on upsert | Re-fetched jobs got their `fetched_at` reset, pushing them to top and displacing new jobs | Omit `fetched_at` from the upsert payload (so it default-sets to `now()` on insert, but remains untouched on conflict updates) and keep `ignoreDuplicates: false` so that duplicate IDs are still returned and counts remain accurate. |
 | `status='viewed'` makes jobs vanish | Job detail page sets `status='viewed'`, but `'viewed'` is not in `STATUS_ORDER`. The job disappears from every tab. | Fix: add `viewed_at timestamptz` column, stop changing status on open, just stamp `viewed_at`. Reset existing `viewed` rows back to `new`. |
 | Adzuna `posted_at` is unreliable | `created` field reflects when Adzuna indexed the job, not when the company posted it | Show exact date in tooltip; trust Remotive/RemoteOK more than Adzuna for freshness |
+| **Dashboard hide keyed only on `posted_at` → cities vanish (Session 32, PRs #289–#290)** | UI card date uses `fetched_at`, but freshness filter used `posted_at`. JobsPipe/etc. can upsert ancient/wrong `posted_at` → match drops from list **and** from `listMatchCities()` (e.g. Noida). | Use `jobFreshnessOrFilter`: keep if `posted_at` fresh/null **or** `fetched_at` within `MAX_JOB_AGE_DAYS` (45). Never refresh `fetched_at` on upsert conflict. User opt-in: `expired=1` / **Include older jobs** skips the window; **Older** badge via `isJobPastFreshnessWindow`. Does not resurrect hard-deleted cleanup rows. |
+| **Theme remaps Tailwind `amber` → teal (Session 32, PR #285)** | Close-match keyword chips used `bg-amber-*` and looked blank/wrong. | For warm “amber” UI use `orange-*` classes. |
 | Pushing to a closed/merged PR's branch | Two important commits sat dangling on a closed branch for two test cycles; Render kept deploying old main; user got frustrated | Always check PR state with `github_list_pull_requests` BEFORE pushing. If closed/merged, branch off latest main and open a NEW PR. |
 | Trusting local `git fetch` in this sandbox | Auth header issues silently fail the fetch; local git cache lies about remote state | Verify deployed state by fetching `raw.githubusercontent.com/{repo}/main/{path}` directly |
 | `BROWSER_USE_HEADLESS` env var | Fabricated from earlier guessing; does not exist in `browser-use==0.1.40` source | Verify env-var/API names by reading the pinned version's source on GitHub. v0.1.40 needs explicit `Browser(BrowserConfig(headless=True, extra_chromium_args=[...]))` into `Agent(browser=...)`. |
@@ -1634,6 +1656,8 @@ When a feature seems broken:
 - **Keep the `AGENTS.md` Index in sync** when you add/rename a `##` section here, and append new dated session logs to `docs/context/session-log.md` (not here).
 
 **Last updated:** Aug 7, 2026 — **Session 31:** ATS report polish + semantic section mapping (PRs **#271–#275**). `AGENTS.md` Index / ATS section / Known Pitfalls / UI change log / session-log updated. See Session 31 (and Session 30 for hybrid engine).
+
+**Last updated:** Aug 10, 2026 — **Session 32:** dashboard freshness (`jobFreshnessOrFilter` + Include older jobs / `expired=1`), filter UX/perf, Optimize green/amber/red keywords, LinkedIn recruiting search. Archive → `docs/context/session-log.md` Session 32. PRs **#282–#290**.
 
 **Last updated:** June 20, 2026 — **Doc bridge audit:** restored `## Key Architecture Decisions` heading; added `## Core App Features` (job detail, onboarding, Top MNC, import, outreach, apply profile); expanded File Map + `AGENTS.md` Index rows; fixed Tier 3 pointer to `session-log.md`; Sessions 17–18 + 26 in archive. See Session 26.
 
