@@ -9,6 +9,7 @@ import {
   saveLearner,
 } from './learner-store';
 import { levelLabel, TOPICS } from './topics';
+import { downloadTelegramFile, transcribeAudioBuffer } from './transcribe';
 import { generateHint, generateQuestion, gradeAnswer } from './tutor-ai';
 import type { LearnerProfile, TopicId } from './types';
 
@@ -72,13 +73,129 @@ async function askNext(ctx: Context) {
   const topicTitle = TOPICS.find((t) => t.id === q.topic)?.title || q.topic;
   await ctx.reply(
     `❓ Question (L${q.difficulty} · ${topicTitle})\n\n${q.question}\n\n` +
-      `Reply with your answer as a normal message.\n` +
+      `Reply with text or a voice note.\n` +
       `Commands: /hint · /skip · /level · /curriculum`,
     Markup.keyboard([
       ['/hint', '/skip'],
       ['/level', '/next'],
     ]).resize(),
   );
+}
+
+async function processAnswer(ctx: Context, text: string, viaVoice: boolean) {
+  const profile = await ensureProfile(ctx);
+  if (!profile.pending) {
+    await ctx.reply('No open question right now. Use /next to get one.');
+    return;
+  }
+
+  const pending = profile.pending;
+  await ctx.reply(
+    viaVoice
+      ? '📝 Heard your voice note — grading and preparing a detailed explanation…'
+      : '📝 Grading your answer and preparing a detailed explanation…',
+  );
+
+  try {
+    const grade = await gradeAnswer(profile, pending, text);
+
+    profile.totalAnswered += 1;
+    profile.strengths = mergeTags(profile.strengths, grade.detectedStrengths);
+    profile.weaknesses = mergeTags(profile.weaknesses, grade.detectedWeaknesses);
+    profile.notes = [profile.notes, grade.suggestedFocus].filter(Boolean).join(' | ').slice(-500);
+
+    const prevTopicScore = profile.topicScores[pending.topic as TopicId] ?? grade.score;
+    profile.topicScores[pending.topic as TopicId] = Math.round(
+      prevTopicScore * 0.4 + grade.score * 0.6,
+    );
+
+    const oldLevel = profile.level;
+    const newLevel = adaptLevel(profile, grade.score, grade.verdict);
+
+    profile.history.push({
+      questionId: pending.id,
+      topic: pending.topic,
+      difficulty: pending.difficulty,
+      question: pending.question,
+      userAnswer: text.slice(0, 2000),
+      score: grade.score,
+      verdict: grade.verdict,
+      feedbackSummary: grade.whatWasGood.slice(0, 240),
+      answeredAt: new Date().toISOString(),
+    });
+    profile.pending = null;
+    await saveLearner(profile);
+
+    const levelNote =
+      newLevel > oldLevel
+        ? `\n⬆️ Level up! Now ${newLevel}/10 (${levelLabel(newLevel)})`
+        : newLevel < oldLevel
+          ? `\n⬇️ Eased difficulty to ${newLevel}/10 (${levelLabel(newLevel)}) so we can rebuild foundations.`
+          : `\nLevel stays ${newLevel}/10 (${levelLabel(newLevel)}).`;
+
+    const takeaways =
+      grade.keyTakeaways.length > 0
+        ? `\n\n🔑 Key takeaways\n${grade.keyTakeaways.map((t) => `• ${t}`).join('\n')}`
+        : '';
+
+    const heard =
+      viaVoice && text
+        ? `\n🎤 I heard:\n"${text.slice(0, 800)}${text.length > 800 ? '…' : ''}"\n`
+        : '';
+
+    await sendLong(
+      ctx,
+      `✅ Score: ${grade.score}/100 (${grade.verdict})${levelNote}${heard}\n\n` +
+        `👍 What you got right:\n${grade.whatWasGood || '—'}\n\n` +
+        `🔧 Gaps:\n${grade.gaps || '—'}\n\n` +
+        `📖 Detailed answer\n${grade.detailedAnswer}` +
+        takeaways +
+        `\n\n🎯 Next focus: ${grade.suggestedFocus || 'Keep practicing.'}\n\n` +
+        `Send /next for another question.`,
+    );
+  } catch (err) {
+    console.error(err);
+    await ctx.reply(
+      `Sorry — grading failed (${err instanceof Error ? err.message : 'unknown error'}). ` +
+        `Your question is still open; try answering again in a moment.`,
+    );
+  }
+}
+
+async function handleVoiceLike(ctx: Context, fileId: string, durationSec?: number) {
+  const profile = await ensureProfile(ctx);
+  if (!profile.pending) {
+    await ctx.reply('No open question right now. Use /next to get one (then send a voice note).');
+    return;
+  }
+
+  if (durationSec != null && durationSec > 180) {
+    await ctx.reply('That voice note is quite long (over 3 minutes). Try a shorter answer, or type it.');
+    return;
+  }
+
+  const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
+  if (!token) {
+    await ctx.reply('Voice answers are not configured (missing bot token).');
+    return;
+  }
+
+  await ctx.reply('🎤 Transcribing your voice note…');
+  try {
+    const { buffer, filename } = await downloadTelegramFile(token, fileId);
+    const text = await transcribeAudioBuffer(buffer, filename);
+    if (!text.trim()) {
+      await ctx.reply("I couldn't make out any words. Please try again or type your answer.");
+      return;
+    }
+    await processAnswer(ctx, text, true);
+  } catch (err) {
+    console.error('[voice]', err);
+    await ctx.reply(
+      `Sorry — could not transcribe that voice note (${err instanceof Error ? err.message : 'error'}). ` +
+        `Try again or type your answer.`,
+    );
+  }
 }
 
 /** Shared Telegraf bot used by Vercel webhook and optional local polling. */
@@ -110,7 +227,7 @@ export function createPerfTutorBot(): Telegraf {
         `I'm your live Performance Testing & Engineering tutor.\n\n` +
         `I'll start from the basics, learn how strong you are from your answers, ` +
         `then raise or lower difficulty automatically.\n\n` +
-        `Each round: you answer → I grade you → I give a detailed model answer + takeaways.\n\n` +
+        `Each round: you answer (text or voice note) → I grade you → I give a detailed model answer + takeaways.\n\n` +
         `This bot stays online in the cloud — your laptop can be off.\n\n` +
         statusCard(profile),
     );
@@ -176,82 +293,24 @@ export function createPerfTutorBot(): Telegraf {
         `/level — your adaptive level + strengths\n` +
         `/curriculum — topic map\n` +
         `/reset — wipe progress\n\n` +
-        `Just type your answer as a normal chat message.`,
+        `Answer by typing OR send a voice note.`,
     );
   });
 
   bot.on('text', async (ctx) => {
     const text = ctx.message.text?.trim() || '';
     if (text.startsWith('/')) return;
+    await processAnswer(ctx, text, false);
+  });
 
-    const profile = await ensureProfile(ctx);
-    if (!profile.pending) {
-      await ctx.reply('No open question right now. Use /next to get one.');
-      return;
-    }
+  bot.on('voice', async (ctx) => {
+    const voice = ctx.message.voice;
+    await handleVoiceLike(ctx, voice.file_id, voice.duration);
+  });
 
-    const pending = profile.pending;
-    await ctx.reply('📝 Grading your answer and preparing a detailed explanation…');
-
-    try {
-      const grade = await gradeAnswer(profile, pending, text);
-
-      profile.totalAnswered += 1;
-      profile.strengths = mergeTags(profile.strengths, grade.detectedStrengths);
-      profile.weaknesses = mergeTags(profile.weaknesses, grade.detectedWeaknesses);
-      profile.notes = [profile.notes, grade.suggestedFocus].filter(Boolean).join(' | ').slice(-500);
-
-      const prevTopicScore = profile.topicScores[pending.topic as TopicId] ?? grade.score;
-      profile.topicScores[pending.topic as TopicId] = Math.round(
-        prevTopicScore * 0.4 + grade.score * 0.6,
-      );
-
-      const oldLevel = profile.level;
-      const newLevel = adaptLevel(profile, grade.score, grade.verdict);
-
-      profile.history.push({
-        questionId: pending.id,
-        topic: pending.topic,
-        difficulty: pending.difficulty,
-        question: pending.question,
-        userAnswer: text.slice(0, 2000),
-        score: grade.score,
-        verdict: grade.verdict,
-        feedbackSummary: grade.whatWasGood.slice(0, 240),
-        answeredAt: new Date().toISOString(),
-      });
-      profile.pending = null;
-      await saveLearner(profile);
-
-      const levelNote =
-        newLevel > oldLevel
-          ? `\n⬆️ Level up! Now ${newLevel}/10 (${levelLabel(newLevel)})`
-          : newLevel < oldLevel
-            ? `\n⬇️ Eased difficulty to ${newLevel}/10 (${levelLabel(newLevel)}) so we can rebuild foundations.`
-            : `\nLevel stays ${newLevel}/10 (${levelLabel(newLevel)}).`;
-
-      const takeaways =
-        grade.keyTakeaways.length > 0
-          ? `\n\n🔑 Key takeaways\n${grade.keyTakeaways.map((t) => `• ${t}`).join('\n')}`
-          : '';
-
-      await sendLong(
-        ctx,
-        `✅ Score: ${grade.score}/100 (${grade.verdict})${levelNote}\n\n` +
-          `👍 What you got right:\n${grade.whatWasGood || '—'}\n\n` +
-          `🔧 Gaps:\n${grade.gaps || '—'}\n\n` +
-          `📖 Detailed answer\n${grade.detailedAnswer}` +
-          takeaways +
-          `\n\n🎯 Next focus: ${grade.suggestedFocus || 'Keep practicing.'}\n\n` +
-          `Send /next for another question.`,
-      );
-    } catch (err) {
-      console.error(err);
-      await ctx.reply(
-        `Sorry — grading failed (${err instanceof Error ? err.message : 'unknown error'}). ` +
-          `Your question is still open; try answering again in a moment.`,
-      );
-    }
+  bot.on('audio', async (ctx) => {
+    const audio = ctx.message.audio;
+    await handleVoiceLike(ctx, audio.file_id, audio.duration);
   });
 
   bot.catch((err) => {
