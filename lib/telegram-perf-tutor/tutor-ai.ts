@@ -1,6 +1,14 @@
 import OpenAI from 'openai';
+import { clampLevel } from './learner-store';
 import { pickTopic, levelLabel } from './topics';
-import type { Difficulty, GradeResult, LearnerProfile, PendingQuestion, TopicId } from './types';
+import type {
+  Difficulty,
+  GradeResult,
+  LearnerProfile,
+  LevelAssessment,
+  PendingQuestion,
+  TopicId,
+} from './types';
 
 function getClient(): { client: OpenAI; model: string; label: string } {
   const primary = (process.env.LLM_PRIMARY || 'groq').toLowerCase();
@@ -135,24 +143,24 @@ export async function gradeAnswer(
   pending: PendingQuestion,
   userAnswer: string,
 ): Promise<GradeResult> {
-  const system = `You are a strict-but-kind performance engineering tutor.
-Grade the learner's answer and teach them. Return strict JSON:
+  const system = `You are a fair performance engineering tutor (not a video-game scorer).
+Grade THIS answer for the stated difficulty. Return strict JSON:
 {
   "score": 0-100,
   "verdict": "strong" | "partial" | "weak",
   "whatWasGood": "short",
   "gaps": "what was missing or wrong",
-  "detailedAnswer": "a thorough model answer (markdown ok, use short paragraphs and bullets). Include definitions, when to use, pitfalls, and a concrete example.",
+  "detailedAnswer": "a thorough model answer (short paragraphs and bullets). Include definitions, when to use, pitfalls, and a concrete example.",
   "keyTakeaways": ["3-5 short bullets"],
   "suggestedFocus": "what to practice next",
   "detectedStrengths": ["short tags"],
   "detectedWeaknesses": ["short tags"]
 }
-Scoring guide:
-- strong: mostly correct, solid reasoning (typically 80+)
-- partial: some right ideas, missing depth or accuracy (45-79)
-- weak: major gaps or wrong concepts (<45)
-Be fair to beginners at low difficulty. Still correct mistakes clearly.
+Judging rules:
+- Score the substance, not length. A short correct answer at beginner difficulty can be strong.
+- If core definitions are reversed or wrong, mark weak even if the writing sounds confident.
+- Do NOT use fixed magic thresholds like "must be 80". Choose score/verdict from understanding quality.
+- Be fair at low difficulty; still correct mistakes clearly.
 detailedAnswer must be educational and complete even if the user was strong.`;
 
   const data = await chatJson<GradeResult>(
@@ -171,7 +179,8 @@ Grade and teach.`,
   const score = Math.max(0, Math.min(100, Number(data.score) || 0));
   let verdict = data.verdict;
   if (verdict !== 'strong' && verdict !== 'partial' && verdict !== 'weak') {
-    verdict = score >= 80 ? 'strong' : score >= 45 ? 'partial' : 'weak';
+    // Soft fallback only if the model omitted verdict — not used for leveling.
+    verdict = score >= 75 ? 'strong' : score >= 50 ? 'partial' : 'weak';
   }
 
   return {
@@ -184,6 +193,67 @@ Grade and teach.`,
     suggestedFocus: data.suggestedFocus || '',
     detectedStrengths: Array.isArray(data.detectedStrengths) ? data.detectedStrengths : [],
     detectedWeaknesses: Array.isArray(data.detectedWeaknesses) ? data.detectedWeaknesses : [],
+  };
+}
+
+/**
+ * AI decides the learner's next difficulty level from answer quality + history.
+ * No streak counters, no hard-coded 80-point rules.
+ */
+export async function reassessLevel(
+  profile: LearnerProfile,
+  pending: PendingQuestion,
+  userAnswer: string,
+  grade: GradeResult,
+): Promise<LevelAssessment> {
+  const system = `You are an adaptive performance-engineering coach building a model of this learner.
+Decide their NEXT difficulty level (1-10) based on how they actually answer — not fixed score cutoffs or streak games.
+
+Return strict JSON:
+{
+  "recommendedLevel": 1-10,
+  "reason": "2-4 sentences explaining why this level fits them now",
+  "expertiseSummary": "one short paragraph: how you currently read their expertise"
+}
+
+Level meaning:
+1-2 beginner, 3-4 junior, 5-6 mid, 7-8 senior, 9-10 expert/architect.
+
+Rules:
+- Look at the latest answer AND recent history (trends matter more than one score).
+- Raise level when they show solid understanding for the CURRENT difficulty (even if answers are concise).
+- Lower level when they show confused/wrong fundamentals that need rebuilding — not for one small miss after strong work.
+- Prefer staying at the same level when evidence is mixed.
+- Do NOT require "two scores above 80". Judge conceptual readiness for harder questions.
+- recommendedLevel should usually be within 1 of current level; only jump more if evidence is overwhelming.`;
+
+  const data = await chatJson<{
+    recommendedLevel?: number;
+    reason?: string;
+    expertiseSummary?: string;
+  }>(
+    system,
+    `Current level: ${profile.level}/10 (${levelLabel(profile.level)})
+Learner profile:\n${learnerContext(profile)}
+
+Latest question (topic=${pending.topic}, difficulty=${pending.difficulty}/10):
+${pending.question}
+
+Latest answer:
+${userAnswer}
+
+Grade just produced (for context, not a hard rule):
+score=${grade.score}, verdict=${grade.verdict}
+good: ${grade.whatWasGood}
+gaps: ${grade.gaps}
+
+Reassess the learner's level.`,
+  );
+
+  return {
+    recommendedLevel: clampLevel(Number(data.recommendedLevel) || profile.level),
+    reason: (data.reason || 'Keeping level based on recent answer quality.').trim(),
+    expertiseSummary: (data.expertiseSummary || '').trim(),
   };
 }
 

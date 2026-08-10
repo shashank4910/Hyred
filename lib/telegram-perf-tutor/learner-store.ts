@@ -130,33 +130,24 @@ export function clampLevel(n: number): Difficulty {
   return Math.max(1, Math.min(10, Math.round(n))) as Difficulty;
 }
 
-export function adaptLevel(
+/**
+ * Apply an AI-chosen level with a stability clamp (±1 per answer).
+ * This is NOT score-threshold leveling — the AI picks the target; we only
+ * prevent one noisy grade from leaping many levels at once.
+ */
+export function applyAiLevel(
   profile: LearnerProfile,
-  score: number,
-  verdict: 'strong' | 'partial' | 'weak',
+  recommendedLevel: number,
 ): Difficulty {
-  let next = profile.level;
-
-  if (verdict === 'strong' || score >= 80) {
-    profile.consecutiveStrong += 1;
-    profile.consecutiveWeak = 0;
-    if (profile.consecutiveStrong >= 2) {
-      next = clampLevel(next + 1);
-      profile.consecutiveStrong = 0;
-    }
-  } else if (verdict === 'weak' || score < 45) {
-    profile.consecutiveWeak += 1;
-    profile.consecutiveStrong = 0;
-    if (profile.consecutiveWeak >= 2) {
-      next = clampLevel(next - 1);
-      profile.consecutiveWeak = 0;
-    }
-  } else {
-    profile.consecutiveStrong = 0;
-    profile.consecutiveWeak = 0;
-  }
-
+  const target = clampLevel(recommendedLevel);
+  const cur = profile.level;
+  let next = target;
+  if (target > cur + 1) next = clampLevel(cur + 1);
+  if (target < cur - 1) next = clampLevel(cur - 1);
   profile.level = next;
+  // Clear legacy streak counters so old logic cannot leak back in.
+  profile.consecutiveStrong = 0;
+  profile.consecutiveWeak = 0;
   return next;
 }
 

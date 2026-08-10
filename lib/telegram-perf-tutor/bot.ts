@@ -1,7 +1,7 @@
 import { Markup, Telegraf } from 'telegraf';
 import type { Context } from 'telegraf';
 import {
-  adaptLevel,
+  applyAiLevel,
   createLearner,
   getLearner,
   mergeTags,
@@ -10,7 +10,7 @@ import {
 } from './learner-store';
 import { levelLabel, TOPICS } from './topics';
 import { downloadTelegramFile, transcribeAudioBuffer } from './transcribe';
-import { generateHint, generateQuestion, gradeAnswer } from './tutor-ai';
+import { generateHint, generateQuestion, gradeAnswer, reassessLevel } from './tutor-ai';
 import type { LearnerProfile, TopicId } from './types';
 
 const TG_MAX = 3900;
@@ -50,12 +50,14 @@ async function ensureProfile(ctx: Context): Promise<LearnerProfile> {
 function statusCard(p: LearnerProfile): string {
   const label = levelLabel(p.level);
   const pending = p.pending ? `\nOpen question: yes` : '';
+  const expertise = p.expertiseSummary ? `\nAI read on you: ${p.expertiseSummary}` : '';
   return (
     `📊 Your tutor profile\n` +
     `Level: ${p.level}/10 (${label})\n` +
     `Answered: ${p.totalAnswered}\n` +
     `Strengths: ${p.strengths.slice(-5).join(', ') || 'still learning'}\n` +
     `Focus areas: ${p.weaknesses.slice(-5).join(', ') || 'none yet'}` +
+    expertise +
     pending
   );
 }
@@ -109,11 +111,18 @@ async function processAnswer(ctx: Context, text: string, viaVoice: boolean) {
 
   try {
     const grade = await gradeAnswer(profile, pending, text);
+    const assessment = await reassessLevel(profile, pending, text, grade);
 
     profile.totalAnswered += 1;
     profile.strengths = mergeTags(profile.strengths, grade.detectedStrengths);
     profile.weaknesses = mergeTags(profile.weaknesses, grade.detectedWeaknesses);
-    profile.notes = [profile.notes, grade.suggestedFocus].filter(Boolean).join(' | ').slice(-500);
+    profile.notes = [profile.notes, grade.suggestedFocus, assessment.reason]
+      .filter(Boolean)
+      .join(' | ')
+      .slice(-800);
+    if (assessment.expertiseSummary) {
+      profile.expertiseSummary = assessment.expertiseSummary.slice(0, 800);
+    }
 
     const prevTopicScore = profile.topicScores[pending.topic as TopicId] ?? grade.score;
     profile.topicScores[pending.topic as TopicId] = Math.round(
@@ -121,7 +130,7 @@ async function processAnswer(ctx: Context, text: string, viaVoice: boolean) {
     );
 
     const oldLevel = profile.level;
-    const newLevel = adaptLevel(profile, grade.score, grade.verdict);
+    const newLevel = applyAiLevel(profile, assessment.recommendedLevel);
 
     profile.history.push({
       questionId: pending.id,
@@ -133,6 +142,9 @@ async function processAnswer(ctx: Context, text: string, viaVoice: boolean) {
       verdict: grade.verdict,
       feedbackSummary: grade.whatWasGood.slice(0, 240),
       answeredAt: new Date().toISOString(),
+      levelBefore: oldLevel,
+      levelAfter: newLevel,
+      levelReason: assessment.reason.slice(0, 500),
     });
     profile.pending = null;
     await saveLearner(profile);
@@ -141,8 +153,10 @@ async function processAnswer(ctx: Context, text: string, viaVoice: boolean) {
       newLevel > oldLevel
         ? `\n⬆️ Level up! Now ${newLevel}/10 (${levelLabel(newLevel)})`
         : newLevel < oldLevel
-          ? `\n⬇️ Eased difficulty to ${newLevel}/10 (${levelLabel(newLevel)}) so we can rebuild foundations.`
+          ? `\n⬇️ Eased difficulty to ${newLevel}/10 (${levelLabel(newLevel)})`
           : `\nLevel stays ${newLevel}/10 (${levelLabel(newLevel)}).`;
+
+    const levelWhy = `\n🧭 Why: ${assessment.reason}`;
 
     const takeaways =
       grade.keyTakeaways.length > 0
@@ -156,7 +170,7 @@ async function processAnswer(ctx: Context, text: string, viaVoice: boolean) {
 
     await sendLong(
       ctx,
-      `✅ Score: ${grade.score}/100 (${grade.verdict})${levelNote}${heard}\n\n` +
+      `✅ Score: ${grade.score}/100 (${grade.verdict})${levelNote}${levelWhy}${heard}\n\n` +
         `👍 What you got right:\n${grade.whatWasGood || '—'}\n\n` +
         `🔧 Gaps:\n${grade.gaps || '—'}\n\n` +
         `📖 Detailed answer\n${grade.detailedAnswer}` +
