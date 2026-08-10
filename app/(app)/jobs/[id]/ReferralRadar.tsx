@@ -16,6 +16,7 @@ import {
   Sparkles,
   Loader2,
 } from 'lucide-react';
+import { buildLinkedIn2ndUrl, buildLinkedInPeerUrl, buildLinkedInRecruiterUrl } from '@/lib/linkedin-people-search';
 
 interface Props {
   matchId: string;
@@ -75,21 +76,6 @@ No pressure at all if you'd rather not. Appreciate it!
 Best,
 [Your Name]`;
   }
-}
-
-function buildLinkedInPeerUrl(company: string): string {
-  const q = encodeURIComponent(company);
-  return `https://www.linkedin.com/search/results/people/?keywords=${q}&network=%5B%22F%22%5D`;
-}
-
-function buildLinkedInRecruiterUrl(company: string): string {
-  const q = encodeURIComponent(`${company} recruiter OR "talent acquisition" OR HR`);
-  return `https://www.linkedin.com/search/results/people/?keywords=${q}&network=%5B%22F%22%2C%22S%22%5D`;
-}
-
-function buildLinkedIn2ndUrl(company: string): string {
-  const q = encodeURIComponent(company);
-  return `https://www.linkedin.com/search/results/people/?keywords=${q}&network=%5B%22S%22%5D`;
 }
 
 export function ReferralRadar({
