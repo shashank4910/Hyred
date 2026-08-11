@@ -118,7 +118,12 @@
     const v = getPath(profile, key);
     if (v == null) return null;
     if (typeof v === 'boolean') return v ? 'Yes' : 'No';
-    const s = String(v).trim();
+    let s = String(v).trim();
+    if (key === 'phone' && s) {
+      let d = s.replace(/[^\d]/g, '');
+      if (d.length > 10) d = d.slice(-10);
+      s = d;
+    }
     return s || null;
   }
 
