@@ -171,27 +171,31 @@ export default async function Dashboard({
 
       <div className="space-y-6">
         <DashboardNavProvider>
-          <StatusFilter
-            counts={counts}
-            active={status}
-            inboxCount={inboxCount ?? 0}
-            bookmarkedCount={bookmarkedCount ?? 0}
-            onlyBookmarked={onlyBookmarked}
-          />
-          <MatchFilters isAdmin={isAdmin} cities={cities} />
-          <DashboardMatchesSection cacheKey={matchListKey}>
-            <DashboardMatchResults
-              profileId={profile.id}
-              isAdmin={isAdmin}
-              totalMatches={totalMatches ?? 0}
-              searchParams={sp}
-              topSkills={
-                Array.isArray((profile.insights as { top_skills?: string[] } | null)?.top_skills)
-                  ? (profile.insights as { top_skills: string[] }).top_skills
-                  : []
-              }
-            />
-          </DashboardMatchesSection>
+          <div className="lg:flex lg:items-start lg:gap-8">
+            <MatchFilters isAdmin={isAdmin} cities={cities} />
+            <div className="min-w-0 flex-1 space-y-6">
+              <StatusFilter
+                counts={counts}
+                active={status}
+                inboxCount={inboxCount ?? 0}
+                bookmarkedCount={bookmarkedCount ?? 0}
+                onlyBookmarked={onlyBookmarked}
+              />
+              <DashboardMatchesSection cacheKey={matchListKey}>
+                <DashboardMatchResults
+                  profileId={profile.id}
+                  isAdmin={isAdmin}
+                  totalMatches={totalMatches ?? 0}
+                  searchParams={sp}
+                  topSkills={
+                    Array.isArray((profile.insights as { top_skills?: string[] } | null)?.top_skills)
+                      ? (profile.insights as { top_skills: string[] }).top_skills
+                      : []
+                  }
+                />
+              </DashboardMatchesSection>
+            </div>
+          </div>
         </DashboardNavProvider>
       </div>
 

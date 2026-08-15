@@ -19,7 +19,7 @@ export function AppToaster() {
           border: '1px solid #bbcac7',
           boxShadow: '0px 8px 32px rgba(0, 106, 101, 0.06)',
           borderRadius: '1rem',
-          fontFamily: "'Plus Jakarta Sans', sans-serif",
+          fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
         },
       }}
     />

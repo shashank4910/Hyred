@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
 
 :root {
   color-scheme: light;
@@ -10,13 +10,13 @@
 
 html,
 body {
-  background: #f9f9ff;
-  color: #111c2d;
+  background: #F8F9FB;
+  color: #111111;
   -webkit-font-smoothing: antialiased;
 }
 
 *::selection {
-  background: rgba(0, 106, 101, 0.15);
+  background: rgba(114, 211, 95, 0.25);
 }
 
 *::-webkit-scrollbar {
@@ -29,7 +29,7 @@ body {
 *::-webkit-scrollbar-thumb {
   background: #bbcac7;
   border-radius: 999px;
-  border: 2px solid #f9f9ff;
+  border: 2px solid #F8F9FB;
 }
 *::-webkit-scrollbar-thumb:hover {
   background: #6c7a78;
@@ -45,20 +45,23 @@ body {
   }
 
   .soft-shadow {
-    box-shadow: 0px 8px 32px rgba(0, 106, 101, 0.04);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
   }
 
   .btn {
     @apply inline-flex items-center justify-center gap-1.5 rounded-xl border border-outline-variant/50 bg-surface-container-lowest px-3 py-2 text-sm font-semibold text-on-surface hover:border-primary/30 hover:text-primary transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-card;
   }
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-xl teal-gradient px-4 py-2.5 text-sm font-semibold text-on-primary hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-primary-glow;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary hover:brightness-110 hover:-translate-y-0.5 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-primary-glow;
   }
   .btn-ghost {
     @apply inline-flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold text-on-surface-variant hover:text-primary hover:bg-surface-container-low transition-colors;
   }
   .btn-secondary {
     @apply inline-flex items-center justify-center gap-1.5 rounded-xl bg-secondary px-4 py-2.5 text-sm font-semibold text-on-secondary hover:bg-secondary-container transition-all disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .input-on-lime {
+    @apply w-full rounded-xl border-0 bg-white px-3 py-2.5 text-sm text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/30;
   }
   .input {
     @apply w-full rounded-xl border border-outline-variant bg-surface-container-lowest px-3 py-2.5 text-sm text-on-surface placeholder:text-text-muted focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/15 transition-all;
@@ -70,7 +73,7 @@ body {
     background-size: 1rem;
   }
   select.input:focus {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23006a65' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23003F3B' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   }
   .card {
     @apply rounded-2xl bg-surface-container-lowest p-6 shadow-card;
