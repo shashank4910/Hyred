@@ -129,25 +129,23 @@ export function AppShell({
       </aside>
 
       <header
-        className={`fixed top-0 z-[60] flex h-20 w-full items-center justify-between gap-4 overflow-visible border-b border-outline-variant/20 bg-white px-4 lg:px-8 ${
-          onDashboard || hideSidebar ? '' : 'lg:pl-[284px]'
-        }`}
+        className={`fixed top-0 z-[60] flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-2 overflow-visible border-b border-outline-variant/20 bg-white px-4 py-3 lg:px-8 ${
+          onDashboard || hideSidebar ? 'min-h-20' : 'h-20'
+        } ${onDashboard || hideSidebar ? '' : 'lg:pl-[284px]'}`}
       >
         <div className={`flex items-center gap-3 ${onDashboard ? '' : 'lg:hidden'}`}>
           <Brand compact wordmark={onDashboard} />
         </div>
         {onDashboard && (
-          <nav className="hidden items-center gap-8 text-sm font-semibold text-on-surface-variant lg:flex">
-            {nav
-              .filter((item) => !item.desktopOnly && !item.admin)
-              .slice(0, 5)
-              .map(({ href, label }) => {
+          <nav className="hidden max-w-full flex-1 flex-wrap items-center justify-center gap-x-5 gap-y-1 text-sm font-semibold text-on-surface-variant lg:flex">
+            {nav.map(({ href, label }) => {
                 const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
                 return (
                   <Link
                     key={href}
                     href={href}
-                    className={active ? 'relative text-ink' : 'hover:text-ink'}
+                    prefetch={href === '/stats' ? false : undefined}
+                    className={active ? 'relative text-ink' : 'whitespace-nowrap hover:text-ink'}
                   >
                     {label}
                     {active && (
@@ -197,8 +195,8 @@ export function AppShell({
         </div>
       </header>
 
-      <nav className="fixed bottom-0 left-0 z-50 flex w-full items-center justify-around border-t border-outline-variant/30 bg-surface-container-lowest/95 px-2 py-2 backdrop-blur-md lg:hidden">
-        {nav.slice(0, 7).map(({ href, label, icon: Icon, premium }) => {
+      <nav className="fixed bottom-0 left-0 z-50 flex w-full items-center justify-around gap-1 overflow-x-auto border-t border-outline-variant/30 bg-white px-2 py-2 lg:hidden">
+        {nav.map(({ href, label, icon: Icon, premium }) => {
           const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
           return (
             <Link
@@ -221,12 +219,12 @@ export function AppShell({
       </nav>
 
       <main
-        className={`relative z-0 mx-auto w-full min-w-0 px-4 pb-24 pt-24 sm:px-6 lg:pb-12 lg:pr-8 ${
+        className={`relative z-0 mx-auto w-full min-w-0 px-4 pb-24 sm:px-6 lg:pb-12 lg:pr-8 ${
           onDashboard
-            ? 'max-w-[1440px] lg:pl-8'
+            ? 'max-w-[1440px] pt-28 lg:pl-8'
             : hideSidebar
-              ? 'max-w-[1600px] lg:pl-4'
-              : 'max-w-page lg:pl-[284px]'
+              ? 'max-w-[1600px] pt-24 lg:pl-4'
+              : 'max-w-page pt-24 lg:pl-[284px]'
         }`}
       >
         {children}

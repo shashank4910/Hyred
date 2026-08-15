@@ -136,10 +136,9 @@ export function enrichMatchListSkills(
     jdPlain,
     jobTitle,
   );
-  const missing = filterMissingSkillsForJd(
-    missingSkills ?? [],
-    jdPlain,
-    jobTitle,
-  );
+  // List queries omit the JD for speed. Do not JD-filter missing chips to empty.
+  const missing = jdPlain.trim()
+    ? filterMissingSkillsForJd(missingSkills ?? [], jdPlain, jobTitle)
+    : dedupeSkills(missingSkills ?? []).slice(0, MAX_SKILLS);
   return { matched_skills: matched, missing_skills: missing };
 }

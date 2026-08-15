@@ -52,6 +52,7 @@ export function MatchCard({
   const isNew = status === 'new';
   const [bookmarked, setBookmarked] = useState(initialBookmarked);
   const [saving, setSaving] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const delay = Math.min(staggerIndex, 7) * 60;
 
   async function toggleBookmark(e: React.MouseEvent) {
@@ -80,10 +81,19 @@ export function MatchCard({
     : `/jobs/${matchId}`;
   const resumeHref = `/jobs/${matchId}#ats-resume`;
 
+  const previewLimit = 220;
+  const needsMore = Boolean(reason && reason.length > previewLimit);
+  const shownReason =
+    !reason
+      ? ''
+      : expanded || !needsMore
+        ? reason
+        : `${reason.slice(0, previewLimit).trimEnd()}…`;
+
   return (
     <article
       style={{ animationDelay: `${delay}ms` }}
-      className="group flex h-full min-w-0 flex-col rounded-[1.5rem] bg-white p-6 shadow-card transition-all duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-1.5 hover:shadow-elevated animate-fade-in"
+      className="group flex h-full min-w-0 flex-col rounded-[1.5rem] bg-surface-card p-6 shadow-card transition-all duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-1.5 hover:shadow-elevated animate-fade-in"
     >
       <div className="mb-4 flex items-start justify-between gap-3">
         <p className="pt-1 text-sm font-semibold text-ink">
@@ -150,11 +160,17 @@ export function MatchCard({
       </div>
 
       {reason && (
-        <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-on-surface-variant">
-          {reason}{' '}
-          <Link href={jobHref} className="font-bold text-ink hover:underline">
-            more
-          </Link>
+        <p className="mt-3 text-sm leading-relaxed text-on-surface-variant">
+          {shownReason}{' '}
+          {needsMore && (
+            <button
+              type="button"
+              className="font-bold text-ink hover:underline"
+              onClick={() => setExpanded((v) => !v)}
+            >
+              {expanded ? 'see less' : 'see more'}
+            </button>
+          )}
         </p>
       )}
 

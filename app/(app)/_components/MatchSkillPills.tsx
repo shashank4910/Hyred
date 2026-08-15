@@ -39,7 +39,7 @@ export function MatchSkillPills({
         </span>
       ))}
 
-      {missingSkills.slice(0, 3).map((s) => (
+      {missingSkills.slice(0, 5).map((s) => (
         <span
           key={`x-${s}`}
           className="inline-flex items-center gap-1 rounded-full border border-red-300 bg-red-50 px-3 py-1 text-[11px] font-semibold text-red-700"

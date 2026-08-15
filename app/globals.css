@@ -10,7 +10,7 @@
 
 html,
 body {
-  background: #F8F9FB;
+  background: #FFFFFF;
   color: #111111;
   -webkit-font-smoothing: antialiased;
 }
@@ -29,7 +29,7 @@ body {
 *::-webkit-scrollbar-thumb {
   background: #bbcac7;
   border-radius: 999px;
-  border: 2px solid #F8F9FB;
+  border: 2px solid #FFFFFF;
 }
 *::-webkit-scrollbar-thumb:hover {
   background: #6c7a78;
