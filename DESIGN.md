@@ -88,7 +88,7 @@ typography:
 - **Match Card**: Slightly grey `#F3F4F6` on a white page, ~24px radius, offset shadow. Top-left is real salary only. Score is a lime number tile. Heart top-right. Blurb expands with **see more** (not CSS-clamped). Matched = lime checks; unmatched = red, including when the list query has no JD. Build Custom Resume on every card. One forest Apply now pill.
 - **Chip**: Lime for matched skills and active Inbox/Saved. Red for unmatched skills.
 - **Filter Sidebar**: Tall docked slab, forest `#003F3B`, white “Filters” + reset, white inputs. Lime never fills this panel.
-- **Dashboard chrome**: Floating pill header on every logged-in page (not only `/`). Lime active chip. Full destination set: Dashboard, My Resume, Apply profile, Stats, Dream Alerts, ATS Checker, Top MNCs, Import, Settings, Admin. Account menu for Settings, Apply profile, Log out. Floating pill dock on mobile. No left icon rail.
+- **Scan live HUD**: After **Run Scan**, a radar pill appears bottom-right. It does not overlay or lock the page. Stop lives on that pill.
 
 ## Do / Don't
 ### Do

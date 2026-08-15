@@ -23,6 +23,7 @@ import { dismissAllAppToasts } from '@/lib/toast-app';
 import { supabaseBrowser } from '@/lib/supabase/client';
 import { HeaderSearch } from './HeaderSearch';
 import { RunIngestButton } from './RunIngestButton';
+import { ScanLiveHud } from './ScanLiveHud';
 import {
   usePreviewFocusMode,
   togglePreviewFocusMode,
@@ -225,6 +226,8 @@ export function AppShell({
           );
         })}
       </nav>
+
+      <ScanLiveHud />
 
       <main className="relative z-0 mx-auto w-full min-w-0 max-w-[1440px] px-4 pb-28 pt-24 sm:px-6 lg:px-8 lg:pb-12">
         {children}

@@ -154,6 +154,21 @@ input[type="range"] {
   animation: scan-started-shimmer 1.8s ease-in-out infinite;
 }
 
+@keyframes scan-radar-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.scan-radar-sweep {
+  animation: scan-radar-spin 1.35s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .scan-radar-sweep {
+    animation: none;
+    background: #72D35F !important;
+  }
+}
+
 /* ATS checker — modern document scan */
 @keyframes ats-scan-beam {
   0% {

@@ -2,9 +2,8 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, RefreshCw, ChevronDown, Zap, X } from 'lucide-react';
+import { RefreshCw, ChevronDown, Zap } from 'lucide-react';
 import { toast } from 'sonner';
-import { dismissScanStartedToast } from './scanStartedToast';
 import { triggerJobScan } from './triggerJobScan';
 
 const ALL_SOURCES = [
@@ -27,8 +26,6 @@ export function RunIngestButton({
   luminous?: boolean;
 }) {
   const [running, setRunning] = useState(false);
-  const [cancelling, setCancelling] = useState(false);
-  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [, startTransition] = useTransition();
   const router = useRouter();
   const [showSourcePicker, setShowSourcePicker] = useState(false);
@@ -52,25 +49,6 @@ export function RunIngestButton({
       toast.error((e as Error).message);
     } finally {
       setRunning(false);
-      setShowCancelConfirm(false);
-    }
-  }
-
-  async function cancelScan() {
-    setCancelling(true);
-    try {
-      const res = await fetch('/api/ingest/cancel', { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Cancel failed');
-      dismissScanStartedToast();
-      toast.success('Scan cancelled. Any matches already found are still on your dashboard.', { duration: 6000 });
-      setRunning(false);
-      setShowCancelConfirm(false);
-      startTransition(() => router.refresh());
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      setCancelling(false);
     }
   }
 
@@ -109,63 +87,15 @@ export function RunIngestButton({
             )}
           </>
         ) : (
-          /* Running state: show scanning indicator + cancel button */
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-2 rounded-xl bg-primary/10 px-4 py-2.5 text-sm font-semibold text-primary">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Scanning...
+          <span className="inline-flex items-center gap-2 rounded-full bg-lime-brand px-4 py-2.5 text-sm font-semibold text-ink">
+            <span className="relative flex h-4 w-4">
+              <span className="absolute inset-0 rounded-full bg-primary/30 scan-radar-sweep" />
+              <span className="relative m-auto h-2 w-2 rounded-full bg-primary" />
             </span>
-            <button
-              onClick={() => setShowCancelConfirm(true)}
-              disabled={cancelling}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-error/40 bg-error-container/20 px-3 py-2.5 text-sm font-semibold text-error hover:bg-error-container/40 transition-all"
-              title="Cancel the running scan"
-            >
-              {cancelling ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <X className="h-3.5 w-3.5" />
-              )}
-              Cancel
-            </button>
-          </div>
+            Scanning
+          </span>
         )}
       </div>
-
-      {/* Cancel confirmation prompt */}
-      {showCancelConfirm && (
-        <div className="absolute right-0 top-full z-[100] mt-2 w-80 rounded-2xl border border-outline-variant bg-surface-container-lowest p-5 shadow-elevated animate-fade-in">
-          <div className="space-y-3">
-            <div className="flex items-start gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-error-container/30 text-error">
-                <X className="h-4 w-4" />
-              </div>
-              <div>
-                <h4 className="text-sm font-semibold text-on-surface">Cancel scan?</h4>
-                <p className="mt-1 text-xs text-on-surface-variant leading-relaxed">
-                  Your scan is still running and results are being processed. Any matches already found will stay on your dashboard, but remaining jobs won&apos;t be scored.
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center justify-end gap-2 pt-1">
-              <button
-                onClick={() => setShowCancelConfirm(false)}
-                className="btn-ghost text-xs"
-              >
-                Keep scanning
-              </button>
-              <button
-                onClick={cancelScan}
-                disabled={cancelling}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-error px-3 py-2 text-xs font-semibold text-on-error hover:bg-error/90 transition-all disabled:opacity-50"
-              >
-                {cancelling && <Loader2 className="h-3 w-3 animate-spin" />}
-                Yes, cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Admin source picker */}
       {isAdmin && showSourcePicker && !running && (
