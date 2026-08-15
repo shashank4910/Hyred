@@ -35,14 +35,14 @@ export function HeaderSearch() {
   }
 
   return (
-    <div className="relative flex-1 max-w-xl">
+    <div className="relative w-full max-w-[220px] shrink-0">
       <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-on-surface-variant" />
       <input
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder="Search roles, companies, or keywords..."
         aria-busy={isPending}
-        className={`w-full rounded-2xl border border-outline-variant bg-surface-container-lowest py-3 pl-11 pr-4 text-body-md text-on-surface placeholder:text-text-muted outline-none transition-all focus:border-primary focus:ring-4 focus:ring-primary/15 ${isPending ? 'opacity-70' : ''}`}
+        className={`w-full rounded-2xl border border-outline-variant bg-surface-card py-2 pl-11 pr-4 text-sm text-on-surface placeholder:text-on-surface-variant outline-none transition-all focus:border-primary focus:ring-4 focus:ring-primary/15 ${isPending ? 'opacity-70' : ''}`}
       />
     </div>
   );

@@ -1,10 +1,11 @@
 ---
 name: Hyred Lime
-description: Career listing dashboard. Dark forest-teal filter slab, white job cards in a 3-column grid, lime used only as accent. Not a lime SaaS tool chrome.
+description: Career listing dashboard. Dark forest-teal filter slab, grey job cards on a white page, lime used only as accent.
 colors:
   lime-brand: "#72D35F"
   forest-teal: "#003F3B"
-  canvas: "#F8F9FB"
+  canvas: "#FFFFFF"
+  card: "#F3F4F6"
   ink: "#111111"
   secondary-text: "#555555"
   muted-text: "#888888"
@@ -41,7 +42,8 @@ typography:
 ## Colors
 - **Lime Brand (#72D35F)**: Accent only — active chips, small highlights. Never fill the filter slab or the page.
 - **Forest Teal (#003F3B)**: Filter sidebar fill, Apply now, logo mark. White text on forest.
-- **Canvas (#F8F9FB)**: The page background color. Provides a cool, light-gray neutral field for cards to sit on.
+- **Canvas (#FFFFFF)**: Page and shell background.
+- **Card fill (#F3F4F6)**: Slightly grey job cards so they read as lifted on white.
 - **Ink (#111111)**: Headings, job titles, salary/score on cards. Never use pure #000 for body text.
 - **Secondary Text (#555555)**: Used for sub-headings, meta-data labels, and active navigation links.
 - **Muted Text (#888888)**: Used for descriptions, blurbs, and inactive meta-data.
@@ -83,10 +85,10 @@ typography:
 
 ## Components
 - **Filled Button**: Forest teal, white text. Apply now is a full-width pill (9999px). One filled button per card.
-- **Match Card**: White, ~24px radius, no left border, real offset shadow. Top-left is real salary only. Score is a lime rounded tile with the number only — no MATCH kicker, not mixed into salary. Heart top-right. Body and meta use `#555555`. Matched skills = lime check pills; unmatched = red. Build Custom Resume chip on every card. One forest Apply now pill.
+- **Match Card**: Slightly grey `#F3F4F6` on a white page, ~24px radius, offset shadow. Top-left is real salary only. Score is a lime number tile. Heart top-right. Blurb expands with **see more** (not CSS-clamped). Matched = lime checks; unmatched = red, including when the list query has no JD. Build Custom Resume on every card. One forest Apply now pill.
 - **Chip**: Lime for matched skills and active Inbox/Saved. Red for unmatched skills.
 - **Filter Sidebar**: Tall docked slab, forest `#003F3B`, white “Filters” + reset, white inputs. Lime never fills this panel.
-- **Dashboard chrome**: Light top bar (Hyred wordmark + text nav). No icon rail on `/`. No Hello greeting, no promo banner, no giant MATCH kicker.
+- **Dashboard chrome**: White top bar with every left-rail destination. No icon rail on `/`. No Hello greeting, no promo banner, no giant MATCH kicker.
 
 ## Do / Don't
 ### Do

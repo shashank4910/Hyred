@@ -102,6 +102,27 @@ export default async function Dashboard({
   if (sp.remote === '1') chips.push({ label: 'Remote', clear: 'remote' });
   if (sp.city) chips.push({ label: sp.city, clear: 'city' });
   if (sp.expired === '1') chips.push({ label: 'Older jobs', clear: 'expired' });
+  if (sp.min) chips.push({ label: `Score ${sp.min}+`, clear: 'min' });
+
+  function hrefWithout(drop: string) {
+    const params = new URLSearchParams();
+    const keep: [string, string | undefined][] = [
+      ['status', sp.status],
+      ['q', sp.q],
+      ['source', sp.source],
+      ['min', sp.min],
+      ['remote', sp.remote],
+      ['city', sp.city],
+      ['bookmarked', sp.bookmarked],
+      ['sort', sp.sort],
+      ['expired', sp.expired],
+    ];
+    for (const [k, v] of keep) {
+      if (k === drop || !v) continue;
+      params.set(k, v);
+    }
+    return `/?${params.toString()}`;
+  }
 
   return (
     <div>
@@ -121,12 +142,13 @@ export default async function Dashboard({
               {chips.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {chips.map((c) => (
-                    <span
+                    <Link
                       key={c.clear}
-                      className="rounded-full bg-white px-3 py-1.5 text-sm text-on-surface-variant shadow-card"
+                      href={hrefWithout(c.clear)}
+                      className="rounded-full bg-lime-brand px-3 py-1.5 text-sm font-semibold text-ink"
                     >
-                      {c.label}
-                    </span>
+                      {c.label} ×
+                    </Link>
                   ))}
                 </div>
               )}

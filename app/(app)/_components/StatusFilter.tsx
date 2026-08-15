@@ -37,9 +37,14 @@ export function StatusFilter({
 
   const tabs = [
     { id: 'inbox', label: 'Inbox', count: inboxCount, icon: <Inbox className="h-3.5 w-3.5" /> },
-    ...STATUS_ORDER.filter((s) => s !== 'new' && s !== 'viewed').map((s) => ({
+    ...STATUS_ORDER.map((s) => ({
       id: s,
-      label: s === 'applied' ? 'Applied' : s.charAt(0).toUpperCase() + s.slice(1),
+      label:
+        s === 'applied'
+          ? 'Applied'
+          : s === 'interviewing'
+            ? 'Interviewing'
+            : s.charAt(0).toUpperCase() + s.slice(1),
       count: counts[s] ?? 0,
       icon: null,
     })),
@@ -63,7 +68,7 @@ export function StatusFilter({
           'flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold capitalize shadow-card',
           isActive
             ? 'bg-lime-brand text-ink'
-            : 'bg-white text-on-surface-variant hover:text-ink',
+            : 'bg-surface-card text-on-surface-variant hover:text-ink',
           isPending && !isActive ? 'opacity-60' : '',
         ].join(' ')}
       >
