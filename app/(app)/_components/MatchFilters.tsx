@@ -70,11 +70,13 @@ export function MatchFilters({
       ? [city, ...cities]
       : cities;
 
+  const fieldClass = 'input-on-lime';
+
   const scoreSelect = (
     <select
       value={minScore}
       onChange={(e) => setParam('min', e.target.value)}
-      className="input w-auto"
+      className={fieldClass}
       aria-label="Minimum match score"
     >
       <option value="">{`Default (${DEFAULT_LIST_MIN_SCORE}+)`}</option>
@@ -92,7 +94,7 @@ export function MatchFilters({
       onChange={(e) =>
         setParam('sort', e.target.value === DEFAULT_MATCH_SORT ? '' : e.target.value)
       }
-      className="input w-auto"
+      className={fieldClass}
       aria-label="Sort matches"
     >
       <option value="score">Best score</option>
@@ -107,7 +109,7 @@ export function MatchFilters({
         <select
           value={source}
           onChange={(e) => setParam('source', e.target.value)}
-          className="input w-auto"
+          className={fieldClass}
           aria-label="Job source"
         >
           <option value="">All sources</option>
@@ -122,7 +124,7 @@ export function MatchFilters({
       <select
         value={locationValue}
         onChange={(e) => setLocation(e.target.value)}
-        className="input w-auto max-w-[14rem]"
+        className={fieldClass}
         aria-label="Filter by location"
       >
         <option value="">Any location</option>
@@ -141,7 +143,7 @@ export function MatchFilters({
       <select
         value={expired === '1' ? '1' : ''}
         onChange={(e) => setParam('expired', e.target.value)}
-        className="input w-auto"
+        className={fieldClass}
         aria-label="Job freshness"
       >
         <option value="">Recent jobs only</option>
@@ -150,68 +152,97 @@ export function MatchFilters({
     </>
   );
 
-  return (
-    <div className={`relative z-0 space-y-2 ${isPending ? 'opacity-70' : ''}`}>
-      <div className="flex flex-wrap items-center gap-2">
-        {scoreSelect}
-        {sortSelect}
+  function clearFilters() {
+    const params = new URLSearchParams();
+    const status = sp.get('status');
+    const q = sp.get('q');
+    if (status) params.set('status', status);
+    if (q) params.set('q', q);
+    navigate(`/?${params.toString()}`, { replace: true });
+  }
 
-        <button
-          type="button"
-          className="btn md:hidden"
-          onClick={() => setMobileOpen((o) => !o)}
-          aria-expanded={mobileOpen}
-        >
-          <SlidersHorizontal className="h-4 w-4" />
-          Filters
-          {secondaryFilterCount > 0 ? (
-            <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-label-md font-bold text-primary">
-              {secondaryFilterCount}
-            </span>
-          ) : null}
-        </button>
-
-        <div className="hidden flex-wrap items-center gap-2 md:flex">{secondaryFilters}</div>
-
-        {hasFilters && (
-          <button
-            type="button"
-            onClick={() => {
-              const params = new URLSearchParams();
-              const status = sp.get('status');
-              const q = sp.get('q');
-              if (status) params.set('status', status);
-              if (q) params.set('q', q);
-              navigate(`/?${params.toString()}`, { replace: true });
-            }}
-            className="btn-ghost text-error"
-          >
-            <X className="h-3.5 w-3.5" />
-            Clear filters
-          </button>
-        )}
-      </div>
-
-      {mobileOpen ? (
-        <div className="flex flex-wrap items-center gap-2 border-t border-outline-variant/30 pt-2 md:hidden">
-          {secondaryFilters}
-        </div>
-      ) : null}
-
+  const panelBody = (
+    <div className="space-y-4">
+      <label className="block text-sm font-semibold text-ink">
+        Match score
+        <span className="mt-1.5 block">{scoreSelect}</span>
+      </label>
+      <label className="block text-sm font-semibold text-ink">
+        Sort
+        <span className="mt-1.5 block">{sortSelect}</span>
+      </label>
+      <label className="block text-sm font-semibold text-ink">
+        More
+        <span className="mt-1.5 block space-y-2">{secondaryFilters}</span>
+      </label>
       {usingDefaultMin ? (
-        <p className="text-label-md text-text-muted">
-          Showing matches scored {DEFAULT_LIST_MIN_SCORE}+.{' '}
-          <button
-            type="button"
-            className="font-semibold text-primary hover:underline"
-            onClick={() => setParam('min', '0')}
-          >
+        <p className="text-sm text-ink/80">
+          Showing {DEFAULT_LIST_MIN_SCORE}+.{' '}
+          <button type="button" className="font-bold underline" onClick={() => setParam('min', '0')}>
             Include lower scores
           </button>
         </p>
       ) : minScore === '0' ? (
-        <p className="text-label-md text-text-muted">Showing all match scores.</p>
+        <p className="text-sm text-ink/80">Showing all match scores.</p>
       ) : null}
+    </div>
+  );
+
+  return (
+    <div className={isPending ? 'opacity-80' : undefined}>
+      <button
+        type="button"
+        className="btn lg:hidden"
+        onClick={() => setMobileOpen((o) => !o)}
+        aria-expanded={mobileOpen}
+      >
+        <SlidersHorizontal className="h-4 w-4" />
+        Filters
+        {secondaryFilterCount > 0 ? (
+          <span className="rounded-full bg-lime-brand px-1.5 py-0.5 text-label-md font-bold text-ink">
+            {secondaryFilterCount}
+          </span>
+        ) : null}
+      </button>
+
+      {mobileOpen ? (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <button
+            type="button"
+            className="absolute inset-0 bg-ink/40"
+            aria-label="Close filters"
+            onClick={() => setMobileOpen(false)}
+          />
+          <div className="absolute bottom-0 left-0 right-0 max-h-[80vh] overflow-y-auto rounded-t-3xl bg-lime-brand p-6 text-ink shadow-elevated animate-slide-up">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-xl font-bold">Filters</h2>
+              <div className="flex gap-2">
+                {hasFilters && (
+                  <button type="button" onClick={clearFilters} className="rounded-full bg-white/80 px-3 py-1 text-sm font-semibold">
+                    reset
+                  </button>
+                )}
+                <button type="button" onClick={() => setMobileOpen(false)} className="rounded-full bg-white p-2" aria-label="Close">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+            {panelBody}
+          </div>
+        </div>
+      ) : null}
+
+      <aside className="hidden w-[260px] shrink-0 animate-slide-up rounded-2xl bg-lime-brand p-6 text-ink shadow-glass lg:block">
+        <div className="mb-5 flex items-center justify-between">
+          <h2 className="text-xl font-bold">Filters</h2>
+          {hasFilters && (
+            <button type="button" onClick={clearFilters} className="rounded-full bg-white/85 px-3 py-1 text-sm font-semibold text-ink">
+              reset ×
+            </button>
+          )}
+        </div>
+        {panelBody}
+      </aside>
     </div>
   );
 }

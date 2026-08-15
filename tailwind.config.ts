@@ -8,9 +8,10 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Google Stitch — Hyred AI Career Platform (Luminous)
-        primary: '#006a65',
-        'primary-container': '#2cc9c0',
+        // Hyred Lime — forest filled actions, lime filter slab
+        primary: '#003F3B',
+        'lime-brand': '#72D35F',
+        'primary-container': '#72D35F',
         'primary-fixed': '#6bf8ee',
         'primary-fixed-dim': '#48dbd2',
         'on-primary': '#ffffff',
@@ -36,13 +37,13 @@ const config: Config = {
         'on-tertiary-fixed': '#121e1c',
         'on-tertiary-fixed-variant': '#3d4947',
 
-        background: '#f9f9ff',
-        'on-background': '#111c2d',
+        background: '#F8F9FB',
+        'on-background': '#111111',
 
-        surface: '#f9f9ff',
-        'surface-bright': '#f9f9ff',
+        surface: '#F8F9FB',
+        'surface-bright': '#F8F9FB',
         'surface-dim': '#cfdaf2',
-        'surface-tint': '#006a65',
+        'surface-tint': '#003F3B',
         'surface-variant': '#d8e3fb',
         'surface-card': '#ffffff',
         'surface-container': '#e7eeff',
@@ -50,8 +51,8 @@ const config: Config = {
         'surface-container-high': '#dee8ff',
         'surface-container-highest': '#d8e3fb',
         'surface-container-lowest': '#ffffff',
-        'on-surface': '#111c2d',
-        'on-surface-variant': '#3c4948',
+        'on-surface': '#111111',
+        'on-surface-variant': '#555555',
 
         'inverse-surface': '#263143',
         'inverse-on-surface': '#ecf1ff',
@@ -63,17 +64,17 @@ const config: Config = {
         'on-error-container': '#93000a',
 
         outline: '#6c7a78',
-        'outline-variant': '#bbcac7',
+        'outline-variant': '#E5E7EB',
         'border-muted': '#bbcac7',
 
-        'match-success': '#2cc9c0',
+        'match-success': '#72D35F',
         'match-warning': '#45dfa4',
         'match-missing': '#e7eeff',
-        'text-muted': '#6c7a78',
+        'text-muted': '#888888',
         'success-green': '#2cc9c0',
 
         // Legacy aliases
-        ink: '#111c2d',
+        ink: '#111111',
         stone: '#3c4948',
         'off-white': '#f9f9ff',
         pearl: '#ffffff',
@@ -91,8 +92,8 @@ const config: Config = {
         muted: '#6c7a78',
       },
       fontFamily: {
-        sans: ['Plus Jakarta Sans', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-        headline: ['Plus Jakarta Sans', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        headline: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         mono: ['Geist', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
       fontSize: {
@@ -137,17 +138,17 @@ const config: Config = {
         full: '9999px',
       },
       boxShadow: {
-        card: '0px 8px 32px rgba(0, 106, 101, 0.04)',
-        elevated: '0px 12px 48px rgba(0, 106, 101, 0.08)',
-        glass: '0px 4px 24px rgba(0, 106, 101, 0.03)',
-        'primary-glow': '0 8px 24px rgba(0, 106, 101, 0.2)',
+        card: '0 4px 20px rgba(0, 0, 0, 0.03)',
+        elevated: '0 12px 32px rgba(0, 0, 0, 0.08)',
+        glass: '0 0 40px rgba(0, 0, 0, 0.04)',
+        'primary-glow': '0 8px 20px rgba(0, 63, 59, 0.25)',
       },
       maxWidth: {
         page: '1200px',
       },
       keyframes: {
         'fade-in': {
-          '0%': { opacity: '0', transform: 'translateY(4px)' },
+          '0%': { opacity: '0', transform: 'translateY(8px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
         },
         'slide-up': {
@@ -173,8 +174,8 @@ const config: Config = {
         },
       },
       animation: {
-        'fade-in': 'fade-in 0.2s ease-out',
-        'slide-up': 'slide-up 0.3s ease-out',
+        'fade-in': 'fade-in 0.2s cubic-bezier(0.22, 1, 0.36, 1)',
+        'slide-up': 'slide-up 0.32s cubic-bezier(0.22, 1, 0.36, 1)',
         'scale-in': 'scale-in 0.3s ease-out',
         'shimmer': 'shimmer 1.5s linear infinite',
         'progress-pulse': 'progress-pulse 1.5s ease-in-out infinite',

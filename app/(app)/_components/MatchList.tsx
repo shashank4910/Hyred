@@ -210,14 +210,14 @@ export function MatchList({ initialMatches, total: initialTotal, initialHasMore,
           </span>
         )}
       </p>
-      <ul className="grid grid-cols-1 gap-6">
-        {matches.map((m) => {
+      <ul className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        {matches.map((m, i) => {
           const isHL = m.id === highlightId;
           return (
             <li
               key={m.id}
               ref={isHL ? highlightRef : undefined}
-              className={`transition-all duration-300 rounded-2xl ${isHL ? 'ring-2 ring-primary ring-offset-2' : ''}`}
+              className={`h-full transition-all duration-300 ${isHL ? 'ring-2 ring-primary ring-offset-2 rounded-2xl' : ''}`}
             >
               <MatchCard
                 matchId={m.id}
@@ -230,6 +230,7 @@ export function MatchList({ initialMatches, total: initialTotal, initialHasMore,
                 job={m.job as unknown as MatchJob}
                 showSource={showSource}
                 isOlder={showExpired && isJobPastFreshnessWindow(m.job)}
+                staggerIndex={i}
               />
             </li>
           );
