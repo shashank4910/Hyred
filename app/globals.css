@@ -37,11 +37,11 @@ body {
 
 @layer components {
   .teal-gradient {
-    background: linear-gradient(135deg, #006a65 0%, #2cc9c0 100%);
+    background: #003F3B;
   }
 
   .glass-card {
-    @apply bg-surface-container-lowest backdrop-blur-[10px] rounded-2xl shadow-card;
+    @apply rounded-[1.5rem] bg-surface-card shadow-card;
   }
 
   .soft-shadow {
@@ -52,7 +52,7 @@ body {
     @apply inline-flex items-center justify-center gap-1.5 rounded-xl border border-outline-variant/50 bg-surface-container-lowest px-3 py-2 text-sm font-semibold text-on-surface hover:border-primary/30 hover:text-primary transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-card;
   }
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary hover:brightness-110 hover:-translate-y-0.5 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-primary-glow;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-full bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary hover:brightness-110 hover:-translate-y-0.5 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-primary-glow;
   }
   .btn-ghost {
     @apply inline-flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold text-on-surface-variant hover:text-primary hover:bg-surface-container-low transition-colors;
@@ -98,7 +98,7 @@ body {
     @apply inline-flex items-center rounded-full bg-match-success/10 text-match-success px-2.5 py-0.5 text-xs font-semibold;
   }
   .stat-card {
-    @apply rounded-2xl bg-surface-container-lowest p-5 shadow-card;
+    @apply rounded-[1.5rem] bg-surface-card p-5 shadow-card;
   }
 
   .score-band-90 {

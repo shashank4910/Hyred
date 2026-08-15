@@ -184,8 +184,8 @@ export default async function Dashboard({
 
 function EmptyOnboarding() {
   return (
-    <div className="mx-auto mt-12 max-w-xl space-y-4 rounded-2xl bg-surface-container-lowest px-8 py-12 text-center shadow-card">
-      <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl teal-gradient text-on-primary">
+    <div className="mx-auto mt-12 max-w-xl space-y-4 rounded-[1.5rem] bg-surface-card px-8 py-12 text-center shadow-card">
+      <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-full bg-primary text-on-primary">
         <Sparkles className="h-7 w-7" />
       </div>
       <h1 className="font-headline text-headline-md font-bold text-on-surface">Welcome to Hyred</h1>

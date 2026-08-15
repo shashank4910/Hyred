@@ -19,6 +19,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
+import { PageHeader } from '../_components/PageHeader';
 import type { DreamCompanyRow } from '@/lib/dream-companies';
 
 type CatalogItem = {
@@ -223,30 +224,17 @@ export function DreamAlertsClient({
 
   return (
     <div className="space-y-8">
-      <div className="glass-card p-6 sm:p-8 relative overflow-hidden">
-        <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-primary/10 blur-2xl" />
-        <div className="relative flex flex-wrap items-start justify-between gap-4">
-          <div className="space-y-2 max-w-2xl">
-            <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-bold uppercase tracking-wide text-primary">
-              <BellRing className="h-3.5 w-3.5" />
-              Dream company alerts
-            </div>
-            <h1 className="font-headline text-headline-md font-bold text-on-background">
-              Never miss your dream company
-            </h1>
-            <p className="text-body-md text-on-surface-variant leading-relaxed">
-              Search {catalogTotal.toLocaleString()}+ listed and major unlisted companies worldwide.
-              Pick from the catalog, add any name manually, or request a new listing for everyone.
-            </p>
-          </div>
-          {unread > 0 && (
-            <div className="flex items-center gap-2 rounded-2xl bg-secondary-container/40 px-4 py-2 text-sm font-semibold text-secondary">
-              <Sparkles className="h-4 w-4" />
+      <PageHeader
+        title="Dream company alerts"
+        description={`Search ${catalogTotal.toLocaleString()}+ listed and major unlisted companies. Pick from the catalog, add a name, or request a listing.`}
+        action={
+          unread > 0 ? (
+            <p className="rounded-full bg-lime-brand px-4 py-2 text-sm font-semibold text-ink">
               {unread} new alert{unread === 1 ? '' : 's'}
-            </div>
-          )}
-        </div>
-      </div>
+            </p>
+          ) : null
+        }
+      />
 
       <div className="grid gap-8 lg:grid-cols-5">
         <section className="lg:col-span-2 space-y-4">

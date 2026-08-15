@@ -30,9 +30,7 @@ export function HeaderSearch() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q, pathname]);
 
-  if (pathname !== '/') {
-    return <div className="hidden flex-1 lg:block" aria-hidden />;
-  }
+  if (pathname !== '/') return null;
 
   return (
     <div className="relative w-full max-w-[220px] shrink-0">
@@ -42,7 +40,7 @@ export function HeaderSearch() {
         onChange={(e) => setQ(e.target.value)}
         placeholder="Search roles, companies, or keywords..."
         aria-busy={isPending}
-        className={`w-full rounded-2xl border border-outline-variant bg-surface-card py-2 pl-11 pr-4 text-sm text-on-surface placeholder:text-on-surface-variant outline-none transition-all focus:border-primary focus:ring-4 focus:ring-primary/15 ${isPending ? 'opacity-70' : ''}`}
+        className={`w-full rounded-full border-0 bg-surface-card py-2 pl-11 pr-4 text-sm text-on-surface placeholder:text-on-surface-variant outline-none transition-all focus:ring-2 focus:ring-primary/20 ${isPending ? 'opacity-70' : ''}`}
       />
     </div>
   );

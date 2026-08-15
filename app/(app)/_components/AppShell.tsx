@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Suspense } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import {
   LayoutDashboard,
   BarChart3,
@@ -15,8 +15,9 @@ import {
   Building2,
   Search,
   BellRing,
-  PanelLeftClose,
-  PanelLeft,
+  UserRound,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 import { dismissAllAppToasts } from '@/lib/toast-app';
 import { supabaseBrowser } from '@/lib/supabase/client';
@@ -30,20 +31,21 @@ import {
 const NAV: {
   href: string;
   label: string;
+  short: string;
   icon: typeof LayoutDashboard;
   premium?: boolean;
   admin?: boolean;
-  desktopOnly?: boolean;
 }[] = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/onboarding', label: 'My Resume', icon: FileText },
-  { href: '/stats', label: 'Stats', icon: BarChart3 },
-  { href: '/dream-alerts', label: 'Dream Alerts', icon: BellRing },
-  { href: '/ats-checker', label: 'ATS Checker', icon: Search },
-  { href: '/top-mnc', label: 'Top MNCs', icon: Building2, premium: true },
-  { href: '/settings', label: 'Settings', icon: Settings },
-  { href: '/import', label: 'Import', icon: Link2, desktopOnly: true },
-  { href: '/admin', label: 'Admin', icon: Shield, admin: true },
+  { href: '/', label: 'Dashboard', short: 'Jobs', icon: LayoutDashboard },
+  { href: '/onboarding', label: 'My Resume', short: 'Resume', icon: FileText },
+  { href: '/apply-profile', label: 'Apply profile', short: 'Apply', icon: UserRound },
+  { href: '/stats', label: 'Stats', short: 'Stats', icon: BarChart3 },
+  { href: '/dream-alerts', label: 'Dream Alerts', short: 'Alerts', icon: BellRing },
+  { href: '/ats-checker', label: 'ATS Checker', short: 'ATS', icon: Search },
+  { href: '/top-mnc', label: 'Top MNCs', short: 'MNCs', icon: Building2, premium: true },
+  { href: '/import', label: 'Import', short: 'Import', icon: Link2 },
+  { href: '/settings', label: 'Settings', short: 'Settings', icon: Settings },
+  { href: '/admin', label: 'Admin', short: 'Admin', icon: Shield, admin: true },
 ];
 
 export function AppShell({
@@ -59,8 +61,18 @@ export function AppShell({
   const router = useRouter();
   const previewFocus = usePreviewFocusMode();
   const onAtsChecker = pathname.startsWith('/ats-checker');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const nav = NAV.filter((item) => !item.admin || isAdmin);
+
+  useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    }
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, []);
 
   async function logout() {
     dismissAllAppToasts();
@@ -78,177 +90,145 @@ export function AppShell({
         .toUpperCase()
     : profile?.email?.slice(0, 2).toUpperCase() ?? 'HY';
 
-  const onDashboard = pathname === '/';
-  const hideSidebar = previewFocus || onDashboard;
+  function isActive(href: string) {
+    return href === '/' ? pathname === '/' : pathname.startsWith(href);
+  }
 
   return (
     <div className="min-h-screen bg-background text-on-surface">
-      <aside
-        className={`fixed left-0 top-0 z-40 h-screen w-[260px] flex-col gap-y-6 bg-surface-container-lowest px-4 py-8 shadow-glass transition-transform duration-200 ${
-          hideSidebar ? 'lg:hidden' : 'hidden lg:flex'
-        }`}
-      >
-        <Brand />
+      <header className="fixed inset-x-3 top-3 z-[60] flex items-center gap-3 rounded-full bg-white px-3 py-2 shadow-card sm:inset-x-6 sm:px-4">
+        <Link href="/" className="flex shrink-0 items-center gap-2.5 pl-1">
+          <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-primary text-on-primary">
+            <Zap className="h-4 w-4 fill-current" />
+          </span>
+          <span className="text-lg font-extrabold tracking-tight text-ink">Hyred</span>
+        </Link>
 
-        <nav className="flex-1 space-y-1">
-          {nav
-            .filter((item) => !item.desktopOnly)
-            .map(({ href, label, icon: Icon, premium }) => {
-              const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  prefetch={href === '/stats' ? false : undefined}
-                  className={[
-                    'flex items-center gap-3 rounded-2xl px-4 py-3 text-label-md font-semibold transition-all',
-                    active
-                      ? 'bg-primary-container text-on-primary-container shadow-card'
-                      : premium
-                        ? 'text-secondary hover:bg-surface-container-low'
-                        : 'text-on-surface-variant hover:bg-surface-container-low',
-                  ].join(' ')}
-                >
-                  <Icon className="h-5 w-5 shrink-0" />
-                  {label}
-                </Link>
-              );
-            })}
-        </nav>
-
-        <div className="border-t border-outline-variant/30 pt-4">
-          <button
-            type="button"
-            onClick={logout}
-            className="flex w-full cursor-pointer items-center gap-3 rounded-2xl px-4 py-3 text-label-md font-semibold text-on-surface-variant transition-colors hover:bg-surface-container-low"
+        {!previewFocus && (
+          <nav
+            className="hidden min-w-0 flex-1 lg:block"
+            aria-label="App"
           >
-            <LogOut className="h-5 w-5" />
-            Log out
-          </button>
-        </div>
-      </aside>
-
-      <header
-        className={`fixed top-0 z-[60] flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-2 overflow-visible border-b border-outline-variant/20 bg-white px-4 py-3 lg:px-8 ${
-          onDashboard || hideSidebar ? 'min-h-20' : 'h-20'
-        } ${onDashboard || hideSidebar ? '' : 'lg:pl-[284px]'}`}
-      >
-        <div className={`flex items-center gap-3 ${onDashboard ? '' : 'lg:hidden'}`}>
-          <Brand compact wordmark={onDashboard} />
-        </div>
-        {onDashboard && (
-          <nav className="hidden max-w-full flex-1 flex-wrap items-center justify-center gap-x-5 gap-y-1 text-sm font-semibold text-on-surface-variant lg:flex">
-            {nav.map(({ href, label }) => {
-                const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
+            <div className="mx-auto flex max-w-full items-center justify-center gap-0.5 overflow-x-auto rounded-full bg-surface-card p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {nav.map(({ href, label }) => {
+                const active = isActive(href);
                 return (
                   <Link
                     key={href}
                     href={href}
                     prefetch={href === '/stats' ? false : undefined}
-                    className={active ? 'relative text-ink' : 'whitespace-nowrap hover:text-ink'}
+                    className={[
+                      'whitespace-nowrap rounded-full px-3 py-1.5 text-[13px] font-semibold transition-colors',
+                      active
+                        ? 'bg-lime-brand text-ink shadow-sm'
+                        : 'text-on-surface-variant hover:text-ink',
+                    ].join(' ')}
                   >
                     {label}
-                    {active && (
-                      <span className="absolute -bottom-2 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-primary" />
-                    )}
                   </Link>
                 );
               })}
+            </div>
           </nav>
         )}
 
-        {hideSidebar && !onDashboard && (
+        {onAtsChecker && (
           <button
             type="button"
             onClick={togglePreviewFocusMode}
-            className="hidden cursor-pointer items-center gap-2 rounded-xl border border-outline-variant/50 px-3 py-2 text-xs font-semibold text-on-surface-variant transition-colors hover:border-primary/30 hover:text-primary lg:inline-flex"
-            title="Show menu"
+            className="hidden shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-3 py-2 text-xs font-semibold text-on-surface-variant hover:bg-surface-card hover:text-ink lg:inline-flex"
+            title={previewFocus ? 'Show menu' : 'Hide menu for more preview space'}
           >
-            <PanelLeft className="h-4 w-4" />
-            Menu
+            {previewFocus ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            {previewFocus ? 'Menu' : 'Focus'}
           </button>
         )}
 
-        {!hideSidebar && onAtsChecker && (
-          <button
-            type="button"
-            onClick={togglePreviewFocusMode}
-            className="hidden cursor-pointer items-center gap-2 rounded-xl border border-outline-variant/50 px-3 py-2 text-xs font-semibold text-on-surface-variant transition-colors hover:border-primary/30 hover:text-primary lg:inline-flex"
-            title="Hide menu for more preview space"
-          >
-            <PanelLeftClose className="h-4 w-4" />
-            Focus previews
-          </button>
-        )}
-
-        <Suspense fallback={<div className="hidden flex-1 lg:block" />}>
+        <Suspense fallback={null}>
           <HeaderSearch />
         </Suspense>
 
-        <div className="ml-auto flex shrink-0 items-center gap-3">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           <div className="hidden sm:block">
             <RunIngestButton isAdmin={isAdmin} luminous />
           </div>
-          <div className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-surface bg-surface-container-high text-xs font-bold text-primary shadow-sm">
-            {initials}
+          <div className="relative" ref={menuRef}>
+            <button
+              type="button"
+              onClick={() => setMenuOpen((o) => !o)}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-xs font-bold text-on-primary"
+              aria-expanded={menuOpen}
+              aria-haspopup="menu"
+              aria-label="Account menu"
+            >
+              {initials}
+            </button>
+            {menuOpen && (
+              <div
+                role="menu"
+                className="absolute right-0 top-[calc(100%+8px)] w-56 rounded-2xl bg-white p-2 shadow-elevated"
+              >
+                <p className="truncate px-3 py-2 text-xs text-on-surface-variant">
+                  {profile?.email}
+                </p>
+                <Link
+                  href="/settings"
+                  role="menuitem"
+                  onClick={() => setMenuOpen(false)}
+                  className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-ink hover:bg-surface-card"
+                >
+                  <Settings className="h-4 w-4" />
+                  Settings
+                </Link>
+                <Link
+                  href="/apply-profile"
+                  role="menuitem"
+                  onClick={() => setMenuOpen(false)}
+                  className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-ink hover:bg-surface-card"
+                >
+                  <UserRound className="h-4 w-4" />
+                  Apply profile
+                </Link>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={logout}
+                  className="flex w-full cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-ink hover:bg-surface-card"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Log out
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </header>
 
-      <nav className="fixed bottom-0 left-0 z-50 flex w-full items-center justify-around gap-1 overflow-x-auto border-t border-outline-variant/30 bg-white px-2 py-2 lg:hidden">
-        {nav.map(({ href, label, icon: Icon, premium }) => {
-          const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
+      <nav
+        className="fixed inset-x-3 bottom-3 z-50 flex items-center gap-1 overflow-x-auto rounded-full bg-white p-1.5 shadow-elevated [scrollbar-width:none] lg:hidden [&::-webkit-scrollbar]:hidden"
+        aria-label="App"
+      >
+        {nav.map(({ href, short, icon: Icon }) => {
+          const active = isActive(href);
           return (
             <Link
               key={href}
               href={href}
               className={[
-                'flex flex-col items-center justify-center gap-0.5 rounded-xl p-2 transition-all',
-                active
-                  ? premium
-                    ? 'bg-secondary-container/30 text-secondary'
-                    : 'bg-primary-container/20 text-primary'
-                  : 'text-on-surface-variant',
+                'flex min-w-[3.5rem] flex-1 flex-col items-center gap-0.5 rounded-full px-2 py-2 text-[10px] font-semibold',
+                active ? 'bg-lime-brand text-ink' : 'text-on-surface-variant',
               ].join(' ')}
             >
-              <Icon className="h-5 w-5" />
-              <span className="text-[10px] font-semibold tracking-wide">{label.split(' ')[0]}</span>
+              <Icon className="h-4 w-4" />
+              {short}
             </Link>
           );
         })}
       </nav>
 
-      <main
-        className={`relative z-0 mx-auto w-full min-w-0 px-4 pb-24 sm:px-6 lg:pb-12 lg:pr-8 ${
-          onDashboard
-            ? 'max-w-[1440px] pt-28 lg:pl-8'
-            : hideSidebar
-              ? 'max-w-[1600px] pt-24 lg:pl-4'
-              : 'max-w-page pt-24 lg:pl-[284px]'
-        }`}
-      >
+      <main className="relative z-0 mx-auto w-full min-w-0 max-w-[1440px] px-4 pb-28 pt-24 sm:px-6 lg:px-8 lg:pb-12">
         {children}
       </main>
     </div>
-  );
-}
-
-function Brand({ compact = false, wordmark = false }: { compact?: boolean; wordmark?: boolean }) {
-  return (
-    <Link href="/" className={`flex items-center gap-3 ${compact && !wordmark ? '' : wordmark ? '' : 'mb-2 px-2'}`}>
-      <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-on-primary shadow-primary-glow">
-        <Zap className="h-5 w-5 fill-current" />
-      </span>
-      {(wordmark || !compact) && (
-        <div>
-          <div className="text-xl font-extrabold leading-tight tracking-tight text-ink">Hyred</div>
-          {!wordmark && (
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/60">
-              AI Career Engine
-            </div>
-          )}
-        </div>
-      )}
-    </Link>
   );
 }

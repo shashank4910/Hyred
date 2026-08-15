@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import {
-  Shield, Key, BarChart3, AlertTriangle, RefreshCw,
+  Key, BarChart3, AlertTriangle, RefreshCw,
   Loader2, Plus, Trash2, CheckCircle2, XCircle,
 } from 'lucide-react';
 import { LlmKeysPanel } from './LlmKeysPanel';
@@ -11,6 +11,7 @@ import { LlmActivityPanel } from './LlmActivityPanel';
 import { JobsControlPanel } from './JobsControlPanel';
 import { JobApiUsagePanel } from './JobApiUsagePanel';
 import { CompanyCatalogRequestsPanel } from './CompanyCatalogRequestsPanel';
+import { PageHeader } from '../_components/PageHeader';
 
 type UsageSummary = {
   bySource: Record<string, { total: number; success: number; rateLimited: number; errors: number }>;
@@ -203,24 +204,16 @@ export function AdminDashboard() {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-error-container text-on-error-container text-xs font-medium tracking-wide mb-3">
-            <Shield className="h-3.5 w-3.5" />
-            <span>OWNER ONLY</span>
-          </div>
-          <h1 className="font-headline text-headline-lg-mobile md:text-heading-sm font-bold text-on-background">
-            Admin Center
-          </h1>
-          <p className="text-body-md text-on-surface-variant mt-1">
-            API key management, usage tracking, and error diagnostics.
-          </p>
-        </div>
-        <button onClick={fetchStats} disabled={loading} className="btn">
-          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-          Refresh
-        </button>
-      </div>
+      <PageHeader
+        title="Admin"
+        description="API keys, usage, and diagnostics."
+        action={
+          <button type="button" onClick={fetchStats} disabled={loading} className="btn">
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Refresh
+          </button>
+        }
+      />
 
       {/* Time range selector */}
       <div className="flex gap-2">

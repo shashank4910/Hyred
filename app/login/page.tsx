@@ -15,7 +15,7 @@ export default async function LoginPage({
       <ToastCleanupOnLogin />
       <div className="w-full max-w-sm space-y-6">
         <div className="text-center space-y-3">
-          <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl teal-gradient text-on-primary shadow-primary-glow">
+          <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-full bg-primary text-on-primary">
             <span className="text-xl font-bold">H</span>
           </div>
           <h1 className="text-headline-md font-bold text-on-surface">Hyred</h1>
