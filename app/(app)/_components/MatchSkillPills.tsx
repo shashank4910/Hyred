@@ -6,13 +6,39 @@ export function MatchSkillPills({
   matchedSkills = [],
   missingSkills = [],
   resumeHref,
+  compact = false,
 }: {
   matchedSkills?: string[];
   missingSkills?: string[];
   /** When provided, "Build Custom Resume" becomes a clickable link */
   resumeHref?: string;
+  /** Gray tags only — dashboard cards, no resume CTA */
+  compact?: boolean;
 }) {
   if (matchedSkills.length === 0 && missingSkills.length === 0) return null;
+
+  if (compact) {
+    return (
+      <div className="flex flex-wrap gap-1.5">
+        {matchedSkills.slice(0, 3).map((s) => (
+          <span
+            key={`m-${s}`}
+            className="rounded-full bg-[#F3F4F6] px-2.5 py-1 text-[11px] font-medium text-[#6B7280]"
+          >
+            {s}
+          </span>
+        ))}
+        {missingSkills.slice(0, 1).map((s) => (
+          <span
+            key={`x-${s}`}
+            className="rounded-full bg-[#F3F4F6] px-2.5 py-1 text-[11px] font-medium text-[#6B7280]"
+          >
+            {s}
+          </span>
+        ))}
+      </div>
+    );
+  }
 
   const ctaClass =
     'inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-3.5 py-1 text-[11px] font-bold text-primary hover:bg-primary/20 hover:border-primary/60 active:scale-95 transition-all shadow-sm cursor-pointer select-none';

@@ -1,6 +1,6 @@
 ---
 name: Hyred Lime
-description: A high-contrast, "Kinetic Professionalism" design system for a logged-in AI career dashboard. Characterized by a signature lime-green filter panel, bold geometric typography, and a "dashboard as a tool" aesthetic.
+description: Career listing dashboard. Dark forest-teal filter slab, white job cards in a 3-column grid, lime used only as accent. Not a lime SaaS tool chrome.
 colors:
   lime-brand: "#72D35F"
   forest-teal: "#003F3B"
@@ -39,10 +39,10 @@ typography:
 # Design System: Hyred Lime
 
 ## Colors
-- **Lime Brand (#72D35F)**: The primary brand color. Used for the filter sidebar background, active checkboxes, and match success indicators. Text on Lime must be **Ink (#111111)** for contrast.
-- **Forest Teal (#003F3B)**: Used for primary filled buttons (e.g., Run Scan, Sign up). Provides a high-contrast anchor against the bright lime.
+- **Lime Brand (#72D35F)**: Accent only — active chips, small highlights. Never fill the filter slab or the page.
+- **Forest Teal (#003F3B)**: Filter sidebar fill, Apply now, logo mark. White text on forest.
 - **Canvas (#F8F9FB)**: The page background color. Provides a cool, light-gray neutral field for cards to sit on.
-- **Ink (#111111)**: Used for all primary headings, page titles, and labels on lime backgrounds. Never use pure #000 for body text.
+- **Ink (#111111)**: Headings, job titles, salary/score on cards. Never use pure #000 for body text.
 - **Secondary Text (#555555)**: Used for sub-headings, meta-data labels, and active navigation links.
 - **Muted Text (#888888)**: Used for descriptions, blurbs, and inactive meta-data.
 - **White (#FFFFFF)**: Used for card backgrounds, the top navigation header, and input field backgrounds.
@@ -50,7 +50,7 @@ typography:
 ## Typography
 - **Primary Face**: Geometric Sans-Serif (Inter or equivalent).
 - **Scale**:
-  - **Display**: 800 weight. Used for dashboard greetings.
+  - **Display**: 800 weight. Used for the job-search heading (role or “Matches”).
   - **Headline**: 700 weight, 32px. Used for page titles and job titles on cards.
   - **Title**: 700 weight, 20px. Used for section headers (e.g., "Filters", "Key Requirements").
   - **Body**: 400 weight, 16px (14px for compact meta). Used for all job descriptions and meta row info.
@@ -59,7 +59,7 @@ typography:
 ## Spacing
 - **Base Grid**: 8-point system (8 / 16 / 24 / 32 / 48 / 64).
 - **Card Padding**: Fixed 24px internal padding.
-- **Page Margin**: Max-width 1200px for content. Desktop sidebar is 260px.
+- **Page Margin**: Max-width 1440px on the dashboard. Forest filter slab ~280px.
 - **Gaps**: 16px between cards in a grid; 32px between major page sections.
 
 ## Radius
@@ -82,22 +82,21 @@ typography:
 - **Score Count**: 400ms linear count-up for numbers on card load.
 
 ## Components
-- **Filled Button**: Forest Teal background, White text. 12px radius. 2px lift on hover with subtle darken.
-- **Ghost Apply**: No background, no border. Becomes underlined or increases weight on hover. Never use a "dead gray" style.
-- **Match Card**: White background, 16px radius. Features a 4px left-border accent in Lime for high-fit/new roles.
-- **Chip**: Pale mint background (#72D35F at 10% opacity) with Forest Teal text. Pill shape.
-- **Lime Sidebar**: Fixed 260px width. Lime background (#72D35F). Uses Ink text and black icons. Rounded 16px corners when docked.
-- **Score on Card**: Bold number in Ink text. Located top-left. Accompanied by a "MATCH" label in 12px semibold.
+- **Filled Button**: Forest teal, white text. Apply now is a full-width pill (9999px). One filled button per card.
+- **Match Card**: White, 16–24px radius, no left border. Top-left is real salary if present, else a small match score. Heart top-right. Gray skill tags. No Verdict/Prep on the card face.
+- **Chip**: Light gray on cards. Lime for the active Inbox/Saved chip.
+- **Filter Sidebar**: Tall docked slab, forest `#003F3B`, white “Filters” + reset, white inputs. Lime never fills this panel.
+- **Dashboard chrome**: Light top bar (Hyred wordmark + text nav). No icon rail on `/`. No Hello greeting, no promo banner, no giant MATCH kicker.
 
 ## Do / Don't
 ### Do
-- **Do** use Ink (#111111) text on Lime backgrounds for readability.
+- **Do** use white text on the forest filter slab.
 - **Do** use the signature 8-point spacing rhythm for all margins.
 - **Do** prioritize scannability; keep job titles bold and clear.
 - **Do** use exactly one filled Teal button per view region.
 
 ### Don't
 - **Don't** use purple, blue, or neon gradients. This is a Lime and Teal system.
-- **Don't** use the name CareerFlow or use generic marketing testimonials.
+- **Don't** use the name CareerFlow, fake applicant counts, or fake salaries.
 - **Don't** use bounce or elastic easing; stick to the specified Out-Expo.
 - **Don't** add footers to the logged-in app shell.

@@ -8,7 +8,7 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Hyred Lime — forest filled actions, lime filter slab
+        // Forest actions + filter slab; lime is accent only
         primary: '#003F3B',
         'lime-brand': '#72D35F',
         'primary-container': '#72D35F',
