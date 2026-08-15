@@ -69,8 +69,8 @@ typography:
 - **Avatars**: 16px (Matching cards).
 
 ## Shadows
-- **Resting Card**: `0 4px 20px rgba(0, 0, 0, 0.03)`. Subtle and airy.
-- **Hover Card**: `0 12px 32px rgba(0, 0, 0, 0.08)`. Elevates the card to signal interactivity.
+- **Resting Card**: layered, offset depth — `0 1px 2px rgba(17,17,17,0.06), 0 10px 28px rgba(17,17,17,0.08)`. Cards sit above the canvas.
+- **Hover Card**: `0 6px 12px rgba(17,17,17,0.08), 0 20px 44px rgba(17,17,17,0.12)` plus 6px lift.
 - **Floating Sidebar**: `0 0 40px rgba(0, 0, 0, 0.04)`. Soft depth.
 
 ## Motion
@@ -83,8 +83,8 @@ typography:
 
 ## Components
 - **Filled Button**: Forest teal, white text. Apply now is a full-width pill (9999px). One filled button per card.
-- **Match Card**: White, 16–24px radius, no left border. Top-left is real salary if present, else a small match score. Heart top-right. Gray skill tags. No Verdict/Prep on the card face.
-- **Chip**: Light gray on cards. Lime for the active Inbox/Saved chip.
+- **Match Card**: White, ~24px radius, no left border, real offset shadow. Top-left is real salary only. Score is a lime rounded tile with the number only — no MATCH kicker, not mixed into salary. Heart top-right. Body and meta use `#555555`. Matched skills = lime check pills; unmatched = red. Build Custom Resume chip on every card. One forest Apply now pill.
+- **Chip**: Lime for matched skills and active Inbox/Saved. Red for unmatched skills.
 - **Filter Sidebar**: Tall docked slab, forest `#003F3B`, white “Filters” + reset, white inputs. Lime never fills this panel.
 - **Dashboard chrome**: Light top bar (Hyred wordmark + text nav). No icon rail on `/`. No Hello greeting, no promo banner, no giant MATCH kicker.
 

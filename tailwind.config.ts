@@ -138,8 +138,8 @@ const config: Config = {
         full: '9999px',
       },
       boxShadow: {
-        card: '0 4px 20px rgba(0, 0, 0, 0.03)',
-        elevated: '0 12px 32px rgba(0, 0, 0, 0.08)',
+        card: '0 1px 2px rgba(17, 17, 17, 0.06), 0 10px 28px rgba(17, 17, 17, 0.08)',
+        elevated: '0 6px 12px rgba(17, 17, 17, 0.08), 0 20px 44px rgba(17, 17, 17, 0.12)',
         glass: '0 0 40px rgba(0, 0, 0, 0.04)',
         'primary-glow': '0 8px 20px rgba(0, 63, 59, 0.25)',
       },

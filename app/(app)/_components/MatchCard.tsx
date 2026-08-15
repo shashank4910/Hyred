@@ -78,47 +78,52 @@ export function MatchCard({
   const jobHref = returnHref
     ? `/jobs/${matchId}?return=${encodeURIComponent(returnHref)}`
     : `/jobs/${matchId}`;
-
-  const topLeft = job.salary
-    ? job.salary
-    : score != null
-      ? `${Math.round(score)} match`
-      : null;
+  const resumeHref = `/jobs/${matchId}#ats-resume`;
 
   return (
     <article
       style={{ animationDelay: `${delay}ms` }}
-      className="group flex h-full min-w-0 flex-col rounded-3xl bg-white p-6 shadow-card transition-all duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-1 hover:shadow-elevated animate-fade-in"
+      className="group flex h-full min-w-0 flex-col rounded-[1.5rem] bg-white p-6 shadow-card transition-all duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-1.5 hover:shadow-elevated animate-fade-in"
     >
       <div className="mb-4 flex items-start justify-between gap-3">
-        <p className="text-sm font-semibold text-ink">
-          {topLeft ?? (isNew ? 'New' : '\u00a0')}
+        <p className="pt-1 text-sm font-semibold text-ink">
+          {job.salary ? job.salary : isNew ? 'New' : '\u00a0'}
         </p>
-        <button
-          type="button"
-          onClick={toggleBookmark}
-          disabled={saving}
-          title={bookmarked ? 'Remove save' : 'Save this job'}
-          className={[
-            'rounded-full p-1.5 transition-transform duration-300',
-            bookmarked ? 'text-error' : 'text-muted hover:text-ink',
-          ].join(' ')}
-        >
-          <Heart className="h-5 w-5" fill={bookmarked ? 'currentColor' : 'none'} />
-        </button>
+        <div className="flex items-center gap-2">
+          {score != null && (
+            <p
+              className="flex h-11 min-w-[2.75rem] items-center justify-center rounded-2xl bg-lime-brand px-2.5 text-[1.375rem] font-extrabold tabular-nums leading-none text-ink"
+              aria-label={`Match score ${Math.round(score)}`}
+            >
+              {Math.round(score)}
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={toggleBookmark}
+            disabled={saving}
+            title={bookmarked ? 'Remove save' : 'Save this job'}
+            className={[
+              'rounded-full p-1.5 transition-transform duration-300',
+              bookmarked ? 'text-error' : 'text-on-surface-variant hover:text-ink',
+            ].join(' ')}
+          >
+            <Heart className="h-5 w-5" fill={bookmarked ? 'currentColor' : 'none'} />
+          </button>
+        </div>
       </div>
 
       <Link
         href={jobHref}
-        className="font-headline text-lg font-bold leading-snug text-ink hover:underline"
+        className="font-headline text-lg font-bold leading-snug tracking-[-0.02em] text-ink hover:underline"
       >
         {job.title}
       </Link>
       {job.company && (
-        <p className="mt-1 text-sm text-on-surface-variant">{job.company}</p>
+        <p className="mt-1 text-sm font-medium text-on-surface-variant">{job.company}</p>
       )}
 
-      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-on-surface-variant">
         {(job.location || job.remote) && (
           <span className="inline-flex items-center gap-1">
             <MapPin className="h-3.5 w-3.5" />
@@ -145,8 +150,11 @@ export function MatchCard({
       </div>
 
       {reason && (
-        <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-muted">
-          {reason}
+        <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-on-surface-variant">
+          {reason}{' '}
+          <Link href={jobHref} className="font-bold text-ink hover:underline">
+            more
+          </Link>
         </p>
       )}
 
@@ -154,7 +162,7 @@ export function MatchCard({
         <MatchSkillPills
           matchedSkills={matchedSkills}
           missingSkills={missingSkills}
-          compact
+          resumeHref={resumeHref}
         />
       </div>
 
