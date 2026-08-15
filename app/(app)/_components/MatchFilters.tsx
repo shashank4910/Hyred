@@ -163,27 +163,27 @@ export function MatchFilters({
 
   const panelBody = (
     <div className="space-y-4">
-      <label className="block text-sm font-semibold text-ink">
+      <label className="block text-sm font-semibold text-white">
         Match score
         <span className="mt-1.5 block">{scoreSelect}</span>
       </label>
-      <label className="block text-sm font-semibold text-ink">
+      <label className="block text-sm font-semibold text-white">
         Sort
         <span className="mt-1.5 block">{sortSelect}</span>
       </label>
-      <label className="block text-sm font-semibold text-ink">
-        More
+      <label className="block text-sm font-semibold text-white">
+        Location & freshness
         <span className="mt-1.5 block space-y-2">{secondaryFilters}</span>
       </label>
       {usingDefaultMin ? (
-        <p className="text-sm text-ink/80">
+        <p className="text-sm text-white/80">
           Showing {DEFAULT_LIST_MIN_SCORE}+.{' '}
           <button type="button" className="font-bold underline" onClick={() => setParam('min', '0')}>
             Include lower scores
           </button>
         </p>
       ) : minScore === '0' ? (
-        <p className="text-sm text-ink/80">Showing all match scores.</p>
+        <p className="text-sm text-white/80">Showing all match scores.</p>
       ) : null}
     </div>
   );
@@ -213,7 +213,7 @@ export function MatchFilters({
             aria-label="Close filters"
             onClick={() => setMobileOpen(false)}
           />
-          <div className="absolute bottom-0 left-0 right-0 max-h-[80vh] overflow-y-auto rounded-t-3xl bg-lime-brand p-6 text-ink shadow-elevated animate-slide-up">
+          <div className="absolute bottom-0 left-0 right-0 max-h-[80vh] overflow-y-auto rounded-t-3xl bg-primary p-6 text-white shadow-elevated animate-slide-up">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-xl font-bold">Filters</h2>
               <div className="flex gap-2">
@@ -232,11 +232,11 @@ export function MatchFilters({
         </div>
       ) : null}
 
-      <aside className="hidden w-[260px] shrink-0 animate-slide-up rounded-2xl bg-lime-brand p-6 text-ink shadow-glass lg:block">
-        <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-xl font-bold">Filters</h2>
+      <aside className="hidden w-[300px] shrink-0 animate-slide-up self-start rounded-[1.5rem] bg-primary p-7 text-white shadow-glass lg:block">
+        <div className="mb-6 flex items-center justify-between">
+          <h2 className="text-xl font-bold text-white">Filters</h2>
           {hasFilters && (
-            <button type="button" onClick={clearFilters} className="rounded-full bg-white/85 px-3 py-1 text-sm font-semibold text-ink">
+            <button type="button" onClick={clearFilters} className="rounded-full bg-white/15 px-3 py-1 text-sm font-semibold text-white">
               reset ×
             </button>
           )}

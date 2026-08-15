@@ -61,7 +61,11 @@ body {
     @apply inline-flex items-center justify-center gap-1.5 rounded-xl bg-secondary px-4 py-2.5 text-sm font-semibold text-on-secondary hover:bg-secondary-container transition-all disabled:opacity-50 disabled:cursor-not-allowed;
   }
   .input-on-lime {
-    @apply w-full rounded-xl border-0 bg-white px-3 py-2.5 text-sm text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/30;
+    @apply w-full appearance-none rounded-xl border-0 bg-white px-3 py-2.5 pr-9 text-sm text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-lime-brand/50;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23003F3B' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 1rem;
   }
   .input {
     @apply w-full rounded-xl border border-outline-variant bg-surface-container-lowest px-3 py-2.5 text-sm text-on-surface placeholder:text-text-muted focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/15 transition-all;

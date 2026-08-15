@@ -78,7 +78,8 @@ export function AppShell({
         .toUpperCase()
     : profile?.email?.slice(0, 2).toUpperCase() ?? 'HY';
 
-  const hideSidebar = previewFocus;
+  const onDashboard = pathname === '/';
+  const hideSidebar = previewFocus || onDashboard;
 
   return (
     <div className="min-h-screen bg-background text-on-surface">
@@ -128,15 +129,37 @@ export function AppShell({
       </aside>
 
       <header
-        className={`fixed top-0 z-[60] flex h-20 w-full items-center justify-between gap-4 overflow-visible border-b border-outline-variant/20 bg-surface/80 px-4 backdrop-blur-md lg:pr-6 ${
-          hideSidebar ? 'lg:pl-4' : 'lg:pl-[284px]'
+        className={`fixed top-0 z-[60] flex h-20 w-full items-center justify-between gap-4 overflow-visible border-b border-outline-variant/20 bg-white px-4 lg:px-8 ${
+          onDashboard || hideSidebar ? '' : 'lg:pl-[284px]'
         }`}
       >
-        <div className="flex items-center gap-3 lg:hidden">
-          <Brand compact />
+        <div className={`flex items-center gap-3 ${onDashboard ? '' : 'lg:hidden'}`}>
+          <Brand compact wordmark={onDashboard} />
         </div>
+        {onDashboard && (
+          <nav className="hidden items-center gap-8 text-sm font-semibold text-on-surface-variant lg:flex">
+            {nav
+              .filter((item) => !item.desktopOnly && !item.admin)
+              .slice(0, 5)
+              .map(({ href, label }) => {
+                const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={active ? 'relative text-ink' : 'hover:text-ink'}
+                  >
+                    {label}
+                    {active && (
+                      <span className="absolute -bottom-2 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-primary" />
+                    )}
+                  </Link>
+                );
+              })}
+          </nav>
+        )}
 
-        {hideSidebar && (
+        {hideSidebar && !onDashboard && (
           <button
             type="button"
             onClick={togglePreviewFocusMode}
@@ -198,8 +221,12 @@ export function AppShell({
       </nav>
 
       <main
-        className={`relative z-0 mx-auto w-full min-w-0 px-4 pb-24 pt-24 sm:px-6 lg:pb-12 lg:pr-6 ${
-          hideSidebar ? 'max-w-[1600px] lg:pl-4' : 'max-w-page lg:pl-[284px]'
+        className={`relative z-0 mx-auto w-full min-w-0 px-4 pb-24 pt-24 sm:px-6 lg:pb-12 lg:pr-8 ${
+          onDashboard
+            ? 'max-w-[1440px] lg:pl-8'
+            : hideSidebar
+              ? 'max-w-[1600px] lg:pl-4'
+              : 'max-w-page lg:pl-[284px]'
         }`}
       >
         {children}
@@ -208,18 +235,20 @@ export function AppShell({
   );
 }
 
-function Brand({ compact = false }: { compact?: boolean }) {
+function Brand({ compact = false, wordmark = false }: { compact?: boolean; wordmark?: boolean }) {
   return (
-    <Link href="/" className={`flex items-center gap-3 ${compact ? '' : 'mb-2 px-2'}`}>
-      <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl teal-gradient text-on-primary shadow-primary-glow">
+    <Link href="/" className={`flex items-center gap-3 ${compact && !wordmark ? '' : wordmark ? '' : 'mb-2 px-2'}`}>
+      <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-on-primary shadow-primary-glow">
         <Zap className="h-5 w-5 fill-current" />
       </span>
-      {!compact && (
+      {(wordmark || !compact) && (
         <div>
-          <div className="text-headline-md font-bold leading-tight text-primary">Hyred</div>
-          <div className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/60">
-            AI Career Engine
-          </div>
+          <div className="text-xl font-extrabold leading-tight tracking-tight text-ink">Hyred</div>
+          {!wordmark && (
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/60">
+              AI Career Engine
+            </div>
+          )}
         </div>
       )}
     </Link>

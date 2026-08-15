@@ -8,9 +8,7 @@ import { DashboardMatchResults } from './_components/DashboardMatchResults';
 import { DashboardMatchesSection } from './_components/DashboardMatchesSection';
 import { DashboardNavProvider } from './_components/DashboardNavContext';
 import { RunIngestButton } from './_components/RunIngestButton';
-import { DashboardPromoBanner } from './_components/DashboardPromoBanner';
-import { Sparkles, TrendingUp, Briefcase } from 'lucide-react';
-import { relativeTime, STATUS_ORDER } from '@/lib/ui';
+import { Search, Sparkles } from 'lucide-react';
 import { getDashboardCounts, listMatchCities } from '@/lib/match-stats';
 
 export const dynamic = 'force-dynamic';
@@ -66,8 +64,6 @@ export default async function Dashboard({
     { counts, inboxCount, bookmarkedCount },
     cities,
     { count: totalMatches },
-    { data: lastRun },
-    { data: activeRun },
   ] = await Promise.all([
     getDashboardCounts(
       sb,
@@ -99,81 +95,43 @@ export default async function Dashboard({
       .from('matches')
       .select('id', { count: 'exact', head: true })
       .eq('profile_id', profile.id),
-    sb
-      .from('ingest_runs')
-      .select('finished_at, matches_created, status')
-      .eq('profile_id', profile.id)
-      .not('finished_at', 'is', null)
-      .order('finished_at', { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-    sb
-      .from('ingest_runs')
-      .select('started_at, matches_created')
-      .eq('profile_id', profile.id)
-      .eq('status', 'running')
-      .order('started_at', { ascending: false })
-      .limit(1)
-      .maybeSingle(),
   ]);
 
-  const lastScanLabel = activeRun
-    ? 'In progress…'
-    : lastRun?.finished_at
-      ? relativeTime(lastRun.finished_at)
-      : 'No scan yet';
+  const heading = (sp.q && sp.q.trim()) || 'Matches';
+  const chips: { label: string; clear: string }[] = [];
+  if (sp.remote === '1') chips.push({ label: 'Remote', clear: 'remote' });
+  if (sp.city) chips.push({ label: sp.city, clear: 'city' });
+  if (sp.expired === '1') chips.push({ label: 'Older jobs', clear: 'expired' });
 
   return (
-    <div className="space-y-8">
-      {/* Greeting row */}
-      <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
-        <div className="flex-1">
-          <h1 className="font-headline text-headline-lg-mobile md:text-headline-lg font-bold text-on-surface">
-            Hello{profile.full_name ? `, ${profile.full_name.split(' ')[0]}` : ''}!
-          </h1>
-          <p className="mt-2 text-body-md text-on-surface-variant">
-            Your profile is matching with{' '}
-            <span className="font-bold text-primary">{inboxCount ?? 0} opportunities</span>{' '}
-            in your inbox
-            {(counts.new ?? 0) > 0 && (
-              <>
-                {' '}
-                — including{' '}
-                <span className="font-bold text-primary">{counts.new} new</span> today
-              </>
-            )}
-            .
-          </p>
-        </div>
-        <div className="flex gap-4 overflow-x-auto pb-1">
-          <QuickStat
-            label="New"
-            value={counts.new ?? 0}
-            icon={<Sparkles className="h-5 w-5" />}
-            accent
-          />
-          <QuickStat
-            label="Applied"
-            value={counts.applied ?? 0}
-            icon={<Briefcase className="h-5 w-5" />}
-          />
-          <QuickStat
-            label="Tracked"
-            value={totalMatches ?? 0}
-            icon={<TrendingUp className="h-5 w-5" />}
-          />
-        </div>
-      </div>
-
-      <div className="sm:hidden">
+    <div>
+      <div className="sm:hidden mb-4">
         <RunIngestButton isAdmin={isAdmin} luminous />
       </div>
 
-      <div className="space-y-6">
-        <DashboardNavProvider>
-          <div className="lg:flex lg:items-start lg:gap-8">
-            <MatchFilters isAdmin={isAdmin} cities={cities} />
-            <div className="min-w-0 flex-1 space-y-6">
+      <DashboardNavProvider>
+        <div className="lg:flex lg:items-start lg:gap-8">
+          <MatchFilters isAdmin={isAdmin} cities={cities} />
+          <div className="min-w-0 flex-1">
+            <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+              <h1 className="flex items-center gap-3 font-headline text-3xl font-extrabold tracking-tight text-ink md:text-5xl">
+                {heading}
+                <Search className="h-7 w-7 text-ink md:h-8 md:w-8" aria-hidden />
+              </h1>
+              {chips.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {chips.map((c) => (
+                    <span
+                      key={c.clear}
+                      className="rounded-full bg-white px-3 py-1.5 text-sm text-on-surface-variant shadow-card"
+                    >
+                      {c.label}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="mb-6">
               <StatusFilter
                 counts={counts}
                 active={status}
@@ -181,51 +139,23 @@ export default async function Dashboard({
                 bookmarkedCount={bookmarkedCount ?? 0}
                 onlyBookmarked={onlyBookmarked}
               />
-              <DashboardMatchesSection cacheKey={matchListKey}>
-                <DashboardMatchResults
-                  profileId={profile.id}
-                  isAdmin={isAdmin}
-                  totalMatches={totalMatches ?? 0}
-                  searchParams={sp}
-                  topSkills={
-                    Array.isArray((profile.insights as { top_skills?: string[] } | null)?.top_skills)
-                      ? (profile.insights as { top_skills: string[] }).top_skills
-                      : []
-                  }
-                />
-              </DashboardMatchesSection>
             </div>
+            <DashboardMatchesSection cacheKey={matchListKey}>
+              <DashboardMatchResults
+                profileId={profile.id}
+                isAdmin={isAdmin}
+                totalMatches={totalMatches ?? 0}
+                searchParams={sp}
+                topSkills={
+                  Array.isArray((profile.insights as { top_skills?: string[] } | null)?.top_skills)
+                    ? (profile.insights as { top_skills: string[] }).top_skills
+                    : []
+                }
+              />
+            </DashboardMatchesSection>
           </div>
-        </DashboardNavProvider>
-      </div>
-
-      <DashboardPromoBanner />
-    </div>
-  );
-}
-
-function QuickStat({
-  label,
-  value,
-  icon,
-  accent,
-}: {
-  label: string;
-  value: string | number;
-  icon: React.ReactNode;
-  accent?: boolean;
-}) {
-  return (
-    <div className="flex min-w-[160px] items-center gap-4 rounded-2xl bg-surface-container-lowest p-5 shadow-card">
-      <div
-        className={`flex h-12 w-12 items-center justify-center rounded-2xl ${accent ? 'bg-primary/10 text-primary' : 'bg-match-success/10 text-match-success'}`}
-      >
-        {icon}
-      </div>
-      <div>
-        <p className="text-label-md text-text-muted">{label}</p>
-        <p className="text-headline-md font-bold text-on-surface">{value}</p>
-      </div>
+        </div>
+      </DashboardNavProvider>
     </div>
   );
 }

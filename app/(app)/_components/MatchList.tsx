@@ -210,7 +210,7 @@ export function MatchList({ initialMatches, total: initialTotal, initialHasMore,
           </span>
         )}
       </p>
-      <ul className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <ul className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
         {matches.map((m, i) => {
           const isHL = m.id === highlightId;
           return (
