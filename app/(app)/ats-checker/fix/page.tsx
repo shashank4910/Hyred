@@ -23,8 +23,9 @@ export default function AtsFixStudioPage() {
 
   if (session === undefined) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center text-on-surface-variant">
+      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-on-surface-variant">
         <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        <p className="text-sm">Loading your scan…</p>
       </div>
     );
   }
@@ -32,15 +33,12 @@ export default function AtsFixStudioPage() {
   if (!session) {
     return (
       <div className="mx-auto max-w-lg space-y-4 px-4 py-16 text-center">
-        <h1 className="font-headline text-xl font-bold text-on-surface">Fix Studio session expired</h1>
+        <h1 className="font-headline text-xl font-bold text-on-surface">No resume loaded in this tab</h1>
         <p className="text-sm text-on-surface-variant">
-          Open your ATS report again and click <strong>Upgrade resume with AI</strong> to start a new
-          session in this tab.
+          Open your ATS report and click <strong>Upgrade with AI</strong> (or <strong>Polish with AI</strong>
+          ) so this tab can load the scan.
         </p>
-        <Link
-          href="/ats-checker"
-          className="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-5 text-sm font-semibold text-on-primary"
-        >
+        <Link href="/ats-checker" className="btn-primary inline-flex h-11">
           <ArrowLeft className="h-4 w-4" />
           Back to ATS Checker
         </Link>
