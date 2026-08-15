@@ -18,7 +18,7 @@ export function AtsResumeTemplatePicker({
 
   return (
     <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-1.5">
-      <span className="mr-0.5 hidden text-[10px] font-semibold uppercase tracking-wide text-text-muted sm:inline">
+      <span className="mr-0.5 hidden text-label-md font-semibold text-text-muted sm:inline">
         Template
       </span>
       {themes.map((t) => {
@@ -38,7 +38,7 @@ export function AtsResumeTemplatePicker({
             ].join(' ')}
           >
             {selected && <Check className="h-2.5 w-2.5 shrink-0" aria-hidden="true" />}
-            <span className="truncate text-[9px] font-semibold leading-tight">{t.name}</span>
+            <span className="truncate text-label-md font-semibold leading-tight">{t.name}</span>
           </button>
         );
       })}

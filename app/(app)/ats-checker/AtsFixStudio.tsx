@@ -68,6 +68,7 @@ export function AtsFixStudio({
   const [showSaveUpgrade, setShowSaveUpgrade] = useState(false);
   const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [downloaded, setDownloaded] = useState(false);
   const [templateId, setTemplateId] = useState<ResumeTemplateId>(DEFAULT_ATS_TEMPLATE_ID);
   const templateName = resolveResumeTheme(templateId).name;
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
@@ -184,6 +185,7 @@ export function AtsFixStudio({
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setDownloaded(true);
     } catch (e) {
       setError((e as Error).message || 'PDF download failed.');
     } finally {
@@ -192,7 +194,6 @@ export function AtsFixStudio({
   };
 
   const handlePrint = () => {
-    // Print the Hyred preview panel if present; otherwise open a print window.
     const el = document.getElementById('hyred-upgrade-print');
     if (!el) {
       void handleDownloadPdf();
@@ -203,17 +204,17 @@ export function AtsFixStudio({
       void handleDownloadPdf();
       return;
     }
-    w.document.write(`<!doctype html><html><head><title>Resume</title>
-      <style>
-        @page { margin: 12mm; size: A4; }
-        body { font-family: Georgia, 'Times New Roman', serif; color: #0f172a; margin: 0; }
-        pre { white-space: pre-wrap; font-family: inherit; font-size: 11pt; line-height: 1.45; }
-      </style></head><body><pre>${escapeHtml(workingResume)}</pre></body></html>`);
+    const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+      .map((node) => node.outerHTML)
+      .join('');
+    w.document.write(
+      `<!doctype html><html><head><title>Hyred resume</title>${styles}</head><body class="bg-white p-6">${el.innerHTML}</body></html>`,
+    );
     w.document.close();
     w.focus();
     setTimeout(() => {
       w.print();
-    }, 250);
+    }, 400);
   };
 
   const handleSaveToProfile = async () => {
@@ -248,67 +249,85 @@ export function AtsFixStudio({
     setWorkingResume(originalResume);
     setResult(initialResult);
     setUpgraded(false);
+    setDownloaded(false);
     setError(null);
+  };
+
+  const requestClose = () => {
+    if (upgraded && !downloaded) {
+      const leave = window.confirm(
+        'Leave without downloading the upgraded PDF? This tab will not keep the AI resume.',
+      );
+      if (!leave) return;
+    }
+    onClose({ resume: workingResume, result });
+  };
+
+  const requestRegenerate = () => {
+    const ok = window.confirm('Regenerate uses another Resume Studio credit. Continue?');
+    if (!ok) return;
+    void runUpgrade();
   };
 
   return (
     <div className="-mx-1 space-y-5 animate-slide-up sm:mx-0">
-      {/* Top bar */}
-      <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-outline-variant/40 bg-surface-container-lowest px-4 py-3.5 shadow-card sm:px-5">
+      <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-surface-container-lowest px-4 py-3.5 shadow-card sm:px-5">
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => onClose({ resume: workingResume, result })}
-            className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-xl px-2.5 text-sm font-semibold text-on-surface-variant hover:bg-surface-container hover:text-primary"
-          >
+          <button type="button" onClick={requestClose} className="btn-ghost">
             <ArrowLeft className="h-4 w-4" />
             Close
           </button>
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-text-muted">
-              Resume Upgrade
-            </p>
-            <p className="text-sm font-semibold text-on-surface">
+            <h1 className="text-sm font-semibold text-on-surface">Fix Studio</h1>
+            <p className="text-label-md text-text-muted">
               One-click AI fix · {upgradePlan.label}
             </p>
           </div>
         </div>
-        <p className="text-[11px] text-text-muted">{meterLabel}</p>
+        <p className="text-label-md text-on-surface-variant">{meterLabel}</p>
       </header>
 
       {saveMessage && (
-        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-800">
+        <div className="rounded-xl bg-match-success/10 px-4 py-3 text-sm text-on-primary-container">
           {saveMessage}
         </div>
       )}
 
       {quotaBlocked || showSaveUpgrade ? (
         <PremiumUpgradePanel
+          compact
           feature="resume_studio"
           proof={
             upgraded
               ? `Score moved ${baselineScore} → ${result.overallScore}`
               : undefined
           }
-          secondaryLabel="Copy current resume"
-          onSecondary={handleCopy}
+          secondaryLabel={upgraded ? 'Copy current resume' : undefined}
+          onSecondary={upgraded ? handleCopy : undefined}
           headline={
             showSaveUpgrade && !quotaBlocked
               ? 'Saving to your Hyred resume is Premium'
               : undefined
           }
+          description={
+            showSaveUpgrade && !quotaBlocked
+              ? 'Download PDF is still free. Saving this version as your Hyred profile resume needs Premium.'
+              : 'Stripe checkout is not live yet. You can still download the PDF from this tab, then check Settings for credit status.'
+          }
         />
-      ) : !upgraded ? (
-        <section className="overflow-hidden rounded-2xl border border-outline-variant/40 bg-surface-container-lowest shadow-card">
-          <div className="grid gap-6 p-5 sm:grid-cols-[140px_1fr] sm:p-7">
+      ) : null}
+
+      {!upgraded && (
+        <section className="overflow-hidden rounded-2xl bg-surface-container-lowest p-5 shadow-card sm:p-7">
+          <div className="grid gap-6 sm:grid-cols-[140px_1fr]">
             <div className="flex flex-col items-center justify-center">
               <AtsScoreRing score={baselineScore} size={120} stroke={10} />
-              <p className="mt-2 text-center text-[11px] font-bold uppercase tracking-wider text-text-muted">
+              <p className="mt-2 text-center text-label-md font-bold text-text-muted">
                 Current score
               </p>
             </div>
             <div>
-              <span className="inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-primary">
+              <span className="badge-primary">
                 {upgradePlan.label} · {upgradePlan.creditCost} credit
                 {upgradePlan.creditCost === 1 ? '' : 's'}
               </span>
@@ -329,8 +348,8 @@ export function AtsFixStudio({
               <button
                 type="button"
                 onClick={() => void runUpgrade()}
-                disabled={loading}
-                className="mt-6 inline-flex h-12 cursor-pointer items-center gap-2 rounded-xl bg-primary px-6 text-sm font-semibold text-on-primary shadow-primary-glow transition-opacity hover:opacity-90 disabled:opacity-60"
+                disabled={loading || quotaBlocked}
+                className="btn-primary mt-6 h-12"
               >
                 {loading ? (
                   <>
@@ -344,38 +363,32 @@ export function AtsFixStudio({
                   </>
                 )}
               </button>
-              <p className="mt-2 text-[11px] text-text-muted">
-                Uses {upgradePlan.creditCost} Resume Studio credit
+              <p className="mt-2 text-label-md text-text-muted">
+                {meterLabel}. Uses {upgradePlan.creditCost} credit
                 {upgradePlan.creditCost === 1 ? '' : 's'}. No inventing employers or metrics.
               </p>
-              <div className="mt-5 rounded-xl border border-outline-variant/40 bg-surface-container/40 p-3">
-                <p className="mb-2 text-[11px] font-semibold text-on-surface">
-                  Choose PDF look (used after upgrade)
-                </p>
-                <AtsResumeTemplatePicker selectedId={templateId} onSelect={setTemplateId} />
-              </div>
               {error && (
-                <p className="mt-3 text-sm text-red-700" role="alert">
+                <p className="mt-3 text-sm text-error" role="alert">
                   {error}
                 </p>
               )}
             </div>
           </div>
         </section>
-      ) : (
+      )}
+
+      {upgraded && (
         <section className="space-y-5">
-          <div className="overflow-hidden rounded-2xl border border-outline-variant/40 bg-surface-container-lowest shadow-card">
-            <div className="border-b border-outline-variant/25 bg-gradient-to-b from-emerald-500/[0.08] to-transparent px-5 py-6 text-center sm:px-7">
+          <div className="overflow-hidden rounded-2xl bg-surface-container-lowest shadow-card">
+            <div className="border-b border-outline-variant/25 px-5 py-6 text-center sm:px-7">
               <div className="flex flex-wrap items-center justify-center gap-6">
                 <div className="text-center">
-                  <p className="text-[11px] font-bold uppercase tracking-wider text-text-muted">
-                    Before
-                  </p>
+                  <p className="text-label-md font-bold text-text-muted">Before</p>
                   <p className="mt-1 text-3xl font-extrabold tabular-nums text-text-muted">
                     {baselineScore}
                   </p>
                 </div>
-                <div className="flex flex-col items-center text-emerald-600">
+                <div className="flex flex-col items-center text-match-success">
                   <TrendingUp className="h-5 w-5" />
                   <span className="text-sm font-bold tabular-nums">
                     {scoreDelta > 0 ? `+${scoreDelta}` : scoreDelta}
@@ -384,7 +397,7 @@ export function AtsFixStudio({
                 <AtsScoreRing score={result.overallScore} size={100} stroke={9} />
               </div>
               <p className="mt-4 text-sm font-semibold text-on-surface">
-                Upgrade complete · {upgradePlan.label}
+                Upgrade complete. Download the PDF to keep this version.
               </p>
             </div>
             <div className="flex flex-wrap gap-3 p-4 sm:p-5">
@@ -392,7 +405,7 @@ export function AtsFixStudio({
                 type="button"
                 onClick={() => void handleDownloadPdf()}
                 disabled={downloading}
-                className="inline-flex h-11 flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-semibold text-on-primary shadow-primary-glow hover:opacity-90 disabled:opacity-60 sm:flex-none"
+                className="btn-primary h-11 flex-1 sm:flex-none"
               >
                 {downloading ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -401,36 +414,30 @@ export function AtsFixStudio({
                 )}
                 Download PDF
               </button>
-              <button
-                type="button"
-                onClick={handlePrint}
-                className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border border-outline-variant/50 px-4 text-sm font-semibold text-on-surface hover:border-primary/40 hover:text-primary"
-              >
+              <button type="button" onClick={handlePrint} className="btn h-11">
                 <Printer className="h-4 w-4" />
                 Print
               </button>
-              <button
-                type="button"
-                onClick={() => void handleCopy()}
-                className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border border-outline-variant/50 px-4 text-sm font-semibold text-on-surface hover:border-primary/40 hover:text-primary"
-              >
+              <button type="button" onClick={() => void handleCopy()} className="btn h-11">
                 <Copy className="h-4 w-4" />
                 {copied ? 'Copied!' : 'Copy text'}
               </button>
+            </div>
+            <div className="flex flex-wrap gap-2 border-t border-outline-variant/25 px-4 py-3 sm:px-5">
               <button
                 type="button"
                 onClick={() => void handleSaveToProfile()}
                 disabled={savingProfile}
-                className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border border-outline-variant/50 px-4 text-sm font-semibold text-on-surface hover:border-primary/40 hover:text-primary disabled:opacity-50"
+                className="btn-ghost"
               >
                 <Save className="h-4 w-4" />
                 Save to profile
               </button>
               <button
                 type="button"
-                onClick={() => void runUpgrade()}
+                onClick={requestRegenerate}
                 disabled={loading}
-                className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold text-on-surface-variant hover:bg-surface-container hover:text-primary disabled:opacity-40"
+                className="btn-ghost"
               >
                 {loading ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -439,16 +446,12 @@ export function AtsFixStudio({
                 )}
                 Regenerate
               </button>
-              <button
-                type="button"
-                onClick={handleReset}
-                className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold text-on-surface-variant hover:bg-surface-container"
-              >
+              <button type="button" onClick={handleReset} className="btn-ghost">
                 Undo upgrade
               </button>
             </div>
             {error && (
-              <p className="px-5 pb-4 text-sm text-red-700" role="alert">
+              <p className="px-5 pb-4 text-sm text-error" role="alert">
                 {error}
               </p>
             )}
@@ -506,14 +509,14 @@ export function AtsFixStudio({
       ) : (
         <div className="rounded-2xl border border-dashed border-outline-variant/50 bg-surface-container/30 px-5 py-8 text-center">
           <p className="text-sm font-semibold text-on-surface">Improved preview unlocks after Upgrade</p>
-          <p className="mx-auto mt-1.5 max-w-md text-[12px] leading-relaxed text-text-muted">
+          <p className="mx-auto mt-1.5 max-w-md text-sm leading-relaxed text-text-muted">
             We won’t show a Hyred layout of your old text — that looks like the upgrade already ran.
             Click <span className="font-semibold text-on-surface">Upgrade my resume</span> above, then
             download the PDF.
           </p>
           {originalFile && (
-            <div className="mx-auto mt-5 max-w-xl overflow-hidden rounded-xl border border-outline-variant/40 bg-white text-left shadow-sm">
-              <p className="border-b border-outline-variant/25 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-text-muted">
+            <div className="mx-auto mt-5 max-w-xl overflow-hidden rounded-xl bg-surface-container-lowest text-left shadow-card">
+              <p className="border-b border-outline-variant/25 px-3 py-2 text-label-md font-bold text-text-muted">
                 Your original (reference)
               </p>
               {originalFile.kind === 'pdf' ? (
@@ -532,12 +535,4 @@ export function AtsFixStudio({
       )}
     </div>
   );
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }

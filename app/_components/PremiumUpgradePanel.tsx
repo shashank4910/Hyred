@@ -13,6 +13,8 @@ export type PremiumUpgradePanelProps = {
   proof?: string | null;
   benefits?: string[];
   upgradeHref?: string;
+  /** Primary link label. Default checkout-shaped copy is wrong while Stripe is not live. */
+  upgradeLabel?: string;
   secondaryLabel?: string;
   onSecondary?: () => void;
   className?: string;
@@ -32,6 +34,7 @@ export function PremiumUpgradePanel({
   proof,
   benefits = DEFAULT_BENEFITS,
   upgradeHref = PREMIUM_UPGRADE_PATH,
+  upgradeLabel = 'See plan & credits',
   secondaryLabel,
   onSecondary,
   className = '',
@@ -69,7 +72,7 @@ export function PremiumUpgradePanel({
             {resolvedDescription}
           </p>
           {proof && (
-            <p className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-700">
+            <p className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-match-success/10 px-3 py-1 text-label-md font-semibold text-on-primary-container">
               <Sparkles className="h-3.5 w-3.5" />
               {proof}
             </p>
@@ -91,7 +94,7 @@ export function PremiumUpgradePanel({
           href={upgradeHref}
           className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-semibold text-on-primary shadow-primary-glow transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/20"
         >
-          Upgrade to Hyred Premium
+          {upgradeLabel}
         </Link>
         {secondaryLabel && onSecondary && (
           <button
