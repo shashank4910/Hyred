@@ -87,6 +87,9 @@ export const STATUS_ORDER = [
   'closed',
 ] as const;
 
+/** Default dashboard list floor when URL has no `min` param. */
+export const DEFAULT_LIST_MIN_SCORE = 50;
+
 /** Default dashboard match ordering — best AI match score first (PR #110). */
 export const DEFAULT_MATCH_SORT = 'score' as const;
 

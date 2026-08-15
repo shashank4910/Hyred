@@ -1,7 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { getCurrentProfile } from '@/lib/current-user';
 import { applyMatchSort } from '@/lib/apply-match-sort';
-import { resolveMatchSort } from '@/lib/ui';
+import { DEFAULT_LIST_MIN_SCORE, resolveMatchSort } from '@/lib/ui';
 import { enrichMatchListSkills } from '@/lib/match-skill-enrich';
 import { sanitizeCityFilter } from '@/lib/match-location-filter';
 import { MATCH_LIST_SELECT } from '@/lib/match-list-select';
@@ -42,7 +42,9 @@ export async function DashboardMatchResults({
   const status = searchParams.status ?? 'inbox';
   const onlyBookmarked = searchParams.bookmarked === '1';
   const sort = resolveMatchSort(searchParams.sort);
-  const effectiveMinScore = searchParams.min ? Number(searchParams.min) : 50;
+  const rawMin = searchParams.min;
+  const effectiveMinScore =
+    rawMin === '0' ? 0 : rawMin ? Number(rawMin) : DEFAULT_LIST_MIN_SCORE;
   const highlightId = searchParams.from ?? null;
   const showExpired = includeExpiredJobs(searchParams);
 
@@ -60,8 +62,11 @@ export async function DashboardMatchResults({
   let query = sb
     .from('matches')
     .select(MATCH_LIST_SELECT, { count: 'exact' })
-    .eq('profile_id', profileId)
-    .gte('llm_score', effectiveMinScore);
+    .eq('profile_id', profileId);
+
+  if (effectiveMinScore > 0) {
+    query = query.gte('llm_score', effectiveMinScore);
+  }
 
   const staleCutoff = staleJobCutoffIso();
   if (!showExpired) {
