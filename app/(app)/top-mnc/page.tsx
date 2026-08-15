@@ -2,9 +2,10 @@ import Link from 'next/link';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { getCurrentProfile, isCurrentUserAdmin } from '@/lib/current-user';
 import { MatchCard } from '../_components/MatchCard';
-import { Crown, Building2, Sparkles } from 'lucide-react';
+import { Building2, Sparkles } from 'lucide-react';
 import { matchTopCompany, CATEGORY_LABELS, type CompanyEntry } from '@/lib/top-companies';
 import { enrichMatchListSkills } from '@/lib/match-skill-enrich';
+import { PageHeader } from '../_components/PageHeader';
 // Keep in sync with MATCH_LIST_SELECT_WITH_META in lib/match-list-select.ts
 
 export const dynamic = 'force-dynamic';
@@ -43,7 +44,7 @@ export default async function TopMncPage({
     return (
       <div className="glass-card max-w-xl mx-auto text-center mt-12 space-y-4 py-12 px-8">
         <div className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-secondary-fixed text-secondary mx-auto">
-          <Crown className="h-7 w-7" />
+          <Building2 className="h-7 w-7" />
         </div>
         <h1 className="font-headline text-headline-md font-bold text-on-background">Top MNC Hiring</h1>
         <p className="text-on-surface-variant text-body-md max-w-sm mx-auto">
@@ -96,21 +97,10 @@ export default async function TopMncPage({
 
   return (
     <div className="space-y-8">
-      {/* Hero */}
-      <div>
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-secondary-fixed text-on-secondary-fixed-variant text-xs font-medium tracking-wide mb-3">
-          <Crown className="h-3.5 w-3.5" />
-          <span>PREMIUM FEATURE</span>
-        </div>
-        <h1 className="font-headline text-headline-lg-mobile md:text-heading-sm font-bold text-on-background flex items-center gap-3">
-          <Building2 className="h-7 w-7 text-secondary" />
-          Top MNC Hiring
-        </h1>
-        <p className="text-body-md text-on-surface-variant mt-1">
-          Jobs from Fortune 500, Big 4, major Indian enterprises, and high-growth unicorns.
-          <span className="text-secondary font-medium ml-2">{totalMncJobs} matches found</span>
-        </p>
-      </div>
+      <PageHeader
+        title="Top MNCs"
+        description={`Jobs from Fortune 500, Big 4, major Indian enterprises, and high-growth unicorns. ${totalMncJobs} matches.`}
+      />
 
       {/* Category filter pills */}
       <div className="flex flex-wrap gap-2">
@@ -120,12 +110,12 @@ export default async function TopMncPage({
           className={[
             'inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-medium whitespace-nowrap transition-all',
             !categoryFilter
-              ? 'bg-secondary text-on-secondary shadow-sm'
-              : 'border border-border-muted text-on-surface-variant hover:text-secondary hover:border-secondary/40 hover:bg-secondary-fixed/30',
+              ? 'bg-lime-brand text-ink shadow-sm'
+              : 'bg-surface-card text-on-surface-variant hover:text-ink',
           ].join(' ')}
         >
           All Companies
-          <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${!categoryFilter ? 'bg-white/20' : 'bg-surface-container'}`}>
+            <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${!categoryFilter ? 'bg-ink/10' : 'bg-white'}`}>
             {totalMncJobs}
           </span>
         </Link>
@@ -141,12 +131,12 @@ export default async function TopMncPage({
               className={[
                 'inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-medium whitespace-nowrap transition-all',
                 isActive
-                  ? 'bg-secondary text-on-secondary shadow-sm'
-                  : 'border border-border-muted text-on-surface-variant hover:text-secondary hover:border-secondary/40 hover:bg-secondary-fixed/30',
+                  ? 'bg-lime-brand text-ink shadow-sm'
+                  : 'bg-surface-card text-on-surface-variant hover:text-ink',
               ].join(' ')}
             >
               {CATEGORY_LABELS[cat]}
-              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${isActive ? 'bg-white/20' : 'bg-surface-container'}`}>
+              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${isActive ? 'bg-ink/10' : 'bg-white'}`}>
                 {count}
               </span>
             </Link>

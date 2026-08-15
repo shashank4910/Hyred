@@ -1,6 +1,7 @@
 import { getCurrentProfile } from '@/lib/current-user';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { OnboardingForm } from './OnboardingForm';
+import { PageHeader } from '../_components/PageHeader';
 import type { ResumeInsights } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -26,14 +27,11 @@ export default async function OnboardingPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="font-headline text-heading-sm font-bold text-on-background">Your profile</h1>
-        <p className="text-body-md text-on-surface-variant mt-1">
-          Upload your resume — we&apos;ll embed it once and use it to score every
-          job. Update any time and we re-index automatically.
-        </p>
-      </div>
+    <div>
+      <PageHeader
+        title="Your profile"
+        description="Upload your resume — we'll embed it once and use it to score every job. Update any time and we re-index automatically."
+      />
       <OnboardingForm
         initial={{
           email: profile?.email ?? '',

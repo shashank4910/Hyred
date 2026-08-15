@@ -10,6 +10,7 @@ import {
   dashboardMinScore,
 } from '@/lib/match-stats';
 import { relativeTime, SOURCE_LABELS, formatScanDuration } from '@/lib/ui';
+import { PageHeader } from '../_components/PageHeader';
 import {
   CheckCircle2,
   AlertTriangle,
@@ -97,12 +98,10 @@ export default async function StatsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-headline text-heading-sm font-bold text-on-background">Stats</h1>
-        <p className="text-body-md text-on-surface-variant mt-1">
-          Your personal matches and scan history{isAdmin ? ' — including admin diagnostics' : ''}.
-        </p>
-      </div>
+      <PageHeader
+        title="Stats"
+        description={`Your personal matches and scan history${isAdmin ? ' — including admin diagnostics' : ''}.`}
+      />
 
       {/* === Quick stats that matter to everyone === */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

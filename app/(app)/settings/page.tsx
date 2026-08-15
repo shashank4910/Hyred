@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { CreditCard, FileText, Rocket, Sparkles } from 'lucide-react';
+import { FileText, Rocket, Sparkles } from 'lucide-react';
 import { getCurrentProfile } from '@/lib/current-user';
 import {
   getFeatureUsage,
@@ -7,6 +7,7 @@ import {
   quotaWindowKind,
 } from '@/lib/premium';
 import { formatResumeStudioMeter } from '@/lib/premium-upgrade';
+import { PageHeader } from '../_components/PageHeader';
 import { PremiumUpgradePanel } from '@/app/_components/PremiumUpgradePanel';
 
 export const dynamic = 'force-dynamic';
@@ -31,16 +32,12 @@ export default async function SettingsPage({
   const resumeWindow = quotaWindowKind(access.plan, 'resume_studio');
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <div>
-        <h1 className="font-headline text-heading-sm font-bold text-on-background flex items-center gap-2">
-          <CreditCard className="h-5 w-5 text-primary" />
-          Settings
-        </h1>
-        <p className="mt-1 text-body-md text-on-surface-variant">
-          Your plan, Resume Studio credits, and application profile.
-        </p>
-      </div>
+    <div className="mx-auto max-w-3xl">
+      <PageHeader
+        title="Settings"
+        description="Your plan, Resume Studio credits, and application profile."
+      />
+      <div className="space-y-6">
 
       {showUpgrade && !isPremium && (
         <PremiumUpgradePanel
@@ -50,7 +47,7 @@ export default async function SettingsPage({
         />
       )}
 
-      <section className="rounded-2xl border border-outline-variant/50 bg-surface-container-lowest p-6 shadow-card">
+      <section className="rounded-[1.5rem] bg-surface-card p-6 shadow-card">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="font-semibold text-on-surface flex items-center gap-2">
@@ -135,7 +132,7 @@ export default async function SettingsPage({
       <section className="grid gap-3 sm:grid-cols-2">
         <Link
           href="/apply-profile"
-          className="rounded-2xl border border-outline-variant/50 bg-surface-container-lowest p-5 shadow-card transition-colors hover:border-primary/30"
+          className="rounded-[1.5rem] bg-surface-card p-5 shadow-card transition-shadow hover:shadow-elevated"
         >
           <Rocket className="h-5 w-5 text-primary" />
           <h3 className="mt-3 font-semibold text-on-surface">Application profile</h3>
@@ -145,7 +142,7 @@ export default async function SettingsPage({
         </Link>
         <Link
           href="/onboarding"
-          className="rounded-2xl border border-outline-variant/50 bg-surface-container-lowest p-5 shadow-card transition-colors hover:border-primary/30"
+          className="rounded-[1.5rem] bg-surface-card p-5 shadow-card transition-shadow hover:shadow-elevated"
         >
           <FileText className="h-5 w-5 text-primary" />
           <h3 className="mt-3 font-semibold text-on-surface">My resume</h3>
@@ -154,6 +151,7 @@ export default async function SettingsPage({
           </p>
         </Link>
       </section>
+      </div>
     </div>
   );
 }

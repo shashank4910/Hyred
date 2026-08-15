@@ -22,6 +22,7 @@ import type { AtsCheckResult } from '@/lib/ats-checker';
 import type { AtsReport } from '@/lib/ats-report';
 import { blobUrlToDataUrl, writeAtsFixSession } from '@/lib/ats-fix-session';
 import { AtsScanReport } from '@/app/_components/ats-report/AtsScanReport';
+import { PageHeader } from '../_components/PageHeader';
 
 /* ------------------------------------------------------------------ */
 /*  Sample data                                                        */
@@ -604,15 +605,10 @@ export default function AtsCheckerPage() {
   return (
     <div className="mx-auto max-w-page space-y-8 animate-fade-in">
       {view === 'input' && (
-        <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h1 className="font-headline text-headline-lg-mobile md:text-headline-lg font-bold text-on-surface">
-              ATS Resume Checker
-            </h1>
-            <p className="mt-2 max-w-xl text-body-md text-on-surface-variant">
-              See how an applicant tracking system parses your resume, then fix gaps before you apply.
-            </p>
-          </div>
+        <PageHeader
+            title="ATS Resume Checker"
+            description="See how an applicant tracking system parses your resume, then fix gaps before you apply."
+            action={
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={loadSample} className="btn">
               <BookOpen className="h-4 w-4" />
@@ -630,7 +626,8 @@ export default function AtsCheckerPage() {
               </button>
             )}
           </div>
-        </header>
+            }
+          />
       )}
 
       {view === 'input' && (
