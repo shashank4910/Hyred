@@ -8,7 +8,8 @@ import { DashboardMatchResults } from './_components/DashboardMatchResults';
 import { DashboardMatchesSection } from './_components/DashboardMatchesSection';
 import { DashboardNavProvider } from './_components/DashboardNavContext';
 import { RunIngestButton } from './_components/RunIngestButton';
-import { Inbox, Sparkles, TrendingUp, Briefcase, ArrowRight } from 'lucide-react';
+import { DashboardPromoBanner } from './_components/DashboardPromoBanner';
+import { Sparkles, TrendingUp, Briefcase } from 'lucide-react';
 import { relativeTime, STATUS_ORDER } from '@/lib/ui';
 import { getDashboardCounts, listMatchCities } from '@/lib/match-stats';
 
@@ -194,34 +195,7 @@ export default async function Dashboard({
         </DashboardNavProvider>
       </div>
 
-      <section className="mt-4">
-        <div className="overflow-hidden rounded-[2.5rem] bg-surface-container-lowest p-1 shadow-card">
-          <div className="flex flex-col items-center md:flex-row">
-            <div className="relative flex h-48 w-full items-center justify-center teal-gradient md:h-auto md:w-1/3 md:min-h-[220px]">
-              <Sparkles className="h-16 w-16 text-on-primary/30" />
-            </div>
-            <div className="flex-1 p-8 md:p-10">
-              <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-secondary-container/30 px-4 py-1.5 text-label-md font-bold uppercase tracking-widest text-secondary">
-                AI matching
-              </div>
-              <h3 className="mb-3 text-headline-lg font-bold text-on-surface">
-                Hyred scores every job against your resume
-              </h3>
-              <p className="mb-4 max-w-xl text-body-lg leading-relaxed text-on-surface-variant">
-                We scan job boards, explain why each role fits, and highlight skills you already
-                have — so you spend time on applications that matter.
-              </p>
-              <Link
-                href="/stats"
-                className="inline-flex items-center gap-2 font-semibold text-primary transition-colors hover:text-primary-container"
-              >
-                View your stats
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
+      <DashboardPromoBanner />
     </div>
   );
 }

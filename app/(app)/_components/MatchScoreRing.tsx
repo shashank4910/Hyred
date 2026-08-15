@@ -43,7 +43,7 @@ export function MatchScoreRing({ score }: { score: number | null }) {
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span className="text-label-md font-bold leading-none">{score ?? '–'}</span>
         {score != null && (
-          <span className={`text-[8px] uppercase font-bold tracking-tighter ${strokeClass}`}>
+          <span className={`text-label-md uppercase font-bold tracking-tighter ${strokeClass}`}>
             Match
           </span>
         )}

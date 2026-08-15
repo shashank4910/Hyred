@@ -46,49 +46,69 @@ export function StatusFilter({
     { id: 'bookmarked', label: 'Saved', count: bookmarkedCount, icon: <Bookmark className="h-3.5 w-3.5" /> },
   ];
 
+  function tabButton(
+    { id, label, count, icon }: (typeof tabs)[number],
+    layout: 'scroll' | 'grid',
+  ) {
+    const isBookmarkTab = id === 'bookmarked';
+    const isActive = isBookmarkTab ? onlyBookmarked : !onlyBookmarked && id === active;
+    const href = isBookmarkTab ? bookmarkedHref() : hrefFor(id);
+
+    return (
+      <button
+        key={`${layout}-${id}`}
+        type="button"
+        role="tab"
+        aria-selected={isActive}
+        disabled={isPending && !isActive}
+        onClick={() => navigate(href)}
+        className={[
+          layout === 'scroll'
+            ? 'flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2.5 text-xs font-semibold capitalize'
+            : 'flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-2 py-2.5 text-center transition-all sm:flex-row sm:gap-1.5 md:px-2',
+          isActive
+            ? 'bg-primary-container text-on-primary-container shadow-sm'
+            : 'text-on-surface-variant hover:bg-surface-container',
+          isPending && !isActive ? 'opacity-60' : '',
+        ].join(' ')}
+      >
+        <span className="inline-flex min-w-0 items-center gap-1">
+          {icon ? <span className="shrink-0">{icon}</span> : null}
+          <span className={layout === 'grid' ? 'truncate text-xs md:text-sm' : 'whitespace-nowrap'}>
+            {label}
+          </span>
+        </span>
+        {count > 0 && (
+          <span
+            className={[
+              'shrink-0 rounded-full px-1.5 py-0.5 text-label-md font-bold leading-none',
+              isActive ? 'bg-on-primary-container/15' : 'bg-surface-container text-text-muted',
+            ].join(' ')}
+          >
+            {count}
+          </span>
+        )}
+      </button>
+    );
+  }
+
   return (
     <div className="w-full rounded-2xl bg-surface-container-lowest p-1 shadow-card">
-      <div className="grid w-full grid-cols-7 gap-0.5" role="tablist" aria-label="Match status">
-        {tabs.map(({ id, label, count, icon }) => {
-          const isBookmarkTab = id === 'bookmarked';
-          const isActive = isBookmarkTab ? onlyBookmarked : !onlyBookmarked && id === active;
-          const href = isBookmarkTab ? bookmarkedHref() : hrefFor(id);
-
-          return (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={isActive}
-              disabled={isPending && !isActive}
-              onClick={() => navigate(href)}
-              className={[
-                'flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-2 text-center transition-all sm:flex-row sm:gap-1 sm:px-1.5 sm:py-2.5 md:px-2',
-                isActive
-                  ? 'bg-primary-container text-on-primary-container shadow-sm'
-                  : 'text-on-surface-variant hover:bg-surface-container',
-                isPending && !isActive ? 'opacity-60' : '',
-              ].join(' ')}
-            >
-              <span className="inline-flex min-w-0 items-center gap-0.5 sm:gap-1">
-                {icon ? <span className="hidden shrink-0 sm:inline">{icon}</span> : null}
-                <span className="truncate text-[10px] font-semibold leading-tight sm:text-xs md:text-sm capitalize">
-                  {label}
-                </span>
-              </span>
-              {count > 0 && (
-                <span
-                  className={[
-                    'shrink-0 rounded-full px-1 py-px text-[9px] font-bold leading-none sm:px-1.5 sm:py-0.5 sm:text-[10px]',
-                    isActive ? 'bg-on-primary-container/15' : 'bg-surface-container text-text-muted',
-                  ].join(' ')}
-                >
-                  {count}
-                </span>
-              )}
-            </button>
-          );
-        })}
+      {/* Mobile: scrollable chips — readable tap targets, no 7-col squeeze */}
+      <div
+        className="flex gap-1 overflow-x-auto p-0.5 [-ms-overflow-style:none] [scrollbar-width:none] md:hidden [&::-webkit-scrollbar]:hidden"
+        role="tablist"
+        aria-label="Match status"
+      >
+        {tabs.map((tab) => tabButton(tab, 'scroll'))}
+      </div>
+      {/* Desktop: full workflow grid */}
+      <div
+        className="hidden w-full grid-cols-7 gap-0.5 md:grid"
+        role="tablist"
+        aria-label="Match status"
+      >
+        {tabs.map((tab) => tabButton(tab, 'grid'))}
       </div>
     </div>
   );

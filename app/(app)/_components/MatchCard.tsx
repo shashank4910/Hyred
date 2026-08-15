@@ -99,7 +99,7 @@ export function MatchCard({
   return (
     <div
       className={[
-        'group block min-w-0 animate-fade-in rounded-2xl p-6 shadow-card transition-all hover:-translate-y-1 hover:border-primary/10 hover:shadow-elevated border-l-4',
+        'group block min-w-0 animate-fade-in rounded-2xl p-6 shadow-card transition-all hover:-translate-y-1 hover:border-primary/10 hover:shadow-elevated border-l-2',
         isNew
           ? 'bg-surface-container-lowest border-l-primary shadow-elevated ring-1 ring-primary/5'
           : 'bg-surface-container-lowest border-l-outline-variant/60 hover:border-l-primary/40',
@@ -122,13 +122,13 @@ export function MatchCard({
                 {job.title}
               </Link>
               {isNew && (
-                <span className="inline-flex rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">
+                <span className="badge-primary text-label-md uppercase tracking-wide">
                   New
                 </span>
               )}
               {isOlder && (
                 <span
-                  className="inline-flex rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-orange-700 border border-orange-200"
+                  className="inline-flex rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-label-md font-bold uppercase tracking-wide text-orange-700"
                   title="Outside the usual 45-day window — listing may be closed"
                 >
                   Older
@@ -138,7 +138,7 @@ export function MatchCard({
                 <span className="badge">{SOURCE_LABELS[job.source] ?? job.source}</span>
               )}
               {mncCategory && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-secondary-container/30 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-secondary">
+                <span className="badge-grape text-label-md uppercase tracking-wide">
                   <Crown className="h-2.5 w-2.5" />
                   {mncCategory}
                 </span>
@@ -190,7 +190,7 @@ export function MatchCard({
 
       {reason && (
         <div
-          className={`mb-6 rounded-2xl border-l-4 bg-surface-container-low/50 p-4 ${insightBorder}`}
+          className={`mb-6 rounded-2xl border-l-2 bg-surface-container-low/50 p-4 ${insightBorder}`}
         >
           <p className="text-body-md italic leading-relaxed text-on-surface-variant">
             &ldquo;{reason}&rdquo;
