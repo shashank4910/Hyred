@@ -173,6 +173,9 @@ const config: Config = {
           '50%': { opacity: '0.5' },
         },
       },
+      transitionTimingFunction: {
+        'out-expo': 'cubic-bezier(0.22, 1, 0.36, 1)',
+      },
       animation: {
         'fade-in': 'fade-in 0.2s cubic-bezier(0.22, 1, 0.36, 1)',
         'slide-up': 'slide-up 0.32s cubic-bezier(0.22, 1, 0.36, 1)',
