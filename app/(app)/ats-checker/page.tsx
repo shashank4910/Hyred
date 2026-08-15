@@ -5,7 +5,6 @@ import {
   Upload,
   FileText,
   XCircle,
-  Search,
   FileCheck,
   AtSign,
   ListChecks,
@@ -14,11 +13,9 @@ import {
   Sparkles,
   Loader2,
   Check,
-  Keyboard,
   History,
   BookOpen,
   TrendingUp,
-  Briefcase,
   Shield,
 } from 'lucide-react';
 import type { AtsCheckResult } from '@/lib/ats-checker';
@@ -128,9 +125,9 @@ function formatDate(): string {
 }
 
 function scoreColor(score: number): string {
-  if (score >= 80) return 'text-emerald-500';
-  if (score >= 50) return 'text-amber-500';
-  return 'text-red-500';
+  if (score >= 80) return 'text-match-success';
+  if (score >= 50) return 'text-primary';
+  return 'text-error';
 }
 
 const BREAKDOWN_COPY_LABELS: { key: keyof AtsCheckResult['breakdown']; label: string }[] = [
@@ -180,8 +177,9 @@ export default function AtsCheckerPage() {
   const [copied, setCopied] = useState(false);
   const [openingFix, setOpeningFix] = useState(false);
   const [history, setHistory] = useState<ScoreHistoryItem[]>([]);
-  const [showJdInput, setShowJdInput] = useState(false);
+  const [showJdInput, setShowJdInput] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
+  const [intakeMode, setIntakeMode] = useState<'upload' | 'paste'>('upload');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
   const resultRef = useRef<HTMLDivElement>(null);
@@ -331,6 +329,7 @@ export default function AtsCheckerPage() {
     setResumeText(SAMPLE_RESUME);
     setJobDescriptionText(SAMPLE_JD);
     setShowJdInput(true);
+    setIntakeMode('paste');
     setError(null);
     textAreaRef.current?.focus();
   }, []);
@@ -603,253 +602,244 @@ export default function AtsCheckerPage() {
   }, [result, studioResume, originalFile, jobDescriptionText, filename]);
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6 animate-fade-in">
-      {/* Marketing header — input only so results own the screen */}
+    <div className="mx-auto max-w-page space-y-8 animate-fade-in">
       {view === 'input' && (
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/5 via-surface-card to-surface-card p-6 border border-outline-variant/40 shadow-sm">
-          <div className="absolute top-0 right-0 w-48 h-48 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-          <div className="relative">
-            <h1 className="font-headline text-heading-sm font-bold text-on-background flex items-center gap-2.5">
-              <span className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-primary text-on-primary shadow-sm">
-                <Search className="h-5 w-5" />
-              </span>
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className="font-headline text-headline-lg-mobile md:text-headline-lg font-bold text-on-surface">
               ATS Resume Checker
             </h1>
-            <p className="text-body-md text-on-surface-variant mt-2 max-w-xl">
-              See how ATS systems read your resume — then fix weak spots before you apply.
+            <p className="mt-2 max-w-xl text-body-md text-on-surface-variant">
+              See how an applicant tracking system parses your resume, then fix gaps before you apply.
             </p>
-            <div className="flex flex-wrap items-center gap-3 mt-4">
-              <span className="inline-flex items-center gap-1.5 text-xs text-text-muted bg-surface-container rounded-full px-3 py-1">
-                <FileCheck className="h-3.5 w-3.5 text-primary" />
-                8 ATS checks
-              </span>
-              <span className="inline-flex items-center gap-1.5 text-xs text-text-muted bg-surface-container rounded-full px-3 py-1">
-                <Shield className="h-3.5 w-3.5 text-emerald-500" />
-                Not stored
-              </span>
-            </div>
           </div>
-        </div>
-      )}
-
-      {/* ── INPUT VIEW ─────────────────────────────────────────── */}
-      {view === 'input' && (
-        <div className="space-y-5">
-          {/* Quick actions */}
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={loadSample}
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-primary bg-primary/8 rounded-full px-3.5 py-1.5 border border-primary/20 hover:bg-primary/15 transition-all"
-            >
-              <BookOpen className="h-3.5 w-3.5" />
-              Try sample resume
+            <button type="button" onClick={loadSample} className="btn">
+              <BookOpen className="h-4 w-4" />
+              Try a sample
             </button>
             {history.length > 0 && (
               <button
                 type="button"
-                onClick={() => setShowHistory(!showHistory)}
-                className="inline-flex items-center gap-1.5 text-xs font-medium text-text-muted bg-surface-container rounded-full px-3.5 py-1.5 border border-outline-variant/40 hover:bg-surface-container-higher transition-all"
+                onClick={() => setShowHistory((v) => !v)}
+                className={showHistory ? 'btn-primary' : 'btn'}
+                aria-expanded={showHistory}
               >
-                <History className="h-3.5 w-3.5" />
-                History ({history.length})
+                <History className="h-4 w-4" />
+                Recent ({history.length})
               </button>
             )}
-            <button
-              type="button"
-              onClick={() => setShowJdInput(!showJdInput)}
-              className={`inline-flex items-center gap-1.5 text-xs font-medium rounded-full px-3.5 py-1.5 border transition-all ${
-                showJdInput
-                  ? 'text-primary bg-primary/8 border-primary/20'
-                  : 'text-text-muted bg-surface-container border-outline-variant/40 hover:bg-surface-container-higher'
-              }`}
-            >
-              <Briefcase className="h-3.5 w-3.5" />
-              {showJdInput ? 'JD comparison on' : 'Add JD comparison'}
-            </button>
           </div>
+        </header>
+      )}
 
-          {/* History panel */}
-          {showHistory && history.length > 0 && (
-            <div className="rounded-2xl border border-outline-variant/40 bg-surface-card p-4 space-y-2 animate-fade-in">
-              <div className="flex items-center justify-between mb-1">
-                <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider flex items-center gap-1.5">
-                  <History className="h-3.5 w-3.5" />
-                  Recent checks
-                </h3>
+      {view === 'input' && (
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.8fr)] lg:items-start">
+          <section className="rounded-2xl bg-surface-container-lowest p-6 shadow-card">
+            <div
+              className="mb-5 flex gap-1 rounded-xl bg-surface-container-low p-1"
+              role="tablist"
+              aria-label="How to add your resume"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={intakeMode === 'upload'}
+                onClick={() => setIntakeMode('upload')}
+                className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors ${
+                  intakeMode === 'upload'
+                    ? 'bg-surface-container-lowest text-on-surface shadow-card'
+                    : 'text-on-surface-variant hover:text-on-surface'
+                }`}
+              >
+                <Upload className="h-4 w-4" />
+                Upload file
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={intakeMode === 'paste'}
+                onClick={() => setIntakeMode('paste')}
+                className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors ${
+                  intakeMode === 'paste'
+                    ? 'bg-surface-container-lowest text-on-surface shadow-card'
+                    : 'text-on-surface-variant hover:text-on-surface'
+                }`}
+              >
+                <FileText className="h-4 w-4" />
+                Paste text
+              </button>
+            </div>
+
+            {intakeMode === 'upload' ? (
+              <div
+                onDrop={onDrop}
+                onDragOver={onDragOver}
+                onDragLeave={onDragLeave}
+                onClick={() => fileInputRef.current?.click()}
+                className={`cursor-pointer rounded-xl border border-dashed p-10 text-center transition-colors ${
+                  dragOver
+                    ? 'border-primary bg-surface-container-low'
+                    : 'border-outline-variant hover:border-primary/40'
+                }`}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.doc,.docx,.txt"
+                  className="hidden"
+                  onChange={onFileSelect}
+                />
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-surface-container-low text-primary">
+                  <Upload className="h-6 w-6" />
+                </div>
+                <p className="mt-4 text-body-md font-semibold text-on-surface">Drop your resume here</p>
+                <p className="mt-1 text-sm text-on-surface-variant">PDF, Word, or text · click to browse</p>
+              </div>
+            ) : (
+              <textarea
+                ref={textAreaRef}
+                value={resumeText}
+                onChange={(e) => setResumeText(e.target.value)}
+                placeholder="Paste the full resume text…"
+                className="input min-h-[280px] resize-y font-sans"
+                rows={12}
+              />
+            )}
+
+            {error && (
+              <div className="mt-4 flex items-start gap-2.5 rounded-xl bg-error-container p-3.5 text-sm text-on-error-container">
+                <XCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            {intakeMode === 'paste' && (
+              <button
+                type="button"
+                onClick={handlePasteCheck}
+                disabled={resumeText.trim().length < 50}
+                className="btn-primary mt-5 w-full"
+              >
+                <FileCheck className="h-5 w-5" />
+                Check resume
+                <span className="hidden text-label-md font-medium text-on-primary/70 sm:inline">
+                  Ctrl+Enter
+                </span>
+              </button>
+            )}
+          </section>
+
+          <aside className="space-y-4">
+            <section className="rounded-2xl bg-surface-container-lowest p-6 shadow-card">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <label htmlFor="ats-jd" className="text-sm font-semibold text-on-surface">
+                  Job description
+                </label>
                 <button
                   type="button"
-                  onClick={() => { localStorage.removeItem(HISTORY_KEY); setHistory([]); }}
-                  className="text-[11px] text-text-muted hover:text-red-500 transition-colors"
+                  onClick={() => setShowJdInput((v) => !v)}
+                  className="btn-ghost px-2 py-1 text-label-md"
                 >
-                  Clear
+                  {showJdInput ? 'Hide' : 'Show'}
                 </button>
               </div>
-              <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                {history.map((item, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between py-1.5 px-2 rounded-lg hover:bg-surface-container transition-colors"
+              <p className="mb-3 text-sm text-on-surface-variant">
+                Optional. Paste a JD to see keyword gaps against this resume.
+              </p>
+              {showJdInput && (
+                <textarea
+                  id="ats-jd"
+                  value={jobDescriptionText}
+                  onChange={(e) => setJobDescriptionText(e.target.value)}
+                  placeholder="Paste the job description…"
+                  className="input min-h-[140px] resize-y"
+                  rows={5}
+                />
+              )}
+            </section>
+
+            <section className="rounded-2xl bg-surface-container-lowest p-6 shadow-card">
+              <ul className="space-y-3 text-sm text-on-surface-variant">
+                <li className="flex items-start gap-2.5">
+                  <FileCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                  Eight structural checks: sections, contact, bullets, metrics, skills, format, dates, score.
+                </li>
+                <li className="flex items-start gap-2.5">
+                  <Shield className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                  Processed in memory and not saved to your profile.
+                </li>
+              </ul>
+            </section>
+
+            {showHistory && history.length > 0 && (
+              <section className="rounded-2xl bg-surface-container-lowest p-6 shadow-card">
+                <div className="mb-3 flex items-center justify-between">
+                  <h2 className="text-sm font-semibold text-on-surface">Recent checks</h2>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      localStorage.removeItem(HISTORY_KEY);
+                      setHistory([]);
+                    }}
+                    className="btn-ghost px-2 py-1 text-label-md text-error"
                   >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className={`text-xs font-bold tabular-nums ${scoreColor(item.score)}`}>
+                    Clear
+                  </button>
+                </div>
+                <ul className="max-h-56 space-y-1 overflow-y-auto">
+                  {history.map((item, i) => (
+                    <li
+                      key={`${item.date}-${i}`}
+                      className="flex items-center justify-between gap-2 rounded-lg px-2 py-2"
+                    >
+                      <span className={`text-sm font-bold tabular-nums ${scoreColor(item.score)}`}>
                         {item.score}
                       </span>
-                      <span className="text-xs text-on-surface-variant truncate">{item.label}</span>
-                    </div>
-                    <span className="text-[10px] text-text-muted shrink-0">{item.date}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Drag & drop area */}
-          <div
-            onDrop={onDrop}
-            onDragOver={onDragOver}
-            onDragLeave={onDragLeave}
-            onClick={() => fileInputRef.current?.click()}
-            className={`cursor-pointer rounded-2xl border-2 border-dashed p-10 text-center transition-all duration-300 ${
-              dragOver
-                ? 'border-primary bg-primary/5 shadow-primary-glow scale-[1.01]'
-                : 'border-outline-variant hover:border-primary/40 hover:bg-surface-container-lowest'
-            }`}
-          >
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,.doc,.docx,.txt"
-              className="hidden"
-              onChange={onFileSelect}
-            />
-            <div className={`mx-auto w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 ${
-              dragOver ? 'bg-primary/15 scale-110' : 'bg-surface-container'
-            }`}>
-              <Upload className={`h-6 w-6 transition-colors ${
-                dragOver ? 'text-primary' : 'text-text-muted'
-              }`} />
-            </div>
-            <p className="text-body-md font-semibold text-on-surface mt-4 mb-1">
-              Upload your resume
-            </p>
-            <p className="text-sm text-text-muted">
-              Drop a .pdf, .doc, .docx, or .txt file here, or click to browse
-            </p>
-          </div>
-
-          {/* Divider */}
-          <div className="flex items-center gap-3">
-            <div className="flex-1 h-px bg-outline-variant/60" />
-            <span className="text-[11px] font-semibold uppercase tracking-widest text-text-muted">
-              or paste your resume
-            </span>
-            <div className="flex-1 h-px bg-outline-variant/60" />
-          </div>
-
-          {/* Text area */}
-          <textarea
-            ref={textAreaRef}
-            value={resumeText}
-            onChange={(e) => setResumeText(e.target.value)}
-            placeholder="Paste your full resume text here..."
-            className="w-full min-h-[200px] rounded-2xl border border-outline-variant bg-surface-card p-4 text-sm text-on-surface placeholder:text-text-muted/60 outline-none transition-all focus:border-primary focus:ring-4 focus:ring-primary/12 resize-y shadow-sm"
-            rows={8}
-          />
-
-          {/* JD comparison input */}
-          {showJdInput && (
-            <div className="space-y-2 animate-fade-in">
-              <label className="text-xs font-semibold text-text-muted uppercase tracking-wider flex items-center gap-1.5">
-                <Briefcase className="h-3.5 w-3.5" />
-                Job Description{' '}
-                <span className="text-text-muted/60 font-normal normal-case">(optional — for keyword gap analysis)</span>
-              </label>
-              <textarea
-                value={jobDescriptionText}
-                onChange={(e) => setJobDescriptionText(e.target.value)}
-                placeholder="Paste the job description here to see which keywords your resume matches..."
-                className="w-full min-h-[120px] rounded-2xl border border-outline-variant bg-surface-card p-4 text-sm text-on-surface placeholder:text-text-muted/60 outline-none transition-all focus:border-primary focus:ring-4 focus:ring-primary/12 resize-y shadow-sm"
-                rows={4}
-              />
-            </div>
-          )}
-
-          {/* Error message */}
-          {error && (
-            <div className="flex items-start gap-2.5 rounded-xl bg-red-500/8 p-3.5 text-sm text-red-600 border border-red-500/15 animate-fade-in">
-              <XCircle className="h-4 w-4 mt-0.5 shrink-0" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          {/* Check button */}
-          <button
-            type="button"
-            onClick={handlePasteCheck}
-            disabled={resumeText.trim().length < 50}
-            className="group relative w-full flex items-center justify-center gap-2.5 rounded-2xl bg-primary px-6 py-3.5 text-body-md font-semibold text-on-primary shadow-card transition-all hover:bg-primary/90 hover:shadow-primary-glow disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:shadow-none overflow-hidden"
-          >
-            <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 disabled:hidden" />
-            <FileCheck className="h-5 w-5" />
-            Check My Resume
-            <kbd className="hidden sm:inline-flex items-center gap-0.5 ml-1.5 text-[10px] text-on-primary/60 bg-white/10 rounded-md px-1.5 py-0.5 font-mono">
-              <Keyboard className="h-2.5 w-2.5" />⌘⏎
-            </kbd>
-          </button>
-
-          <p className="text-center text-[11px] text-text-muted">
-            Your resume is processed in-memory and never stored. Fully private.
-          </p>
+                      <span className="min-w-0 flex-1 truncate text-sm text-on-surface-variant">
+                        {item.label}
+                      </span>
+                      <span className="shrink-0 text-label-md text-text-muted">{item.date}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+          </aside>
         </div>
       )}
 
-      {/* ── LOADING VIEW ───────────────────────────────────────── */}
       {view === 'loading' && (
-        <div className="rounded-2xl border border-outline-variant/40 bg-surface-card shadow-sm overflow-hidden animate-fade-in">
-          <div className="grid sm:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] gap-0">
-            {/* Document scan visual */}
-            <div className="relative px-6 pt-7 pb-6 border-b sm:border-b-0 sm:border-r border-outline-variant/20 bg-gradient-to-b from-primary/[0.04] to-transparent">
-              <div className="flex items-center gap-3 mb-5">
-                <div className="w-10 h-10 rounded-xl bg-primary text-on-primary flex items-center justify-center shadow-sm">
-                  <Search className="h-5 w-5" />
-                </div>
-                <div>
-                  <h2 className="text-body-md font-semibold text-on-surface">
-                    Scanning resume
-                  </h2>
-                  <p className="text-xs text-text-muted">
-                    {resumeWordCount > 0 ? `${resumeWordCount.toLocaleString()} words · ` : ''}
-                    {MILESTONES.length} checks
-                  </p>
-                </div>
+        <div className="rounded-2xl bg-surface-container-lowest shadow-card overflow-hidden animate-fade-in">
+          <div className="grid sm:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+            <div className="relative border-b border-outline-variant/30 px-6 py-7 sm:border-b-0 sm:border-r">
+              <div className="mb-5">
+                <h2 className="text-headline-md font-semibold text-on-surface">Scanning resume</h2>
+                <p className="mt-1 text-sm text-on-surface-variant">
+                  {resumeWordCount > 0 ? `${resumeWordCount.toLocaleString()} words · ` : ''}
+                  {MILESTONES.length} checks
+                </p>
               </div>
 
-              <div className="relative mx-auto max-w-[220px] aspect-[3/4] rounded-xl border border-outline-variant/50 bg-surface-container-lowest shadow-sm overflow-hidden">
+              <div className="relative mx-auto max-w-[200px] aspect-[3/4] overflow-hidden rounded-xl border border-outline-variant/40 bg-surface-container-low">
                 <div className="absolute inset-x-4 top-4 space-y-2.5">
                   <div className="h-2 w-2/3 rounded-full ats-scan-line-skeleton" />
                   <div className="h-1.5 w-full rounded-full ats-scan-line-skeleton opacity-70" />
                   <div className="h-1.5 w-5/6 rounded-full ats-scan-line-skeleton opacity-60" />
-                  <div className="h-1.5 w-full rounded-full ats-scan-line-skeleton opacity-50 mt-4" />
+                  <div className="mt-4 h-1.5 w-full rounded-full ats-scan-line-skeleton opacity-50" />
                   <div className="h-1.5 w-4/5 rounded-full ats-scan-line-skeleton opacity-50" />
                   <div className="h-1.5 w-full rounded-full ats-scan-line-skeleton opacity-40" />
                   <div className="h-1.5 w-3/5 rounded-full ats-scan-line-skeleton opacity-40" />
-                  <div className="h-1.5 w-full rounded-full ats-scan-line-skeleton opacity-35 mt-4" />
-                  <div className="h-1.5 w-5/6 rounded-full ats-scan-line-skeleton opacity-35" />
-                  <div className="h-1.5 w-2/3 rounded-full ats-scan-line-skeleton opacity-30" />
                 </div>
-                {/* Scan beam */}
                 <div className="pointer-events-none absolute inset-x-0 h-10 ats-scan-beam">
-                  <div className="h-px w-full bg-primary/80 shadow-[0_0_12px_2px_rgba(0,106,101,0.45)]" />
-                  <div className="h-8 w-full bg-gradient-to-b from-primary/25 to-transparent ats-scan-glow" />
+                  <div className="h-px w-full bg-primary/80" />
+                  <div className="h-8 w-full bg-gradient-to-b from-primary/20 to-transparent" />
                 </div>
-                <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-surface-container-lowest/80" />
               </div>
             </div>
 
-            {/* Milestone timeline */}
-            <div className="px-5 py-5 flex flex-col">
-              <div className="space-y-0.5 flex-1">
+            <div className="flex flex-col px-6 py-6">
+              <div className="flex-1 space-y-0.5">
                 {MILESTONES.map((m, i) => {
                   const isComplete = completedMilestones.includes(i);
                   const isActive = i === completedMilestones.length && !isComplete;
@@ -858,41 +848,44 @@ export default function AtsCheckerPage() {
                   return (
                     <div
                       key={m.id}
-                      className={`flex items-center gap-2.5 py-1.5 transition-all duration-700 ${
-                        isActive ? 'opacity-100' : isPending ? 'opacity-30' : 'opacity-90'
+                      className={`flex items-center gap-3 py-1.5 ${
+                        isActive ? 'opacity-100' : isPending ? 'opacity-40' : 'opacity-90'
                       }`}
                     >
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 transition-all duration-700 ${
-                        isComplete
-                          ? 'bg-emerald-500/15 text-emerald-500'
-                          : isActive
-                            ? 'bg-primary/12 text-primary ring-2 ring-primary/20'
-                            : 'bg-surface-container text-text-muted'
-                      }`}>
+                      <div
+                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
+                          isComplete
+                            ? 'bg-match-success/15 text-match-success'
+                            : isActive
+                              ? 'bg-primary/10 text-primary ring-2 ring-primary/20'
+                              : 'bg-surface-container text-text-muted'
+                        }`}
+                      >
                         {isComplete ? (
                           <Check className="h-3.5 w-3.5" />
                         ) : isActive ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         ) : (
-                          <span className="text-[10px] font-bold">{i + 1}</span>
+                          <span className="text-label-md font-bold">{i + 1}</span>
                         )}
                       </div>
-
-                      <div className="flex-1 min-w-0">
+                      <div className="min-w-0 flex-1">
                         <div className="flex items-baseline gap-2">
-                          <span className={`text-sm transition-colors duration-500 ${
-                            isComplete
-                              ? 'text-on-surface'
-                              : isActive
-                                ? 'text-on-surface font-semibold'
+                          <span
+                            className={`text-sm ${
+                              isComplete || isActive
+                                ? 'font-semibold text-on-surface'
                                 : 'text-text-muted'
-                          }`}>
+                            }`}
+                          >
                             {m.label}
                           </span>
                           {(isComplete || isActive) && (
-                            <span className={`text-[11px] truncate ${
-                              isComplete ? 'text-emerald-600' : 'text-text-muted'
-                            }`}>
+                            <span
+                              className={`truncate text-label-md ${
+                                isComplete ? 'text-on-surface-variant' : 'text-text-muted'
+                              }`}
+                            >
                               {quickAnalyze(m.id)}
                             </span>
                           )}
@@ -903,24 +896,26 @@ export default function AtsCheckerPage() {
                 })}
               </div>
 
-              <div className="pt-4 mt-2">
-                <div className="h-1.5 rounded-full bg-surface-container overflow-hidden">
+              <div className="mt-4 pt-4">
+                <div className="h-1.5 overflow-hidden rounded-full bg-surface-container">
                   <div
-                    className="h-full rounded-full bg-gradient-to-r from-[#006a65] via-[#2cc9c0] to-[#006a65] transition-all duration-700 ease-out"
+                    className="h-full rounded-full teal-gradient transition-all duration-700 ease-out"
                     style={{
-                      width: `${completedMilestones.length > 0
-                        ? Math.round((completedMilestones.length / MILESTONES.length) * 100)
-                        : 4}%`,
+                      width: `${
+                        completedMilestones.length > 0
+                          ? Math.round((completedMilestones.length / MILESTONES.length) * 100)
+                          : 4
+                      }%`,
                     }}
                   />
                 </div>
-                <div className="flex justify-between mt-1.5">
-                  <span className="text-[10px] text-text-muted">
+                <div className="mt-1.5 flex justify-between text-label-md text-text-muted">
+                  <span>
                     {completedMilestones.length > 0
                       ? `${Math.round((completedMilestones.length / MILESTONES.length) * 100)}%`
                       : 'Starting…'}
                   </span>
-                  <span className="text-[10px] text-text-muted">
+                  <span>
                     {completedMilestones.length}/{MILESTONES.length}
                   </span>
                 </div>
