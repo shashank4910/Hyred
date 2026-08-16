@@ -44,6 +44,7 @@ How to open one section cheaply: `grep -n "<heading text>" CONTEXT.md` to get th
 | **ATS section mapping** (odd/misspelled headings, no synonym zoo) | `CONTEXT.md` → `## ATS Resume Checker` → Section mapping + Session **31** | `semantic-sections`, `mergeSectionChecks`, token heading contains, PRs #274–#275 |
 | **Dashboard city location filter** | `lib/match-location-filter.ts` + `listMatchCities()` in `lib/match-stats.ts` + `MatchFilters.tsx` + `docs/context/session-log.md` → Session 29 | filtering matches by city, `city` search param |
 | **Dashboard freshness / older jobs / score slider** | `CONTEXT.md` → `### Dashboard — filters, freshness, older jobs` + Known Pitfalls (`posted_at` hide row) + Sessions **32–33** | `jobFreshnessOrFilter`, `fresh=1d\|7d\|30d`, `expired=1`, score slider, sticky Filters |
+| **Dashboard sort (Highest score / Newest)** | `CONTEXT.md` → `### Dashboard — filters, freshness, older jobs` + Session **33** + `lib/job-listing-time.ts` | `MatchSortBar`; never raw `posted_at` DESC |
 | **Optimize keyword green/amber/red** | `CONTEXT.md` → `### Job detail` (Optimize chips) + Session **32** + `keywordCloseInText` in `lib/gemini.ts` | closeHave, amber/orange chips, exact-only ATS score |
 | **LinkedIn recruiting people search** | `lib/linkedin-people-search.ts` + Session **32** + `ReferralRadar.tsx` | quoted company, no network filter, `%22` encoding |
 | **Apply profile form** | `CONTEXT.md` → `### Apply profile` + AI Auto-Apply section + Known Pitfalls (owner PII rows) | `/apply-profile`, extension autofill source |
