@@ -24,6 +24,8 @@ export type Preferences = {
   blacklist_companies?: string[];
 };
 
+import type { ProfileSeniority } from './profile-seniority';
+
 export type ResumeInsights = {
   // Contact info extracted from the resume (used for autofill)
   full_name?: string;
@@ -32,7 +34,7 @@ export type ResumeInsights = {
   phone?: string;
   // Career signals
   years_experience?: number;
-  seniority?: 'junior' | 'mid' | 'senior' | 'staff' | 'principal' | 'unknown';
+  seniority?: ProfileSeniority;
   top_skills?: string[];
   suggested_roles?: string[];
   summary?: string;

@@ -14,6 +14,8 @@ import {
   uploadResumeFile,
 } from '@/lib/resume-storage';
 import type { Preferences, ResumeInsights } from '@/lib/types';
+import { parseYearsExperience } from '@/lib/apply-profile';
+import { normalizeProfileSeniority } from '@/lib/profile-seniority';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -260,4 +262,67 @@ export async function POST(req: NextRequest) {
     resume_chars: resumeText.length,
     original_file_saved: originalSaved,
   });
+}
+
+type PatchBody = {
+  insights?: Partial<ResumeInsights>;
+  preferences?: Partial<Preferences>;
+};
+
+/** Partial profile update — e.g. experience/seniority autosave without re-embedding. */
+export async function PATCH(req: NextRequest) {
+  const profile = await getCurrentProfile();
+  if (!profile) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
+  let body: PatchBody;
+  try {
+    body = (await req.json()) as PatchBody;
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+  }
+
+  const updatePayload: Record<string, unknown> = {};
+
+  if (body.insights && typeof body.insights === 'object') {
+    const merged: ResumeInsights = {
+      ...(profile.insights ?? {}),
+      ...body.insights,
+    };
+    if ('years_experience' in body.insights) {
+      const years = parseYearsExperience(body.insights.years_experience);
+      if (years != null) merged.years_experience = years;
+      else delete merged.years_experience;
+    }
+    if ('seniority' in body.insights) {
+      merged.seniority = normalizeProfileSeniority(body.insights.seniority);
+    }
+    updatePayload.insights = merged;
+  }
+
+  if (body.preferences && typeof body.preferences === 'object') {
+    updatePayload.preferences = {
+      ...(profile.preferences ?? {}),
+      ...body.preferences,
+    };
+  }
+
+  if (Object.keys(updatePayload).length === 0) {
+    return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
+  }
+
+  const sb = supabaseAdmin();
+  const { data, error } = await sb
+    .from('profiles')
+    .update(updatePayload)
+    .eq('id', profile.id)
+    .select('id, insights, preferences')
+    .single();
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true, profile: data });
 }
