@@ -156,10 +156,10 @@ export function MatchFilters({
   }
 
   const panelBody = (
-    <div className="space-y-8">
+    <div className="space-y-5">
       <div>
         <p className="text-sm font-semibold text-white">Match score floor</p>
-        <div className="mt-3">
+        <div className="mt-2">
           <ScoreFloorSlider value={sliderValue} onCommit={commitScore} />
         </div>
       </div>
@@ -198,7 +198,7 @@ export function MatchFilters({
             }
             navigate(`/?${params.toString()}`, { replace: true });
           }}
-          className="mt-2 text-left text-sm font-semibold text-white/80 underline decoration-white/40 underline-offset-2 hover:text-white"
+          className="mt-1 text-left text-sm font-semibold text-white/80 underline decoration-white/40 underline-offset-2 hover:text-white"
         >
           {expired === '1' ? 'Hide older jobs' : 'Include older jobs'}
         </button>
@@ -206,7 +206,7 @@ export function MatchFilters({
 
       <label className="block text-sm font-semibold text-white">
         Location
-        <span className="mt-1.5 flex flex-col gap-2">
+        <span className="mt-1.5 flex flex-col gap-1.5">
           {isAdmin && (
             <PremiumSelect
               variant="forest"
@@ -288,8 +288,8 @@ export function MatchFilters({
         </div>
       ) : null}
 
-      <aside className="hidden h-full w-full overflow-y-auto rounded-[1.5rem] bg-primary p-8 text-white shadow-glass lg:block">
-        <div className="mb-8 flex items-center justify-between">
+      <aside className="hidden h-full w-full overflow-y-auto rounded-[1.5rem] bg-primary p-5 text-white shadow-glass lg:block">
+        <div className="mb-4 flex items-center justify-between">
           <h2 className="text-xl font-bold text-white">Filters</h2>
           {hasFilters && (
             <button type="button" onClick={clearFilters} className="rounded-full bg-white/15 px-3 py-1 text-sm font-semibold text-white">

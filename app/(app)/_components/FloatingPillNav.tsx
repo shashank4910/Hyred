@@ -62,7 +62,7 @@ export function FloatingPillNav({
   return (
     <div
       ref={trackRef}
-      className="relative flex w-full flex-wrap items-center justify-center gap-0 rounded-full bg-surface-card p-1"
+      className="relative w-full overflow-x-auto rounded-full [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       role="list"
     >
       <span
@@ -76,29 +76,33 @@ export function FloatingPillNav({
           opacity: pill.ready ? 1 : 0,
         }}
       />
-      {items.map(({ href, label }) => {
-        const active = href === activeHref;
-        return (
-          <Link
-            key={href}
-            href={href}
-            role="listitem"
-            prefetch={href === '/stats' ? false : undefined}
-            ref={(node) => {
-              if (node) itemRefs.current.set(href, node);
-              else itemRefs.current.delete(href);
-            }}
-            aria-current={active ? 'page' : undefined}
-            className={[
-              'relative z-[1] shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-[12px] font-semibold tracking-[-0.02em] outline-none transition-colors duration-300 xl:px-3.5 xl:text-[13px]',
-              'focus-visible:ring-2 focus-visible:ring-primary/40',
-              active ? 'text-ink' : 'text-on-surface-variant hover:text-ink',
-            ].join(' ')}
-          >
-            {label}
-          </Link>
-        );
-      })}
+      {/* Single row, always: wraps never grow the fixed header past the content
+          clearance. Centered when it fits, scrolls horizontally when tight. */}
+      <div className="mx-auto flex w-max items-center gap-0 rounded-full bg-surface-card p-1">
+        {items.map(({ href, label }) => {
+          const active = href === activeHref;
+          return (
+            <Link
+              key={href}
+              href={href}
+              role="listitem"
+              prefetch={href === '/stats' ? false : undefined}
+              ref={(node) => {
+                if (node) itemRefs.current.set(href, node);
+                else itemRefs.current.delete(href);
+              }}
+              aria-current={active ? 'page' : undefined}
+              className={[
+                'relative z-[1] shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-[12px] font-semibold tracking-[-0.02em] outline-none transition-colors duration-300 xl:px-3.5 xl:text-[13px]',
+                'focus-visible:ring-2 focus-visible:ring-primary/40',
+                active ? 'text-ink' : 'text-on-surface-variant hover:text-ink',
+              ].join(' ')}
+            >
+              {label}
+            </Link>
+          );
+        })}
+      </div>
     </div>
   );
 }
