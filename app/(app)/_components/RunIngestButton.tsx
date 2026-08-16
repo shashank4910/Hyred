@@ -2,9 +2,10 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { RefreshCw, ChevronDown, Zap } from 'lucide-react';
+import { ChevronDown, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { triggerJobScan } from './triggerJobScan';
+import SpecularButton from '@/app/_components/react-bits/SpecularButton';
 
 const ALL_SOURCES = [
   { id: 'linkedin', label: 'LinkedIn (guest API)', tokens: 'free' },
@@ -57,24 +58,34 @@ export function RunIngestButton({
       <div className="flex items-center gap-0">
         {!running ? (
           <>
-            <button
-              onClick={run}
+            <SpecularButton
+              size="md"
+              radius={999}
+              tint="#003F3B"
+              tintOpacity={1}
+              blur={0}
+              textColor="#ffffff"
+              lineColor="#72D35F"
+              baseColor="#72D35F"
+              intensity={1.15}
+              shineSize={12}
+              shineFade={36}
+              thickness={1.25}
+              speed={0.4}
+              followMouse
+              proximity={220}
+              autoAnimate
               disabled={running}
-              className={
-                isAdmin
-                  ? 'btn-primary rounded-r-none'
-                  : luminous
-                    ? 'btn-primary gap-2 px-5 py-3'
-                    : 'btn-primary'
-              }
+              onClick={() => void run()}
+              className={isAdmin ? 'rounded-r-none' : ''}
             >
-              {luminous ? (
-                <Zap className="h-4 w-4" />
-              ) : (
-                <RefreshCw className="h-4 w-4" />
-              )}
-              {luminous ? 'Run Scan' : isAdmin && selectedSources.length > 0 ? `Scan (${selectedSources.length})` : 'Run scan'}
-            </button>
+              <Zap className="h-4 w-4 fill-current" />
+              {luminous
+                ? 'Run Scan'
+                : isAdmin && selectedSources.length > 0
+                  ? `Scan (${selectedSources.length})`
+                  : 'Run scan'}
+            </SpecularButton>
             {isAdmin && (
               <button
                 onClick={() => setShowSourcePicker((v) => !v)}
