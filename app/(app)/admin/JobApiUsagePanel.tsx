@@ -15,6 +15,7 @@ import {
   type JobApiSource,
 } from '@/lib/job-api-keys';
 import type { JobApiKeyUsageRow, JobApiUsageEvent } from '@/lib/job-api-usage-types';
+import PremiumSelect from '@/app/_components/ui/PremiumSelect';
 
 type UsageReport = {
   from: string;
@@ -168,22 +169,24 @@ export function JobApiUsagePanel() {
         </label>
         <label className="text-xs">
           <span className="text-on-surface-variant block mb-1">Source</span>
-          <select
+          <PremiumSelect
+            compact
             value={source}
-            onChange={(e) => {
-              setSource(e.target.value as 'all' | JobApiSource);
+            onChange={(v) => {
+              setSource(v as 'all' | JobApiSource);
               setKeysPage(1);
               setEventsPage(1);
             }}
-            className="input text-xs min-w-[140px]"
-          >
-            <option value="all">All sources</option>
-            {(Object.keys(JOB_API_SOURCE_LABELS) as JobApiSource[]).map((s) => (
-              <option key={s} value={s}>
-                {JOB_API_SOURCE_LABELS[s]} ({JOB_API_MONTHLY_QUOTA[s]}/mo)
-              </option>
-            ))}
-          </select>
+            aria-label="Filter usage by source"
+            className="min-w-[140px]"
+            options={[
+              { value: 'all', label: 'All sources' },
+              ...(Object.keys(JOB_API_SOURCE_LABELS) as JobApiSource[]).map((s) => ({
+                value: s,
+                label: `${JOB_API_SOURCE_LABELS[s]} (${JOB_API_MONTHLY_QUOTA[s]}/mo)`,
+              })),
+            ]}
+          />
         </label>
       </div>
 

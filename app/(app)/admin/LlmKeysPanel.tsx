@@ -6,6 +6,7 @@ import {
   Cpu, Plus, Trash2, Power, PowerOff, RefreshCw,
   Loader2, AlertTriangle, TrendingUp, Zap,
 } from 'lucide-react';
+import PremiumSelect from '@/app/_components/ui/PremiumSelect';
 
 type LlmKeyRow = {
   id: string;
@@ -477,21 +478,19 @@ export function LlmKeysPanel() {
             {/* Provider select */}
             <div>
               <label className="text-xs font-medium text-on-surface-variant block mb-1">Provider</label>
-              <select
+              <PremiumSelect
                 value={newProvider}
-                onChange={(e) => {
-                  setNewProvider(e.target.value);
-                  const b = budgets[e.target.value];
+                onChange={(v) => {
+                  setNewProvider(v);
+                  const b = budgets[v];
                   setNewDailyLimit(b?.defaultDailyLimit ?? 1_000_000);
                 }}
-                className="input w-full"
-              >
-                {Object.entries(PROVIDER_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label} — {PROVIDER_FREE_LIMITS[value] ?? ''}
-                  </option>
-                ))}
-              </select>
+                aria-label="LLM provider"
+                options={Object.entries(PROVIDER_LABELS).map(([value, label]) => ({
+                  value,
+                  label: `${label} — ${PROVIDER_FREE_LIMITS[value] ?? ''}`,
+                }))}
+              />
             </div>
 
             {/* API Key */}
