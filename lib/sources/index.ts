@@ -234,9 +234,10 @@ function buildFns(
       queries: buildLinkedInQueries(searchProfile),
       locations: buildLinkedInLocations(preferences),
       maxPagesPerQuery: 2,
-      maxSearchRequests: 36,
+      maxSearchRequests: 18,
       fetchDescriptions: true,
-      maxDescriptions: 24,
+      maxDescriptions: 12,
+      timeBudgetMs: 80_000,
     });
 
   return fns;

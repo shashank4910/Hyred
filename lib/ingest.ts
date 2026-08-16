@@ -52,10 +52,11 @@ const EMBED_PER_RUN = 50;
 const EMBED_CONCURRENCY = 6;
 const SCORE_CONCURRENCY = 5; // Matches free-tier RPM (one call per key per batch cycle)
 /** Wall-clock budget for the entire scan pipeline. Set high enough so scoring
- * completes within Vercel's maxDuration (300s on Hobby, 900s on Pro). The budget
- * check fires only in the scoring loop — if exceeded, remaining jobs are left for
- * the next scan. Override via INGEST_WALL_BUDGET_MS env var. */
-const INGEST_WALL_BUDGET_MS = parseInt(process.env.INGEST_WALL_BUDGET_MS ?? '260000', 10);
+ * completes within Vercel's maxDuration (300s). Stop scoring ~80s early so
+ * finalizeRun() can persist status — otherwise Vercel SIGKILL leaves the row
+ * `running` and Stats later shows a fake 25-minute timeout.
+ * Override via INGEST_WALL_BUDGET_MS env var. */
+const INGEST_WALL_BUDGET_MS = parseInt(process.env.INGEST_WALL_BUDGET_MS ?? '220000', 10);
 /** Delay between scoring batches to respect RPM limits across providers. */
 const SCORE_BATCH_DELAY_MS = 3_000; // 3 seconds between batches → ~20 RPM effective
 
@@ -613,7 +614,7 @@ export async function runIngest(opts?: {
         batch.map(async (c) => {
           try {
             let jobDescription = c.description;
-            if (c.url) {
+            if (c.url && Date.now() - startedAt < INGEST_WALL_BUDGET_MS - 25_000) {
               jobDescription = await ensureFullDescription({
                 jobId: c.id,
                 currentDescription: c.description,

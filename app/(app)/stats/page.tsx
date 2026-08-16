@@ -373,6 +373,7 @@ function RunStatus({
   }
 
   if (status === 'partial') {
+    const hitTimeLimit = (errors ?? []).some((e) => e.source === 'timeout');
     if (isAdmin && detailed) {
       return (
         <span
@@ -380,7 +381,7 @@ function RunStatus({
           title={(errors ?? []).map((e) => `${e.source}: ${e.error}`).join('\n')}
         >
           <AlertTriangle className="h-3.5 w-3.5" />
-          partial ({errCount})
+          {hitTimeLimit ? 'time limit (partial)' : `partial (${errCount})`}
         </span>
       );
     }
@@ -390,7 +391,7 @@ function RunStatus({
         title={isAdmin ? (errors ?? []).map((e) => `${e.source}: ${e.error}`).join('\n') : undefined}
       >
         <AlertTriangle className="h-3.5 w-3.5" />
-        Completed with issues
+        {hitTimeLimit ? 'Stopped at 5 min limit' : 'Completed with issues'}
       </span>
     );
   }
