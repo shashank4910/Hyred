@@ -1616,7 +1616,7 @@
     if (fileIn) {
       const sig = fileUploadZoneSignature(fileIn);
       if (isCoverLetterUploadSignature(sig)) return false;
-      return true;
+      if (isResumeUploadSignature(sig)) return true;
     }
     if (document.querySelector('[data-automation-id*="skills" i]')) return true;
     const hay = workdayApplicationMainText(10000);
@@ -1675,6 +1675,22 @@
   function isWorkdayCoverLetterStep() {
     if (!isWorkdaySite()) return false;
     return isDedicatedCoverLetterStep() || workdayCoverLetterPageHints();
+  }
+
+  function isResumeUploadedOnPage() {
+    const hay = workdayApplicationMainText();
+    if (/resume|résumé|curriculum|vitae|\bcv\b/.test(hay) && /successfully uploaded/i.test(hay)) {
+      return true;
+    }
+    const input = findResumeFileInput();
+    if (input?.files?.length) return true;
+    for (const inp of applicationFormRoot().querySelectorAll('input[type="file"]')) {
+      const sig = fileUploadZoneSignature(inp);
+      if (!isResumeUploadSignature(sig)) continue;
+      const zoneText = (inp.closest('section, [role="group"], [data-automation-id*="upload" i], [class*="upload"], [class*="file"]')?.textContent || '').toLowerCase();
+      if (/uploaded|successfully uploaded|replace|delete|remove/.test(zoneText)) return true;
+    }
+    return false;
   }
 
   function isCoverLetterStep() {
@@ -4623,7 +4639,15 @@
       if (!el) continue;
       if (el.type === 'radio' || el.type === 'checkbox' || el.type === 'file') continue;
       if (!isVisible(el) || el.disabled || el.readOnly) continue;
-      if (!isEmpty(el) || filledSet.has(el)) continue;
+      const isPhoneField = aid.includes('phonenumber') || aid.includes('phone-number');
+      if (filledSet.has(el)) continue;
+      if (!isPhoneField && !isEmpty(el)) continue;
+      if (isPhoneField) {
+        // Workday auto-prefixes country code (e.g. +91) after Country Phone Code
+        // is set — clear it before filling the local number.
+        setNativeValue(el, '');
+        await sleep(50);
+      }
       setNativeValue(el, val);
       filledSet.add(el);
       n++;
@@ -4982,6 +5006,9 @@
     const filledSet = new Set();
     let total = 0;
     const ats = detectAts();
+    if (ats === 'workday' && profile.phone) {
+      profile = { ...profile, phone: wdLocalPhone(profile.phone) };
+    }
     const customMode = isCustomFormMode();
     const appQuestionsPage = ats === 'workday' && isWorkdayApplicationQuestionsStep();
     const passCount = appQuestionsPage ? 1 : customMode ? 1 : 3;
@@ -6283,7 +6310,7 @@ startxref
 
       if (options.resume && !onCoverStep) {
         const fileInput = findResumeFileInput();
-        if (fileInput && !fileInput.files?.length) {
+        if (fileInput && !fileInput.files?.length && !isResumeUploadedOnPage()) {
           resumeUploaded = await uploadResume(match?.id, resumeVariant);
           if (resumeUploaded) await sleep(1200);
         }
@@ -6291,7 +6318,7 @@ startxref
 
       filled = options.commonFields ? await fillAllFields(profile, match) : 0;
 
-      if (options.resume && !onCoverStep && !resumeUploaded && findResumeFileInput() && !findResumeFileInput().files?.length) {
+      if (options.resume && !onCoverStep && !resumeUploaded && findResumeFileInput() && !findResumeFileInput().files?.length && !isResumeUploadedOnPage()) {
         resumeUploaded = await uploadResume(match?.id, resumeVariant);
       }
 
@@ -6539,6 +6566,38 @@ startxref
       cardDismissed = true;
       mountFab();
     });
+
+    // Drag support — let users move the card out of the way of submit buttons.
+    {
+      const head = card.querySelector('.jr-card-head');
+      head.style.cursor = 'grab';
+      let dragging = false, startX = 0, startY = 0, origX = 0, origY = 0;
+      head.addEventListener('mousedown', (e) => {
+        if (e.target.closest('.jr-x')) return;
+        dragging = true;
+        startX = e.clientX;
+        startY = e.clientY;
+        const rect = card.getBoundingClientRect();
+        origX = rect.left;
+        origY = rect.top;
+        head.style.cursor = 'grabbing';
+        e.preventDefault();
+      });
+      document.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        card.style.left = (origX + dx) + 'px';
+        card.style.top = (origY + dy) + 'px';
+        card.style.right = 'auto';
+        card.style.bottom = 'auto';
+      });
+      document.addEventListener('mouseup', () => {
+        if (!dragging) return;
+        dragging = false;
+        head.style.cursor = 'grab';
+      });
+    }
     card.querySelector('.jr-resume-picker')?.addEventListener('change', (e) => {
       if (e.target?.name !== 'jr-resume-variant') return;
       const matchId = card.dataset.matchId;

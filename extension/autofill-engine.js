@@ -17,7 +17,7 @@
     { id: 'first_name', kind: 'text', patterns: [/(^|\b)first[_\s-]*name\b/i, /given[_\s-]*name/i] },
     { id: 'last_name', kind: 'text', patterns: [/(^|\b)last[_\s-]*name\b/i, /family[_\s-]*name/i, /surname/i] },
     { id: 'email', kind: 'text', patterns: [/e-?mail/i] },
-    { id: 'phone', kind: 'text', patterns: [/phone|mobile|telephone|\btel\b/i] },
+    { id: 'phone', kind: 'text', patterns: [/phone|mobile|telephone|\btel\b/i], antiPatterns: [/extension|ext\b|country.*code|device.*type|phone.*code/i] },
     { id: 'current_ctc', kind: 'text', patterns: [/current\s*ctc/i, /present\s*(ctc|salary|compensation)/i, /ctc.*breakdown/i] },
     { id: 'expected_ctc', kind: 'text', patterns: [/expected\s*ctc/i, /desired\s*(ctc|salary)/i, /salary\s*expect/i] },
     { id: 'notice_period', kind: 'choice', patterns: [/notice\s*period/i, /days.*notice/i, /joining\s*time/i, /how\s*many\s*days/i] },
@@ -151,6 +151,7 @@
     if (/facebook/.test(sig) && /willing|share/.test(sig)) return null;
     if (/linked/.test(sig) && /willing|share|profile with us/i.test(sig)) return null;
     for (const entry of FIELD_CATALOG) {
+      if (entry.antiPatterns?.some((re) => re.test(sig))) continue;
       for (const re of entry.patterns) {
         if (re.test(sig)) return entry;
       }
