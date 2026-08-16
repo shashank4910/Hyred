@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { SlidersHorizontal, X } from 'lucide-react';
 import { DEFAULT_LIST_MIN_SCORE, DEFAULT_MATCH_SORT, SOURCE_LABELS, resolveMatchSort } from '@/lib/ui';
 import { useDashboardNav } from './DashboardNavContext';
+import PremiumSelect from '@/app/_components/ui/PremiumSelect';
 
 const SOURCES = ['remotive', 'remoteok', 'hn', 'arbeitnow', 'adzuna_in', 'himalayas', 'jsearch', 'jobspipe', 'jobdatalake', 'linkedin'];
 
@@ -70,85 +71,83 @@ export function MatchFilters({
       ? [city, ...cities]
       : cities;
 
-  const fieldClass = 'input-on-lime';
-
   const scoreSelect = (
-    <select
+    <PremiumSelect
+      variant="forest"
       value={minScore}
-      onChange={(e) => setParam('min', e.target.value)}
-      className={fieldClass}
+      onChange={(v) => setParam('min', v)}
       aria-label="Minimum match score"
-    >
-      <option value="">{`Default (${DEFAULT_LIST_MIN_SCORE}+)`}</option>
-      <option value="0">All scores</option>
-      <option value="60">60+</option>
-      <option value="75">75+</option>
-      <option value="85">85+</option>
-      <option value="90">90+</option>
-    </select>
+      options={[
+        { value: '', label: `Default (${DEFAULT_LIST_MIN_SCORE}+)` },
+        { value: '0', label: 'All scores' },
+        { value: '60', label: '60+' },
+        { value: '75', label: '75+' },
+        { value: '85', label: '85+' },
+        { value: '90', label: '90+' },
+      ]}
+    />
   );
 
   const sortSelect = (
-    <select
+    <PremiumSelect
+      variant="forest"
       value={sort}
-      onChange={(e) =>
-        setParam('sort', e.target.value === DEFAULT_MATCH_SORT ? '' : e.target.value)
-      }
-      className={fieldClass}
+      onChange={(v) => setParam('sort', v === DEFAULT_MATCH_SORT ? '' : v)}
       aria-label="Sort matches"
-    >
-      <option value="score">Best score</option>
-      <option value="newest">Newest first</option>
-      <option value="activity">Recent activity</option>
-    </select>
+      options={[
+        { value: 'score', label: 'Best score' },
+        { value: 'newest', label: 'Newest first' },
+        { value: 'activity', label: 'Recent activity' },
+      ]}
+    />
   );
 
   const secondaryFilters = (
     <>
       {isAdmin && (
-        <select
+        <PremiumSelect
+          variant="forest"
           value={source}
-          onChange={(e) => setParam('source', e.target.value)}
-          className={fieldClass}
+          onChange={(v) => setParam('source', v)}
           aria-label="Job source"
-        >
-          <option value="">All sources</option>
-          {SOURCES.map((s) => (
-            <option key={s} value={s}>
-              {SOURCE_LABELS[s] ?? s}
-            </option>
-          ))}
-        </select>
+          options={[
+            { value: '', label: 'All sources' },
+            ...SOURCES.map((s) => ({ value: s, label: SOURCE_LABELS[s] ?? s })),
+          ]}
+        />
       )}
 
-      <select
+      <PremiumSelect
+        variant="forest"
         value={locationValue}
-        onChange={(e) => setLocation(e.target.value)}
-        className={fieldClass}
+        onChange={setLocation}
         aria-label="Filter by location"
-      >
-        <option value="">Any location</option>
-        <option value={REMOTE_VALUE}>Remote only</option>
-        {cityOptions.length > 0 && (
-          <optgroup label="Cities in your matches">
-            {cityOptions.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </optgroup>
-        )}
-      </select>
+        options={[
+          { value: '', label: 'Any location' },
+          { value: REMOTE_VALUE, label: 'Remote only' },
+        ]}
+        groups={
+          cityOptions.length > 0
+            ? [
+                {
+                  label: 'Cities in your matches',
+                  options: cityOptions.map((c) => ({ value: c, label: c })),
+                },
+              ]
+            : undefined
+        }
+      />
 
-      <select
+      <PremiumSelect
+        variant="forest"
         value={expired === '1' ? '1' : ''}
-        onChange={(e) => setParam('expired', e.target.value)}
-        className={fieldClass}
+        onChange={(v) => setParam('expired', v)}
         aria-label="Job freshness"
-      >
-        <option value="">Recent jobs only</option>
-        <option value="1">Include older jobs</option>
-      </select>
+        options={[
+          { value: '', label: 'Recent jobs only' },
+          { value: '1', label: 'Include older jobs' },
+        ]}
+      />
     </>
   );
 
@@ -173,7 +172,7 @@ export function MatchFilters({
       </label>
       <label className="block text-sm font-semibold text-white">
         Location & freshness
-        <span className="mt-1.5 block space-y-2">{secondaryFilters}</span>
+        <span className="mt-1.5 flex flex-col gap-2">{secondaryFilters}</span>
       </label>
       {usingDefaultMin ? (
         <p className="text-sm text-white/80">

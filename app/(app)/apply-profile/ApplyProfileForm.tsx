@@ -6,6 +6,7 @@ import {
   User, Phone, MapPin, Link2, Briefcase, IndianRupee,
   Clock, Globe, BookOpen, Save, Loader2, CheckCircle2,
 } from 'lucide-react';
+import PremiumSelect from '@/app/_components/ui/PremiumSelect';
 
 type Profile = Record<string, string | boolean | number | null>;
 
@@ -155,22 +156,31 @@ export function ApplyProfileForm() {
       <Section icon={<Clock className="h-4 w-4" />} title="Availability">
         <Grid>
           <Field label="Notice Period">
-            <select className="input" value={f('notice_period') || '30 days'} onChange={e => set('notice_period', e.target.value)}>
-              {NOTICE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-            </select>
+            <PremiumSelect
+              value={f('notice_period') || '30 days'}
+              onChange={(v) => set('notice_period', v)}
+              options={NOTICE_OPTIONS.map((o) => ({ value: o, label: o }))}
+            />
           </Field>
           <Field label="Available From (if different from notice)">
             <input className="input" type="date" value={f('available_from')} onChange={e => set('available_from', e.target.value)} />
           </Field>
           <Field label="Preferred Work Type">
-            <select className="input" value={f('preferred_work_type') || 'hybrid'} onChange={e => set('preferred_work_type', e.target.value)}>
-              {WORK_TYPES.map(o => <option key={o} value={o} className="capitalize">{o.charAt(0).toUpperCase() + o.slice(1)}</option>)}
-            </select>
+            <PremiumSelect
+              value={f('preferred_work_type') || 'hybrid'}
+              onChange={(v) => set('preferred_work_type', v)}
+              options={WORK_TYPES.map((o) => ({
+                value: o,
+                label: o.charAt(0).toUpperCase() + o.slice(1),
+              }))}
+            />
           </Field>
           <Field label="Willing to Travel">
-            <select className="input" value={f('willing_to_travel') || 'minimal'} onChange={e => set('willing_to_travel', e.target.value)}>
-              {TRAVEL_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-            </select>
+            <PremiumSelect
+              value={f('willing_to_travel') || 'minimal'}
+              onChange={(v) => set('willing_to_travel', v)}
+              options={TRAVEL_OPTIONS.map((o) => ({ value: o, label: o }))}
+            />
           </Field>
           <Field label="Willing to Relocate?" span={2}>
             <div className="flex items-center gap-4 mt-1">
@@ -222,20 +232,29 @@ export function ApplyProfileForm() {
         <p className="text-xs text-on-surface-variant mb-3">Many job platforms (Greenhouse, Lever, Workday) require these for compliance. Your answers are stored only for auto-fill purposes.</p>
         <Grid>
           <Field label="Gender">
-            <select className="input" value={f('gender') || ''} onChange={e => set('gender', e.target.value)}>
-              <option value="">Select...</option>
-              {GENDER_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-            </select>
+            <PremiumSelect
+              value={f('gender') || ''}
+              onChange={(v) => set('gender', v)}
+              placeholder="Select…"
+              options={[
+                { value: '', label: 'Select…' },
+                ...GENDER_OPTIONS.map((o) => ({ value: o, label: o })),
+              ]}
+            />
           </Field>
           <Field label="Veteran Status">
-            <select className="input" value={f('veteran_status') || 'No'} onChange={e => set('veteran_status', e.target.value)}>
-              {VETERAN_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-            </select>
+            <PremiumSelect
+              value={f('veteran_status') || 'No'}
+              onChange={(v) => set('veteran_status', v)}
+              options={VETERAN_OPTIONS.map((o) => ({ value: o, label: o }))}
+            />
           </Field>
           <Field label="Disability Status">
-            <select className="input" value={f('disability_status') || 'No'} onChange={e => set('disability_status', e.target.value)}>
-              {DISABILITY_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-            </select>
+            <PremiumSelect
+              value={f('disability_status') || 'No'}
+              onChange={(v) => set('disability_status', v)}
+              options={DISABILITY_OPTIONS.map((o) => ({ value: o, label: o }))}
+            />
           </Field>
         </Grid>
       </Section>

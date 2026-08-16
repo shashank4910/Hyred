@@ -20,6 +20,7 @@ import {
   X,
 } from 'lucide-react';
 import { PageHeader } from '../_components/PageHeader';
+import PremiumSelect from '@/app/_components/ui/PremiumSelect';
 import type { DreamCompanyRow } from '@/lib/dream-companies';
 
 type CatalogItem = {
@@ -415,18 +416,17 @@ export function DreamAlertsClient({
                         autoFocus
                       />
                     </div>
-                    <select
+                    <PremiumSelect
+                      compact
                       value={region}
-                      onChange={(e) => setRegion(e.target.value)}
-                      className="input shrink-0 max-w-[130px] text-xs"
-                    >
-                      <option value="">All regions</option>
-                      {regions.map((r) => (
-                        <option key={r.id} value={r.id}>
-                          {r.label}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={setRegion}
+                      aria-label="Filter companies by region"
+                      className="shrink-0 max-w-[130px]"
+                      options={[
+                        { value: '', label: 'All regions' },
+                        ...regions.map((r) => ({ value: r.id, label: r.label })),
+                      ]}
+                    />
                   </div>
                   <div className="flex flex-wrap gap-2 max-h-[45vh] overflow-y-auto">
                       {catalogResults.map((c) => (
