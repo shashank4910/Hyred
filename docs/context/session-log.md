@@ -2,6 +2,42 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 33 — Hyred Lime chrome, premium selects, filter slider (Aug 16, 2026)
+
+**Goal:** Logged-in UI is CareerFlow *structure* with Hyred facts: forest `#003F3B`, lime `#72D35F` accent only, white canvas, grey cards, Inter. No CareerFlow name, no fake salaries/applicant counts. Filters and chrome match that world; native OS dropdowns and a scrolling filter column were the leftover cheap bits.
+
+### Shipped — App chrome + dashboard listing (PRs **#304–#309**)
+
+| PR | What |
+|---|---|
+| **#304** | Forest filter slab + listing layout vs leftover lime SaaS chrome. |
+| **#305** | Card depth, lime score tile, skill CTAs restored. |
+| **#306** | White page / grey cards, **see more** (not CSS clamp), missing-skills chips when list query has no JD (`enrichMatchListSkills` must not wipe `missing_skills` if JD is null). |
+| **#307** | One floating pill header on every logged-in page (`AppShell`); `PageHeader`; no left icon rail; Apply profile in nav. |
+| **#308** | Scan live HUD — radar pill **bottom-right** (phone: above dock). Run Scan stays in the pill menu. Page stays clickable. Stop on the pill. |
+| **#309** | Sliding lime pill on the header so every tab stays visible. |
+
+### Shipped — Controls + filters (PRs **#310–#316**)
+
+| PR | What |
+|---|---|
+| **#310** | React Bits `SpecularButton` (`ogl`) on **Run Scan** only — forest fill, lime rim shine. Not on every job card (WebGL cost). Reduced-motion skips the canvas. |
+| **#311** | Agent rule: **always push** after a commit (then PR → merge). |
+| **#312** | `PremiumSelect` — custom listbox (portal menu, keyboard, typeahead) on filters, Apply profile, Dream alerts, Admin. Replaces native OS `<select>` popups. |
+| **#313** | **Sort by** above the job cards (`MatchSortBar`). Removed sort from Filters. Cards FLIP-slide (`lib/match-list-flip.ts`). |
+| **#314** | Dropped A–Z. **Newest** = later of a sane employer `posted_at` and `fetched_at` (`lib/job-listing-time.ts`). Ignore future posted dates; ancient posted loses to a recent discovery. Card clock uses the same date. |
+| **#315** | Filters top: **match-score slider** (`min`) + **freshness ticks** Last 24 hours / This week / This month (`fresh=1d,7d,30d`, widest tick wins). Default with no ticks = 45-day `jobFreshnessOrFilter`. Include older jobs (`expired=1`) still under the ticks. Taller forest slab. |
+| **#316** | Filters **sticky** (`lg:sticky lg:top-24` on the column wrapper, fixed viewport height). Do **not** `self-stretch` the slab to the card list height — that made it scroll away with the jobs. |
+
+### Key decisions / gotchas
+
+1. **Lime never fills the filter slab** — forest `#003F3B`, white labels; lime only on slider fill, checked ticks, and small accents.
+2. **One WebGL button** — SpecularButton is Run Scan only.
+3. **`fresh` vs `expired`** — ticks set a tighter cutoff via `dashboardFreshnessCutoffIso` / `freshnessWindowDays`. `expired=1` still skips the window entirely. Ticking freshness clears `expired`.
+4. **Sticky filters** — pin the *wrapper*, give the aside `h-[calc(100vh-7.5rem)]` + internal scroll. Stretching the aside with the match list breaks sticky.
+5. **Missing skills on the list** — if the list query has no JD, keep stored `missing_skills`; don’t run the JD-null enrich wipe.
+6. **Do not sort Newest on raw `posted_at` DESC.** Job APIs send null / 2019 / future dates → list scrambled vs the card. Use `jobListingTime` / `sortMatchesByFreshness`. Pagination still orders `fetched_at` desc, then each page (and the loaded list) is re-ranked. Default sort stays **Highest score**. Sort is not a filter.
+
 ## Session 32 — Dashboard freshness, filter UX/perf, keyword close-match, LinkedIn recruiting (Aug 10, 2026)
 
 **Goal:** Stop double-toast scan noise; make Optimize keywords honest (green/amber/red); fix LinkedIn recruiting search; speed up dashboard filters; stop cities like Noida vanishing when APIs write bad `posted_at`; let users opt in to older/expired jobs.

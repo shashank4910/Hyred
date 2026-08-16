@@ -12,7 +12,7 @@
 JobRadar / Hyred is a personalized AI-powered job-search dashboard that:
 1. Fetches jobs from Adzuna, Remotive, RemoteOK, HackerNews, Arbeitnow (cron every 6h)
 2. AI-scores each job against the user's resume (0-100)
-3. Surfaces relevant matches in a polished light-themed dashboard (**Luminous** teal UI — Google Stitch, May 2026)
+3. Surfaces relevant matches in a polished light-themed dashboard (**Hyred Lime** — forest filter slab, grey cards, lime accent; Aug 2026. Earlier: Luminous teal / Stitch, May 2026)
 4. Generates tailored ATS resumes + cover letters per job
 5. Provides skill-match analysis (JD requirements vs resume)
 
@@ -41,24 +41,19 @@ JobRadar / Hyred is a personalized AI-powered job-search dashboard that:
 
 ### Current UI (live on hyred.in)
 
-**As of May 31, 2026** — merged **PR #100–#106**: Luminous redesign, layout/overlap fixes, full-page polish (#104), scan-started toast (#105), status filter grid (#106).
+**As of Aug 16, 2026** — **Hyred Lime** (Sessions **32–33**, PRs **#304–#316**): forest filter slab, floating pill header, white canvas, grey cards, Inter. Luminous/Stitch tokens remain in `tailwind.config.ts` for older surfaces; live dashboard chrome is forest + lime accent only.
 
-| Aspect | Current (Luminous) | Previous (pre-#100) |
-|---|---|---|
-| **Codename** | Luminous (Stitch) | Indigo Insight / MD3 |
-| **Primary** | Teal `#006a65` → gradient `#006a65` → `#2cc9c0` | Indigo `#4648d4` + purple secondary |
-| **Background** | Cool off-white `#f9f9ff` | Blue-tint `#f8f9ff` |
-| **Headline font** | Plus Jakarta Sans | Hanken Grotesk |
-| **Body font** | Plus Jakarta Sans | Inter |
-| **Desktop layout** | Fixed **260px left sidebar** + top header | Sticky **top nav bar** only |
-| **Dashboard** | Flex row at `xl+`: match list + insights sidebar (`xl:w-72`); stacked below `xl` | Single column + stat cards row |
-| **Status tabs** | 7-column grid — Inbox through Saved on **one line**, no horizontal scroll | Pill row with overflow scroll |
-| **Match cards** | Circular score ring, italic AI quote, skill pills | Numeric score + inline badges |
-| **Run scan** | Teal gradient button in **header** (⚡ Run Scan); **scan-started toast** with quick links while ingest runs | Top-right on dashboard only |
-| **Toasts** | Bottom-right (`AppToaster`); scan notice stays until complete | Top-right (covered header) |
-| **Legal links** | Sign-up checkbox only; **none** in logged-in shell | Footer on AppShell (removed #99) |
+| Aspect | Current (Hyred Lime) |
+|---|---|
+| **Primary / accent** | Forest `#003F3B`; lime `#72D35F` never fills the filter slab |
+| **Canvas / cards** | White `#FFFFFF` page, grey `#F3F4F6` cards, Inter |
+| **Desktop chrome** | Floating pill header + mobile dock; **no** left icon rail (`AppShell`) |
+| **Filters** | Sticky forest slab: score slider, freshness ticks (`fresh=`), location `PremiumSelect` (no sort) |
+| **Sort** | `MatchSortBar` above cards: Highest score / Newest (`lib/job-listing-time.ts`) |
+| **Run Scan** | Header `SpecularButton` + live HUD bottom-right (`ScanLiveHud`) |
+| **Match cards** | Lime score tile, skill pills, see more, one forest Apply now |
 
-**Pages using Luminous tokens everywhere (PR #104):** Job detail, onboarding, Stats, Admin, Import, apply-profile, error/not-found — all inherit refreshed typography, cards, and form controls from `globals.css`. Dashboard-specific patterns (bento insights, 7-col status grid) live only on `/`.
+**Older Luminous look (May 2026, PRs #100–#106):** 260px left sidebar, Plus Jakarta Sans, circular score ring, teal-gradient Run Scan + scan-started toast. Still referenced in tokens/`globals.css`; do not revive the sidebar rail.
 
 **ATS Checker (PR #129 / #187 / #266–#275):** Logged-in `/ats-checker` — premium scan report (`AtsScanReport`), evidence quotes + resume preview, Fix Studio entry; **hybrid evidence-grounded engine** (facts + LLM semantic + quote gate, PR **#269**) + **semantic section mapping** (PRs **#274–#275**, Session **31**). Public `/free-tools/ats-score-checker` — structural (zero LLM) + gated fact report; upload/paste, Try sample, JD match %.
 
@@ -66,10 +61,10 @@ JobRadar / Hyred is a personalized AI-powered job-search dashboard that:
 
 | Layer | File | Notes |
 |---|---|---|
-| Tailwind theme | `tailwind.config.ts` | Luminous palette, `sidebar: 260px`, `shadow-card` / `shadow-elevated` |
-| Global components | `app/globals.css` | `.teal-gradient`, `.btn-primary`, `.card`, `.input`, `.glass-card` |
+| Tailwind theme | `tailwind.config.ts` | Hyred Lime: forest primary, lime accent, Inter, `shadow-card` / `shadow-elevated` |
+| Global components | `app/globals.css` | `.btn-primary`, `.card`, `.input`, forest/lime utilities |
 | Toaster | `app/_components/AppToaster.tsx` | Bottom-right; mobile offset above bottom nav |
-| Fonts | Google Fonts import in `globals.css` | Plus Jakarta Sans 400–800 |
+| Fonts | Google Fonts import in `globals.css` | **Inter** 400–800 (Hyred Lime). Plus Jakarta remains in older token comments only. |
 
 **Semantic colors (common):** `primary`, `primary-container`, `match-success` (`#2cc9c0`), `text-muted`, `surface-container-lowest` (card white), `outline-variant` (borders).
 
@@ -77,29 +72,32 @@ JobRadar / Hyred is a personalized AI-powered job-search dashboard that:
 
 | Piece | File | Behavior |
 |---|---|---|
-| Shell | `app/(app)/_components/AppShell.tsx` | Sidebar nav (`z-40`), header (`z-[60]`), `lg:pl-[284px]`, mobile bottom nav, logout |
+| Shell | `app/(app)/_components/AppShell.tsx` | Floating pill header (`z-[60]`), mobile dock, **no** left icon rail; `ScanLiveHud` |
 | Header search | `app/(app)/_components/HeaderSearch.tsx` | **Dashboard (`/`) only**; flex spacer on other routes so Run Scan stays right |
-| Run scan | `app/(app)/_components/RunIngestButton.tsx` | Header on desktop; admin source picker dropdown |
-| Scan UX | `app/(app)/_components/triggerJobScan.ts` + `scanStartedToast.tsx` | Immediate “scan started” toast; dismiss on complete / logout |
-| Dashboard page | `app/(app)/page.tsx` | Greeting, quick stats, flex main + insights, success banner |
-| Login | `app/login/page.tsx` | Teal gradient “H” badge, no legal footer |
+| Run scan | `app/(app)/_components/RunIngestButton.tsx` | Header `SpecularButton`; admin source picker still a normal chevron |
+| Scan UX | `ScanLiveHud` + `lib/scan-ui-active.ts` | Bottom-right radar pill; page stays clickable; Stop on the pill (PR **#308**) |
+| Dashboard page | `app/(app)/page.tsx` | Forest `MatchFilters` + match list; sticky filters (PR **#316**) |
+| Login | `app/login/page.tsx` | Teal/forest mark; no legal footer |
 
-**Sidebar nav (desktop):** Dashboard · My Resume · Stats · Top MNCs · Settings · (Admin if `is_admin`) · Log out. Import is desktop-only in nav config.
+**Header nav (desktop pill):** Dashboard · My Resume · Apply profile · Stats · Dream Alerts · ATS · Top MNCs · Import · Settings · (Admin if `is_admin`).
 
 ### UI component map
 
 ```
 app/(app)/_components/
-  AppShell.tsx           ← sidebar + header + mobile nav
+  AppShell.tsx           ← floating pill header + mobile dock (no left rail)
   HeaderSearch.tsx       ← dashboard search → ?q= filter
-  RunIngestButton.tsx    ← scan + admin source picker dropdown
-  triggerJobScan.ts      ← POST /api/ingest + toast lifecycle
-  scanStartedToast.tsx   ← rich “scan started” notice + quick links
-  MatchCard.tsx          ← Luminous job card (score ring, insight quote, skills)
-  MatchScoreRing.tsx     ← SVG circular match %
-  StatusFilter.tsx       ← 7-col grid tabs (Inbox / Applied / … / Saved), one row
-  MatchFilters.tsx       ← score, remote, city, freshness (expired), sort (+ admin source)
-  DashboardInsights.tsx  ← right column widgets on dashboard (xl+)
+  RunIngestButton.tsx    ← SpecularButton scan + admin source picker
+  ScanLiveHud.tsx        ← bottom-right radar pill while scanning
+  MatchCard.tsx          ← grey card, lime score tile, skill pills, see more
+  StatusFilter.tsx       ← Inbox / Saved (and status) chips
+  MatchFilters.tsx       ← sticky forest slab: score slider, freshness ticks, location PremiumSelect (no sort)
+  MatchSortBar.tsx       ← Highest score / Newest above the job cards
+  MatchList.tsx          ← grid + FLIP reorder on sort
+  PageHeader.tsx         ← shared page title on logged-in routes
+
+app/_components/ui/PremiumSelect.tsx  ← custom listbox (portal)
+app/_components/react-bits/SpecularButton.tsx  ← WebGL rim (Run Scan only)
 
 app/_components/
   AppToaster.tsx         ← (via app/layout.tsx) toast placement
@@ -161,6 +159,13 @@ lib/
 
 | Date | PR | Summary |
 |---|---|---|
+| Aug 16, 2026 | **#316** | Filters **sticky** while jobs scroll (`lg:sticky` on wrapper, not stretched to list height) |
+| Aug 16, 2026 | **#315** | Match-score **slider** + freshness ticks (`fresh=1d,7d,30d`); default 45-day window |
+| Aug 16, 2026 | **#314** | **Newest** sort = `jobListingTime` (sane posted ∪ fetched); dropped A–Z |
+| Aug 16, 2026 | **#313** | Sort bar above cards; sort removed from Filters; card FLIP |
+| Aug 16, 2026 | **#312** | `PremiumSelect` custom listbox (portal) |
+| Aug 16, 2026 | **#309–#310** | Sliding header pill tabs; lime specular Run Scan |
+| Aug 15–16, 2026 | **#304–#308** | **Hyred Lime** listing + floating pill chrome + ScanLiveHud |
 | Aug 6–7, 2026 | **#274–#275** | **ATS section mapping** — LLM `semantic-sections` in same call + token heading contains; merge LLM∪facts so incomplete maps don’t wipe Skills/Summary |
 | Aug 6, 2026 | **#271 / #273** | **ATS report polish** — Skill Evidence sync, Involved-in / Vague dedupe, LinkedIn-only contact tip, no green JD without JD, empty-state tips |
 | Aug 6, 2026 | **#269** | **Evidence-grounded ATS engine** — hybrid facts + LLM semantic + quote gate (logged-in); structural gated facts for public widget; server `report` on API |
@@ -198,7 +203,12 @@ When you ship UI work: add a row here, link the PR, and update **Current UI** if
 | **Match activity** sidebar overlapping status tabs / match cards on dashboard | Stack main + insights until `xl`; flex layout with `min-w-0`; explicit `lg:pl-[284px]`; lower sidebar z-index | #103 |
 | Status filter **horizontal scrollbar** (tabs clipped off-screen) | Full-width `grid-cols-7`, compact equal tabs — one row, no `overflow-x` | #106 |
 | Manual scan gave **no feedback** while ingest runs (1–2 min) | Rich **scan-started toast** via `scanStartedToast.tsx`; dismiss on complete / logout | #105 |
-| Stitch HTML pasted into repo pages | Don't — translate to React + existing data hooks | — |
+| Sticky filters scrolling away with cards | Pin the MatchFilters **wrapper** (`lg:sticky lg:top-24`); aside `h-[calc(100vh-7.5rem)]`; never `self-stretch` the slab to the list height | #316 |
+| Native OS `<select>` popup vs Hyred chrome | `PremiumSelect` portal listbox | #312 |
+| Scan toast covering the page | Live HUD pill bottom-right; page stays clickable | #308 |
+| Header nav labels clipped in the pill | Own-row `FloatingPillNav`; no `overflow-x` clip | #309 |
+| **Newest** sort scrambled vs card dates | Rank by `jobListingTime` (later of sane `posted_at` and `fetched_at`); never raw `posted_at` DESC | #314 |
+| Filters scrolled away with the job list | Sticky wrapper + fixed-height slab, internal scroll | #316 |
 
 ---
 
@@ -1151,9 +1161,12 @@ preferences.locations + resume current_location
 | Piece | Role |
 |---|---|
 | City filter | `city` search param + `listMatchCities()` / `lib/match-location-filter.ts` (Session 29) |
-| Freshness window | Default hide if outside 45 days via `jobFreshnessOrFilter` — (`posted_at` ≥ cutoff **or** null) **OR** `fetched_at` ≥ cutoff (PR **#289**) |
-| Include older jobs | `expired=1` → `includeExpiredJobs()` skips window on counts / cities / list; **Older** badge via `isJobPastFreshnessWindow` (PR **#290**) |
-| Filter UX | Keep list visible + “Updating…” (PR **#287**); client refetch `/api/matches` + slim select (PR **#288**) |
+| Score floor | URL `min` — **slider** 0–100 at top of Filters (PR **#315**); empty `min` still defaults to list min score 50 |
+| Freshness ticks | URL `fresh=1d`, `7d`, `30d` (comma-separated; **widest wins**) via `freshnessWindowDays` / `dashboardFreshnessCutoffIso` (PR **#315**) |
+| Freshness window | No ticks → hide if outside 45 days via `jobFreshnessOrFilter` — (`posted_at` ≥ cutoff **or** null) **OR** `fetched_at` ≥ cutoff (PR **#289**) |
+| Include older jobs | `expired=1` → `includeExpiredJobs()` skips window; **Older** badge via `isJobPastFreshnessWindow` (PR **#290**). Ticking `fresh` clears `expired`. |
+| Filter UX | Keep list visible + “Updating…” (PR **#287**); client refetch `/api/matches` + slim select (PR **#288**); Filters column **sticky** (PR **#316**) |
+| Dropdowns | `PremiumSelect` (PR **#312**), not native OS menus |
 
 **Do not** key hide-only on `posted_at` (paid APIs can write ancient/wrong dates). **Do not** bump `fetched_at` on job upsert conflict. `expired=1` cannot bring back hard-deleted cleanup rows.
 
@@ -1272,7 +1285,9 @@ app/(app)/top-mnc/          ← Top MNC filtered job list (lib/top-companies.ts)
 app/(app)/import/           ← Manual job URL import UI
 app/(app)/ats-checker/      ← Logged-in ATS checker (AtsScanReport + Fix Studio + history)
 app/(app)/apply-profile/    ← Application profile form (memory store for auto-apply)
-app/(app)/_components/      ← AppShell (sidebar), MatchCard, MatchScoreRing, StatusFilter, MatchFilters (score/remote/city/freshness), DashboardInsights, HeaderSearch, RunIngestButton, MatchList (paginated, infinite-scroll, client filter refetch, sessionStorage snapshot for back-nav)
+app/(app)/_components/      ← AppShell (pill header), MatchCard, StatusFilter, MatchFilters (slider + freshness ticks + sticky), HeaderSearch, RunIngestButton (SpecularButton), MatchList, ScanLiveHud, PageHeader
+app/_components/ui/         ← PremiumSelect
+app/_components/react-bits/ ← SpecularButton (ogl)
 app/(app)/admin/            ← Admin Center: AdminDashboard (JobsPipe/JobDataLake/JSearch keys + bulk paste), JobApiUsagePanel.tsx, LlmKeysPanel.tsx, JobsControlPanel.tsx, CompanyCatalogRequestsPanel
 app/(app)/dream-alerts/     ← Dream Company watchlist + alert feed (migration 0016+)
 app/api/admin/job-api-usage/ ← GET usage logs by date range + source
@@ -1656,6 +1671,8 @@ When a feature seems broken:
 - **Keep the `AGENTS.md` Index in sync** when you add/rename a `##` section here, and append new dated session logs to `docs/context/session-log.md` (not here).
 
 **Last updated:** Aug 7, 2026 — **Session 31:** ATS report polish + semantic section mapping (PRs **#271–#275**). `AGENTS.md` Index / ATS section / Known Pitfalls / UI change log / session-log updated. See Session 31 (and Session 30 for hybrid engine).
+
+**Last updated:** Aug 16, 2026 — **Session 33:** Hyred Lime chrome (pill header, scan HUD), `PremiumSelect`, `SpecularButton` on Run Scan, filter score slider + `fresh=` ticks, sticky Filters. Archive → `docs/context/session-log.md` Session 33. PRs **#304–#316**.
 
 **Last updated:** Aug 10, 2026 — **Session 32:** dashboard freshness (`jobFreshnessOrFilter` + Include older jobs / `expired=1`), filter UX/perf, Optimize green/amber/red keywords, LinkedIn recruiting search. Archive → `docs/context/session-log.md` Session 32. PRs **#282–#290**.
 
