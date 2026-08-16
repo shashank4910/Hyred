@@ -15,6 +15,14 @@ export type Profile = {
   updated_at: string;
 };
 
+export type ScoreWidenNotice = {
+  previous_min_score: number;
+  applied_min_score: number;
+  matches_at_user_min: number;
+  matches_after_widen: number;
+  scan_at: string;
+};
+
 export type Preferences = {
   roles?: string[];
   min_score?: number;
@@ -22,6 +30,8 @@ export type Preferences = {
   remote_only?: boolean;
   exclude_keywords?: string[];
   blacklist_companies?: string[];
+  /** Set when a scan auto-lowers min_score — cleared on dismiss or manual edit. */
+  score_widen_notice?: ScoreWidenNotice | null;
 };
 
 import type { ProfileSeniority } from './profile-seniority';
