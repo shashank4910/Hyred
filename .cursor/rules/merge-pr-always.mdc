@@ -9,12 +9,13 @@ After **any** code fix, feature, or update in this repo:
 
 1. **Branch** off latest `main` (never reuse a merged/closed PR branch).
 2. **Verify** — `npm run typecheck` (and `npm run build` for app changes).
-3. **Push** and **open a PR** with a clear summary + test plan.
+3. **Always push** — `git push -u origin HEAD` as soon as there is a commit. Do not wait for “please push.” Do not leave commits only on the laptop. Then **open a PR** with a clear summary + test plan.
 4. **Merge when CI is green** — squash + delete branch. **Do this automatically** as part of completing the task. Do not stop at "PR opened" or wait for a second "please merge" unless CI is failing or the user explicitly says not to merge.
 5. **Verify live** — confirm the change on `main` via `https://raw.githubusercontent.com/shashank4910/JobRadar/main/<path>`.
 
 ## Do not
 
+- Ask “should I push?” — push is the default after every commit.
 - Leave fixes only on a local branch or open PR without merging.
 - Ask "should I merge?" when CI is green — merging is the default completion step.
 - Push follow-up commits to a branch whose PR was already merged.

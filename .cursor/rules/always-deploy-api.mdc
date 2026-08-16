@@ -11,7 +11,7 @@ When you add or change **backend/API code** (`app/api/**`, `lib/**` used by rout
 
 1. Branch off latest `main`.
 2. Run `npm run typecheck` (and `npm run build` for app-facing changes).
-3. Open a PR with a clear summary + test plan.
+3. **Always push** the branch, then open a PR with a clear summary + test plan.
 4. **Merge when CI is green** (squash + delete branch).
 5. **Verify live** on `main` via `https://raw.githubusercontent.com/shashank4910/JobRadar/main/<path>`.
 
