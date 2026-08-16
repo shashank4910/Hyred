@@ -9,7 +9,9 @@
       { id: 'first_name', profile: 'first_name', css: ['input[data-automation-id*="firstName" i]', 'input[name*="firstName" i]'] },
       { id: 'last_name', profile: 'last_name', css: ['input[data-automation-id*="lastName" i]', 'input[name*="lastName" i]'] },
       { id: 'email', profile: 'email', css: ['input[data-automation-id="email"]', 'input[type="email"]'] },
-      { id: 'phone', profile: 'phone', css: ['input[data-automation-id*="phoneNumber" i]', 'input[data-automation-id*="phone" i][type="text"]'] },
+      // Phone is filled by fillWorkday() AFTER Country Phone Code multiselect,
+      // because Workday auto-prefixes the country code into this input.
+      // { id: 'phone', profile: 'phone', css: [...] },
       { id: 'city', profile: 'location.city', css: ['input[data-automation-id*="city" i]'] },
       { id: 'postal', profile: 'zip_code', css: ['input[data-automation-id*="postal" i]', 'input[data-automation-id*="zip" i]'] },
       {
