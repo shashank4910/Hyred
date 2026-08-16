@@ -17,6 +17,28 @@ export interface MatchFilterParams {
   q?: string;
   /** When "1", skip the 45-day freshness window (show older/expired jobs too). */
   expired?: string;
+  /** Comma-separated freshness ticks: 1d, 7d, 30d. Widest tick wins. */
+  fresh?: string;
+}
+
+export const FRESHNESS_TICKS = [
+  { id: '1d', days: 1, label: 'Last 24 hours' },
+  { id: '7d', days: 7, label: 'This week' },
+  { id: '30d', days: 30, label: 'This month' },
+] as const;
+
+export type FreshnessTickId = (typeof FRESHNESS_TICKS)[number]['id'];
+
+/** Widest selected tick in days, or null when none are on (use the 45-day default). */
+export function freshnessWindowDays(fresh: string | null | undefined): number | null {
+  if (!fresh?.trim()) return null;
+  const ids = new Set(fresh.split(',').map((s) => s.trim()));
+  let max: number | null = null;
+  for (const tick of FRESHNESS_TICKS) {
+    if (!ids.has(tick.id)) continue;
+    max = max == null ? tick.days : Math.max(max, tick.days);
+  }
+  return max;
 }
 
 export function includeExpiredJobs(params: { expired?: string | null } | null | undefined): boolean {
@@ -44,10 +66,17 @@ export function dashboardMinScore(preferences?: Preferences | null): number {
   return preferences?.min_score ?? DEFAULT_DASHBOARD_MIN_SCORE;
 }
 
-export function staleJobCutoffIso(): string {
-  return new Date(
-    Date.now() - MAX_JOB_AGE_DAYS * 24 * 60 * 60 * 1000,
-  ).toISOString();
+export function staleJobCutoffIso(days: number = MAX_JOB_AGE_DAYS): string {
+  const safeDays = Number.isFinite(days) && days > 0 ? days : MAX_JOB_AGE_DAYS;
+  return new Date(Date.now() - safeDays * 24 * 60 * 60 * 1000).toISOString();
+}
+
+/** Cutoff for the dashboard list: tick window, else the 45-day default. */
+export function dashboardFreshnessCutoffIso(params: {
+  fresh?: string | null;
+} | null | undefined): string {
+  const days = freshnessWindowDays(params?.fresh);
+  return staleJobCutoffIso(days ?? MAX_JOB_AGE_DAYS);
 }
 
 /**
@@ -139,7 +168,7 @@ export async function getDashboardCounts(
   isAdmin: boolean = false,
 ) {
   const minScore = params.min ? Number(params.min) : 50;
-  const staleCutoff = staleJobCutoffIso();
+  const staleCutoff = dashboardFreshnessCutoffIso(params);
 
   const baseCountQuery = () => {
     let q = sb
@@ -207,7 +236,7 @@ export async function listMatchCities(
   isAdmin: boolean = false,
 ): Promise<string[]> {
   const minScore = params.min ? Number(params.min) : DEFAULT_DASHBOARD_MIN_SCORE;
-  const staleCutoff = staleJobCutoffIso();
+  const staleCutoff = dashboardFreshnessCutoffIso(params);
   const status = params.status ?? 'inbox';
   const onlyBookmarked = params.bookmarked === '1';
 
