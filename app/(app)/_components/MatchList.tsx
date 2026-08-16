@@ -6,6 +6,7 @@ import { Loader2, ChevronDown } from 'lucide-react';
 import { resolveMatchSort } from '@/lib/ui';
 import { isJobPastFreshnessWindow } from '@/lib/match-stats';
 import { captureMatchRects, playMatchFlip } from '@/lib/match-list-flip';
+import { sortMatchesByFreshness } from '@/lib/job-listing-time';
 import { MatchCard } from './MatchCard';
 import { MatchSortBar } from './MatchSortBar';
 
@@ -78,6 +79,11 @@ export function MatchList({ initialMatches, total: initialTotal, initialHasMore,
 
   const filterKey = useMemo(() => buildQuery(1), [buildQuery]);
   const showExpired = sp.get('expired') === '1';
+  const sortMode = resolveMatchSort(sp.get('sort'));
+
+  function orderLoaded(list: MatchItem[]): MatchItem[] {
+    return sortMode === 'posted' ? sortMatchesByFreshness(list) : list;
+  }
 
   const loadMore = useCallback(async () => {
     if (loading || refreshing || !hasMore) return;
@@ -90,14 +96,14 @@ export function MatchList({ initialMatches, total: initialTotal, initialHasMore,
       const newMatches = (data.matches ?? []) as MatchItem[];
       setMatches((prev) => {
         const ids = new Set(prev.map((m) => m.id));
-        return [...prev, ...newMatches.filter((m) => !ids.has(m.id))];
+        return orderLoaded([...prev, ...newMatches.filter((m) => !ids.has(m.id))]);
       });
       setPage(nextPage);
       setHasMore(data.hasMore ?? false);
       if (typeof data.total === 'number') setTotal(data.total);
     } catch { /* retry on next scroll */ }
     finally { setLoading(false); }
-  }, [loading, refreshing, hasMore, page, buildQuery]);
+  }, [loading, refreshing, hasMore, page, buildQuery, sortMode]);
 
   // Filter/sort/status change: hit the lightweight API immediately (do not wait
   // for the full dashboard RSC round-trip — that was the perceived lag).
@@ -120,7 +126,7 @@ export function MatchList({ initialMatches, total: initialTotal, initialHasMore,
       })
       .then((data) => {
         pendingFlip.current = captureMatchRects(listRef.current);
-        setMatches((data.matches ?? []) as MatchItem[]);
+        setMatches(orderLoaded((data.matches ?? []) as MatchItem[]));
         setHasMore(Boolean(data.hasMore));
         setTotal(typeof data.total === 'number' ? data.total : 0);
         setPage(1);
@@ -140,7 +146,7 @@ export function MatchList({ initialMatches, total: initialTotal, initialHasMore,
   useEffect(() => {
     if (skipSsrFlip.current) {
       skipSsrFlip.current = false;
-      setMatches(initialMatches);
+      setMatches(orderLoaded(initialMatches));
       setTotal(initialTotal);
       setPage(1);
       setHasMore(initialHasMore);
@@ -148,7 +154,7 @@ export function MatchList({ initialMatches, total: initialTotal, initialHasMore,
       return;
     }
     pendingFlip.current = captureMatchRects(listRef.current);
-    setMatches(initialMatches);
+    setMatches(orderLoaded(initialMatches));
     setTotal(initialTotal);
     setPage(1);
     setHasMore(initialHasMore);

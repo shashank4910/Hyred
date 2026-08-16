@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { MapPin, Clock, Heart, Crown } from 'lucide-react';
 import { relativeTime, formatShortDate, formatFullDate, SOURCE_LABELS } from '@/lib/ui';
+import { jobListingIso } from '@/lib/job-listing-time';
 import { MatchSkillPills } from './MatchSkillPills';
 
 type Props = {
@@ -47,8 +48,9 @@ export function MatchCard({
   returnHref,
   staggerIndex = 0,
 }: Props) {
-  const fullDate = formatFullDate(job.fetched_at);
-  const tooltip = `Discovered on ${fullDate}`;
+  const listingAt = jobListingIso(job);
+  const fullDate = formatFullDate(listingAt);
+  const tooltip = listingAt ? `Listed ${fullDate}` : '';
   const isNew = status === 'new';
   const [bookmarked, setBookmarked] = useState(initialBookmarked);
   const [saving, setSaving] = useState(false);
@@ -140,12 +142,12 @@ export function MatchCard({
             {job.remote ? 'Remote' : job.location}
           </span>
         )}
-        {job.fetched_at && (
+        {listingAt && (
           <span className="inline-flex items-center gap-1" title={tooltip}>
             <Clock className="h-3.5 w-3.5" />
-            {formatShortDate(job.fetched_at)}
-            {relativeTime(job.fetched_at) && (
-              <span>· {relativeTime(job.fetched_at)}</span>
+            {formatShortDate(listingAt)}
+            {relativeTime(listingAt) && (
+              <span>· {relativeTime(listingAt)}</span>
             )}
           </span>
         )}

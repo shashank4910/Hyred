@@ -7,6 +7,7 @@ import { enrichMatchListSkills } from '@/lib/match-skill-enrich';
 import { sanitizeCityFilter } from '@/lib/match-location-filter';
 import { MATCH_LIST_SELECT } from '@/lib/match-list-select';
 import { includeExpiredJobs, jobFreshnessOrFilter, staleJobCutoffIso } from '@/lib/match-stats';
+import { sortMatchesByFreshness } from '@/lib/job-listing-time';
 
 export const runtime = 'nodejs';
 
@@ -100,11 +101,13 @@ export async function GET(req: NextRequest) {
     return { ...m, matched_skills: skills.matched_skills, missing_skills: skills.missing_skills };
   });
 
+  const ordered = sort === 'posted' ? sortMatchesByFreshness(enriched) : enriched;
+
   const total = count ?? 0;
   const hasMore = offset + PAGE_SIZE < total;
 
   return NextResponse.json(
-    { matches: enriched, total, page, pageSize: PAGE_SIZE, hasMore },
+    { matches: ordered, total, page, pageSize: PAGE_SIZE, hasMore },
     { headers: { 'Cache-Control': 'private, max-age=0, stale-while-revalidate=30' } },
   );
 }

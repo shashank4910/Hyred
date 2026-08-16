@@ -6,6 +6,7 @@ import { enrichMatchListSkills } from '@/lib/match-skill-enrich';
 import { sanitizeCityFilter } from '@/lib/match-location-filter';
 import { MATCH_LIST_SELECT } from '@/lib/match-list-select';
 import { includeExpiredJobs, jobFreshnessOrFilter, staleJobCutoffIso } from '@/lib/match-stats';
+import { sortMatchesByFreshness } from '@/lib/job-listing-time';
 import { EmptyMatches } from './EmptyMatches';
 import { MatchList } from './MatchList';
 
@@ -153,10 +154,11 @@ export async function DashboardMatchResults({
     };
   });
 
+  const ordered = sort === 'posted' ? sortMatchesByFreshness(enriched) : enriched;
 
   return (
     <MatchList
-      initialMatches={enriched}
+      initialMatches={ordered}
       total={totalInFilter}
       initialHasMore={hasMore}
       showSource={isAdmin}
