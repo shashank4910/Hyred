@@ -21,7 +21,7 @@ type SearchParams = {
   remote?: string;
   city?: string;
   bookmarked?: string;
-  sort?: 'newest' | 'score' | 'activity';
+  sort?: 'score' | 'posted' | 'company' | 'newest' | 'activity';
   from?: string; // match ID to highlight on back-navigation
   expired?: string; // "1" = include older/expired jobs
 };

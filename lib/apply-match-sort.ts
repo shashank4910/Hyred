@@ -10,16 +10,15 @@ type OrderableQuery = {
 /** Apply dashboard / matches API sort to a Supabase matches query. */
 export function applyMatchSort<T extends OrderableQuery>(query: T, sort: MatchSortMode): T {
   switch (sort) {
-    case 'score':
+    case 'posted':
       return query
-        .order('llm_score', { ascending: false })
+        .order('posted_at', { foreignTable: 'job', ascending: false, nullsFirst: false })
         .order('fetched_at', { foreignTable: 'job', ascending: false }) as T;
-    case 'activity':
-      return query.order('updated_at', { ascending: false }) as T;
-    case 'newest':
+    case 'company':
       return query
-        .order('fetched_at', { foreignTable: 'job', ascending: false })
-        .order('posted_at', { foreignTable: 'job', ascending: false, nullsFirst: false }) as T;
+        .order('company', { foreignTable: 'job', ascending: true, nullsFirst: false })
+        .order('llm_score', { ascending: false }) as T;
+    case 'score':
     default:
       return query
         .order('llm_score', { ascending: false })

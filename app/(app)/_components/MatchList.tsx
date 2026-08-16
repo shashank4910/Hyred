@@ -1,11 +1,13 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo, useLayoutEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Loader2, ChevronDown } from 'lucide-react';
 import { resolveMatchSort } from '@/lib/ui';
 import { isJobPastFreshnessWindow } from '@/lib/match-stats';
+import { captureMatchRects, playMatchFlip } from '@/lib/match-list-flip';
 import { MatchCard } from './MatchCard';
+import { MatchSortBar } from './MatchSortBar';
 
 type MatchJob = {
   id: string;
@@ -53,6 +55,8 @@ export function MatchList({ initialMatches, total: initialTotal, initialHasMore,
   const sp = useSearchParams();
   const sentinelRef = useRef<HTMLDivElement>(null);
   const highlightRef = useRef<HTMLLIElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  const pendingFlip = useRef<Map<string, DOMRect> | null>(null);
   const seenFilterKey = useRef<string | null>(null);
 
   const scrollKey = `hyred_scroll_${sp.toString()}`;
@@ -115,6 +119,7 @@ export function MatchList({ initialMatches, total: initialTotal, initialHasMore,
         return res.json();
       })
       .then((data) => {
+        pendingFlip.current = captureMatchRects(listRef.current);
         setMatches((data.matches ?? []) as MatchItem[]);
         setHasMore(Boolean(data.hasMore));
         setTotal(typeof data.total === 'number' ? data.total : 0);
@@ -131,13 +136,29 @@ export function MatchList({ initialMatches, total: initialTotal, initialHasMore,
   }, [filterKey]);
 
   // When SSR catches up with the same filters, adopt its payload (skills, etc.).
+  const skipSsrFlip = useRef(true);
   useEffect(() => {
+    if (skipSsrFlip.current) {
+      skipSsrFlip.current = false;
+      setMatches(initialMatches);
+      setTotal(initialTotal);
+      setPage(1);
+      setHasMore(initialHasMore);
+      setRefreshing(false);
+      return;
+    }
+    pendingFlip.current = captureMatchRects(listRef.current);
     setMatches(initialMatches);
     setTotal(initialTotal);
     setPage(1);
     setHasMore(initialHasMore);
     setRefreshing(false);
   }, [initialMatches, initialHasMore, initialTotal]);
+
+  useLayoutEffect(() => {
+    playMatchFlip(listRef.current, pendingFlip.current);
+    pendingFlip.current = null;
+  }, [matches]);
 
   // Infinite scroll observer
   useEffect(() => {
@@ -182,42 +203,51 @@ export function MatchList({ initialMatches, total: initialTotal, initialHasMore,
   }, [highlightId]);
 
   if (matches.length === 0) {
-    if (refreshing) {
-      return (
-        <div className="flex items-center gap-2 py-8 text-sm text-on-surface-variant">
-          <Loader2 className="h-4 w-4 animate-spin text-primary" />
-          Updating matches…
-        </div>
-      );
-    }
     return (
-      <p className="py-8 text-sm text-on-surface-variant">
-        No matches for these filters. Try another city or lower the score filter.
-      </p>
+      <div>
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-text-muted">Showing 0 of {total}</p>
+          <MatchSortBar />
+        </div>
+        {refreshing ? (
+          <div className="flex items-center gap-2 py-8 text-sm text-on-surface-variant">
+            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+            Updating matches…
+          </div>
+        ) : (
+          <p className="py-8 text-sm text-on-surface-variant">
+            No matches for these filters. Try another city or lower the score filter.
+          </p>
+        )}
+      </div>
     );
   }
 
   return (
     <div className={refreshing ? 'opacity-80 transition-opacity duration-150' : undefined}>
-      <p className="text-xs text-text-muted mb-2 flex items-center gap-2">
-        <span>
-          Showing {matches.length} of {total}
-        </span>
-        {refreshing && (
-          <span className="inline-flex items-center gap-1 text-primary">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            Updating…
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-xs text-text-muted flex items-center gap-2">
+          <span>
+            Showing {matches.length} of {total}
           </span>
-        )}
-      </p>
-      <ul className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
+          {refreshing && (
+            <span className="inline-flex items-center gap-1 text-primary">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Updating…
+            </span>
+          )}
+        </p>
+        <MatchSortBar />
+      </div>
+      <ul ref={listRef} className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
         {matches.map((m, i) => {
           const isHL = m.id === highlightId;
           return (
             <li
               key={m.id}
+              data-match-id={m.id}
               ref={isHL ? highlightRef : undefined}
-              className={`h-full transition-all duration-300 ${isHL ? 'ring-2 ring-primary ring-offset-2 rounded-2xl' : ''}`}
+              className={`h-full ${isHL ? 'ring-2 ring-primary ring-offset-2 rounded-2xl' : ''}`}
             >
               <MatchCard
                 matchId={m.id}

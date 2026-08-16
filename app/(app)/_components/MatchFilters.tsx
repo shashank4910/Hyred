@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { SlidersHorizontal, X } from 'lucide-react';
-import { DEFAULT_LIST_MIN_SCORE, DEFAULT_MATCH_SORT, SOURCE_LABELS, resolveMatchSort } from '@/lib/ui';
+import { DEFAULT_LIST_MIN_SCORE, SOURCE_LABELS } from '@/lib/ui';
 import { useDashboardNav } from './DashboardNavContext';
 import PremiumSelect from '@/app/_components/ui/PremiumSelect';
 
@@ -26,8 +26,6 @@ export function MatchFilters({
   const remote = sp.get('remote') ?? '';
   const city = sp.get('city') ?? '';
   const expired = sp.get('expired') ?? '';
-  const sortParam = sp.get('sort');
-  const sort = resolveMatchSort(sortParam);
 
   const locationValue = remote === '1' ? REMOTE_VALUE : city;
   const usingDefaultMin = minScore === '';
@@ -63,8 +61,7 @@ export function MatchFilters({
     minScore ||
     remote ||
     city ||
-    expired === '1' ||
-    (sortParam != null && sortParam !== '' && sort !== DEFAULT_MATCH_SORT);
+    expired === '1';
 
   const cityOptions =
     city && !cities.some((c) => c.toLowerCase() === city.toLowerCase())
@@ -84,20 +81,6 @@ export function MatchFilters({
         { value: '75', label: '75+' },
         { value: '85', label: '85+' },
         { value: '90', label: '90+' },
-      ]}
-    />
-  );
-
-  const sortSelect = (
-    <PremiumSelect
-      variant="forest"
-      value={sort}
-      onChange={(v) => setParam('sort', v === DEFAULT_MATCH_SORT ? '' : v)}
-      aria-label="Sort matches"
-      options={[
-        { value: 'score', label: 'Best score' },
-        { value: 'newest', label: 'Newest first' },
-        { value: 'activity', label: 'Recent activity' },
       ]}
     />
   );
@@ -157,6 +140,8 @@ export function MatchFilters({
     const q = sp.get('q');
     if (status) params.set('status', status);
     if (q) params.set('q', q);
+    const sort = sp.get('sort');
+    if (sort) params.set('sort', sort);
     navigate(`/?${params.toString()}`, { replace: true });
   }
 
@@ -165,10 +150,6 @@ export function MatchFilters({
       <label className="block text-sm font-semibold text-white">
         Match score
         <span className="mt-1.5 block">{scoreSelect}</span>
-      </label>
-      <label className="block text-sm font-semibold text-white">
-        Sort
-        <span className="mt-1.5 block">{sortSelect}</span>
       </label>
       <label className="block text-sm font-semibold text-white">
         Location & freshness
