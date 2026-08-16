@@ -87,7 +87,9 @@ typography:
 - **Filled Button**: Forest teal, white text. Apply now is a full-width pill (9999px). One filled button per card.
 - **Match Card**: Slightly grey `#F3F4F6` on a white page, ~24px radius, offset shadow. Top-left is real salary only. Score is a lime number tile. Heart top-right. Blurb expands with **see more** (not CSS-clamped). Matched = lime checks; unmatched = red, including when the list query has no JD. Build Custom Resume on every card. One forest Apply now pill.
 - **Chip**: Lime for matched skills and active Inbox/Saved. Red for unmatched skills.
-- **Filter Sidebar**: Tall docked slab, forest `#003F3B`, white “Filters” + reset, white inputs. Lime never fills this panel.
+- **Filter Sidebar**: Tall **sticky** forest slab `#003F3B` (viewport height, internal scroll). Score slider + freshness ticks at the top. White labels. Lime never fills this panel.
+- **Dropdowns**: `PremiumSelect` (Hyred listbox), not the OS menu.
+- **Run Scan**: Forest `SpecularButton` with lime rim shine (one WebGL control).
 - **Scan live HUD**: After **Run Scan**, a radar pill appears bottom-right. It does not overlay or lock the page. Stop lives on that pill.
 
 ## Do / Don't
