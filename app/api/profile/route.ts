@@ -15,6 +15,7 @@ import {
 } from '@/lib/resume-storage';
 import type { Preferences, ResumeInsights } from '@/lib/types';
 import { parseYearsExperience } from '@/lib/apply-profile';
+import { clearScoreWidenNotice } from '@/lib/adaptive-min-score';
 import { normalizeProfileSeniority } from '@/lib/profile-seniority';
 
 export const runtime = 'nodejs';
@@ -180,6 +181,8 @@ export async function POST(req: NextRequest) {
     ? existing.email
     : email || existing.email;
 
+  preferences = clearScoreWidenNotice(preferences);
+
   const updatePayload: Record<string, unknown> = {
     email: canonicalEmail,
     full_name: fullName,
@@ -267,6 +270,8 @@ export async function POST(req: NextRequest) {
 type PatchBody = {
   insights?: Partial<ResumeInsights>;
   preferences?: Partial<Preferences>;
+  clear_score_widen_notice?: boolean;
+  restore_score_floor?: boolean;
 };
 
 /** Partial profile update — e.g. experience/seniority autosave without re-embedding. */
@@ -284,6 +289,22 @@ export async function PATCH(req: NextRequest) {
   }
 
   const updatePayload: Record<string, unknown> = {};
+  let nextPreferences: Preferences = { ...(profile.preferences ?? {}) };
+
+  if (body.restore_score_floor) {
+    const notice = nextPreferences.score_widen_notice;
+    if (!notice) {
+      return NextResponse.json({ error: 'No widen notice to restore' }, { status: 400 });
+    }
+    nextPreferences = clearScoreWidenNotice({
+      ...nextPreferences,
+      min_score: notice.previous_min_score,
+    });
+    updatePayload.preferences = nextPreferences;
+  } else if (body.clear_score_widen_notice) {
+    nextPreferences = clearScoreWidenNotice(nextPreferences);
+    updatePayload.preferences = nextPreferences;
+  }
 
   if (body.insights && typeof body.insights === 'object') {
     const merged: ResumeInsights = {
@@ -302,10 +323,11 @@ export async function PATCH(req: NextRequest) {
   }
 
   if (body.preferences && typeof body.preferences === 'object') {
-    updatePayload.preferences = {
-      ...(profile.preferences ?? {}),
+    nextPreferences = clearScoreWidenNotice({
+      ...nextPreferences,
       ...body.preferences,
-    };
+    });
+    updatePayload.preferences = nextPreferences;
   }
 
   if (Object.keys(updatePayload).length === 0) {

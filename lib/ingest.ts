@@ -20,6 +20,11 @@ import {
 } from './search-profile';
 import type { Profile, RawJob } from './types';
 import { dashboardMinScore } from './match-stats';
+import {
+  buildScoreWidenNotice,
+  matchesToSaveAfterWiden,
+  preferencesAfterAdaptiveWiden,
+} from './adaptive-min-score';
 import { verifyWithHermes } from './hermes-verifier';
 
 export type IngestResult = {
@@ -543,6 +548,50 @@ export async function runIngest(opts?: {
     let budgetStopped = false;
     const dreamPicks = await loadDreamPicksForProfile(p.id);
 
+    type ScoredPending = {
+      c: (typeof ranked)[number];
+      finalScore: number;
+      finalReason: string;
+      matchedSkills: string[];
+      missingSkills: string[];
+      jobId: string;
+    };
+    const scoredPending: ScoredPending[] = [];
+    const savedJobIds = new Set<string>();
+
+    async function persistScoredMatch(entry: ScoredPending): Promise<boolean> {
+      const { data: matchRow, error } = await sb
+        .from('matches')
+        .upsert(
+          {
+            profile_id: p.id,
+            job_id: entry.c.id,
+            similarity: entry.c.similarity,
+            llm_score: entry.finalScore,
+            reason: entry.finalReason,
+            matched_skills: entry.matchedSkills,
+            missing_skills: entry.missingSkills,
+          },
+          { onConflict: 'profile_id,job_id' },
+        )
+        .select('id')
+        .single();
+      if (!error && matchRow?.id) {
+        processDreamCompanyAlertsForJob({
+          profileId: p.id,
+          jobId: entry.c.id,
+          company: entry.c.company,
+          jobTitle: entry.c.title,
+          matchId: matchRow.id,
+          dreamPicks,
+        }).catch((e) =>
+          console.error('[dream-alerts] ingest hook failed:', (e as Error).message),
+        );
+        return true;
+      }
+      return false;
+    }
+
     for (let i = 0; i < ranked.length; i += SCORE_CONCURRENCY) {
       if (Date.now() - startedAt > INGEST_WALL_BUDGET_MS) {
         budgetStopped = true;
@@ -603,39 +652,24 @@ export async function runIngest(opts?: {
               }
             }
 
-            if (finalScore < minScore) {
-              return { scored: 1, kept: 0 };
-            }
+            const entry: ScoredPending = {
+              c,
+              finalScore,
+              finalReason,
+              matchedSkills,
+              missingSkills,
+              jobId: c.id,
+            };
+            scoredPending.push(entry);
 
-            const { data: matchRow, error } = await sb
-              .from('matches')
-              .upsert(
-                {
-                  profile_id: p.id,
-                  job_id: c.id,
-                  similarity: c.similarity,
-                  llm_score: finalScore,
-                  reason: finalReason,
-                  matched_skills: matchedSkills,
-                  missing_skills: missingSkills,
-                },
-                { onConflict: 'profile_id,job_id' },
-              )
-              .select('id')
-              .single();
-            if (!error && matchRow?.id) {
-              processDreamCompanyAlertsForJob({
-                profileId: p.id,
-                jobId: c.id,
-                company: c.company,
-                jobTitle: c.title,
-                matchId: matchRow.id,
-                dreamPicks,
-              }).catch((e) =>
-                console.error('[dream-alerts] ingest hook failed:', (e as Error).message),
-              );
+            if (finalScore >= minScore) {
+              const ok = await persistScoredMatch(entry);
+              if (ok) {
+                savedJobIds.add(c.id);
+                return { scored: 1, kept: 1 };
+              }
             }
-            return { scored: 1, kept: !error ? 1 : 0 };
+            return { scored: 1, kept: 0 };
           } catch (e) {
             runErrors.push({
               source: 'score',
@@ -665,6 +699,37 @@ export async function runIngest(opts?: {
       // correct scored/matches counts; a "partial" warning for this
       // would appear on every big scan and is misleading.
       console.warn(`[ingest] Scoring stopped early: ${scored}/${ranked.length} scored (time budget)`);
+    }
+
+    const widen = matchesToSaveAfterWiden(scoredPending, minScore, savedJobIds);
+    if (widen.shouldWiden && widen.toSave.length > 0) {
+      let widenKept = 0;
+      for (const entry of widen.toSave) {
+        const ok = await persistScoredMatch(entry);
+        if (ok) {
+          widenKept += 1;
+          savedJobIds.add(entry.c.id);
+          kept += 1;
+        }
+      }
+      const notice = buildScoreWidenNotice({
+        previousMin: minScore,
+        appliedMin: widen.threshold,
+        matchesAtUserMin: widen.matchesAtUserMin,
+        matchesAfterWiden: savedJobIds.size,
+      });
+      const nextPrefs = preferencesAfterAdaptiveWiden(p.preferences ?? {}, notice);
+      await sb.from('profiles').update({ preferences: nextPrefs }).eq('id', p.id);
+      console.log(
+        `[ingest] Adaptive score widen: ${minScore}+ had ${widen.matchesAtUserMin} matches; saved ${widenKept} more at ${widen.threshold}+ (total kept ${savedJobIds.size})`,
+      );
+      if (runId) {
+        await patchIngestRun(sb, runId, {
+          scored,
+          matches_created: kept,
+          errors: runErrors,
+        });
+      }
     }
 
     // ---------- 10. Clean up stale jobs older than 45 days ----------
