@@ -93,18 +93,21 @@ export const DEFAULT_LIST_MIN_SCORE = 50;
 /** Default dashboard match ordering — best AI match score first (PR #110). */
 export const DEFAULT_MATCH_SORT = 'score' as const;
 
-export const MATCH_SORT_MODES = [
-  'newest',
-  'score',
-  'activity',
-] as const;
+export const MATCH_SORT_MODES = ['score', 'posted', 'company'] as const;
 
 export type MatchSortMode = (typeof MATCH_SORT_MODES)[number];
+
+const MATCH_SORT_ALIASES: Record<string, MatchSortMode> = {
+  newest: 'posted',
+  activity: 'score',
+  az: 'company',
+};
 
 export function resolveMatchSort(raw: string | null | undefined): MatchSortMode {
   if (raw && (MATCH_SORT_MODES as readonly string[]).includes(raw)) {
     return raw as MatchSortMode;
   }
+  if (raw && MATCH_SORT_ALIASES[raw]) return MATCH_SORT_ALIASES[raw];
   return DEFAULT_MATCH_SORT;
 }
 
