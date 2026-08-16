@@ -7,8 +7,7 @@ import { useDashboardNav } from './DashboardNavContext';
 
 const SORT_OPTIONS: { value: MatchSortMode; label: string }[] = [
   { value: 'score', label: 'Highest score' },
-  { value: 'posted', label: 'Date posted' },
-  { value: 'company', label: 'A–Z' },
+  { value: 'posted', label: 'Newest' },
 ];
 
 export function MatchSortBar() {
