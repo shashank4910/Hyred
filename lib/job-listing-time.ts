@@ -7,6 +7,11 @@ type JobDates = {
   fetched_at?: string | null;
 };
 
+function asJobDates(job: JobDates | JobDates[] | null | undefined): JobDates {
+  if (Array.isArray(job)) return job[0] ?? {};
+  return job ?? {};
+}
+
 function parseTime(iso: string | null | undefined): number | null {
   if (!iso) return null;
   const t = new Date(iso).getTime();
@@ -18,23 +23,28 @@ function parseTime(iso: string | null | undefined): number | null {
  * jump the queue. Ancient posted_at is kept for GREATEST vs fetched_at —
  * a 2019 post date loses to a discovery from this week.
  */
-export function jobListingTime(job: JobDates, nowMs: number = Date.now()): number {
-  const fetched = parseTime(job.fetched_at);
-  const posted = parseTime(job.posted_at);
+export function jobListingTime(
+  job: JobDates | JobDates[] | null | undefined,
+  nowMs: number = Date.now(),
+): number {
+  const dates = asJobDates(job);
+  const fetched = parseTime(dates.fetched_at);
+  const posted = parseTime(dates.posted_at);
   const futureLimit = nowMs + DAY_MS;
   const postedOk = posted != null && posted <= futureLimit ? posted : null;
   return Math.max(postedOk ?? 0, fetched ?? 0);
 }
 
-export function jobListingIso(job: JobDates): string | null {
-  const t = jobListingTime(job);
+export function jobListingIso(job: JobDates | JobDates[] | null | undefined): string | null {
+  const dates = asJobDates(job);
+  const t = jobListingTime(dates);
   if (t > 0) return new Date(t).toISOString();
-  return job.fetched_at ?? job.posted_at ?? null;
+  return dates.fetched_at ?? dates.posted_at ?? null;
 }
 
-export function sortMatchesByFreshness<T extends { llm_score?: number | null; job: JobDates }>(
-  matches: T[],
-): T[] {
+export function sortMatchesByFreshness<
+  T extends { llm_score?: number | null; job: JobDates | JobDates[] | null | undefined },
+>(matches: T[]): T[] {
   return [...matches].sort((a, b) => {
     const byTime = jobListingTime(b.job) - jobListingTime(a.job);
     if (byTime !== 0) return byTime;
