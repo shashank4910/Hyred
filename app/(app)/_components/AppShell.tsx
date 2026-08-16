@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { dismissAllAppToasts } from '@/lib/toast-app';
 import { supabaseBrowser } from '@/lib/supabase/client';
+import { FloatingPillNav } from './FloatingPillNav';
 import { HeaderSearch } from './HeaderSearch';
 import { RunIngestButton } from './RunIngestButton';
 import { ScanLiveHud } from './ScanLiveHud';
@@ -95,114 +96,96 @@ export function AppShell({
     return href === '/' ? pathname === '/' : pathname.startsWith(href);
   }
 
+  const activeHref = nav.find((item) => isActive(item.href))?.href ?? '/';
+
   return (
     <div className="min-h-screen bg-background text-on-surface">
-      <header className="fixed inset-x-3 top-3 z-[60] flex items-center gap-3 rounded-full bg-white px-3 py-2 shadow-card sm:inset-x-6 sm:px-4">
-        <Link href="/" className="flex shrink-0 items-center gap-2.5 pl-1">
-          <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-primary text-on-primary">
-            <Zap className="h-4 w-4 fill-current" />
-          </span>
-          <span className="text-lg font-extrabold tracking-tight text-ink">Hyred</span>
-        </Link>
+      <header className="fixed inset-x-3 top-3 z-[60] flex flex-col gap-2 rounded-full bg-white px-3 py-2 shadow-card sm:inset-x-6 sm:px-4 lg:rounded-[32px]">
+        <div className="flex items-center gap-3">
+          <Link href="/" className="flex shrink-0 items-center gap-2.5 pl-1">
+            <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-primary text-on-primary">
+              <Zap className="h-4 w-4 fill-current" />
+            </span>
+            <span className="text-lg font-extrabold tracking-tight text-ink">Hyred</span>
+          </Link>
 
-        {!previewFocus && (
-          <nav
-            className="hidden min-w-0 flex-1 lg:block"
-            aria-label="App"
-          >
-            <div className="mx-auto flex max-w-full items-center justify-center gap-0.5 overflow-x-auto rounded-full bg-surface-card p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {nav.map(({ href, label }) => {
-                const active = isActive(href);
-                return (
-                  <Link
-                    key={href}
-                    href={href}
-                    prefetch={href === '/stats' ? false : undefined}
-                    className={[
-                      'whitespace-nowrap rounded-full px-3 py-1.5 text-[13px] font-semibold transition-colors',
-                      active
-                        ? 'bg-lime-brand text-ink shadow-sm'
-                        : 'text-on-surface-variant hover:text-ink',
-                    ].join(' ')}
-                  >
-                    {label}
-                  </Link>
-                );
-              })}
-            </div>
-          </nav>
-        )}
-
-        {onAtsChecker && (
-          <button
-            type="button"
-            onClick={togglePreviewFocusMode}
-            className="hidden shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-3 py-2 text-xs font-semibold text-on-surface-variant hover:bg-surface-card hover:text-ink lg:inline-flex"
-            title={previewFocus ? 'Show menu' : 'Hide menu for more preview space'}
-          >
-            {previewFocus ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-            {previewFocus ? 'Menu' : 'Focus'}
-          </button>
-        )}
-
-        <Suspense fallback={null}>
-          <HeaderSearch />
-        </Suspense>
-
-        <div className="ml-auto flex shrink-0 items-center gap-2">
-          <div className="hidden sm:block">
-            <RunIngestButton isAdmin={isAdmin} luminous />
-          </div>
-          <div className="relative" ref={menuRef}>
+          {onAtsChecker && (
             <button
               type="button"
-              onClick={() => setMenuOpen((o) => !o)}
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-xs font-bold text-on-primary"
-              aria-expanded={menuOpen}
-              aria-haspopup="menu"
-              aria-label="Account menu"
+              onClick={togglePreviewFocusMode}
+              className="hidden shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-3 py-2 text-xs font-semibold text-on-surface-variant hover:bg-surface-card hover:text-ink lg:inline-flex"
+              title={previewFocus ? 'Show menu' : 'Hide menu for more preview space'}
             >
-              {initials}
+              {previewFocus ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+              {previewFocus ? 'Menu' : 'Focus'}
             </button>
-            {menuOpen && (
-              <div
-                role="menu"
-                className="absolute right-0 top-[calc(100%+8px)] w-56 rounded-2xl bg-white p-2 shadow-elevated"
+          )}
+
+          <Suspense fallback={null}>
+            <HeaderSearch />
+          </Suspense>
+
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            <div className="hidden sm:block">
+              <RunIngestButton isAdmin={isAdmin} luminous />
+            </div>
+            <div className="relative" ref={menuRef}>
+              <button
+                type="button"
+                onClick={() => setMenuOpen((o) => !o)}
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-xs font-bold text-on-primary"
+                aria-expanded={menuOpen}
+                aria-haspopup="menu"
+                aria-label="Account menu"
               >
-                <p className="truncate px-3 py-2 text-xs text-on-surface-variant">
-                  {profile?.email}
-                </p>
-                <Link
-                  href="/settings"
-                  role="menuitem"
-                  onClick={() => setMenuOpen(false)}
-                  className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-ink hover:bg-surface-card"
+                {initials}
+              </button>
+              {menuOpen && (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-[calc(100%+8px)] w-56 rounded-2xl bg-white p-2 shadow-elevated"
                 >
-                  <Settings className="h-4 w-4" />
-                  Settings
-                </Link>
-                <Link
-                  href="/apply-profile"
-                  role="menuitem"
-                  onClick={() => setMenuOpen(false)}
-                  className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-ink hover:bg-surface-card"
-                >
-                  <UserRound className="h-4 w-4" />
-                  Apply profile
-                </Link>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={logout}
-                  className="flex w-full cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-ink hover:bg-surface-card"
-                >
-                  <LogOut className="h-4 w-4" />
-                  Log out
-                </button>
-              </div>
-            )}
+                  <p className="truncate px-3 py-2 text-xs text-on-surface-variant">
+                    {profile?.email}
+                  </p>
+                  <Link
+                    href="/settings"
+                    role="menuitem"
+                    onClick={() => setMenuOpen(false)}
+                    className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-ink hover:bg-surface-card"
+                  >
+                    <Settings className="h-4 w-4" />
+                    Settings
+                  </Link>
+                  <Link
+                    href="/apply-profile"
+                    role="menuitem"
+                    onClick={() => setMenuOpen(false)}
+                    className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-ink hover:bg-surface-card"
+                  >
+                    <UserRound className="h-4 w-4" />
+                    Apply profile
+                  </Link>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={logout}
+                    className="flex w-full cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-ink hover:bg-surface-card"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Log out
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
+
+        {!previewFocus && (
+          <nav className="hidden min-w-0 lg:block" aria-label="App">
+            <FloatingPillNav items={nav} activeHref={activeHref} />
+          </nav>
+        )}
       </header>
 
       <nav
@@ -229,7 +212,7 @@ export function AppShell({
 
       <ScanLiveHud />
 
-      <main className="relative z-0 mx-auto w-full min-w-0 max-w-[1440px] px-4 pb-28 pt-24 sm:px-6 lg:px-8 lg:pb-12">
+      <main className="relative z-0 mx-auto w-full min-w-0 max-w-[1440px] px-4 pb-28 pt-24 sm:px-6 lg:px-8 lg:pb-12 lg:pt-36">
         {children}
       </main>
     </div>
