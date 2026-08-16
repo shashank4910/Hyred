@@ -62,6 +62,12 @@ export function MatchList({ initialMatches, total: initialTotal, initialHasMore,
 
   const scrollKey = `hyred_scroll_${sp.toString()}`;
 
+  // The desktop dashboard scrolls the job list column (#dashboard-list-scroll),
+  // not the window — so scroll save/restore must target that container first.
+  function listScrollEl(): HTMLElement | null {
+    return document.getElementById('dashboard-list-scroll');
+  }
+
   const buildQuery = useCallback((pageNum: number) => {
     const params = new URLSearchParams();
     params.set('page', String(pageNum));
@@ -182,7 +188,10 @@ export function MatchList({ initialMatches, total: initialTotal, initialHasMore,
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       const link = (e.target as HTMLElement).closest('a[href^="/jobs/"]');
-      if (link) sessionStorage.setItem(scrollKey, String(window.scrollY));
+      if (link) {
+        const scroller = listScrollEl();
+        sessionStorage.setItem(scrollKey, String(scroller ? scroller.scrollTop : window.scrollY));
+      }
     };
     document.addEventListener('click', handler, { capture: true });
     return () => document.removeEventListener('click', handler, { capture: true });
@@ -192,7 +201,12 @@ export function MatchList({ initialMatches, total: initialTotal, initialHasMore,
   useEffect(() => {
     const saved = sessionStorage.getItem(scrollKey);
     if (saved) {
-      requestAnimationFrame(() => window.scrollTo(0, parseInt(saved, 10)));
+      requestAnimationFrame(() => {
+        const scroller = listScrollEl();
+        const y = parseInt(saved, 10);
+        if (scroller) scroller.scrollTop = y;
+        else window.scrollTo(0, y);
+      });
       sessionStorage.removeItem(scrollKey);
     }
   }, [scrollKey]);
