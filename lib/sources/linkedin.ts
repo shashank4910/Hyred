@@ -134,6 +134,11 @@ export type LinkedInFetchOpts = {
   fetchDescriptions?: boolean;
   /** Cap total descriptions fetched per run to bound request count. Default 70. */
   maxDescriptions?: number;
+  /**
+   * Hard wall-clock budget for this source. LinkedIn guest search can hang
+   * on 15s timeouts × dozens of pages and eat the whole ingest (Vercel 300s).
+   */
+  timeBudgetMs?: number;
 };
 
 /** Small delay helper — LinkedIn returns cached/duplicate results for rapid
@@ -162,6 +167,9 @@ export async function fetchLinkedIn(opts?: LinkedInFetchOpts): Promise<RawJob[]>
   const maxSearchRequests = opts?.maxSearchRequests ?? 90;
   const fetchDesc = opts?.fetchDescriptions ?? true;
   const maxDesc = opts?.maxDescriptions ?? 70;
+  const timeBudgetMs = opts?.timeBudgetMs ?? 80_000;
+  const startedAt = Date.now();
+  const remaining = () => timeBudgetMs - (Date.now() - startedAt);
 
   const seen = new Set<string>();
   const cards: ParsedCard[] = [];
@@ -174,6 +182,8 @@ export async function fetchLinkedIn(opts?: LinkedInFetchOpts): Promise<RawJob[]>
       let emptyStreak = 0;
       for (let page = 0; page < maxPages; page++) {
         if (searchRequests >= maxSearchRequests) break outer; // global budget
+        // Leave a little time for description fetches (or just return titles).
+        if (remaining() < 12_000) break outer;
         const start = page * 10;
         const url = `${SEARCH_BASE}?keywords=${encodeURIComponent(q)}&location=${encodeURIComponent(location)}&start=${start}`;
         try {
@@ -225,6 +235,7 @@ export async function fetchLinkedIn(opts?: LinkedInFetchOpts): Promise<RawJob[]>
     const toFetch = cards.slice(0, maxDesc);
     const CONCURRENCY = 6;
     for (let i = 0; i < toFetch.length; i += CONCURRENCY) {
+      if (remaining() < 8_000) break;
       const batch = toFetch.slice(i, i + CONCURRENCY);
       const results = await Promise.all(
         batch.map(async (c) => ({ id: c.id, desc: await fetchDescription(c.id) })),
