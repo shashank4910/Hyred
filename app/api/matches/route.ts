@@ -6,7 +6,7 @@ import { resolveMatchSort } from '@/lib/ui';
 import { enrichMatchListSkills } from '@/lib/match-skill-enrich';
 import { sanitizeCityFilter } from '@/lib/match-location-filter';
 import { MATCH_LIST_SELECT } from '@/lib/match-list-select';
-import { includeExpiredJobs, jobFreshnessOrFilter, staleJobCutoffIso } from '@/lib/match-stats';
+import { includeExpiredJobs, jobFreshnessOrFilter, dashboardFreshnessCutoffIso } from '@/lib/match-stats';
 import { sortMatchesByFreshness } from '@/lib/job-listing-time';
 
 export const runtime = 'nodejs';
@@ -49,7 +49,9 @@ export async function GET(req: NextRequest) {
     .eq('profile_id', profile.id)
     .gte('llm_score', minScore);
 
-  const staleCutoff = staleJobCutoffIso();
+  const staleCutoff = dashboardFreshnessCutoffIso({
+    fresh: url.searchParams.get('fresh'),
+  });
   if (!showExpired) {
     query = query.or(jobFreshnessOrFilter(staleCutoff), { foreignTable: 'job' });
   }

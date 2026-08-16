@@ -5,7 +5,7 @@ import { DEFAULT_LIST_MIN_SCORE, resolveMatchSort } from '@/lib/ui';
 import { enrichMatchListSkills } from '@/lib/match-skill-enrich';
 import { sanitizeCityFilter } from '@/lib/match-location-filter';
 import { MATCH_LIST_SELECT } from '@/lib/match-list-select';
-import { includeExpiredJobs, jobFreshnessOrFilter, staleJobCutoffIso } from '@/lib/match-stats';
+import { includeExpiredJobs, jobFreshnessOrFilter, dashboardFreshnessCutoffIso } from '@/lib/match-stats';
 import { sortMatchesByFreshness } from '@/lib/job-listing-time';
 import { EmptyMatches } from './EmptyMatches';
 import { MatchList } from './MatchList';
@@ -24,6 +24,8 @@ export type DashboardMatchSearchParams = {
   from?: string;
   /** "1" = include jobs outside the 45-day freshness window */
   expired?: string;
+  /** Comma-separated 1d,7d,30d ticks */
+  fresh?: string;
 };
 
 export async function DashboardMatchResults({
@@ -69,7 +71,7 @@ export async function DashboardMatchResults({
     query = query.gte('llm_score', effectiveMinScore);
   }
 
-  const staleCutoff = staleJobCutoffIso();
+  const staleCutoff = dashboardFreshnessCutoffIso(searchParams);
   if (!showExpired) {
     query = query.or(jobFreshnessOrFilter(staleCutoff), { foreignTable: 'job' });
   }

@@ -1,15 +1,68 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { SlidersHorizontal, X } from 'lucide-react';
+import { Check, SlidersHorizontal, X } from 'lucide-react';
 import { DEFAULT_LIST_MIN_SCORE, SOURCE_LABELS } from '@/lib/ui';
+import { FRESHNESS_TICKS, type FreshnessTickId } from '@/lib/match-stats';
 import { useDashboardNav } from './DashboardNavContext';
 import PremiumSelect from '@/app/_components/ui/PremiumSelect';
+import './MatchFilters.css';
 
 const SOURCES = ['remotive', 'remoteok', 'hn', 'arbeitnow', 'adzuna_in', 'himalayas', 'jsearch', 'jobspipe', 'jobdatalake', 'linkedin'];
 
 const REMOTE_VALUE = '__remote__';
+
+function parseFreshIds(raw: string): Set<FreshnessTickId> {
+  const ids = new Set<FreshnessTickId>();
+  for (const part of raw.split(',')) {
+    const id = part.trim();
+    if (id === '1d' || id === '7d' || id === '30d') ids.add(id);
+  }
+  return ids;
+}
+
+function ScoreFloorSlider({
+  value,
+  onCommit,
+}: {
+  value: number;
+  onCommit: (n: number) => void;
+}) {
+  const [live, setLive] = useState(value);
+  useEffect(() => setLive(value), [value]);
+  const pct = Math.min(100, Math.max(0, live));
+
+  return (
+    <div className="score-floor">
+      <div className="score-floor__track-wrap">
+        <div className="score-floor__fill" aria-hidden="true">
+          <div className="score-floor__fill-bar" style={{ width: `${pct}%` }} />
+        </div>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          step={1}
+          value={live}
+          aria-label="Match score floor"
+          aria-valuetext={`${live}+`}
+          className="score-floor__range"
+          onChange={(e) => setLive(Number(e.target.value))}
+          onPointerUp={(e) => onCommit(Number((e.target as HTMLInputElement).value))}
+          onKeyUp={(e) => onCommit(Number((e.currentTarget as HTMLInputElement).value))}
+        />
+        <span className="score-floor__bubble" style={{ left: `${pct}%` }}>
+          {live}+
+        </span>
+      </div>
+      <div className="score-floor__ends">
+        <span>0</span>
+        <span>100</span>
+      </div>
+    </div>
+  );
+}
 
 export function MatchFilters({
   isAdmin = false,
@@ -26,13 +79,16 @@ export function MatchFilters({
   const remote = sp.get('remote') ?? '';
   const city = sp.get('city') ?? '';
   const expired = sp.get('expired') ?? '';
+  const freshIds = parseFreshIds(sp.get('fresh') ?? '');
 
   const locationValue = remote === '1' ? REMOTE_VALUE : city;
-  const usingDefaultMin = minScore === '';
+  const sliderValue = minScore === '' ? DEFAULT_LIST_MIN_SCORE : Number(minScore) || 0;
   const secondaryFilterCount =
     (isAdmin && source ? 1 : 0) +
     (locationValue ? 1 : 0) +
-    (expired === '1' ? 1 : 0);
+    (expired === '1' ? 1 : 0) +
+    (freshIds.size > 0 ? 1 : 0) +
+    (minScore ? 1 : 0);
 
   function setParam(name: string, value: string) {
     const params = new URLSearchParams(sp.toString());
@@ -56,83 +112,37 @@ export function MatchFilters({
     navigate(`/?${params.toString()}`, { replace: true });
   }
 
+  function commitScore(n: number) {
+    setParam('min', String(Math.min(100, Math.max(0, Math.round(n)))));
+  }
+
+  function toggleFresh(id: FreshnessTickId) {
+    const next = new Set(freshIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    const params = new URLSearchParams(sp.toString());
+    const ordered = FRESHNESS_TICKS.map((t) => t.id).filter((tick) => next.has(tick));
+    if (ordered.length) {
+      params.set('fresh', ordered.join(','));
+      params.delete('expired');
+    } else {
+      params.delete('fresh');
+    }
+    navigate(`/?${params.toString()}`, { replace: true });
+  }
+
   const hasFilters =
     (isAdmin && source) ||
     minScore ||
     remote ||
     city ||
-    expired === '1';
+    expired === '1' ||
+    freshIds.size > 0;
 
   const cityOptions =
     city && !cities.some((c) => c.toLowerCase() === city.toLowerCase())
       ? [city, ...cities]
       : cities;
-
-  const scoreSelect = (
-    <PremiumSelect
-      variant="forest"
-      value={minScore}
-      onChange={(v) => setParam('min', v)}
-      aria-label="Minimum match score"
-      options={[
-        { value: '', label: `Default (${DEFAULT_LIST_MIN_SCORE}+)` },
-        { value: '0', label: 'All scores' },
-        { value: '60', label: '60+' },
-        { value: '75', label: '75+' },
-        { value: '85', label: '85+' },
-        { value: '90', label: '90+' },
-      ]}
-    />
-  );
-
-  const secondaryFilters = (
-    <>
-      {isAdmin && (
-        <PremiumSelect
-          variant="forest"
-          value={source}
-          onChange={(v) => setParam('source', v)}
-          aria-label="Job source"
-          options={[
-            { value: '', label: 'All sources' },
-            ...SOURCES.map((s) => ({ value: s, label: SOURCE_LABELS[s] ?? s })),
-          ]}
-        />
-      )}
-
-      <PremiumSelect
-        variant="forest"
-        value={locationValue}
-        onChange={setLocation}
-        aria-label="Filter by location"
-        options={[
-          { value: '', label: 'Any location' },
-          { value: REMOTE_VALUE, label: 'Remote only' },
-        ]}
-        groups={
-          cityOptions.length > 0
-            ? [
-                {
-                  label: 'Cities in your matches',
-                  options: cityOptions.map((c) => ({ value: c, label: c })),
-                },
-              ]
-            : undefined
-        }
-      />
-
-      <PremiumSelect
-        variant="forest"
-        value={expired === '1' ? '1' : ''}
-        onChange={(v) => setParam('expired', v)}
-        aria-label="Job freshness"
-        options={[
-          { value: '', label: 'Recent jobs only' },
-          { value: '1', label: 'Include older jobs' },
-        ]}
-      />
-    </>
-  );
 
   function clearFilters() {
     const params = new URLSearchParams();
@@ -146,25 +156,91 @@ export function MatchFilters({
   }
 
   const panelBody = (
-    <div className="space-y-4">
+    <div className="space-y-8">
+      <div>
+        <p className="text-sm font-semibold text-white">Match score floor</p>
+        <div className="mt-3">
+          <ScoreFloorSlider value={sliderValue} onCommit={commitScore} />
+        </div>
+      </div>
+
+      <div>
+        <p className="text-sm font-semibold text-white">Freshness</p>
+        <div className="mt-2">
+          {FRESHNESS_TICKS.map((tick) => {
+            const on = freshIds.has(tick.id);
+            return (
+              <button
+                key={tick.id}
+                type="button"
+                role="checkbox"
+                aria-checked={on}
+                className="fresh-tick"
+                onClick={() => toggleFresh(tick.id)}
+              >
+                <span className="fresh-tick__box">
+                  {on ? <Check className="h-3 w-3" strokeWidth={3} /> : null}
+                </span>
+                {tick.label}
+              </button>
+            );
+          })}
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            const params = new URLSearchParams(sp.toString());
+            if (expired === '1') {
+              params.delete('expired');
+            } else {
+              params.set('expired', '1');
+              params.delete('fresh');
+            }
+            navigate(`/?${params.toString()}`, { replace: true });
+          }}
+          className="mt-2 text-left text-sm font-semibold text-white/80 underline decoration-white/40 underline-offset-2 hover:text-white"
+        >
+          {expired === '1' ? 'Hide older jobs' : 'Include older jobs'}
+        </button>
+      </div>
+
       <label className="block text-sm font-semibold text-white">
-        Match score
-        <span className="mt-1.5 block">{scoreSelect}</span>
+        Location
+        <span className="mt-1.5 flex flex-col gap-2">
+          {isAdmin && (
+            <PremiumSelect
+              variant="forest"
+              value={source}
+              onChange={(v) => setParam('source', v)}
+              aria-label="Job source"
+              options={[
+                { value: '', label: 'All sources' },
+                ...SOURCES.map((s) => ({ value: s, label: SOURCE_LABELS[s] ?? s })),
+              ]}
+            />
+          )}
+          <PremiumSelect
+            variant="forest"
+            value={locationValue}
+            onChange={setLocation}
+            aria-label="Filter by location"
+            options={[
+              { value: '', label: 'Any location' },
+              { value: REMOTE_VALUE, label: 'Remote only' },
+            ]}
+            groups={
+              cityOptions.length > 0
+                ? [
+                    {
+                      label: 'Cities in your matches',
+                      options: cityOptions.map((c) => ({ value: c, label: c })),
+                    },
+                  ]
+                : undefined
+            }
+          />
+        </span>
       </label>
-      <label className="block text-sm font-semibold text-white">
-        Location & freshness
-        <span className="mt-1.5 flex flex-col gap-2">{secondaryFilters}</span>
-      </label>
-      {usingDefaultMin ? (
-        <p className="text-sm text-white/80">
-          Showing {DEFAULT_LIST_MIN_SCORE}+.{' '}
-          <button type="button" className="font-bold underline" onClick={() => setParam('min', '0')}>
-            Include lower scores
-          </button>
-        </p>
-      ) : minScore === '0' ? (
-        <p className="text-sm text-white/80">Showing all match scores.</p>
-      ) : null}
     </div>
   );
 
@@ -193,7 +269,7 @@ export function MatchFilters({
             aria-label="Close filters"
             onClick={() => setMobileOpen(false)}
           />
-          <div className="absolute bottom-0 left-0 right-0 max-h-[80vh] overflow-y-auto rounded-t-3xl bg-primary p-6 text-white shadow-elevated animate-slide-up">
+          <div className="absolute bottom-0 left-0 right-0 max-h-[85vh] overflow-y-auto rounded-t-3xl bg-primary p-6 text-white shadow-elevated animate-slide-up">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-xl font-bold">Filters</h2>
               <div className="flex gap-2">
@@ -212,8 +288,8 @@ export function MatchFilters({
         </div>
       ) : null}
 
-      <aside className="hidden w-[300px] shrink-0 animate-slide-up self-start rounded-[1.5rem] bg-primary p-7 text-white shadow-glass lg:block">
-        <div className="mb-6 flex items-center justify-between">
+      <aside className="hidden w-[320px] shrink-0 animate-slide-up self-stretch rounded-[1.5rem] bg-primary p-8 text-white shadow-glass lg:sticky lg:top-24 lg:block lg:min-h-[calc(100vh-7.5rem)]">
+        <div className="mb-8 flex items-center justify-between">
           <h2 className="text-xl font-bold text-white">Filters</h2>
           {hasFilters && (
             <button type="button" onClick={clearFilters} className="rounded-full bg-white/15 px-3 py-1 text-sm font-semibold text-white">

@@ -74,6 +74,7 @@ export function MatchList({ initialMatches, total: initialTotal, initialHasMore,
     if (sp.get('bookmarked')) params.set('bookmarked', sp.get('bookmarked')!);
     if (sp.get('source')) params.set('source', sp.get('source')!);
     if (sp.get('expired') === '1') params.set('expired', '1');
+    if (sp.get('fresh')) params.set('fresh', sp.get('fresh')!);
     return params.toString();
   }, [sp]);
 

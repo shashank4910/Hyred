@@ -6,6 +6,7 @@ import {
   jobFreshnessOrFilter,
   includeExpiredJobs,
   isJobPastFreshnessWindow,
+  freshnessWindowDays,
   DEFAULT_DASHBOARD_MIN_SCORE,
 } from '@/lib/match-stats';
 
@@ -26,6 +27,20 @@ describe('PR #33 #92 stats/dashboard alignment', () => {
     expect(filter).toContain(`posted_at.gte.${cutoff}`);
     expect(filter).toContain('posted_at.is.null');
     expect(filter).toContain(`fetched_at.gte.${cutoff}`);
+  });
+
+  it('freshnessWindowDays takes the widest selected tick', () => {
+    expect(freshnessWindowDays(undefined)).toBeNull();
+    expect(freshnessWindowDays('')).toBeNull();
+    expect(freshnessWindowDays('1d')).toBe(1);
+    expect(freshnessWindowDays('1d,7d')).toBe(7);
+    expect(freshnessWindowDays('1d,7d,30d')).toBe(30);
+  });
+
+  it('staleJobCutoffIso respects a custom day window', () => {
+    const cutoff = new Date(staleJobCutoffIso(1)).getTime();
+    const expected = Date.now() - 24 * 60 * 60 * 1000;
+    expect(Math.abs(cutoff - expected)).toBeLessThan(60_000);
   });
 
   it('includeExpiredJobs reads expired=1', () => {

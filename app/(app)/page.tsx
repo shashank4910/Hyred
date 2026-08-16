@@ -9,7 +9,7 @@ import { DashboardMatchesSection } from './_components/DashboardMatchesSection';
 import { DashboardNavProvider } from './_components/DashboardNavContext';
 import { RunIngestButton } from './_components/RunIngestButton';
 import { Search, Sparkles } from 'lucide-react';
-import { getDashboardCounts, listMatchCities } from '@/lib/match-stats';
+import { getDashboardCounts, listMatchCities, freshnessWindowDays } from '@/lib/match-stats';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,6 +24,7 @@ type SearchParams = {
   sort?: 'score' | 'posted' | 'newest' | 'activity' | 'company';
   from?: string; // match ID to highlight on back-navigation
   expired?: string; // "1" = include older/expired jobs
+  fresh?: string;
 };
 
 export default async function Dashboard({
@@ -45,6 +46,7 @@ export default async function Dashboard({
     sp.city ?? '',
     sp.source ?? '',
     sp.expired ?? '',
+    sp.fresh ?? '',
     sp.from ?? '',
   ].join('|');
 
@@ -75,6 +77,7 @@ export default async function Dashboard({
         source: sp.source,
         q: sp.q,
         expired: sp.expired,
+        fresh: sp.fresh,
       },
       isAdmin,
     ),
@@ -88,6 +91,7 @@ export default async function Dashboard({
         status,
         bookmarked: sp.bookmarked,
         expired: sp.expired,
+        fresh: sp.fresh,
       },
       isAdmin,
     ),
@@ -102,6 +106,13 @@ export default async function Dashboard({
   if (sp.remote === '1') chips.push({ label: 'Remote', clear: 'remote' });
   if (sp.city) chips.push({ label: sp.city, clear: 'city' });
   if (sp.expired === '1') chips.push({ label: 'Older jobs', clear: 'expired' });
+  if (sp.fresh) {
+    const days = freshnessWindowDays(sp.fresh);
+    chips.push({
+      label: days === 1 ? 'Last 24 hours' : days === 7 ? 'This week' : days === 30 ? 'This month' : 'Freshness',
+      clear: 'fresh',
+    });
+  }
   if (sp.min) chips.push({ label: `Score ${sp.min}+`, clear: 'min' });
 
   function hrefWithout(drop: string) {
@@ -116,6 +127,7 @@ export default async function Dashboard({
       ['bookmarked', sp.bookmarked],
       ['sort', sp.sort],
       ['expired', sp.expired],
+      ['fresh', sp.fresh],
     ];
     for (const [k, v] of keep) {
       if (k === drop || !v) continue;
