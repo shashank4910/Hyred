@@ -83,6 +83,7 @@ import {
   isKeyOnCooldownDb,
 } from './llm-key-runtime';
 import { withLlmChatSlot } from './llm-concurrency';
+import { normalizeProfileSeniority } from './profile-seniority';
 
 const OPENAI_CHAT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const GROQ_CHAT_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
@@ -1080,11 +1081,7 @@ Rules:
         typeof parsed.years_experience === 'number'
           ? Math.max(0, Math.round(parsed.years_experience * 10) / 10) // preserve one decimal (e.g. 7.7) instead of rounding to integer
           : undefined,
-      seniority: ['junior', 'mid', 'senior', 'staff', 'principal'].includes(
-        parsed.seniority,
-      )
-        ? parsed.seniority
-        : 'unknown',
+      seniority: normalizeProfileSeniority(parsed.seniority),
       top_skills: Array.isArray(parsed.top_skills)
         ? parsed.top_skills.slice(0, 12).map(String)
         : [],
