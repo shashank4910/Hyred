@@ -1167,8 +1167,9 @@ preferences.locations + resume current_location
 | Include older jobs | `expired=1` → `includeExpiredJobs()` skips window; **Older** badge via `isJobPastFreshnessWindow` (PR **#290**). Ticking `fresh` clears `expired`. |
 | Filter UX | Keep list visible + “Updating…” (PR **#287**); client refetch `/api/matches` + slim select (PR **#288**); Filters column **sticky** (PR **#316**) |
 | Dropdowns | `PremiumSelect` (PR **#312**), not native OS menus |
+| Sort | `MatchSortBar` above cards (PRs **#313–#314**). Highest score (default) / Newest via `jobListingTime` — not in Filters, not raw `posted_at` DESC |
 
-**Do not** key hide-only on `posted_at` (paid APIs can write ancient/wrong dates). **Do not** bump `fetched_at` on job upsert conflict. `expired=1` cannot bring back hard-deleted cleanup rows.
+**Do not** key hide-only **or Newest sort** on raw `posted_at` (paid APIs can write ancient/wrong/future dates). **Do not** bump `fetched_at` on job upsert conflict. `expired=1` cannot bring back hard-deleted cleanup rows.
 
 ### Premium Tier 1 — Match Intelligence, Interview Prep, Resume Studio Pro
 
@@ -1285,7 +1286,7 @@ app/(app)/top-mnc/          ← Top MNC filtered job list (lib/top-companies.ts)
 app/(app)/import/           ← Manual job URL import UI
 app/(app)/ats-checker/      ← Logged-in ATS checker (AtsScanReport + Fix Studio + history)
 app/(app)/apply-profile/    ← Application profile form (memory store for auto-apply)
-app/(app)/_components/      ← AppShell (pill header), MatchCard, StatusFilter, MatchFilters (slider + freshness ticks + sticky), HeaderSearch, RunIngestButton (SpecularButton), MatchList, ScanLiveHud, PageHeader
+app/(app)/_components/      ← AppShell (pill header), MatchCard, MatchSortBar, MatchFilters (slider + freshness ticks + sticky), HeaderSearch, RunIngestButton (SpecularButton), MatchList, ScanLiveHud, PageHeader
 app/_components/ui/         ← PremiumSelect
 app/_components/react-bits/ ← SpecularButton (ogl)
 app/(app)/admin/            ← Admin Center: AdminDashboard (JobsPipe/JobDataLake/JSearch keys + bulk paste), JobApiUsagePanel.tsx, LlmKeysPanel.tsx, JobsControlPanel.tsx, CompanyCatalogRequestsPanel
