@@ -245,7 +245,7 @@ export function MatchFilters({
   );
 
   return (
-    <div className={`${isPending ? 'opacity-80' : ''} lg:sticky lg:top-24 lg:z-10 lg:self-start`}>
+    <div className={`${isPending ? 'opacity-80' : ''} lg:h-full lg:w-[320px] lg:shrink-0`}>
       <button
         type="button"
         className="btn lg:hidden"
@@ -288,7 +288,7 @@ export function MatchFilters({
         </div>
       ) : null}
 
-      <aside className="hidden w-[320px] shrink-0 rounded-[1.5rem] bg-primary p-8 text-white shadow-glass lg:block lg:h-[calc(100vh-7.5rem)] lg:overflow-y-auto">
+      <aside className="hidden h-full w-full overflow-y-auto rounded-[1.5rem] bg-primary p-8 text-white shadow-glass lg:block">
         <div className="mb-8 flex items-center justify-between">
           <h2 className="text-xl font-bold text-white">Filters</h2>
           {hasFilters && (

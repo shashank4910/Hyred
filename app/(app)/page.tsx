@@ -143,9 +143,10 @@ export default async function Dashboard({
       </div>
 
       <DashboardNavProvider>
-        <div className="lg:flex lg:items-start lg:gap-8">
+        {/* Desktop: viewport-height row so the filter panel stays static and only the job list scrolls. */}
+        <div className="lg:flex lg:gap-8 lg:h-[calc(100vh-12rem)]">
           <MatchFilters isAdmin={isAdmin} cities={cities} />
-          <div className="min-w-0 flex-1">
+          <div id="dashboard-list-scroll" className="min-w-0 flex-1 lg:h-full lg:overflow-y-auto lg:overscroll-contain lg:pb-6">
             <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
               <h1 className="flex items-center gap-3 font-headline text-3xl font-extrabold tracking-tight text-ink md:text-5xl">
                 {heading}
