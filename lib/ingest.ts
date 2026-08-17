@@ -702,8 +702,15 @@ export async function runIngest(opts?: {
       console.warn(`[ingest] Scoring stopped early: ${scored}/${ranked.length} scored (time budget)`);
     }
 
-    const widen = matchesToSaveAfterWiden(scoredPending, minScore, savedJobIds);
-    if (widen.shouldWiden && widen.toSave.length > 0) {
+    // Adaptive score widen is FIRST-SCAN-ONLY: it exists to rescue the onboarding
+    // auto-scan when it returns fewer than ADAPTIVE_MATCH_TARGET jobs, so a brand-new
+    // user isn't staring at an empty dashboard. Manual / cron scans must not silently
+    // lower the user's score floor.
+    const widen =
+      opts?.triggeredBy === 'onboarding'
+        ? matchesToSaveAfterWiden(scoredPending, minScore, savedJobIds)
+        : null;
+    if (widen && widen.shouldWiden && widen.toSave.length > 0) {
       let widenKept = 0;
       for (const entry of widen.toSave) {
         const ok = await persistScoredMatch(entry);

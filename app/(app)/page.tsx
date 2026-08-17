@@ -8,7 +8,6 @@ import { DashboardMatchResults } from './_components/DashboardMatchResults';
 import { DashboardMatchesSection } from './_components/DashboardMatchesSection';
 import { DashboardNavProvider } from './_components/DashboardNavContext';
 import { RunIngestButton } from './_components/RunIngestButton';
-import { AdaptiveScoreWidenBanner } from './_components/AdaptiveScoreWidenBanner';
 import { Search, Sparkles } from 'lucide-react';
 import { getDashboardCounts, listMatchCities, freshnessWindowDays } from '@/lib/match-stats';
 
@@ -137,8 +136,6 @@ export default async function Dashboard({
     return `/?${params.toString()}`;
   }
 
-  const scoreWidenNotice = profile.preferences?.score_widen_notice ?? null;
-
   return (
     <div>
       <div className="sm:hidden mb-4">
@@ -169,9 +166,6 @@ export default async function Dashboard({
                 </div>
               )}
             </div>
-            {scoreWidenNotice && (
-              <AdaptiveScoreWidenBanner notice={scoreWidenNotice} />
-            )}
             <div className="mb-6">
               <StatusFilter
                 counts={counts}
