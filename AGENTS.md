@@ -62,6 +62,7 @@ How to open one section cheaply: `grep -n "<heading text>" CONTEXT.md` to get th
 | **JD HTML poisoning AI prompts** | `CONTEXT.md` → Known Pitfalls (HTML row) + `lib/jd-fetcher.ts` (`sanitizeJobDescriptionForAI`) + Session 16 (f) | any new code that puts `args.jobDescription` into a prompt |
 | **`scoreJob` seniority + experience-gap cap** | `CONTEXT.md` → Known Pitfalls (over-scoring row) + `lib/gemini.ts` `scoreJob` + Session 16 (g) | tuning scoring, adding new score rules, debugging high-score-low-fit complaints |
 | Repo visibility / deployment | `CONTEXT.md` → `## Repo & deployment notes` | go-live, collaborator access |
+| **Freebuff auto-commit rule** (always ship work) | `.freebuff/rules.md` + `AGENTS.md` CRITICAL RULES #8 | any work that should be committed/pushed; "should I push?" questions |
 | **Auth / login / Supabase Auth / Google OAuth setup** | `docs/AUTH_SETUP.md` | anything auth, or go-live config |
 | Multi-user identity in code (`getCurrentProfile`, per-user scoping) | `CONTEXT.md` → `### Phase 1 log` + `lib/current-user.ts` | editing pages/routes that read user data |
 | Stats / ingest run UX (user-scoped metrics, stuck `running`) | `CONTEXT.md` → Known Pitfalls (Stats global pool, ingest finalize rows) + `lib/ingest-runs.ts` | Stats page, scan history, `runIngest` |
@@ -101,6 +102,7 @@ How to open one section cheaply: `grep -n "<heading text>" CONTEXT.md` to get th
 5. **AI providers:** Groq primary + OpenAI fallback via `LLM_PRIMARY`. **Never reintroduce `gemini-2.0-flash`** (deprecated → 429). Embeddings are OpenAI-only.
 6. **Multi-user:** resolve the user with `getCurrentProfile()` (`lib/current-user.ts`); scope every user-data query by `profile_id`. Never use the old "first profile" pattern.
 7. **Free infra only** beyond API keys (owner constraint). No paid services without asking.
+8. **Auto-commit + push everything (Freebuff rule, `.freebuff/rules.md`):** committing/pushing is part of every task — never ask "should I commit/push/merge?". After any change (fix, feature, docs, config, rules, extension work): commit on a fresh branch, push immediately, open a PR, merge when CI is green, verify live, and end the session with zero uncommitted work.
 
 ---
 
@@ -109,6 +111,7 @@ How to open one section cheaply: `grep -n "<heading text>" CONTEXT.md` to get th
 - `CLAUDE.md` — pointer here (Claude Code).
 - `.cursor/rules/jobradar.mdc` — pointer here (Cursor, always-apply).
 - `.kiro/steering/jobradar-context.md` — Kiro steering (auto-loaded); also points here.
+- `.freebuff/rules.md` — Freebuff pointer: auto commit + push everything (see CRITICAL RULES #8).
 - `CONTEXT.md` — the full knowledge base (open by section via the Index).
 - `docs/context/session-log.md` — dated session archive (Tier 3 history).
 - `docs/AUTH_SETUP.md` — auth/go-live runbook.
