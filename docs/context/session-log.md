@@ -20,6 +20,10 @@
 4. Old ordering `created_at ASC` + the kill ⇒ only ~6 oldest profiles scanned per run; every newer profile (all new signups) never got a scan. Last killed run's log shows it processing the first profile when cancelled.
 5. Kill also leaves the last profile's `ingest_run` stuck `running` until the next run's `closeStaleIngestRuns` (20-min stale window) — self-healing, but looked like a 40-min "scan".
 
+### Follow-up — Freshness checkboxes for Last 6 / 12 hours (PR **#330**)
+
+Owner asked for "show jobs from the last 6 / 12 hours" in Filters. Added `6h` (0.25d) and `12h` (0.5d) to `FRESHNESS_TICKS` — the checkbox list renders them automatically, `freshnessWindowDays` (widest wins) and the fractional-day cutoff already handle sub-day windows, and the filter chip now uses a new `freshnessLabel` helper instead of a hardcoded 1/7/30 switch. Freshness ticks still clear `expired`.
+
 ### Follow-up — "Newest" now means when the match was added (PR **#329**)
 
 After #328, owner still saw "results of 1 day ago". Logged into the live account (admin-generated magic link → session cookie) and confirmed: slider at 50, Inbox 235 — the 14 fresh matches (scores 50–68) ARE in the list, but the default **Highest score** sort leads with old 90s from 6/4 days ago, and **Newest** sorted by the job's `fetched_at` (never refreshed on upsert) so a match created 3h ago showed "1 day ago". Owner chose: **Newest = when the match was added to the dashboard.**
