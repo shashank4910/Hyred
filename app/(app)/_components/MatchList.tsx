@@ -279,6 +279,7 @@ export function MatchList({ initialMatches, total: initialTotal, initialHasMore,
                 matchedSkills={m.matched_skills ?? []}
                 missingSkills={m.missing_skills ?? []}
                 job={m.job as unknown as MatchJob}
+                createdAt={m.created_at}
                 showSource={showSource}
                 isOlder={showExpired && isJobPastFreshnessWindow(m.job)}
                 staggerIndex={i}

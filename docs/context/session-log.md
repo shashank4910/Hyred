@@ -20,6 +20,14 @@
 4. Old ordering `created_at ASC` + the kill ⇒ only ~6 oldest profiles scanned per run; every newer profile (all new signups) never got a scan. Last killed run's log shows it processing the first profile when cancelled.
 5. Kill also leaves the last profile's `ingest_run` stuck `running` until the next run's `closeStaleIngestRuns` (20-min stale window) — self-healing, but looked like a 40-min "scan".
 
+### Follow-up — "Newest" now means when the match was added (PR **#329**)
+
+After #328, owner still saw "results of 1 day ago". Logged into the live account (admin-generated magic link → session cookie) and confirmed: slider at 50, Inbox 235 — the 14 fresh matches (scores 50–68) ARE in the list, but the default **Highest score** sort leads with old 90s from 6/4 days ago, and **Newest** sorted by the job's `fetched_at` (never refreshed on upsert) so a match created 3h ago showed "1 day ago". Owner chose: **Newest = when the match was added to the dashboard.**
+
+- `sortMatchesByFreshness` + `applyMatchSort('posted')` now rank by `matches.created_at` desc (tie → score).
+- `MatchCard` clock + tooltip use `matchListingIso` = later of match `created_at` and `jobListingTime` (fresh scan results read "3 hours ago", not "1 day ago").
+- `createdAt` threaded from `MatchList`; tests updated (`match-sort.test.ts`).
+
 ### Follow-up — dashboard empty state lied about kept matches (PR **#328**)
 
 While verifying #326, owner saw Stats "Recent scans" = **14 kept** from the 01:55Z cron run but an empty dashboard. RCA: the score slider was at 70+ in the URL; the scan saved those 14 matches at scores 50–68 (profile floor 50), so `min=70` filtered them all out — correct behavior, but the empty state said "No matches in inbox yet" because `hiddenBelowThreshold` was only set when `totalInFilter > 0 && matches.length === 0`, which is **never true** (count>0 ⇒ page non-empty). The "N matches hidden below your threshold" message + "Show all scores anyway" button were unreachable dead logic.

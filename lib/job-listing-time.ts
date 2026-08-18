@@ -42,11 +42,46 @@ export function jobListingIso(job: JobDates | JobDates[] | null | undefined): st
   return dates.fetched_at ?? dates.posted_at ?? null;
 }
 
+export type MatchDates = {
+  created_at?: string | null;
+  job?: JobDates | JobDates[] | null | undefined;
+};
+
+/**
+ * When a match became "new" for the user: the later of the job's listing time
+ * and when the match was created (i.e. when a scan surfaced it). A match
+ * created 3 hours ago for a job first discovered yesterday reads "3 hours
+ * ago", not "1 day ago" — otherwise a fresh scan's results look stale.
+ */
+export function matchListingTime(
+  match: MatchDates | null | undefined,
+  nowMs: number = Date.now(),
+): number {
+  const created = parseTime(match?.created_at);
+  return Math.max(jobListingTime(match?.job, nowMs), created ?? 0);
+}
+
+export function matchListingIso(match: MatchDates | null | undefined): string | null {
+  const t = matchListingTime(match);
+  if (t > 0) return new Date(t).toISOString();
+  return jobListingIso(match?.job);
+}
+
+/**
+ * "Newest" order for the dashboard: matches surfaced most recently first.
+ * Sorted by when the match was ADDED to the user's dashboard (created_at) —
+ * not the raw job listing date, so a scan's fresh results lead the list
+ * instead of being buried under old high scorers. Ties fall back to score.
+ */
 export function sortMatchesByFreshness<
-  T extends { llm_score?: number | null; job: JobDates | JobDates[] | null | undefined },
+  T extends {
+    llm_score?: number | null;
+    created_at?: string | null;
+    job?: JobDates | JobDates[] | null | undefined;
+  },
 >(matches: T[]): T[] {
   return [...matches].sort((a, b) => {
-    const byTime = jobListingTime(b.job) - jobListingTime(a.job);
+    const byTime = (parseTime(b.created_at) ?? 0) - (parseTime(a.created_at) ?? 0);
     if (byTime !== 0) return byTime;
     return (b.llm_score ?? 0) - (a.llm_score ?? 0);
   });

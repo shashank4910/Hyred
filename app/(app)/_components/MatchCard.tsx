@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { MapPin, Clock, Heart, Crown } from 'lucide-react';
 import { relativeTime, formatShortDate, formatFullDate, SOURCE_LABELS } from '@/lib/ui';
-import { jobListingIso } from '@/lib/job-listing-time';
+import { matchListingIso } from '@/lib/job-listing-time';
 import { MatchSkillPills } from './MatchSkillPills';
 
 type Props = {
@@ -24,6 +24,8 @@ type Props = {
     posted_at: string | null;
     fetched_at?: string | null;
   };
+  /** When the match landed in the user's dashboard (a scan surfaced it). */
+  createdAt?: string | null;
   mncCategory?: string;
   matchedSkills?: string[];
   missingSkills?: string[];
@@ -40,6 +42,7 @@ export function MatchCard({
   status,
   bookmarked: initialBookmarked,
   job,
+  createdAt,
   mncCategory,
   matchedSkills = [],
   missingSkills = [],
@@ -48,9 +51,9 @@ export function MatchCard({
   returnHref,
   staggerIndex = 0,
 }: Props) {
-  const listingAt = jobListingIso(job);
+  const listingAt = matchListingIso({ created_at: createdAt, job });
   const fullDate = formatFullDate(listingAt);
-  const tooltip = listingAt ? `Listed ${fullDate}` : '';
+  const tooltip = listingAt ? fullDate : '';
   const isNew = status === 'new';
   const [bookmarked, setBookmarked] = useState(initialBookmarked);
   const [saving, setSaving] = useState(false);
