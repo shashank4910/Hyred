@@ -358,3 +358,19 @@ export function companyInitial(
   const m = name.match(/[a-z]/i);
   return m ? m[0].toUpperCase() : '?';
 }
+
+/**
+ * Derive a company name from a legacy board-style title (e.g. "Cockroach Labs
+ * | NYC, SF, REMOTE (USA) | Full-time") when the `company` column is null.
+ * Returns the first pipe-segment, URL/parenthetical noise stripped, or null
+ * when nothing reasonable can be extracted (caller renders no logo row).
+ */
+export function companyFromTitle(title: string | null | undefined): string | null {
+  if (!title) return null;
+  const parts = title.split('|').map((s) => s.trim()).filter(Boolean);
+  let c = (parts[0] || title).trim();
+  c = c.replace(/https?:\/\/[^\s]+/gi, '').replace(/www\.[^\s]+/gi, '').trim();
+  c = c.replace(/\s*\([^)]*\)/g, ' ').replace(/\s{2,}/g, ' ').trim();
+  if (c.length < 2) return null;
+  return c;
+}

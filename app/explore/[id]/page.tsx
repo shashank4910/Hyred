@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { CompanyLogo } from '../../(app)/_components/CompanyLogo';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { companyFromTitle } from '@/lib/company-logo';
 import { ensureFullDescription } from '@/lib/jd-fetcher';
 import { SOURCE_LABELS } from '@/lib/ui';
 
@@ -182,10 +183,10 @@ export default async function PublicJobPage({
             {job.title}
           </h1>
           <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 mb-4">
-            {job.company && (
+            {(job.company || companyFromTitle(job.title)) && (
               <span className="flex items-center gap-1.5">
-                <CompanyLogo name={job.company} size={24} />
-                {job.company}
+                <CompanyLogo name={job.company || companyFromTitle(job.title)} size={24} />
+                {job.company || companyFromTitle(job.title)}
               </span>
             )}
             {job.location && (

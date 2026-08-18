@@ -29,6 +29,12 @@ Owner: "continue the logo work, check how other apps show logos and implement." 
 - Coverage tested against real data: 124/129 distinct companies in the job pool resolve; the rest get monograms.
 - Spots covered: MatchCard, JobFeatureShell, job detail header, ReferralRadar, Dream Alerts, **and the public `/explore` + `/explore/[id]` pages** (previously a generic Building2 icon).
 
+### Follow-up — Explore logos missing: legacy jobs have null `company` (PR **#333**)
+
+After #332, owner: "logos are too tiny, and a lot are missing." Re-checked the live dashboard (20 logos ✓) but `/explore` rendered **zero** `<img>` tags. RCA: only 1 of 587 dashboard matches has null company, but **all 24 jobs on explore page 1 have `company = null`** — they're legacy board-style rows whose title embeds the company ("Cockroach Labs | NYC, SF, REMOTE (USA) | Full-time"), and they sort to the top by `posted_at DESC`.
+
+**Fix:** new `companyFromTitle(title)` in `lib/company-logo.ts` derives the company from the first pipe-segment (URLs/parentheticals stripped; verified against all 60 null-company jobs — 60/60 derive). Explore list + detail pages now render `job.company || companyFromTitle(job.title)`; on the list, when the cleaned title *is* the derived company (legacy jobs), the logo renders inline in the h2 instead of duplicating a company row below.
+
 ### Follow-up — Logo polish: bigger tiles, no more fake globes (PR **#332**)
 
 Owner: "logos are too tiny, and a lot are missing." Root cause for "missing": Google s2 favicons **never 404** — it redirects to a generic globe for dead/naive-slug domains, which loaded "fine" and read as a useless logo. Fixed by switching the chain to **unavatar.io (`?fallback=false`, returns real 404) → DuckDuckGo icons → monogram**, and dropping numeric tokens from slug fallback ("6221 Roche…" → roche). Verified with curl: unavatar 200s for all curated real domains (pwc, ti, hcltech, sc, jpmorganchase, roche, bmc…) and 404s for dead ones. Bumped tile sizes: MatchCard 18→24, job detail/explore header 16→24, explore list 16→20, ReferralRadar 12→16, Dream Alerts 14→18.
