@@ -10,6 +10,7 @@ import { fetchJobsPipe, describeJobsPipeFetchFailure } from './jobspipe';
 import { fetchJobDataLake } from './jobdatalake';
 import { getJobdatalakeApiKeys } from '../jobdatalake-keys';
 import { fetchLinkedIn } from './linkedin';
+import { fetchAtsDirectory } from './ats-directory';
 import type { SearchProfile } from '../search-profile';
 import type { Preferences, ResumeInsights } from '../types';
 import { buildJobCountryCodes, jsearchCountryParam } from '../job-country-codes';
@@ -24,7 +25,10 @@ export type SourceName =
   | 'jsearch'
   | 'jobspipe'
   | 'jobdatalake'
-  | 'linkedin';
+  | 'linkedin'
+  | 'greenhouse'
+  | 'lever'
+  | 'ashby';
 
 export const ALL_SOURCES: SourceName[] = [
   'remotive',
@@ -37,6 +41,9 @@ export const ALL_SOURCES: SourceName[] = [
   'jobspipe',
   'jobdatalake',
   'linkedin',
+  'greenhouse',
+  'lever',
+  'ashby',
 ];
 
 export const SOURCE_LABELS: Record<SourceName, string> = {
@@ -50,6 +57,9 @@ export const SOURCE_LABELS: Record<SourceName, string> = {
   jobspipe: 'JobsPipe',
   jobdatalake: 'JobDataLake',
   linkedin: 'LinkedIn',
+  greenhouse: 'Greenhouse',
+  lever: 'Lever',
+  ashby: 'Ashby',
 };
 
 /**
@@ -239,6 +249,13 @@ function buildFns(
       maxDescriptions: 12,
       timeBudgetMs: 80_000,
     });
+
+  // ATS-directory source — pulls the FULL board of each curated company
+  // (Greenhouse/Lever/Ashby), NOT per-user queries. Same jobs for every
+  // profile; upsert dedup (source, source_id) makes re-scans cheap.
+  fns.greenhouse = () => fetchAtsDirectory();
+  fns.lever = () => fetchAtsDirectory();
+  fns.ashby = () => fetchAtsDirectory();
 
   return fns;
 }

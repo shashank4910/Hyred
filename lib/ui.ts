@@ -74,6 +74,9 @@ export const SOURCE_LABELS: Record<string, string> = {
   jobspipe: 'JobsPipe',
   jobdatalake: 'JobDataLake',
   linkedin: 'LinkedIn',
+  greenhouse: 'Greenhouse',
+  lever: 'Lever',
+  ashby: 'Ashby',
   manual: 'Imported',
 };
 
