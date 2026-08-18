@@ -29,6 +29,12 @@ Owner: "continue the logo work, check how other apps show logos and implement." 
 - Coverage tested against real data: 124/129 distinct companies in the job pool resolve; the rest get monograms.
 - Spots covered: MatchCard, JobFeatureShell, job detail header, ReferralRadar, Dream Alerts, **and the public `/explore` + `/explore/[id]` pages** (previously a generic Building2 icon).
 
+### Follow-up — "A lot of logos are missing": DDG-primary chain + wrong-domain fixes (PR **#334**)
+
+Owner: "what is the logic for the logos you used — a lot are missing." Measured the actual HTTP chain against 30 real dashboard companies: **unavatar 429s on 22/30** (rate-limit; it was the primary source) and 10/30 hit 404 on both sources — not because the companies lack logos, but because the naive-slug domain was **wrong** (PwC → pwcaccelerationcenter.com, Renesas → renesaselectronics.com, VML → vmlenterprise.com, Sia → sia.com).
+
+**Fix:** 1) **swapped the chain — DuckDuckGo icons is now primary** (real 200s for every domain with a favicon, clean 404s otherwise; unavatar demoted to secondary), and 2) added curated domains: `pricewaterhousecoopers`/`pwc acceleration center india`/`pwc india` → pwc.com, `renesas*` → renesas.com, `vml*` → vml.com, `sia`/`sia partners` → sia-partners.com. Re-measured: **26/30 resolve** (was 20/30); the remaining 4 (Kiaratech, Scouit, Quality Engineering, WillWare) genuinely have no favicon → monogram is correct.
+
 ### Follow-up — Explore logos missing: legacy jobs have null `company` (PR **#333**)
 
 After #332, owner: "logos are too tiny, and a lot are missing." Re-checked the live dashboard (20 logos ✓) but `/explore` rendered **zero** `<img>` tags. RCA: only 1 of 587 dashboard matches has null company, but **all 24 jobs on explore page 1 have `company = null`** — they're legacy board-style rows whose title embeds the company ("Cockroach Labs | NYC, SF, REMOTE (USA) | Full-time"), and they sort to the top by `posted_at DESC`.
