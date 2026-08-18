@@ -17,6 +17,9 @@ const ALL_SOURCES = [
   { id: 'remoteok', label: 'RemoteOK', tokens: 'free' },
   { id: 'hn', label: 'HN Who is Hiring', tokens: 'free' },
   { id: 'arbeitnow', label: 'Arbeitnow', tokens: 'free' },
+  { id: 'greenhouse', label: 'Greenhouse (top companies)', tokens: 'free' },
+  { id: 'lever', label: 'Lever (top companies)', tokens: 'free' },
+  { id: 'ashby', label: 'Ashby (top companies)', tokens: 'free' },
 ];
 
 export function RunIngestButton({

@@ -29,6 +29,15 @@ Owner: "continue the logo work, check how other apps show logos and implement." 
 - Coverage tested against real data: 124/129 distinct companies in the job pool resolve; the rest get monograms.
 - Spots covered: MatchCard, JobFeatureShell, job detail header, ReferralRadar, Dream Alerts, **and the public `/explore` + `/explore/[id]` pages** (previously a generic Building2 icon).
 
+### Follow-up — ATS-directory source: Greenhouse/Lever/Ashby keyless boards (PR **#335**)
+
+Owner asked how to get more job boards/volume on Hyred, like LinkedIn/Indeed. Researched how big platforms scale: **ATS integrations** — pull from the ATS systems where companies publish careers (Greenhouse `boards-api.greenhouse.io`, Lever `api.lever.co/v0/postings`, Ashby `api.ashbyhq.com/posting-api/job-board`) — all keyless, no API key/OAuth/partner approval. Verified all three live (Stripe, Palantir, Notion, Snowflake…), then built `lib/sources/ats-directory.ts`:
+
+- `ATS_BOARDS` — curated company→board list (32 boards), seeded from the Top-MNC catalog and **live-verified 2026-08-18** (each returns ≥1 job). LinkedIn's board was discovered to be full of test posts ("LI Test Company") and excluded.
+- Per-board fetch: Greenhouse `?content=true` (full descriptions), Lever `mode=json` (plain desc + salaryRange), Ashby `includeCompensation=true` (structured salary). Concurrency-capped at 6, 20s timeout per board, dead boards logged-and-skipped (never throws).
+- Wired as three new `SourceName`s (`greenhouse`/`lever`/`ashby`) in `ALL_SOURCES`, `buildFns`, `SOURCE_LABELS` (lib/ui.ts + lib/sources/index.ts), MatchFilters dropdown, and RunIngestButton. Unlike per-user-query sources (jsearch/jobspipe), it pulls each company's **full board** every scan — volume comes from the company list, not user keywords.
+- **Measured live: 6,191 jobs fetched in ~11s from 32 boards; 2,768 are fresh (≤45d) and 0 already in DB → ~2,768 new rows on first scan.** Re-scans only insert genuinely-new postings (upsert dedup `source,source_id`); embed is capped 50/run; scoring is per-profile + wall-budget-capped (Session 34).
+
 ### Follow-up — "A lot of logos are missing": DDG-primary chain + wrong-domain fixes (PR **#334**)
 
 Owner: "what is the logic for the logos you used — a lot are missing." Measured the actual HTTP chain against 30 real dashboard companies: **unavatar 429s on 22/30** (rate-limit; it was the primary source) and 10/30 hit 404 on both sources — not because the companies lack logos, but because the naive-slug domain was **wrong** (PwC → pwcaccelerationcenter.com, Renesas → renesaselectronics.com, VML → vmlenterprise.com, Sia → sia.com).

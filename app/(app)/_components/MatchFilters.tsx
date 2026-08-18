@@ -9,7 +9,7 @@ import { useDashboardNav } from './DashboardNavContext';
 import PremiumSelect from '@/app/_components/ui/PremiumSelect';
 import './MatchFilters.css';
 
-const SOURCES = ['remotive', 'remoteok', 'hn', 'arbeitnow', 'adzuna_in', 'himalayas', 'jsearch', 'jobspipe', 'jobdatalake', 'linkedin'];
+const SOURCES = ['remotive', 'remoteok', 'hn', 'arbeitnow', 'adzuna_in', 'himalayas', 'jsearch', 'jobspipe', 'jobdatalake', 'linkedin', 'greenhouse', 'lever', 'ashby'];
 
 const REMOTE_VALUE = '__remote__';
 
