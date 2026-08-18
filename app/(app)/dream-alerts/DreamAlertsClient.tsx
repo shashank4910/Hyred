@@ -22,6 +22,7 @@ import {
 import { PageHeader } from '../_components/PageHeader';
 import PremiumSelect from '@/app/_components/ui/PremiumSelect';
 import type { DreamCompanyRow } from '@/lib/dream-companies';
+import { CompanyLogo } from '../_components/CompanyLogo';
 
 type CatalogItem = {
   key: string;
@@ -260,9 +261,7 @@ export function DreamAlertsClient({
                   key={pick.id}
                   className="flex items-center gap-3 rounded-2xl border border-outline-variant/60 bg-surface-container-lowest px-4 py-3 shadow-sm"
                 >
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary font-bold text-sm">
-                    {pick.company_display_name.slice(0, 1)}
-                  </div>
+                  <CompanyLogo name={pick.company_display_name} size={36} tileClassName="rounded-xl" />
                   <div className="min-w-0 flex-1">
                     <p className="font-semibold text-on-surface truncate">{pick.company_display_name}</p>
                     <p className="text-[10px] text-on-surface-variant capitalize">
@@ -338,7 +337,8 @@ export function DreamAlertsClient({
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="text-xs font-bold uppercase tracking-wide text-primary">
+                          <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-primary">
+                            <CompanyLogo name={alert.dream_company.company_display_name} size={14} />
                             {alert.dream_company.company_display_name}
                           </p>
                           <p className="font-semibold text-on-surface truncate mt-0.5">

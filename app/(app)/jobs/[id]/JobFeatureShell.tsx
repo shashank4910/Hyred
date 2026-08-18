@@ -1,7 +1,8 @@
 import Link from 'next/link';
-import { ArrowLeft, Building2, MapPin } from 'lucide-react';
+import { ArrowLeft, MapPin } from 'lucide-react';
 import { scoreColorClass, scoreLabel } from '@/lib/ui';
 import type { MatchSummary } from './get-match-summary';
+import { CompanyLogo } from '../../_components/CompanyLogo';
 
 export function JobFeatureShell({
   match,
@@ -43,7 +44,7 @@ export function JobFeatureShell({
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-on-surface-variant">
               {match.job.company && (
                 <span className="inline-flex items-center gap-1.5">
-                  <Building2 className="h-4 w-4" />
+                  <CompanyLogo name={match.job.company} size={16} />
                   {match.job.company}
                 </span>
               )}

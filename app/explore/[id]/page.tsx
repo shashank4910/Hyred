@@ -3,12 +3,12 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import {
   MapPin,
-  Building2,
   Clock,
   ArrowLeft,
   ExternalLink,
   Briefcase,
 } from 'lucide-react';
+import { CompanyLogo } from '../../(app)/_components/CompanyLogo';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { ensureFullDescription } from '@/lib/jd-fetcher';
 import { SOURCE_LABELS } from '@/lib/ui';
@@ -184,7 +184,7 @@ export default async function PublicJobPage({
           <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 mb-4">
             {job.company && (
               <span className="flex items-center gap-1.5">
-                <Building2 className="w-4 h-4" />
+                <CompanyLogo name={job.company} size={18} />
                 {job.company}
               </span>
             )}

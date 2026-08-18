@@ -1,6 +1,7 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
-import { MapPin, Building2, Clock, ArrowRight, Briefcase, TrendingUp, Search } from 'lucide-react';
+import { MapPin, Clock, ArrowRight, Briefcase, TrendingUp, Search } from 'lucide-react';
+import { CompanyLogo } from '../(app)/_components/CompanyLogo';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { SOURCE_LABELS } from '@/lib/ui';
 
@@ -245,8 +246,8 @@ export default async function ExplorePage({
                 </div>
                 {job.company && (
                   <p className="flex items-center gap-1.5 text-sm text-gray-600 mb-1">
-                    <Building2 className="w-3.5 h-3.5" />
-                    {job.company}
+                    <CompanyLogo name={job.company} size={16} />
+                    <span className="truncate">{job.company}</span>
                   </p>
                 )}
                 <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500 mb-3">
