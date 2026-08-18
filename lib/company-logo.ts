@@ -41,6 +41,9 @@ const COMPANY_DOMAINS: Record<string, string> = {
   'ernst and young': 'ey.com',
   ey: 'ey.com',
   pwc: 'pwc.com',
+  'pricewaterhousecoopers': 'pwc.com',
+  'pwc acceleration center india': 'pwc.com',
+  'pwc india': 'pwc.com',
   tcs: 'tcs.com',
   'tata consultancy': 'tcs.com',
   'tata consultancy services': 'tcs.com',
@@ -134,6 +137,15 @@ const COMPANY_DOMAINS: Record<string, string> = {
   'genpact india': 'genpact.com',
 
   // ===== Product / hardware — non-slug domains =====
+  renesas: 'renesas.com',
+  'renesas electronics': 'renesas.com',
+  'renesas electronics india': 'renesas.com',
+  vml: 'vml.com',
+  'vml enterprise': 'vml.com',
+  'vml enterprise solutions': 'vml.com',
+  'vml enterprise solutions private limited': 'vml.com',
+  sia: 'sia-partners.com',
+  'sia partners': 'sia-partners.com',
   bmc: 'bmc.com',
   'bmc software': 'bmc.com',
   'bmc helix': 'bmc.com',
@@ -320,10 +332,10 @@ export function companyDomain(
 }
 
 /**
- * Primary keyless logo URL (unavatar). `fallback=false` returns a real 404
- * when no logo exists, so the client's onError chain falls through to the
- * next source instead of showing Google's generic globe (which reads as
- * "missing" for dead/naive-slug domains).
+ * Primary keyless logo URL (DuckDuckGo icons). DDG is the most reliable
+ * keyless source — it returns real 200s for essentially every domain that
+ * has a favicon and clean 404s for dead/naive-slug domains (measured 20/20
+ * on real dashboard companies, vs unavatar which rate-limits with 429s).
  */
 export function companyLogoUrl(
   name: string | null | undefined,
@@ -331,20 +343,21 @@ export function companyLogoUrl(
 ): string | null {
   const domain = companyDomain(name);
   if (!domain) return null;
-  return `https://unavatar.io/${encodeURIComponent(domain)}?fallback=false`;
+  return `https://icons.duckduckgo.com/ip3/${encodeURIComponent(domain)}.ico`;
 }
 
 /**
- * Secondary keyless source tried when the primary fails (DuckDuckGo icons).
- * Also 404s cleanly when the domain has no favicon. Falls back to the
- * monogram tile if both fail.
+ * Secondary keyless source tried when the primary fails (unavatar).
+ * `fallback=false` returns a real 404 when no logo exists, so the client's
+ * onError chain falls through to the monogram instead of showing a fake
+ * globe. Falls back to the monogram tile if both fail.
  */
 export function companyLogoFallbackUrl(
   name: string | null | undefined,
 ): string | null {
   const domain = companyDomain(name);
   if (!domain) return null;
-  return `https://icons.duckduckgo.com/ip3/${encodeURIComponent(domain)}.ico`;
+  return `https://unavatar.io/${encodeURIComponent(domain)}?fallback=false`;
 }
 
 /**
