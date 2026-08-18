@@ -51,12 +51,21 @@ const TOP_COMPANY_CAP = 12;
 const EMBED_PER_RUN = 50;
 const EMBED_CONCURRENCY = 6;
 const SCORE_CONCURRENCY = 5; // Matches free-tier RPM (one call per key per batch cycle)
-/** Wall-clock budget for the entire scan pipeline. Set high enough so scoring
+/* * Wall-clock budget for the entire scan pipeline. Set high enough so scoring
  * completes within Vercel's maxDuration (300s). Stop scoring ~80s early so
  * finalizeRun() can persist status — otherwise Vercel SIGKILL leaves the row
  * `running` and Stats later shows a fake 25-minute timeout.
- * Override via INGEST_WALL_BUDGET_MS env var. */
+ * Override via INGEST_WALL_BUDGET_MS env var, or per run via
+ * runIngest({ wallBudgetMs }) — the multi-profile cron passes a shared
+ * remaining-time budget so every user's scan finalizes before the job ends. */
 const INGEST_WALL_BUDGET_MS = parseInt(process.env.INGEST_WALL_BUDGET_MS ?? '220000', 10);
+/** Minimum budget to bother starting a profile scan (fetch alone takes 2+
+ * minutes). Below this the run would be cut off before scoring anything. */
+const MIN_PROFILE_BUDGET_MS = 60_000;
+/** Cap for the whole multi-profile cron run so it always fits the GitHub
+ * Actions job timeout (see .github/workflows/ingest.yml, timeout-minutes).
+ * Keep in sync with that value. */
+const MULTI_PROFILE_RUN_CAP_MS = 170 * 60 * 1000;
 /** Delay between scoring batches to respect RPM limits across providers. */
 const SCORE_BATCH_DELAY_MS = 3_000; // 3 seconds between batches → ~20 RPM effective
 
@@ -121,9 +130,12 @@ export async function runIngest(opts?: {
   profileEmail?: string;
   triggeredBy?: 'manual' | 'cron' | 'api' | 'onboarding';
   sources?: import('./sources').SourceName[];
+  /** Per-run wall-clock budget in ms (defaults to INGEST_WALL_BUDGET_MS). */
+  wallBudgetMs?: number;
 }): Promise<IngestResult> {
   const sb = supabaseAdmin();
   const startedAt = Date.now();
+  const wallBudgetMs = opts?.wallBudgetMs ?? INGEST_WALL_BUDGET_MS;
 
   const { data: runRow } = await sb
     .from('ingest_runs')
@@ -389,7 +401,7 @@ export async function runIngest(opts?: {
 
     const embedJobs = needEmbed ?? [];
     for (let i = 0; i < embedJobs.length; i += EMBED_CONCURRENCY) {
-      if (Date.now() - startedAt > INGEST_WALL_BUDGET_MS) break;
+      if (Date.now() - startedAt > wallBudgetMs) break;
       if (embedAborted) break;
       const batch = embedJobs.slice(i, i + EMBED_CONCURRENCY);
       const ok = await Promise.all(batch.map((j) => embedOne(j)));
@@ -594,7 +606,7 @@ export async function runIngest(opts?: {
     }
 
     for (let i = 0; i < ranked.length; i += SCORE_CONCURRENCY) {
-      if (Date.now() - startedAt > INGEST_WALL_BUDGET_MS) {
+      if (Date.now() - startedAt > wallBudgetMs) {
         budgetStopped = true;
         break;
       }
@@ -614,7 +626,7 @@ export async function runIngest(opts?: {
         batch.map(async (c) => {
           try {
             let jobDescription = c.description;
-            if (c.url && Date.now() - startedAt < INGEST_WALL_BUDGET_MS - 25_000) {
+            if (c.url && Date.now() - startedAt < wallBudgetMs - 25_000) {
               jobDescription = await ensureFullDescription({
                 jobId: c.id,
                 currentDescription: c.description,
@@ -803,6 +815,12 @@ export { upsertJobs };
  * Multi-user cron entry point: run the per-user ingest for EVERY profile that
  * has completed onboarding (resume_text + resume_embedding present).
  *
+ * Newest profiles are scanned FIRST so newly onboarded users get their first
+ * automatic scan even if the job can't finish the whole list. The whole run
+ * shares one wall-clock deadline (capped so it fits the GitHub Actions job
+ * timeout) — previously each profile got a fresh 8-min budget and the job was
+ * hard-killed at 40 min mid-loop, leaving every newer profile unscanned.
+ *
  * NOTE (Phase 3 optimization): this currently fetches + embeds jobs once PER
  * profile, which is wasteful at scale. The planned split is a single shared
  * fetch/embed pass followed by per-user scoring. For the current small
@@ -821,9 +839,14 @@ export async function runIngestForAllProfiles(opts?: {
     .select('id, email')
     .not('resume_text', 'is', null)
     .not('resume_embedding', 'is', null)
-    .order('created_at', { ascending: true });
+    .order('created_at', { ascending: false });
 
   if (error) throw new Error(`Failed to list profiles: ${error.message}`);
+
+  const profileList = profiles ?? [];
+  const deadline =
+    Date.now() +
+    Math.min(profileList.length * INGEST_WALL_BUDGET_MS, MULTI_PROFILE_RUN_CAP_MS);
 
   const results: {
     profileId: string;
@@ -832,12 +855,22 @@ export async function runIngestForAllProfiles(opts?: {
     error?: string;
   }[] = [];
 
-  for (const prof of profiles ?? []) {
+  for (const prof of profileList) {
+    const remaining = deadline - Date.now();
+    if (remaining < MIN_PROFILE_BUDGET_MS) {
+      console.warn(
+        `[ingest] Stopping with ${profileList.length - results.length} profile(s) left: ` +
+          `${Math.round(remaining / 1000)}s remaining is below the ` +
+          `${Math.round(MIN_PROFILE_BUDGET_MS / 1000)}s floor. They will be scanned on the next run.`,
+      );
+      break;
+    }
     try {
       const result = await runIngest({
         profileId: prof.id as string,
         triggeredBy: opts?.triggeredBy ?? 'cron',
         sources: opts?.sources,
+        wallBudgetMs: Math.min(INGEST_WALL_BUDGET_MS, remaining),
       });
       results.push({ profileId: prof.id as string, email: prof.email as string, result });
     } catch (e) {
@@ -849,5 +882,5 @@ export async function runIngestForAllProfiles(opts?: {
     }
   }
 
-  return { profiles: (profiles ?? []).length, results };
+  return { profiles: profileList.length, results };
 }

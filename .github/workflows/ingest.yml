@@ -9,7 +9,12 @@ on:
 jobs:
   ingest:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    # Scans EVERY onboarded profile sequentially, and each profile can use up
+    # to INGEST_WALL_BUDGET_MS (8 min). 15 onboarded profiles x 8 min = 120 min
+    # of work. A 40-min cap killed the job mid-loop (the newest profiles were
+    # ordered last and never got scanned). 180 min covers ~22 profiles and
+    # leaves margin; private repos allow up to 35 days per job.
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
 
