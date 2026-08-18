@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowLeft, MapPin, Building2, Clock, FileText } from 'lucide-react';
+import { ArrowLeft, MapPin, Clock, FileText } from 'lucide-react';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { getCurrentProfile, isCurrentUserAdmin } from '@/lib/current-user';
 import { ensureFullDescription } from '@/lib/jd-fetcher';
@@ -9,6 +9,7 @@ import { JobActions } from './JobActions';
 import { AutoApplyButton } from './AutoApplyButton';
 import { MatchSkillPills } from '../../_components/MatchSkillPills';
 import { CollapsibleCard } from '../../_components/CollapsibleCard';
+import { CompanyLogo } from '../../_components/CompanyLogo';
 import { relativeTime, scoreColorClass, scoreLabel, SOURCE_LABELS } from '@/lib/ui';
 import { ReferralRadar } from './ReferralRadar';
 import { JobHashScroll } from './JobHashScroll';
@@ -157,7 +158,7 @@ export default async function JobMatchPage({
             <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-sm text-on-surface-variant">
               {job.company && (
                 <span className="inline-flex items-center gap-1.5">
-                  <Building2 className="h-4 w-4" />
+                  <CompanyLogo name={job.company} size={16} />
                   {job.company}
                 </span>
               )}

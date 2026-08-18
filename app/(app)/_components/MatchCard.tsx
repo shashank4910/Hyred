@@ -6,6 +6,7 @@ import { MapPin, Clock, Heart, Crown } from 'lucide-react';
 import { relativeTime, formatShortDate, formatFullDate, SOURCE_LABELS } from '@/lib/ui';
 import { matchListingIso } from '@/lib/job-listing-time';
 import { MatchSkillPills } from './MatchSkillPills';
+import { CompanyLogo } from './CompanyLogo';
 
 type Props = {
   matchId: string;
@@ -135,7 +136,10 @@ export function MatchCard({
         {job.title}
       </Link>
       {job.company && (
-        <p className="mt-1 text-sm font-medium text-on-surface-variant">{job.company}</p>
+        <p className="mt-1 flex items-center gap-2 text-sm font-medium text-on-surface-variant">
+          <CompanyLogo name={job.company} size={18} />
+          <span className="min-w-0 truncate">{job.company}</span>
+        </p>
       )}
 
       <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-on-surface-variant">

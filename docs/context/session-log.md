@@ -20,6 +20,15 @@
 4. Old ordering `created_at ASC` + the kill ⇒ only ~6 oldest profiles scanned per run; every newer profile (all new signups) never got a scan. Last killed run's log shows it processing the first profile when cancelled.
 5. Kill also leaves the last profile's `ingest_run` stuck `running` until the next run's `closeStaleIngestRuns` (20-min stale window) — self-healing, but looked like a 40-min "scan".
 
+### Follow-up — Company logos everywhere (PR **#331**)
+
+Owner: "continue the logo work, check how other apps show logos and implement." Shipped the previously-uncommitted CompanyLogo WIP and hardened it. Pattern used (LinkedIn/Indeed style): small rounded-square brand tile next to the company name in cards, slightly larger in detail headers, neutral monogram tile when no logo resolves.
+
+- `CompanyLogo` tile (`app/(app)/_components/CompanyLogo.tsx`) — favicon chain: **Google s2 favicons → DuckDuckGo icons (`icons.duckduckgo.com/ip3`)** → initial-letter monogram. Keyless, free-infra only.
+- `lib/company-logo.ts` — curated name→domain map (banks, Big 4, Indian IT: HCL→hcltech.com, BMC→bmc.com, Texas Instruments→ti.com, Standard Chartered→sc.com, JPMorgan→jpmorganchase.com, Roche variants, etc.) + suffix-stripped slug fallback (`{tokens}.com`). `companyInitial` now takes the first **alphabetic** char ("6221 Roche…" → R).
+- Coverage tested against real data: 124/129 distinct companies in the job pool resolve; the rest get monograms.
+- Spots covered: MatchCard, JobFeatureShell, job detail header, ReferralRadar, Dream Alerts, **and the public `/explore` + `/explore/[id]` pages** (previously a generic Building2 icon).
+
 ### Follow-up — Freshness checkboxes for Last 6 / 12 hours (PR **#330**)
 
 Owner asked for "show jobs from the last 6 / 12 hours" in Filters. Added `6h` (0.25d) and `12h` (0.5d) to `FRESHNESS_TICKS` — the checkbox list renders them automatically, `freshnessWindowDays` (widest wins) and the fractional-day cutoff already handle sub-day windows, and the filter chip now uses a new `freshnessLabel` helper instead of a hardcoded 1/7/30 switch. Freshness ticks still clear `expired`.

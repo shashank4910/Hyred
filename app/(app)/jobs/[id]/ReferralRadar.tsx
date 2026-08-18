@@ -17,6 +17,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { buildLinkedIn2ndUrl, buildLinkedInPeerUrl, buildLinkedInRecruiterUrl } from '@/lib/linkedin-people-search';
+import { CompanyLogo } from '../../_components/CompanyLogo';
 
 interface Props {
   matchId: string;
@@ -164,7 +165,11 @@ export function ReferralRadar({
               Find an insider
             </h2>
             <p className="text-xs text-on-surface-variant mt-0.5">
-              Get referred by someone who already works at {company}
+              Get referred by someone who already works at{' '}
+              <span className="inline-flex items-center gap-1 align-middle">
+                <CompanyLogo name={company} size={12} />
+                <span className="font-medium text-on-surface">{company}</span>
+              </span>
             </p>
           </div>
         </div>
