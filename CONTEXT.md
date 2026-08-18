@@ -1162,7 +1162,7 @@ preferences.locations + resume current_location
 |---|---|
 | City filter | `city` search param + `listMatchCities()` / `lib/match-location-filter.ts` (Session 29) |
 | Score floor | URL `min` — **slider** 0–100 at top of Filters (PR **#315**); empty `min` still defaults to list min score 50 |
-| Freshness ticks | URL `fresh=1d`, `7d`, `30d` (comma-separated; **widest wins**) via `freshnessWindowDays` / `dashboardFreshnessCutoffIso` (PR **#315**) |
+| Freshness ticks | URL `fresh=6h`, `12h`, `1d`, `7d`, `30d` (comma-separated; **widest wins**) via `freshnessWindowDays` / `dashboardFreshnessCutoffIso` (PR **#315**, +6h/12h **#330**) |
 | Freshness window | No ticks → hide if outside 45 days via `jobFreshnessOrFilter` — (`posted_at` ≥ cutoff **or** null) **OR** `fetched_at` ≥ cutoff (PR **#289**) |
 | Include older jobs | `expired=1` → `includeExpiredJobs()` skips window; **Older** badge via `isJobPastFreshnessWindow` (PR **#290**). Ticking `fresh` clears `expired`. |
 | Filter UX | Keep list visible + “Updating…” (PR **#287**); client refetch `/api/matches` + slim select (PR **#288**); Filters column **sticky** (PR **#316**) |

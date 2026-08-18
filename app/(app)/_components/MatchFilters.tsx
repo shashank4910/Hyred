@@ -13,11 +13,13 @@ const SOURCES = ['remotive', 'remoteok', 'hn', 'arbeitnow', 'adzuna_in', 'himala
 
 const REMOTE_VALUE = '__remote__';
 
+const FRESH_TICK_IDS = new Set<string>(FRESHNESS_TICKS.map((t) => t.id));
+
 function parseFreshIds(raw: string): Set<FreshnessTickId> {
   const ids = new Set<FreshnessTickId>();
   for (const part of raw.split(',')) {
     const id = part.trim();
-    if (id === '1d' || id === '7d' || id === '30d') ids.add(id);
+    if (FRESH_TICK_IDS.has(id)) ids.add(id as FreshnessTickId);
   }
   return ids;
 }

@@ -9,7 +9,7 @@ import { DashboardMatchesSection } from './_components/DashboardMatchesSection';
 import { DashboardNavProvider } from './_components/DashboardNavContext';
 import { RunIngestButton } from './_components/RunIngestButton';
 import { Search, Sparkles } from 'lucide-react';
-import { getDashboardCounts, listMatchCities, freshnessWindowDays } from '@/lib/match-stats';
+import { getDashboardCounts, listMatchCities, freshnessLabel } from '@/lib/match-stats';
 
 export const dynamic = 'force-dynamic';
 
@@ -107,11 +107,7 @@ export default async function Dashboard({
   if (sp.city) chips.push({ label: sp.city, clear: 'city' });
   if (sp.expired === '1') chips.push({ label: 'Older jobs', clear: 'expired' });
   if (sp.fresh) {
-    const days = freshnessWindowDays(sp.fresh);
-    chips.push({
-      label: days === 1 ? 'Last 24 hours' : days === 7 ? 'This week' : days === 30 ? 'This month' : 'Freshness',
-      clear: 'fresh',
-    });
+    chips.push({ label: freshnessLabel(sp.fresh), clear: 'fresh' });
   }
   if (sp.min) chips.push({ label: `Score ${sp.min}+`, clear: 'min' });
 

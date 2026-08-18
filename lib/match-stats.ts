@@ -22,6 +22,8 @@ export interface MatchFilterParams {
 }
 
 export const FRESHNESS_TICKS = [
+  { id: '6h', days: 0.25, label: 'Last 6 hours' },
+  { id: '12h', days: 0.5, label: 'Last 12 hours' },
   { id: '1d', days: 1, label: 'Last 24 hours' },
   { id: '7d', days: 7, label: 'This week' },
   { id: '30d', days: 30, label: 'This month' },
@@ -39,6 +41,14 @@ export function freshnessWindowDays(fresh: string | null | undefined): number | 
     max = max == null ? tick.days : Math.max(max, tick.days);
   }
   return max;
+}
+
+/** Human label for the widest selected tick ("Last 6 hours", "This week", …). */
+export function freshnessLabel(fresh: string | null | undefined): string {
+  const days = freshnessWindowDays(fresh);
+  if (days == null) return 'Freshness';
+  const widest = FRESHNESS_TICKS.find((t) => t.days === days);
+  return widest?.label ?? 'Freshness';
 }
 
 export function includeExpiredJobs(params: { expired?: string | null } | null | undefined): boolean {

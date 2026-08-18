@@ -7,6 +7,7 @@ import {
   includeExpiredJobs,
   isJobPastFreshnessWindow,
   freshnessWindowDays,
+  freshnessLabel,
   DEFAULT_DASHBOARD_MIN_SCORE,
 } from '@/lib/match-stats';
 
@@ -32,9 +33,22 @@ describe('PR #33 #92 stats/dashboard alignment', () => {
   it('freshnessWindowDays takes the widest selected tick', () => {
     expect(freshnessWindowDays(undefined)).toBeNull();
     expect(freshnessWindowDays('')).toBeNull();
+    expect(freshnessWindowDays('6h')).toBe(0.25);
+    expect(freshnessWindowDays('12h')).toBe(0.5);
+    expect(freshnessWindowDays('6h,12h')).toBe(0.5);
     expect(freshnessWindowDays('1d')).toBe(1);
     expect(freshnessWindowDays('1d,7d')).toBe(7);
     expect(freshnessWindowDays('1d,7d,30d')).toBe(30);
+    expect(freshnessWindowDays('6h,7d')).toBe(7);
+  });
+
+  it('freshnessLabel names the widest selected tick', () => {
+    expect(freshnessLabel(null)).toBe('Freshness');
+    expect(freshnessLabel('6h')).toBe('Last 6 hours');
+    expect(freshnessLabel('12h')).toBe('Last 12 hours');
+    expect(freshnessLabel('6h,12h,1d')).toBe('Last 24 hours');
+    expect(freshnessLabel('7d')).toBe('This week');
+    expect(freshnessLabel('30d')).toBe('This month');
   });
 
   it('staleJobCutoffIso respects a custom day window', () => {
