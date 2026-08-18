@@ -246,7 +246,7 @@ export default async function ExplorePage({
                 </div>
                 {job.company && (
                   <p className="flex items-center gap-1.5 text-sm text-gray-600 mb-1">
-                    <CompanyLogo name={job.company} size={16} />
+                    <CompanyLogo name={job.company} size={20} />
                     <span className="truncate">{job.company}</span>
                   </p>
                 )}

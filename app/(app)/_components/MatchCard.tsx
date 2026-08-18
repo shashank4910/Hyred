@@ -137,7 +137,7 @@ export function MatchCard({
       </Link>
       {job.company && (
         <p className="mt-1 flex items-center gap-2 text-sm font-medium text-on-surface-variant">
-          <CompanyLogo name={job.company} size={18} />
+          <CompanyLogo name={job.company} size={24} />
           <span className="min-w-0 truncate">{job.company}</span>
         </p>
       )}

@@ -44,7 +44,7 @@ export function JobFeatureShell({
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-on-surface-variant">
               {match.job.company && (
                 <span className="inline-flex items-center gap-1.5">
-                  <CompanyLogo name={match.job.company} size={16} />
+                  <CompanyLogo name={match.job.company} size={24} />
                   {match.job.company}
                 </span>
               )}

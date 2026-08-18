@@ -167,7 +167,7 @@ export function ReferralRadar({
             <p className="text-xs text-on-surface-variant mt-0.5">
               Get referred by someone who already works at{' '}
               <span className="inline-flex items-center gap-1 align-middle">
-                <CompanyLogo name={company} size={12} />
+                <CompanyLogo name={company} size={16} />
                 <span className="font-medium text-on-surface">{company}</span>
               </span>
             </p>

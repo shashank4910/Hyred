@@ -184,7 +184,7 @@ export default async function PublicJobPage({
           <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 mb-4">
             {job.company && (
               <span className="flex items-center gap-1.5">
-                <CompanyLogo name={job.company} size={18} />
+                <CompanyLogo name={job.company} size={24} />
                 {job.company}
               </span>
             )}

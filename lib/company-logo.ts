@@ -305,7 +305,12 @@ export function companyDomain(
 
   const tokens = key
     .split(' ')
-    .filter((t) => t.length > 1 && !SUFFIX_WORDS.has(t))
+    .filter(
+      (t) =>
+        t.length > 1 &&
+        !/^\d+$/.test(t) && // "6221 Roche…" → roche, not 6221roche…
+        !SUFFIX_WORDS.has(t),
+    )
     .slice(0, 3);
   const slug = tokens.join('');
   if (slug.length >= 3 && /^[a-z0-9]+$/.test(slug)) {
@@ -314,20 +319,25 @@ export function companyDomain(
   return null;
 }
 
-/** Keyless Google favicon URL for a company, or null when unresolvable. */
+/**
+ * Primary keyless logo URL (unavatar). `fallback=false` returns a real 404
+ * when no logo exists, so the client's onError chain falls through to the
+ * next source instead of showing Google's generic globe (which reads as
+ * "missing" for dead/naive-slug domains).
+ */
 export function companyLogoUrl(
   name: string | null | undefined,
-  displaySize = 32,
+  _displaySize?: number,
 ): string | null {
   const domain = companyDomain(name);
   if (!domain) return null;
-  const sz = Math.min(128, Math.max(32, Math.round(displaySize * 2)));
-  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=${sz}`;
+  return `https://unavatar.io/${encodeURIComponent(domain)}?fallback=false`;
 }
 
 /**
- * Secondary keyless source tried when Google's favicon fails to load
- * (DuckDuckGo icons endpoint). Falls back to the monogram tile if both fail.
+ * Secondary keyless source tried when the primary fails (DuckDuckGo icons).
+ * Also 404s cleanly when the domain has no favicon. Falls back to the
+ * monogram tile if both fail.
  */
 export function companyLogoFallbackUrl(
   name: string | null | undefined,

@@ -12,7 +12,8 @@ import {
  * how LinkedIn/Indeed render company marks on job cards.
  *
  * Source chain (all keyless, free infra only):
- *   1. Google s2 favicon service (best coverage + size control)
+ *   1. unavatar.io (aggregates Google favicons + Clearbit + DDG; returns a
+ *      real 404 for companies with no logo, so we don't show a fake globe)
  *   2. DuckDuckGo icons endpoint (second attempt on load error)
  *   3. Deterministic initial-letter monogram tile
  */
@@ -25,7 +26,7 @@ export function CompanyLogo({
   size?: number;
   tileClassName?: string;
 }) {
-  // 0 = google, 1 = duckduckgo, 2 = give up → monogram
+  // 0 = unavatar, 1 = duckduckgo, 2 = give up → monogram
   const [source, setSource] = useState(0);
   if (!name) return null;
 
