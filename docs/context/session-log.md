@@ -2,6 +2,32 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 34 — Cron skips new users: 40-min GHA timeout kills all-profile scan (Aug 18, 2026)
+
+**Goal:** "Cron doesn't run automatically for new users." Evidence-based RCA showed the cron *does* fire every 6h; the all-user scan introduced by #324 simply never finishes — each profile uses up to an 8-min wall budget, profiles are scanned sequentially oldest-first, and the GitHub Actions job is hard-killed at `timeout-minutes: 40`, so every profile created after the first ~6 is never reached. New users are always last in line.
+
+### Shipped — PR **#326**
+
+| PR | What |
+|---|---|
+| **#326** | 1) `ingest.yml` `timeout-minutes: 40 → 180` (15 onboarded profiles × 8 min ≈ 120 min + margin; private repos allow up to 35 days/job). 2) `runIngestForAllProfiles` orders `created_at DESC` — **newest users scanned first**. 3) Whole multi-profile run gets ONE shared deadline (`MULTI_PROFILE_RUN_CAP_MS` = 170 min, kept in sync with the job timeout); each profile receives the *remaining* budget via `runIngest({ wallBudgetMs })`; if less than `MIN_PROFILE_BUDGET_MS` (60s) remains, the loop stops cleanly and logs deferred profiles instead of being SIGKILLed mid-profile. |
+
+### RCA evidence (for the next time someone asks "why no matches for new users?")
+
+1. `gh run list --workflow=ingest.yml` — runs fire every ~6h on `main`; not a schedule problem.
+2. Regression boundary is exactly #324 (merged Aug 17 05:01 UTC): prior runs `success` in 4–9 min; **all 5 runs after it `cancelled` at ~40m19s** (the old `timeout-minutes: 40`).
+3. DB `ingest_runs`: per-profile scans take 232–555s; 15 onboarded profiles ⇒ ~120 min of sequential work vs a 40-min cap.
+4. Old ordering `created_at ASC` + the kill ⇒ only ~6 oldest profiles scanned per run; every newer profile (all new signups) never got a scan. Last killed run's log shows it processing the first profile when cancelled.
+5. Kill also leaves the last profile's `ingest_run` stuck `running` until the next run's `closeStaleIngestRuns` (20-min stale window) — self-healing, but looked like a 40-min "scan".
+
+### Key decisions / gotchas
+
+1. **Never starve new users** — the cron scans newest profiles first. If the job can't finish, the *oldest* accounts are deferred (logged), not the new ones.
+2. **Keep `MULTI_PROFILE_RUN_CAP_MS` in sync with `ingest.yml` `timeout-minutes`** — the cap exists so the run finalizes (writes status) before the job timeout instead of leaving a `running` row.
+3. **Per-profile budget is now inherited** — `runIngest` honors `opts.wallBudgetMs ?? INGEST_WALL_BUDGET_MS` at all three budget checks (embed loop, scoring loop, JD-fetch margin `wallBudgetMs - 25_000`).
+4. **Do not re-add `INGEST_PROFILE_EMAIL` to `ingest.yml`** — that secret is owner-only debug; it makes the cron skip every other user (the pre-#324 behavior that hid this).
+5. **This is still the per-profile loop** — Phase 3's shared fetch/embed-then-score split is the real scale fix once onboarded profiles exceed ~22 (180 min / 8 min per profile).
+
 ## Session 33 — Hyred Lime chrome, premium selects, filter slider (Aug 16, 2026)
 
 **Goal:** Logged-in UI is CareerFlow *structure* with Hyred facts: forest `#003F3B`, lime `#72D35F` accent only, white canvas, grey cards, Inter. No CareerFlow name, no fake salaries/applicant counts. Filters and chrome match that world; native OS dropdowns and a scrolling filter column were the leftover cheap bits.
