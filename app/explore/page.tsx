@@ -2,6 +2,7 @@ import { Metadata } from 'next';
 import Link from 'next/link';
 import { MapPin, Clock, ArrowRight, Briefcase, TrendingUp, Search } from 'lucide-react';
 import { CompanyLogo } from '../(app)/_components/CompanyLogo';
+import { companyFromTitle } from '@/lib/company-logo';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { SOURCE_LABELS } from '@/lib/ui';
 
@@ -232,24 +233,35 @@ export default async function ExplorePage({
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {jobs.map((job: JobRow) => (
-              <Link
-                key={job.id}
-                href={`/explore/${job.id}`}
-                className="group bg-white rounded-xl border p-5 hover:shadow-md hover:border-[#006a65]/30 transition-all"
-              >
-                <div className="flex items-start justify-between gap-2 mb-2">
-                  <h2 className="font-semibold text-gray-900 group-hover:text-[#006a65] transition line-clamp-2">
-                    {cleanExploreTitle(job.title)}
-                  </h2>
-                  <ArrowRight className="w-4 h-4 text-gray-300 group-hover:text-[#006a65] shrink-0 mt-1 transition" />
-                </div>
-                {job.company && (
-                  <p className="flex items-center gap-1.5 text-sm text-gray-600 mb-1">
-                    <CompanyLogo name={job.company} size={20} />
-                    <span className="truncate">{job.company}</span>
-                  </p>
-                )}
+            {jobs.map((job: JobRow) => {
+              const displayTitle = cleanExploreTitle(job.title);
+              const displayCompany = job.company || companyFromTitle(job.title);
+              // Legacy board-style jobs have the company as the title — show the
+              // logo inline with the h2 instead of a duplicate company row below.
+              const titleIsCompany =
+                displayCompany !== null &&
+                displayTitle.toLowerCase() === displayCompany.toLowerCase();
+              return (
+                <Link
+                  key={job.id}
+                  href={`/explore/${job.id}`}
+                  className="group bg-white rounded-xl border p-5 hover:shadow-md hover:border-[#006a65]/30 transition-all"
+                >
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <h2 className="flex items-center gap-1.5 font-semibold text-gray-900 group-hover:text-[#006a65] transition line-clamp-2">
+                      {titleIsCompany && displayCompany && (
+                        <CompanyLogo name={displayCompany} size={20} tileClassName="shrink-0" />
+                      )}
+                      <span className="truncate">{displayTitle}</span>
+                    </h2>
+                    <ArrowRight className="w-4 h-4 text-gray-300 group-hover:text-[#006a65] shrink-0 mt-1 transition" />
+                  </div>
+                  {displayCompany && !titleIsCompany && (
+                    <p className="flex items-center gap-1.5 text-sm text-gray-600 mb-1">
+                      <CompanyLogo name={displayCompany} size={20} />
+                      <span className="truncate">{displayCompany}</span>
+                    </p>
+                  )}
                 <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500 mb-3">
                   {job.location && (
                     <span className="flex items-center gap-1">
@@ -295,7 +307,8 @@ export default async function ExplorePage({
                   </div>
                 )}
               </Link>
-            ))}
+              );
+            })}
           </div>
         )}
 
