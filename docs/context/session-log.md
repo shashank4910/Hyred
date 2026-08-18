@@ -29,6 +29,10 @@ Owner: "continue the logo work, check how other apps show logos and implement." 
 - Coverage tested against real data: 124/129 distinct companies in the job pool resolve; the rest get monograms.
 - Spots covered: MatchCard, JobFeatureShell, job detail header, ReferralRadar, Dream Alerts, **and the public `/explore` + `/explore/[id]` pages** (previously a generic Building2 icon).
 
+### Follow-up — Logo polish: bigger tiles, no more fake globes (PR **#332**)
+
+Owner: "logos are too tiny, and a lot are missing." Root cause for "missing": Google s2 favicons **never 404** — it redirects to a generic globe for dead/naive-slug domains, which loaded "fine" and read as a useless logo. Fixed by switching the chain to **unavatar.io (`?fallback=false`, returns real 404) → DuckDuckGo icons → monogram**, and dropping numeric tokens from slug fallback ("6221 Roche…" → roche). Verified with curl: unavatar 200s for all curated real domains (pwc, ti, hcltech, sc, jpmorganchase, roche, bmc…) and 404s for dead ones. Bumped tile sizes: MatchCard 18→24, job detail/explore header 16→24, explore list 16→20, ReferralRadar 12→16, Dream Alerts 14→18.
+
 ### Follow-up — Freshness checkboxes for Last 6 / 12 hours (PR **#330**)
 
 Owner asked for "show jobs from the last 6 / 12 hours" in Filters. Added `6h` (0.25d) and `12h` (0.5d) to `FRESHNESS_TICKS` — the checkbox list renders them automatically, `freshnessWindowDays` (widest wins) and the fractional-day cutoff already handle sub-day windows, and the filter chip now uses a new `freshnessLabel` helper instead of a hardcoded 1/7/30 switch. Freshness ticks still clear `expired`.

@@ -158,7 +158,7 @@ export default async function JobMatchPage({
             <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-sm text-on-surface-variant">
               {job.company && (
                 <span className="inline-flex items-center gap-1.5">
-                  <CompanyLogo name={job.company} size={16} />
+                  <CompanyLogo name={job.company} size={24} />
                   {job.company}
                 </span>
               )}

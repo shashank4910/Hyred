@@ -338,7 +338,7 @@ export function DreamAlertsClient({
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-primary">
-                            <CompanyLogo name={alert.dream_company.company_display_name} size={14} />
+                            <CompanyLogo name={alert.dream_company.company_display_name} size={18} />
                             {alert.dream_company.company_display_name}
                           </p>
                           <p className="font-semibold text-on-surface truncate mt-0.5">
