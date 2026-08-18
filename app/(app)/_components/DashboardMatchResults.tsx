@@ -105,10 +105,53 @@ export async function DashboardMatchResults({
 
   const { data: matches, count: matchCount } = await query.limit(PAGE_SIZE);
 
+  // When the score slider hid everything, count matches under the SAME filters
+  // (no score floor) so the empty state can say "N matches are hidden below
+  // your threshold" instead of the misleading "No matches yet" — a recent
+  // scan's kept matches would otherwise look like they vanished.
+  let hiddenBelowThreshold = 0;
+  if (
+    (matches ?? []).length === 0 &&
+    (matchCount ?? 0) === 0 &&
+    effectiveMinScore > 0
+  ) {
+    let below = sb
+      .from('matches')
+      .select('id', { count: 'exact', head: true })
+      .eq('profile_id', profileId);
+    const belowCutoff = dashboardFreshnessCutoffIso(searchParams);
+    if (!showExpired) {
+      below = below.or(jobFreshnessOrFilter(belowCutoff), { foreignTable: 'job' });
+    }
+    if (onlyBookmarked) {
+      below = below.eq('bookmarked', true);
+    } else if (status === 'inbox') {
+      below = below.in('status', ['new', 'viewed']);
+    } else {
+      below = below.eq('status', status);
+    }
+    if (isAdmin && searchParams.source) {
+      below = below.eq('job.source', searchParams.source);
+    }
+    if (searchParams.remote === '1') {
+      below = below.eq('job.remote', true);
+    }
+    const belowCity = sanitizeCityFilter(searchParams.city);
+    if (belowCity) {
+      below = below.ilike('job.location', `%${belowCity}%`);
+    }
+    if (searchParams.q) {
+      const term = searchParams.q.replace(/[%]/g, '');
+      below = below.or(`title.ilike.%${term}%,company.ilike.%${term}%`, {
+        foreignTable: 'job',
+      });
+    }
+    const { count: belowCount } = await below;
+    hiddenBelowThreshold = belowCount ?? 0;
+  }
+
   const totalInFilter = matchCount ?? 0;
   const hasMore = totalInFilter > PAGE_SIZE;
-  const hiddenBelowThreshold =
-    totalInFilter > 0 && (matches ?? []).length === 0 ? totalInFilter : 0;
 
   if ((matches ?? []).length === 0) {
     return (

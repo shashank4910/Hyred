@@ -20,6 +20,12 @@
 4. Old ordering `created_at ASC` + the kill ⇒ only ~6 oldest profiles scanned per run; every newer profile (all new signups) never got a scan. Last killed run's log shows it processing the first profile when cancelled.
 5. Kill also leaves the last profile's `ingest_run` stuck `running` until the next run's `closeStaleIngestRuns` (20-min stale window) — self-healing, but looked like a 40-min "scan".
 
+### Follow-up — dashboard empty state lied about kept matches (PR **#328**)
+
+While verifying #326, owner saw Stats "Recent scans" = **14 kept** from the 01:55Z cron run but an empty dashboard. RCA: the score slider was at 70+ in the URL; the scan saved those 14 matches at scores 50–68 (profile floor 50), so `min=70` filtered them all out — correct behavior, but the empty state said "No matches in inbox yet" because `hiddenBelowThreshold` was only set when `totalInFilter > 0 && matches.length === 0`, which is **never true** (count>0 ⇒ page non-empty). The "N matches hidden below your threshold" message + "Show all scores anyway" button were unreachable dead logic.
+
+**Fix:** in `DashboardMatchResults`, when the scored query returns 0, run a cheap `head` count of matches under the *same* filters (status/freshness/city/q/remote) **without** the score floor; if > 0, pass it to `EmptyMatches` so it explains "N matches are hidden because their scores are below your threshold of X" with a one-click `min=0` escape. Verified no data bug: for all 6 profiles in that run, every kept match passes the default dashboard query.
+
 ### Key decisions / gotchas
 
 1. **Never starve new users** — the cron scans newest profiles first. If the job can't finish, the *oldest* accounts are deferred (logged), not the new ones.
