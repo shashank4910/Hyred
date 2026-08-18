@@ -161,7 +161,7 @@ lib/
 |---|---|---|
 | Aug 16, 2026 | **#316** | Filters **sticky** while jobs scroll (`lg:sticky` on wrapper, not stretched to list height) |
 | Aug 16, 2026 | **#315** | Match-score **slider** + freshness ticks (`fresh=1d,7d,30d`); default 45-day window |
-| Aug 16, 2026 | **#314** | **Newest** sort = `jobListingTime` (sane posted ∪ fetched); dropped A–Z |
+| Aug 16, 2026 | **#314** | **Newest** sort = `jobListingTime` (sane posted ∪ fetched); dropped A–Z. **Updated Aug 18 (#329):** Newest = **when the match was added** (`matches.created_at`); card clock = later of match time and listing time |
 | Aug 16, 2026 | **#313** | Sort bar above cards; sort removed from Filters; card FLIP |
 | Aug 16, 2026 | **#312** | `PremiumSelect` custom listbox (portal) |
 | Aug 16, 2026 | **#309–#310** | Sliding header pill tabs; lime specular Run Scan |
@@ -207,7 +207,7 @@ When you ship UI work: add a row here, link the PR, and update **Current UI** if
 | Native OS `<select>` popup vs Hyred chrome | `PremiumSelect` portal listbox | #312 |
 | Scan toast covering the page | Live HUD pill bottom-right; page stays clickable | #308 |
 | Header nav labels clipped in the pill | Own-row `FloatingPillNav`; no `overflow-x` clip | #309 |
-| **Newest** sort scrambled vs card dates | Rank by `jobListingTime` (later of sane `posted_at` and `fetched_at`); never raw `posted_at` DESC | #314 |
+| **Newest** sort scrambled vs card dates | Rank by `jobListingTime` (later of sane `posted_at` and `fetched_at`); never raw `posted_at` DESC. Since #329, **Newest** ranks by `matches.created_at` (when the match landed in the dashboard) so fresh scans surface; the card clock uses the later of match time and listing time | #314 / #329 |
 | Filters scrolled away with the job list | Sticky wrapper + fixed-height slab, internal scroll | #316 |
 
 ---
@@ -1167,7 +1167,7 @@ preferences.locations + resume current_location
 | Include older jobs | `expired=1` → `includeExpiredJobs()` skips window; **Older** badge via `isJobPastFreshnessWindow` (PR **#290**). Ticking `fresh` clears `expired`. |
 | Filter UX | Keep list visible + “Updating…” (PR **#287**); client refetch `/api/matches` + slim select (PR **#288**); Filters column **sticky** (PR **#316**) |
 | Dropdowns | `PremiumSelect` (PR **#312**), not native OS menus |
-| Sort | `MatchSortBar` above cards (PRs **#313–#314**). Highest score (default) / Newest via `jobListingTime` — not in Filters, not raw `posted_at` DESC |
+| Sort | `MatchSortBar` above cards (PRs **#313–#314**, **#329**). Highest score (default) / **Newest = `matches.created_at`** (when the scan added it) — not in Filters, not raw `posted_at` DESC |
 
 **Do not** key hide-only **or Newest sort** on raw `posted_at` (paid APIs can write ancient/wrong/future dates). **Do not** bump `fetched_at` on job upsert conflict. `expired=1` cannot bring back hard-deleted cleanup rows.
 
