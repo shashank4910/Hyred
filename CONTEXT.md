@@ -17,7 +17,7 @@ JobRadar / Hyred is a personalized AI-powered job-search dashboard that:
 5. Provides skill-match analysis (JD requirements vs resume)
 
 **Owner:** Shashank Singh — Senior Performance Engineer (India, 7.7 years)
-**Stack:** Next.js 15, React 19, TypeScript, Supabase, **Bluesminds (`DeepSeek-V4-Flash` / `gpt-4o`, paid primary via `llm_keys` table & env `LLM_PRIMARY`)** → Gemini `gemini-2.5-flash-lite` (free fallback) → Cerebras `gpt-oss-120b` (free) → Groq `llama-3.3-70b-versatile` (free) → OpenAI `gpt-4o-mini` (paid last-resort) & text-embedding-3-small (embeddings), Vercel, GitHub Actions, Python FastAPI + browser-use (auto-apply agent on Render)
+**Stack:** Next.js 15, React 19, TypeScript, Supabase, **Bluesminds (`gpt-4o`, paid primary via `llm_keys` table & env `LLM_PRIMARY`)** → Gemini `gemini-2.5-flash-lite` (free fallback) → Groq `openai/gpt-oss-120b` (free) → OpenAI `gpt-4o-mini` (paid last-resort) & text-embedding-3-small (embeddings), Vercel, GitHub Actions, Python FastAPI + browser-use (auto-apply agent on Render)
 
 ---
 
@@ -324,7 +324,7 @@ Researched the latest 2026 landscape (web). Key findings:
 
 **Critical fact:** Groq rate limits apply at the **organization (API-key) level, not per user** ([Groq docs](https://console.groq.com/docs/rate-limits)). One key = ONE shared bucket every user draws from. Adding users does NOT add capacity.
 
-**Groq free-tier limits — `llama-3.3-70b-versatile`** (verify exact values per key at `console.groq.com/settings/limits`; figures vary as Groq tunes them):
+**Groq free-tier limits — `openai/gpt-oss-120b`** (verify exact values per key at `console.groq.com/settings/limits`; figures vary as Groq tunes them):
 
 | Limit | Free value | Binds first? |
 |---|---|---|
