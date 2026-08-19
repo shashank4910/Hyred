@@ -86,7 +86,7 @@ import { withLlmChatSlot } from './llm-concurrency';
 import { normalizeProfileSeniority } from './profile-seniority';
 
 const OPENAI_CHAT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
-const GROQ_CHAT_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+const GROQ_CHAT_MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
 const CEREBRAS_CHAT_MODEL = process.env.CEREBRAS_MODEL || 'gpt-oss-120b';
 const GEMINI_CHAT_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
 const GROQ_BASE_URL = 'https://api.groq.com/openai/v1';

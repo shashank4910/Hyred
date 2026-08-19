@@ -35,7 +35,7 @@ export type LlmProvider = 'cerebras' | 'groq' | 'openai' | 'gemini' | 'mistral' 
 
 export const PROVIDER_DEFAULTS: Record<string, { baseUrl: string; model: string }> = {
   cerebras: { baseUrl: 'https://api.cerebras.ai/v1', model: 'gpt-oss-120b' },
-  groq: { baseUrl: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile' },
+  groq: { baseUrl: 'https://api.groq.com/openai/v1', model: 'openai/gpt-oss-120b' },
   openai: { baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
   gemini: { baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-2.5-flash-lite' },
   mistral: { baseUrl: 'https://api.mistral.ai/v1', model: 'mistral-large-latest' },
