@@ -50,7 +50,7 @@ const SIMILARITY_TOP_N = 45;
 const TOP_COMPANY_CAP = 12;
 const EMBED_PER_RUN = 50;
 const EMBED_CONCURRENCY = 6;
-const SCORE_CONCURRENCY = 5; // Matches free-tier RPM (one call per key per batch cycle)
+const SCORE_CONCURRENCY = 2; // Reduced from 5 — only 2 active LLM keys (gemini + bluesminds) with tight RPM. Increase when more keys are added.
 /* * Wall-clock budget for the entire scan pipeline. Set high enough so scoring
  * completes within Vercel's maxDuration (300s). Stop scoring ~80s early so
  * finalizeRun() can persist status — otherwise Vercel SIGKILL leaves the row
@@ -67,7 +67,7 @@ const MIN_PROFILE_BUDGET_MS = 60_000;
  * Keep in sync with that value. */
 const MULTI_PROFILE_RUN_CAP_MS = 170 * 60 * 1000;
 /** Delay between scoring batches to respect RPM limits across providers. */
-const SCORE_BATCH_DELAY_MS = 3_000; // 3 seconds between batches → ~20 RPM effective
+const SCORE_BATCH_DELAY_MS = 4_000; // 4 seconds between batches → ~30 RPM effective across 2 keys
 
 /**
  * Maximum age (in days) for a job to be ingested. Any job whose posted_at
@@ -793,18 +793,39 @@ async function upsertJobs(rawJobs: RawJob[]): Promise<string[]> {
   // Do NOT set fetched_at on upsert — DB default now() on INSERT only.
   // Refreshing fetched_at on every scan made old listings jump to "today"
   // and fought the dashboard freshness rules (see Known Pitfalls).
+  const UPSERT_MAX_RETRIES = 3;
   const ids: string[] = [];
   for (let i = 0; i < rawJobs.length; i += 100) {
     const chunk = rawJobs.slice(i, i + 100);
-    const { data, error } = await sb
-      .from('jobs')
-      .upsert(chunk, {
-        onConflict: 'source,source_id',
-        ignoreDuplicates: false,
-      })
-      .select('id');
-    if (error) throw new Error(`Upsert jobs failed: ${error.message}`);
-    if (data) ids.push(...data.map((d) => d.id as string));
+    let lastError: string = '';
+    for (let attempt = 0; attempt < UPSERT_MAX_RETRIES; attempt++) {
+      const { data, error } = await sb
+        .from('jobs')
+        .upsert(chunk, {
+          onConflict: 'source,source_id',
+          ignoreDuplicates: false,
+        })
+        .select('id');
+      if (error) {
+        lastError = error.message;
+        // Cloudflare WAF / HTML response is transient — retry with backoff
+        if (error.message.includes('DOCTYPE') || error.message.includes('html') || error.message.includes('Cloudflare')) {
+          const delay = 1000 * Math.pow(2, attempt);
+          console.warn(`[ingest] Upsert chunk ${i / 100 + 1}: transient error (attempt ${attempt + 1}/${UPSERT_MAX_RETRIES}), retrying in ${delay}ms: ${error.message.substring(0, 100)}`);
+          await new Promise(r => setTimeout(r, delay));
+          continue;
+        }
+        // Non-transient error (constraint violation, etc.) — fail immediately
+        throw new Error(`Upsert jobs failed: ${error.message}`);
+      }
+      if (data) ids.push(...data.map((d) => d.id as string));
+      lastError = '';
+      break;
+    }
+    if (lastError) {
+      console.error(`[ingest] Upsert chunk ${i / 100 + 1}: giving up after ${UPSERT_MAX_RETRIES} retries: ${lastError.substring(0, 150)}`);
+      // Don't throw — skip this chunk so the rest of the pipeline continues
+    }
   }
   return ids;
 }

@@ -2,6 +2,48 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 35 — Cron scan errors: dead Cerebras keys + Cloudflare upsert failures (Aug 19, 2026)
+
+**Goal:** "Why so many errors in cron scans for users?" Evidence-based RCA via DB query of `ingest_runs` (last 80 runs) + live provider testing.
+
+### Findings
+
+| Error type | Count | Root cause |
+|---|---|---|
+| Cerebras 402 (Payment Required) | 206 | All 6 Cerebras keys have exhausted free-tier quota. HTTP 402 `payment_required_error` — NOT a rate limit. Keys need payment to work again. |
+| Cerebras 429 (Rate limit 120 RPM) | 273 | Cascading from 402 → keys on cooldown → retry storm. |
+| Supabase upsert HTML (Cloudflare) | 2 | Cloudflare WAF intercepted large upsert payloads (20K+ jobs). Returned `<!DOCTYPE html>` challenge instead of JSON. |
+| Other LLM (all providers failed) | 0 | After deactivating dead Cerebras, remaining providers (Gemini, Bluesminds) work. |
+
+**Timeline:** Cerebras keys died around Aug 18 13:00 UTC (first cycle with errors). Before that, all cycles were healthy (0-2 errors).
+
+**Provider health (live-tested):**
+- Cerebras (6 keys): ALL 402 "Payment required" → deactivated
+- Gemini (1 key): 200 ✅ but429 under parallel load (>2 concurrent)
+- Bluesminds (1 key): 200 ✅; 2 other keys broken (500/400) → deactivated
+- Groq: No DB keys active
+- OpenAI: env only (paid fallback)
+
+### Fixes shipped
+
+| Fix | What |
+|---|---|
+| **DB: deactivate dead keys** | 6 Cerebras keys + 2 broken Bluesminds keys set `is_active=false`. Cleared stale cooldowns. Reset token counters for surviving Bluesminds key. |
+| **`lib/ingest.ts` upsert retry** | `upsertJobs()` now retries Cloudflare/HTML errors 3× with exponential backoff (1s, 2s, 4s). Non-transient errors still fail immediately. |
+| **`lib/ingest.ts` concurrency** | `SCORE_CONCURRENCY` 5 → **2** (only2 active keys with tight RPM). `SCORE_BATCH_DELAY_MS` 3s → **4s**. |
+
+### Impact
+- Before fix: avg 14.7 errors per profile, 50% scoring success rate, 26/40 runs partial/failed
+- After fix:2 active keys, 2 concurrent scoring calls, ~30 RPM effective. Each scan takes longer but succeeds. Add more working keys to increase throughput.
+
+### How to recover full throughput
+1. **Cerebras**: visit billing tab for each account → add payment method or get new free-tier keys
+2. **Groq**: add Groq API keys to `llm_keys` table
+3. **Bluesminds**: the 2 broken keys need "connected db" fixed; check bluesminds dashboard
+4. Each new key adds ~10-20 RPM effective scoring capacity
+
+---
+
 ## Session 34 — Cron skips new users: 40-min GHA timeout kills all-profile scan (Aug 18, 2026)
 
 **Goal:** "Cron doesn't run automatically for new users." Evidence-based RCA showed the cron *does* fire every 6h; the all-user scan introduced by #324 simply never finishes — each profile uses up to an 8-min wall budget, profiles are scanned sequentially oldest-first, and the GitHub Actions job is hard-killed at `timeout-minutes: 40`, so every profile created after the first ~6 is never reached. New users are always last in line.
