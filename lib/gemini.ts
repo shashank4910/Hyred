@@ -96,11 +96,12 @@ const EMBED_MODEL = 'text-embedding-3-small';
 
 // Chat: all free tiers first, OpenAI paid last. LLM_PRIMARY picks which free
 // provider is tried first (default cerebras). Embeddings stay OpenAI-only in embed().
-const LLM_PRIMARY = (process.env.LLM_PRIMARY || 'cerebras').toLowerCase();
+const LLM_PRIMARY = (process.env.LLM_PRIMARY || 'openrouter').toLowerCase();
 
 const FREE_CHAT_PROVIDERS = [
   'cerebras',
   'groq',
+  'openrouter',
   'gemini',
   'bluesminds',
   'mistral',
@@ -123,7 +124,7 @@ function getChatProviderOrder(): string[] {
 }
 
 // Env-var fallbacks for free chat providers only (OpenAI appended separately at end).
-const ENV_FALLBACK_PROVIDERS = ['cerebras', 'groq', 'gemini', 'bluesminds'];
+const ENV_FALLBACK_PROVIDERS = ['cerebras', 'groq', 'openrouter', 'gemini', 'bluesminds'];
 
 function getOpenAIClient(): OpenAI | null {
   const key = process.env.OPENAI_API_KEY;

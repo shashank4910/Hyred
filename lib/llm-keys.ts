@@ -31,7 +31,7 @@ export type LlmKey = {
   updated_at: string;
 };
 
-export type LlmProvider = 'cerebras' | 'groq' | 'openai' | 'gemini' | 'mistral' | 'sambanova' | 'bluesminds';
+export type LlmProvider = 'cerebras' | 'groq' | 'openai' | 'gemini' | 'mistral' | 'sambanova' | 'bluesminds' | 'openrouter';
 
 export const PROVIDER_DEFAULTS: Record<string, { baseUrl: string; model: string }> = {
   cerebras: { baseUrl: 'https://api.cerebras.ai/v1', model: 'gpt-oss-120b' },
@@ -41,6 +41,7 @@ export const PROVIDER_DEFAULTS: Record<string, { baseUrl: string; model: string 
   mistral: { baseUrl: 'https://api.mistral.ai/v1', model: 'mistral-large-latest' },
   sambanova: { baseUrl: 'https://api.sambanova.ai/v1', model: 'Meta-Llama-3.3-70B-Instruct' },
   bluesminds: { baseUrl: 'https://api.bluesminds.com/v1', model: 'gpt-4o' },
+  openrouter: { baseUrl: 'https://openrouter.ai/api/v1', model: 'meta-llama/llama-3.3-70b-instruct' },
 };
 
 /** How each provider's daily budget is tracked (stored in daily_token_limit column). */
@@ -110,6 +111,13 @@ export const PROVIDER_BUDGET: Record<string, ProviderBudgetConfig> = {
     rpm: 20,
     limitLabel: 'requests/day',
     freeTierNote: '500 pi credits · 300 req/day · 20 RPM (free)',
+  },
+  openrouter: {
+    mode: 'tokens',
+    defaultDailyLimit: 10_000_000,
+    rpm: 20,
+    limitLabel: 'tokens/day',
+    freeTierNote: '$5 credit = ~$0.10/1M tokens',
   },
 };
 

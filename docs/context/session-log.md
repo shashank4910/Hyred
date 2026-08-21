@@ -2,6 +2,59 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 36 — OpenRouter setup + ATS-directory source + provider cleanup (Aug 21, 2026)
+
+**Goal:** Scale LLM providers to support 100 users; add ATS-directory job source; fix all dead/broken providers.
+
+### What was done
+
+1. **ATS-directory source** (`lib/sources/ats-directory.ts`) — PR #335, merged.
+   - Fetches job boards from Greenhouse, Lever, Ashby (keyless APIs)
+   - 32 verified company boards, ~6,200 jobs, ~2,768 fresh per first scan
+   - Wired into `ALL_SOURCES`, `buildFns`, filter dropdown, "Scan now" button
+
+2. **Dead provider cleanup** — PR #336, merged.
+   - Deactivated 6 dead Cerebras keys (all returning 402 Payment Required)
+   - Deactivated 2 broken Bluesminds keys ("No connected db" on heavy payloads)
+   - Added upsert retry with exponential backoff for Cloudflare HTML errors
+   - Reduced `SCORE_CONCURRENCY` from 5 → 2 (only 2 working providers)
+
+3. **Groq model update** — PR #337, merged.
+   - `llama-3.3-70b-versatile` → `openai/gpt-oss-120b` (old model shut down Aug 16)
+
+4. **OpenRouter as primary LLM** — PR #339, this session.
+   - Added `openrouter` to `LlmProvider` type, `PROVIDER_DEFAULTS`, `PROVIDER_BUDGET`
+   - Added `openrouter` to `FREE_CHAT_PROVIDERS` chain in `lib/gemini.ts`
+   - Changed `LLM_PRIMARY` default from `cerebras` → `openrouter`
+   - DB key inserted: `openrouter/openrouter-primary` with $5 credit
+   - E2E tested: scoring request returns valid JSON, 59 tokens
+
+5. **Scaling plan** — PR #338, merged.
+   - `docs/scaling-plan-100-users.md` — full plan for 100-user scale
+
+### Current LLM provider status (Aug 21, 2026)
+
+| Provider | Status | Model | Notes |
+|---|---|---|---|
+| **OpenRouter** | 🟢 PRIMARY | `meta-llama/llama-3.3-70b-instruct` | $5 credit, ~4 months at 100 users |
+| **Groq** | 🟢 Fallback | `openai/gpt-oss-120b` | Env key, 30 RPM free tier |
+| **Gemini** | 🟡 Limited | `gemini-2.5-flash-lite` | 20 req/day free (resets daily) |
+| **Cerebras** | 🔴 Dead | — | All 6 keys 402'd, need payment |
+| **Bluesminds** | 🔴 Unreliable | — | Breaks on heavy/parallel payloads |
+| **OpenAI** | 🟢 Last resort | `gpt-4o-mini` | Paid fallback |
+
+### Key files changed
+- `lib/sources/ats-directory.ts` (new)
+- `lib/sources/index.ts` (wired ATS sources)
+- `lib/llm-keys.ts` (openrouter provider support)
+- `lib/gemini.ts` (openrouter in chain, default primary)
+- `lib/ingest.ts` (upsert retry, concurrency cap)
+- `lib/ui.ts` (ATS source labels)
+- `app/(app)/_components/MatchFilters.tsx` (ATS filter options)
+- `app/(app)/_components/RunIngestButton.tsx` (ATS in scan button)
+
+---
+
 ## Session 35 — Cron scan errors: dead Cerebras keys + Cloudflare upsert failures (Aug 19, 2026)
 
 **Goal:** "Why so many errors in cron scans for users?" Evidence-based RCA via DB query of `ingest_runs` (last 80 runs) + live provider testing.
