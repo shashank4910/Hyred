@@ -704,20 +704,22 @@ async function getOpenAIEmbedProviders(): Promise<Array<{ client: OpenAI; keyId:
   try {
     const { supabaseAdmin } = await import('./supabase/server');
     const sb = supabaseAdmin();
+    // Support both OpenAI and OpenRouter for embeddings (both use same API format)
     const { data: keys } = await sb
       .from('llm_keys')
       .select('*')
-      .eq('provider', 'openai')
+      .in('provider', ['openai', 'openrouter'])
       .eq('is_active', true)
       .order('priority', { ascending: true });
 
     for (const raw of keys ?? []) {
       const key = await resetLlmKeyDailyIfNeeded(raw as LlmKey);
       if (!isKeyWithinDailyBudget(key)) continue;
-      const baseUrl = key.base_url || PROVIDER_DEFAULTS.openai.baseUrl;
+      const providerDefaults = PROVIDER_DEFAULTS[key.provider];
+      const baseUrl = key.base_url || providerDefaults?.baseUrl || PROVIDER_DEFAULTS.openai.baseUrl;
       out.push({
         client: new OpenAI({ apiKey: key.api_key, baseURL: baseUrl }),
-        keyId: key.id,
+        keyId: `${key.provider}:${key.id}`,
       });
     }
   } catch {
