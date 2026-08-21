@@ -65,7 +65,7 @@ AUDIT ALIGNMENT CHECKLIST:
      - Product Manager (strategy, roadmap) vs. Project Manager / Scrum Master (timelines, sprints).
      - Product/UX Designer (user flows, wireframes) vs. Graphic/Visual Designer (marketing assets, brochures).
      - Cyber Security / Penetration Tester vs. General IT Helpdesk / Network Support.
-2. If there is a clear mismatch or sub-specialty gap that makes the role irrelevant to the candidate's specific career track and expertise, return "action": "filter" and an "adjustedScore" of 50 (or lower).
+2. If there is a clear mismatch or sub-specialty gap that makes the role irrelevant to the candidate's specific career track and expertise, return "action": "filter" and an "adjustedScore" of 60 (not lower — 50 is too harsh for borderline cases).
 3. If the candidate's background matches the requirements and domain well, return "action": "keep".`;
 
   try {
