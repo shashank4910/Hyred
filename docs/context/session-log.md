@@ -41,11 +41,18 @@
    - **Why:** 3x cheaper ($6.60/month vs $31/month for 100 users), 2.5x faster (2.4s vs 6.1s)
    - **Tradeoff:** Score 80 (generous) vs 60 (conservative) — users prefer seeing higher scores
 
+7. **OpenRouter for embeddings** — PR #341, this session.
+   - Modified `getOpenAIEmbedProviders()` to also look for `openrouter` keys
+   - OpenRouter supports `text-embedding-3-small` with same dimensions (1536)
+   - Same API key now handles both chat AND embeddings
+   - **Why:** Simplicity (one API key for everything), no OpenAI credit dependency
+   - **Cost:** $0.02/1M tokens for embeddings (45K jobs = ~$0.09 total)
+
 ### Current LLM provider status (Aug 21, 2026)
 
 | Provider | Status | Model | Notes |
 |---|---|---|---|
-| **OpenRouter** | 🟢 PRIMARY | `meta-llama/llama-3.3-70b-instruct` | $5 credit, ~4 months at 100 users |
+| **OpenRouter** | 🟢 PRIMARY | `meta-llama/llama-3.1-8b-instruct` | $5 credit, ~4 months at 100 users |
 | **Groq** | 🟢 Fallback | `openai/gpt-oss-120b` | Env key, 30 RPM free tier |
 | **Gemini** | 🟡 Limited | `gemini-2.5-flash-lite` | 20 req/day free (resets daily) |
 | **Cerebras** | 🔴 Dead | — | All 6 keys 402'd, need payment |
