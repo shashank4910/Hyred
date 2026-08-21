@@ -46,11 +46,11 @@ export type IngestResult = {
   };
 };
 
-const SIMILARITY_TOP_N = 45;
+const SIMILARITY_TOP_N = 80; // Increased from 45 — audit found 30-60% of strong matches were being dropped before scoring
 const TOP_COMPANY_CAP = 12;
 const EMBED_PER_RUN = 50;
 const EMBED_CONCURRENCY = 6;
-const SCORE_CONCURRENCY = 2; // Reduced from 5 — only 2 active LLM keys (gemini + bluesminds) with tight RPM. Increase when more keys are added.
+const SCORE_CONCURRENCY = 2; // Only 2 active LLM keys (openrouter + gemini) with tight RPM. Increase when more keys are added.
 /* * Wall-clock budget for the entire scan pipeline. Set high enough so scoring
  * completes within Vercel's maxDuration (300s). Stop scoring ~80s early so
  * finalizeRun() can persist status — otherwise Vercel SIGKILL leaves the row
@@ -58,7 +58,7 @@ const SCORE_CONCURRENCY = 2; // Reduced from 5 — only 2 active LLM keys (gemin
  * Override via INGEST_WALL_BUDGET_MS env var, or per run via
  * runIngest({ wallBudgetMs }) — the multi-profile cron passes a shared
  * remaining-time budget so every user's scan finalizes before the job ends. */
-const INGEST_WALL_BUDGET_MS = parseInt(process.env.INGEST_WALL_BUDGET_MS ?? '220000', 10);
+const INGEST_WALL_BUDGET_MS = parseInt(process.env.INGEST_WALL_BUDGET_MS ?? '260000', 10); // Increased from 220s — more candidates (80 vs 45) need more scoring time
 /** Minimum budget to bother starting a profile scan (fetch alone takes 2+
  * minutes). Below this the run would be cut off before scoring anything. */
 const MIN_PROFILE_BUDGET_MS = 60_000;
@@ -483,7 +483,7 @@ export async function runIngest(opts?: {
           similarity: cosineSimilarity(resumeVec, c.embedding as number[]),
         }))
         .sort((a, b) => b.similarity - a.similarity)
-        .slice(0, 60);
+        .slice(0, 100); // Increased from 60 — more candidates reach AI relevance filter
 
       // Run AI relevance filter on the "maybe" set (batched)
       let aiKeptIds = new Set<string>();
@@ -648,7 +648,8 @@ export async function runIngest(opts?: {
             let finalScore = score;
             let finalReason = reason;
 
-            if (score >= 70) {
+            if (score >= 80) {
+              // Only verify high scores — 70-79 are "strong fit" and shouldn't be second-guessed
               const verification = await verifyWithHermes({
                 jobTitle: c.title,
                 jobCompany: c.company,

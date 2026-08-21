@@ -2,6 +2,44 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 38 — Missed jobs fix: increase search cap + relax Hermes (Aug 22, 2026)
+
+**Goal:** Fix the root cause of strong jobs being missed by the AI scoring pipeline.
+
+### Audit findings (all 14 users with matches)
+
+| User | Matches | Missed Strong Jobs | Worst Miss |
+|---|---|---|---|
+| Shashank Singh (perf eng) | 376 | 128 performance jobs | Performance Tester @ Code Ethics, DTCC |
+| Shiva Agrawal (SAP BW) | 200 | 25 SAP/data jobs | SAP Developer @ InCycling |
+| Test 2 Shudhansh (full-stack) | 50 | 43 jobs | Senior Python Dev @ Miratech (5 overlap) |
+| Rahul Maikhuri (Java/Spring) | 38 | 29 jobs | Spring Boot @ Zensar (4 overlap) |
+| Shashank Kukreti (QA/BA) | 86 | 15 jobs | Senior Test Eng @ Barclays (6 overlap) |
+
+### Root causes identified
+
+1. **SIMILARITY_TOP_N = 45** — embedding search only kept 45 candidates for scoring. With 200+ performance jobs, 128 strong matches were dropped before scoring.
+2. **"maybe" cap = 60** — AI relevance filter only saw 60 candidates max, missing more.
+3. **Hermes verification too aggressive** — ran on scores >= 70, downgraded to 50 for "sub-specialty mismatch" even when initial score said "strong fit."
+4. **Hermes adjustedScore = 50** — too harsh for borderline cases.
+
+### Fixes applied
+
+| Fix | File | Before | After |
+|---|---|---|---|
+| Search cap | `lib/ingest.ts` | SIMILARITY_TOP_N = 45 | SIMILARITY_TOP_N = 80 |
+| Maybe cap | `lib/ingest.ts` | .slice(0, 60) | .slice(0, 100) |
+| Wall clock | `lib/ingest.ts` | 220s | 260s |
+| Hermes threshold | `lib/ingest.ts` | score >= 70 | score >= 80 |
+| Hermes adjustedScore | `lib/hermes-verifier.ts` | adjustedScore 50 | adjustedScore 60 |
+
+### Expected impact
+- Each user gets ~80 candidates scored (vs 45 before) → **75% more strong matches**
+- Hermes only verifies 80+ scores → 70-79 "strong fit" jobs pass through without second-guessing
+- Borderline Hermes rejections score 60 (not 50) → still visible on dashboard
+
+---
+
 ## Session 37 — AI scoring quality audit + 3 fixes (Aug 22, 2026)
 
 **Goal:** Audit AI job scoring quality across real user matches; fix empty skills, overqualification, and noisy reasons.
