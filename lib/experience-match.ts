@@ -193,5 +193,24 @@ export function computeExperienceScoreCap(args: {
     }
   }
 
+  // ── Overqualification cap ──────────────────────────────────────────
+  // A senior/staff/principal applying to a junior/mid role should not
+  // score 90+. They CAN do the job, but it's not the right match.
+  const seniorityLevels: Record<string, number> = {
+    junior: 1, mid: 2, senior: 3, staff: 4, principal: 5,
+    lead: 4, manager: 5, director: 6, vp: 7, executive: 7,
+  };
+  const candLevel = seniorityLevels[candidateSeniority ?? ''] ?? 0;
+  const jdLevel = seniorityLevels[jdSeniority ?? ''] ?? 0;
+  if (candLevel >= 4 && jdLevel >= 1 && jdLevel <= 2 && candLevel - jdLevel >= 2) {
+    // Staff+ applying to junior/mid → cap at 65
+    cap = Math.min(cap, 65);
+    if (!capReason) capReason = `overqualified: ${candidateSeniority ?? 'senior+'} candidate applying to ${jdSeniority ?? 'junior/mid'}-level role`;
+  } else if (candLevel >= 3 && jdLevel >= 1 && jdLevel <= 1 && candLevel - jdLevel >= 2) {
+    // Senior+ applying to junior → cap at 70
+    cap = Math.min(cap, 70);
+    if (!capReason) capReason = `overqualified: ${candidateSeniority ?? 'senior'} candidate applying to junior-level role`;
+  }
+
   return { cap, reason: capReason };
 }
