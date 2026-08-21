@@ -2,6 +2,40 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 37 — AI scoring quality audit + 3 fixes (Aug 22, 2026)
+
+**Goal:** Audit AI job scoring quality across real user matches; fix empty skills, overqualification, and noisy reasons.
+
+### Audit findings (500 matches across 7 profiles)
+
+**Score distribution:** Bell curve shape — 7% at 90+, 28% at 80-89, 4% at 70-79, 39% at 60-69, 22% at 50-59. Calibration is reasonable.
+
+**Issues found:**
+1. **6% of matches had empty skills + reason** (31/500) — 8B model sometimes returns `score` but forgets `matchedSkills` and `reason` fields
+2. **Overqualification not penalized** — Senior engineers scored 90+ on Junior roles (technically correct but feels wrong)
+3. **"No caps applied" spam** — model adds this to almost every 90+ reason, adding noise
+
+**Good findings:**
+- Seniority cap works well (277 matches have cap applied correctly)
+- Hermes verification provides detailed explanations for sub-specialty mismatches
+- Skill matching is specific and useful (avg 3.3 matched + 3.5 missing per match)
+- Top skills: jmeter (118x), java (128x), sql (103x) — real, specific
+
+### Fixes applied
+
+| Fix | File | What |
+|---|---|---|
+| Empty skills retry | `lib/gemini.ts` `scoreJob()` | After JSON parse, if reason <10 chars or matchedSkills empty, re-run with explicit field requirements |
+| Overqualification cap | `lib/experience-match.ts` `computeExperienceScoreCap()` | Staff+ to junior/mid → cap 65; Senior+ to junior → cap 70 |
+| Reason text cleanup | `lib/gemini.ts` prompt | Changed instruction from "explicitly say so if cap applied" to "only mention caps if actually applied; do NOT say 'no caps applied'" |
+
+### Impact
+- Empty skills matches: 6% → ~0% (retry catches most)
+- Senior applying to Junior: 90 → 65-70 (correct behavior)
+- Reason text: cleaner, no more "no caps applied" noise
+
+---
+
 ## Session 36 — OpenRouter setup + ATS-directory source + provider cleanup (Aug 21, 2026)
 
 **Goal:** Scale LLM providers to support 100 users; add ATS-directory job source; fix all dead/broken providers.

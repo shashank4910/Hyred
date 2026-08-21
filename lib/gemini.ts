@@ -863,7 +863,7 @@ OTHER RULES:
 Respond with strict JSON:
 {
   "score": <int 0-100>,
-  "reason": "<one or two sentences. If a seniority/years cap was applied, explicitly say so (e.g. 'Capped due to 11-year experience gap').>",
+  "reason": "<1-2 sentences explaining the score. Focus on WHY the job fits or doesn't fit. Only mention caps if one was actually applied (e.g. 'Score capped due to sub-specialty mismatch'). Do NOT say 'no caps applied' — if no cap applies, just explain the match quality.>",
   "requiredYears": <int — the JD's required years, your best parse, or 0 if none>,
   "jdSeniority": "<one of: ic, lead, manager, director, vp, executive>",
   "matchedSkills": [<up to 5 SHORT skill/tool/domain keywords that appear in BOTH the JD and the resume — e.g. "JMeter", "Load Testing", "Java". These are WHY it matched.>],
@@ -885,9 +885,39 @@ matchedSkills/missingSkills RULES:
     args.profileId,
   );
   try {
-    const parsed = JSON.parse(text);
+    let parsed = JSON.parse(text);
     let score = Math.max(0, Math.min(100, Math.round(Number(parsed.score) || 0)));
     let reason = String(parsed.reason ?? '').slice(0, 500);
+
+    // ── Retry: if skills or reason are empty, re-run once with explicit prompt ──
+    const retryNeeded =
+      reason.length < 10 ||
+      !Array.isArray(parsed.matchedSkills) ||
+      parsed.matchedSkills.length === 0;
+    if (retryNeeded && score > 0) {
+      try {
+        const retryText = await chat(
+          'You are a senior tech recruiter. You MUST return valid JSON with ALL fields filled.',
+          userPrompt + '\n\n⚠️ CRITICAL: Your previous response was missing fields. You MUST return ALL of these:\n- score: an integer 0-100\n- reason: 1-2 sentences explaining the score\n- matchedSkills: array of 1-5 real skills from the JD that match the resume\n- missingSkills: array of skills the JD needs that the resume lacks\n- requiredYears: integer\n- jdSeniority: one of ic/lead/manager/director/vp/executive\n\nDo NOT return empty arrays or empty strings for any field.',
+          0.2,
+          true,
+          'scoreJob-retry',
+          args.profileId,
+        );
+        const retryParsed = JSON.parse(retryText);
+        if (
+          String(retryParsed.reason ?? '').length >= 10 &&
+          Array.isArray(retryParsed.matchedSkills) &&
+          retryParsed.matchedSkills.length > 0
+        ) {
+          parsed = retryParsed;
+          score = Math.max(0, Math.min(100, Math.round(Number(parsed.score) || 0)));
+          reason = String(parsed.reason ?? '').slice(0, 500);
+        }
+      } catch {
+        // keep original result
+      }
+    }
     const jdSeniorityRaw = String(parsed.jdSeniority ?? '').toLowerCase().trim();
     const llmSeniority: JdSeniority = ['ic', 'lead', 'manager', 'director', 'vp', 'executive'].includes(
       jdSeniorityRaw,
