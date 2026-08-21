@@ -32,6 +32,15 @@
 5. **Scaling plan** — PR #338, merged.
    - `docs/scaling-plan-100-users.md` — full plan for 100-user scale
 
+6. **Model switch to llama-3.1-8b-instruct** — PR #340, this session.
+   - Switched from `meta-llama/llama-3.3-70b-instruct` ($0.10/$0.32) → `meta-llama/llama-3.1-8b-instruct` ($0.05/$0.08)
+   - Updated DB key model field
+   - Updated `PROVIDER_DEFAULTS.openrouter.model` in `lib/llm-keys.ts`
+   - Updated `CONTEXT.md` cost model section
+   - E2E tested: scoring returns valid JSON, score=80, matched=3 skills, missing=2 skills
+   - **Why:** 3x cheaper ($6.60/month vs $31/month for 100 users), 2.5x faster (2.4s vs 6.1s)
+   - **Tradeoff:** Score 80 (generous) vs 60 (conservative) — users prefer seeing higher scores
+
 ### Current LLM provider status (Aug 21, 2026)
 
 | Provider | Status | Model | Notes |

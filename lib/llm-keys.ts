@@ -41,7 +41,7 @@ export const PROVIDER_DEFAULTS: Record<string, { baseUrl: string; model: string 
   mistral: { baseUrl: 'https://api.mistral.ai/v1', model: 'mistral-large-latest' },
   sambanova: { baseUrl: 'https://api.sambanova.ai/v1', model: 'Meta-Llama-3.3-70B-Instruct' },
   bluesminds: { baseUrl: 'https://api.bluesminds.com/v1', model: 'gpt-4o' },
-  openrouter: { baseUrl: 'https://openrouter.ai/api/v1', model: 'meta-llama/llama-3.3-70b-instruct' },
+  openrouter: { baseUrl: 'https://openrouter.ai/api/v1', model: 'meta-llama/llama-3.1-8b-instruct' },
 };
 
 /** How each provider's daily budget is tracked (stored in daily_token_limit column). */
