@@ -1642,7 +1642,7 @@ When a feature seems broken:
 
 ## Cost Model
 
-> **Updated post-Bluesminds.** Bluesminds (`gpt-4o` via `api.bluesminds.com/v1`) is now the chat **primary** (paid, admin-managed via `llm_keys` table or `LLM_PRIMARY=bluesminds` env). The fallback chain is: Bluesminds → Gemini `gemini-2.5-flash-lite` (free, env-var) → Cerebras `gpt-oss-120b` (free) → Groq `llama-3.3-70b-versatile` (free) → OpenAI `gpt-4o-mini` (paid, last resort). Embeddings remain OpenAI-only (`text-embedding-3-small`).
+> **Updated Aug 21, 2026 (Session 36).** OpenRouter (`meta-llama/llama-3.1-8b-instruct` via `openrouter.ai/api/v1`) is now the chat **primary** (admin-managed via `llm_keys` table or `LLM_PRIMARY=openrouter` env). The fallback chain is: OpenRouter 8B → Gemini `gemini-2.5-flash-lite` (free, env-var) → Groq `openai/gpt-oss-120b` (free) → OpenAI `gpt-4o-mini` (paid, last resort). Cerebras (6 keys) and Bluesminds (3 keys) are **deactivated** (402/400 errors). Embeddings remain OpenAI-only (`text-embedding-3-small`).
 
 | Operation | Cost (Bluesminds primary) | Fallback cost (any free provider) | Frequency |
 |---|---|---|---|

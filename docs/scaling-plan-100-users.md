@@ -47,14 +47,14 @@ Per user per scan cycle:
 2. Add to `llm_keys` table:
    - provider: `openrouter`
    - label: `openrouter-primary`
-   - model: `meta-llama/llama-3.3-70b-instruct`
+   - model: `meta-llama/llama-3.1-8b-instruct`
    - base_url: `https://openrouter.ai/api/v1`
    - is_active: true
    - priority: 1
 3. Set `LLM_PRIMARY=openrouter` on Vercel
 
 **Why OpenRouter:**
-- $0.10/1M tokens (cheapest production-quality option)
+- $0.05 input / $0.08 output per 1M tokens (cheapest production-quality option)
 - 20 RPM, 1000 RPD after $5 credit purchase
 - Automatic fallback routing across providers
 - OpenAI-compatible API — drops into existing `chat()` function
