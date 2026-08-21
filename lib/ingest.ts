@@ -48,7 +48,7 @@ export type IngestResult = {
 
 const SIMILARITY_TOP_N = 80; // Increased from 45 — audit found 30-60% of strong matches were being dropped before scoring
 const TOP_COMPANY_CAP = 12;
-const EMBED_PER_RUN = 50;
+const EMBED_PER_RUN = 100; // Increased from 50 — GH engineering jobs were waiting 6+ cycles to get embedded
 const EMBED_CONCURRENCY = 6;
 const SCORE_CONCURRENCY = 2; // Only 2 active LLM keys (openrouter + gemini) with tight RPM. Increase when more keys are added.
 /* * Wall-clock budget for the entire scan pipeline. Set high enough so scoring
@@ -345,12 +345,25 @@ export async function runIngest(opts?: {
       console.log('[ingest] Scan cancelled by user before embedding stage.');
       return { fetched, newJobs: newJobsCount, embedded, scored, matchesCreated: kept, errors: runErrors, runId, prefilter };
     }
+    // Prioritize engineering/technical jobs for embedding — they're more likely
+    // to match user resumes than sales/marketing roles. Use a SQL CASE to sort
+    // eng jobs first, then by fetched_at.
     const { data: needEmbed } = await sb
       .from('jobs')
       .select('id, title, company, location, description, tags')
       .is('embedding', null)
       .order('fetched_at', { ascending: false })
-      .limit(EMBED_PER_RUN);
+      .limit(EMBED_PER_RUN * 2); // Fetch extra to allow re-prioritization
+
+    // Re-sort: engineering jobs first, then by fetched_at
+    const engPattern = /engineer|developer|software|sre|devops|platform|infrastructure|backend|frontend|fullstack|full stack|data engineer|ml engineer|security|qa|test|performance|architect/i;
+    const sorted = (needEmbed || []).sort((a, b) => {
+      const aEng = engPattern.test(a.title || '') ? 0 : 1;
+      const bEng = engPattern.test(b.title || '') ? 0 : 1;
+      if (aEng !== bEng) return aEng - bEng; // Engineering first
+      return 0; // Same priority, keep fetched_at order
+    });
+    const prioritized = sorted.slice(0, EMBED_PER_RUN);
 
     // Defensive early-bail. If the very first embed call fails with what
     // looks like a config error (missing API key, invalid key, model not
@@ -377,7 +390,7 @@ export async function runIngest(opts?: {
           embedAborted = msg;
           runErrors.push({
             source: 'embed',
-            error: `Embed phase aborted on first job (${needEmbed?.length ?? 0} pending). Config error: ${msg}`,
+            error: `Embed phase aborted on first job (${prioritized?.length ?? 0} pending). Config error: ${msg}`,
           });
           return false;
         }
@@ -386,7 +399,7 @@ export async function runIngest(opts?: {
             embedAborted = msg;
             runErrors.push({
               source: 'embed',
-              error: `Embed phase stopped (${embedded} done, ${needEmbed?.length ?? 0} pending). ${msg}`,
+              error: `Embed phase stopped (${embedded} done, ${prioritized?.length ?? 0} pending). ${msg}`,
             });
           }
           return false;
@@ -399,7 +412,7 @@ export async function runIngest(opts?: {
       }
     }
 
-    const embedJobs = needEmbed ?? [];
+    const embedJobs = prioritized ?? [];
     for (let i = 0; i < embedJobs.length; i += EMBED_CONCURRENCY) {
       if (Date.now() - startedAt > wallBudgetMs) break;
       if (embedAborted) break;

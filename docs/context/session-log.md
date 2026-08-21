@@ -2,6 +2,29 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 39 — Greenhouse jobs: increase embed cap + priority queue (Aug 22, 2026)
+
+**Goal:** Fix Greenhouse engineering jobs not appearing on dashboards.
+
+### Findings
+- 2,601 Greenhouse jobs in DB, 316 are engineering/technical
+- Only 32 GH eng jobs have embeddings (10%) — 284 waiting
+- ZERO Greenhouse jobs in any user's matches
+- Root cause: `EMBED_PER_RUN=50` too low, no priority for eng jobs
+
+### Fixes
+| Fix | Before | After |
+|---|---|---|
+| Embed cap | EMBED_PER_RUN = 50 | EMBED_PER_RUN = 100 |
+| Priority | No priority (fetched_at only) | Engineering jobs first |
+
+### Impact
+- 2x more jobs embedded per scan cycle
+- GH eng jobs get embedded 6x faster (1 cycle vs 6)
+- Next scan should start producing Greenhouse matches
+
+---
+
 ## Session 38 — Missed jobs fix: increase search cap + relax Hermes (Aug 22, 2026)
 
 **Goal:** Fix the root cause of strong jobs being missed by the AI scoring pipeline.
