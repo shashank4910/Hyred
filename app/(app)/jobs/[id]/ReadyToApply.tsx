@@ -375,7 +375,7 @@ export function ReadyToApply({
                         {r.weight === 'must' ? 'Required' : 'Nice to have'}
                       </span>
                     </p>
-                    {r.evidence && r.state === 'inferred' && (
+                    {r.evidence && (
                       <p className="mt-0.5 text-xs leading-snug text-on-surface-variant">
                         {r.evidence}
                       </p>
