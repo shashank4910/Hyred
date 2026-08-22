@@ -41,16 +41,34 @@ export default async function JobMatchPage({
     .eq('profile_id', profile0.id)
     .eq('status', 'new');
 
-  const { data: match } = await sb
-    .from('matches')
-    .select(
-      `id, llm_score, similarity, reason, status, bookmarked, matched_skills, missing_skills, cover_letter, notes, applied_at, tailored_resume_text, tailored_resume_url,
+  // Main match row + the two independent lookups run together — they were
+  // sequential round trips before (resume versions and premium status don't
+  // depend on the match row).
+  const [{ data: match }, { data: resumeVersions }, { data: premiumSub }] = await Promise.all([
+    sb
+      .from('matches')
+      .select(
+        `id, llm_score, similarity, reason, status, bookmarked, matched_skills, missing_skills, cover_letter, notes, applied_at, tailored_resume_text, tailored_resume_url,
        profile:profiles(insights),
        job:jobs(id, title, company, location, remote, url, source, salary, description, posted_at, fetched_at, tags)`,
-    )
-    .eq('id', id)
-    .eq('profile_id', profile0.id)
-    .maybeSingle();
+      )
+      .eq('id', id)
+      .eq('profile_id', profile0.id)
+      .maybeSingle(),
+    sb
+      .from('resume_versions')
+      .select('id, label, ats_match_score, created_at')
+      .eq('profile_id', profile0.id)
+      .eq('match_id', id)
+      .order('created_at', { ascending: false })
+      .limit(10),
+    sb
+      .from('premium_subscriptions')
+      .select('plan')
+      .eq('profile_id', profile0.id)
+      .eq('status', 'active')
+      .maybeSingle(),
+  ]);
 
   if (!match) notFound();
 
@@ -114,27 +132,12 @@ export default async function JobMatchPage({
           matched_skills: updatedMatched,
           missing_skills: updatedMissing,
         })
-        .eq('id', id);
+        .eq('id', id)
+        .eq('profile_id', profile0.id);
       match.matched_skills = updatedMatched;
       (match as any).missing_skills = updatedMissing;
     }
   }
-
-  // Fetch saved resume versions for this match (Task 5 — Tier 1 UI)
-  const { data: resumeVersions } = await sb
-    .from('resume_versions')
-    .select('id, label, ats_match_score, created_at')
-    .eq('profile_id', profile0.id)
-    .eq('match_id', id)
-    .order('created_at', { ascending: false })
-    .limit(10);
-
-  const { data: premiumSub } = await sb
-    .from('premium_subscriptions')
-    .select('plan')
-    .eq('profile_id', profile0.id)
-    .eq('status', 'active')
-    .maybeSingle();
 
   const isPremium = Boolean(premiumSub?.plan && premiumSub.plan !== 'free');
   const tailoredText =

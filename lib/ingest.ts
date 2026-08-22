@@ -650,6 +650,10 @@ export async function runIngest(opts?: {
       return false;
     }
 
+    // Progress writes are throttled to ~1 per 30s — patching the run row after
+    // EVERY 2-job batch was a steady stream of small UPDATEs for long scans.
+    // The final patch after the loop always records the exact totals.
+    let lastRunPatchAt = 0;
     for (let i = 0; i < ranked.length; i += SCORE_CONCURRENCY) {
       if (Date.now() - startedAt > wallBudgetMs) {
         budgetStopped = true;
@@ -744,7 +748,11 @@ export async function runIngest(opts?: {
           kept += r.kept;
         }
       });
-      if (runId) {
+      if (
+        runId &&
+        (Date.now() - lastRunPatchAt > 30_000 || i + SCORE_CONCURRENCY >= ranked.length)
+      ) {
+        lastRunPatchAt = Date.now();
         await patchIngestRun(sb, runId, {
           scored,
           matches_created: kept,

@@ -45,9 +45,12 @@ export async function GET(req: NextRequest) {
   // Slim select — no JD description blob (was the slow part of list loads).
   // min=0 means no floor at all: NULL llm_score rows stay visible, matching
   // the SSR list in DashboardMatchResults.
+  // Exact counts are expensive — only compute on page 1; the client already
+  // holds the total from the first page and ignores later ones.
+  const wantCount = page === 1;
   let query = sb
     .from('matches')
-    .select(MATCH_LIST_SELECT, { count: 'exact' })
+    .select(MATCH_LIST_SELECT, wantCount ? { count: 'exact' as const } : undefined)
     .eq('profile_id', profile.id);
   if (minScore > 0) {
     query = query.gte('llm_score', minScore);
@@ -115,11 +118,25 @@ export async function GET(req: NextRequest) {
 
   const ordered = sort === 'posted' ? sortMatchesByFreshness(enriched) : enriched;
 
-  const total = count ?? 0;
-  const hasMore = offset + PAGE_SIZE < total;
+  let total = 0;
+  let hasMore = false;
+  if (wantCount) {
+    total = count ?? 0;
+    hasMore = offset + PAGE_SIZE < total;
+  } else {
+    // No count ran — a full page means there is probably more.
+    hasMore = (ordered?.length ?? 0) === PAGE_SIZE;
+  }
 
-  return NextResponse.json(
-    { matches: ordered, total, page, pageSize: PAGE_SIZE, hasMore },
-    { headers: { 'Cache-Control': 'private, max-age=0, stale-while-revalidate=30' } },
-  );
+  const body: Record<string, unknown> = {
+    matches: ordered,
+    page,
+    pageSize: PAGE_SIZE,
+    hasMore,
+  };
+  if (wantCount) body.total = total;
+
+  return NextResponse.json(body, {
+    headers: { 'Cache-Control': 'private, max-age=0, stale-while-revalidate=30' },
+  });
 }
