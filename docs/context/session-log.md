@@ -2,6 +2,32 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 46 — Ready-to-Apply engine shipped (Phase 1) (Aug 22, 2026)
+
+**Goal:** Build the Two-Gate optimizer per the board-reviewed design — grading + verdict + smart pre-selection, with impeccable-craft UI.
+
+### Changes (files logged)
+| File | Change |
+|---|---|
+| `supabase/migrations/0025_jd_requirements.sql` | NEW — per-JOB requirement cache (shared across users; same dedup lesson as job_scores). **Manual run; code tolerates 42P01.** |
+| `lib/match-studio.ts` | NEW — `analyzeMatchStudio(matchId)`: cached requirement extraction (1 LLM call/job), deterministic proven check via `keywordInText`, ONE grading call for inferred-evidence + recruiter verdict (human score, verdict line, hooks, watch-outs), deterministic robot score (must=2/nice=1 × proven=1/inferred=0.7), smart preselection (proven+inferred, must-first, cap 8) |
+| `app/api/match/[id]/studio/route.ts` | NEW — POST endpoint, profile-scoped, 60s maxDuration, clean error mapping (no_resume 400, not_found 404) |
+| `app/(app)/jobs/[id]/ReadyToApply.tsx` | NEW — Fit Check panel in Resume Studio: step-rail loader (authored moment), count-up score numerals + meters (Robot lime / Human primary), max-3 inferred suggestions with Weave in/Undo (stages keywords — nothing silently edited), honest absent-must-have flags, full checklist drawer, primary "Generate tailored resume" feeding `optimize(preselected ∪ staged)` |
+| `app/(app)/jobs/[id]/JobActions.tsx` | Renders ReadyToApply between template picker and KeywordManager |
+
+### Board-review decisions implemented
+- Two LLM calls steady state (1 cached per job + 1 per user) ✅ CTO
+- Nothing silently edited — suggestions are staged keyword toggles with undo ✅ PO
+- Quota: analysis free; generation still consumes resume_studio credits via existing optimize ✅ CEO paywall split
+- Skill bank deferred (Phase 2); claim-tier deferred
+
+### Deliberately not built yet (Phase 2+)
+- Skill bank table + role-family cached questionnaire (hidden-skills interview)
+- Claimed tier with one-sentence proof prompt
+- Outcome loop (interview rate by score band), compare mode, per-ATS detection
+
+---
+
 ## Session 45 — "Category:" placeholder bug + CORE COMPETENCIES polish (Aug 22, 2026)
 
 **Symptom (user report, DP World JD):** generated resume's TECHNICAL SKILLS had a line `Distributed Systems:` with no items followed by **seven literal `Category: ` lines** duplicating every real skills category; CORE COMPETENCIES read as a lowercase comma-dump ("performance test framework, analyze test results…"). Content quality otherwise fixed by Session 44 (all 5 jobs + Education present; keyword coverage truthful — no fabricated tools, Docker/K8s/AWS correctly absent).
