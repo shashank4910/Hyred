@@ -671,7 +671,9 @@ export function JobActions({
           isPremium={isPremium}
         />
 
-        {/* Ready-to-Apply: two-gate fit analysis before keyword work */}
+        {/* One door: analysis runs invisibly behind the single Tailor button.
+            The advanced keyword manager appears only after a tailored resume
+            exists, so first-time users see exactly one way forward. */}
         <ReadyToApply
           matchId={matchId}
           staged={selectedKeywords}
@@ -679,36 +681,43 @@ export function JobActions({
           onUnstage={onUnstage}
           onOptimize={optimize}
           generating={generatingResume}
+          hasResume={!!atsResume}
         />
 
-        {/* Keyword manager */}
-        {loadingKeywords && !keywordsLoaded && (
-          <div className="space-y-2">
-            <div className="skeleton h-4 w-1/3" />
-            <div className="flex gap-2">
-              <div className="skeleton h-7 w-20 rounded-full" />
-              <div className="skeleton h-7 w-24 rounded-full" />
-              <div className="skeleton h-7 w-16 rounded-full" />
-              <div className="skeleton h-7 w-28 rounded-full" />
-              <div className="skeleton h-7 w-20 rounded-full" />
-            </div>
-          </div>
-        )}
-        {keywordsLoaded && (
-          <KeywordManager
-            jdKeywords={jdKeywords}
-            originalPresent={alreadyHaveKeywords}
-            closePresent={closeHaveKeywords}
-            result={keywords}
-            staged={selectedKeywords}
-            generating={generatingResume}
-            hasResume={!!atsResume}
-            scoreDelta={scoreDelta}
-            onStage={onStage}
-            onUnstage={onUnstage}
-            onStageMany={onStageMany}
-            onOptimize={optimize}
-          />
+        {/* Keyword manager — advanced control, shown once a tailored resume
+            exists. Before that, ReadyToApply's single Tailor button is the
+            only path (one door, no competing choices). */}
+        {(loadingKeywords || keywordsLoaded) && !!atsResume && (
+          <>
+            {loadingKeywords && !keywordsLoaded && (
+              <div className="space-y-2">
+                <div className="skeleton h-4 w-1/3" />
+                <div className="flex gap-2">
+                  <div className="skeleton h-7 w-20 rounded-full" />
+                  <div className="skeleton h-7 w-24 rounded-full" />
+                  <div className="skeleton h-7 w-16 rounded-full" />
+                  <div className="skeleton h-7 w-28 rounded-full" />
+                  <div className="skeleton h-7 w-20 rounded-full" />
+                </div>
+              </div>
+            )}
+            {keywordsLoaded && (
+              <KeywordManager
+                jdKeywords={jdKeywords}
+                originalPresent={alreadyHaveKeywords}
+                closePresent={closeHaveKeywords}
+                result={keywords}
+                staged={selectedKeywords}
+                generating={generatingResume}
+                hasResume={!!atsResume}
+                scoreDelta={scoreDelta}
+                onStage={onStage}
+                onUnstage={onUnstage}
+                onStageMany={onStageMany}
+                onOptimize={optimize}
+              />
+            )}
+          </>
         )}
 
         {/* Resume Studio Pro — saved version history */}

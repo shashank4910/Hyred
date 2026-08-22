@@ -2,6 +2,17 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 46b — Fit Check → "one door" Tailor flow + local git corruption incident (Aug 22, 2026)
+
+**UX fix (user critique):** a user clicking Tailor/Build Resume landed on a "Fit Check" section they never asked for, above ANOTHER keyword section — two doors, confusing. Redesign:
+- "Fit Check" as a separate concept is GONE. The analysis is now the invisible brain behind ONE button: **"Tailor my resume"** (analyzes -> picks keywords -> builds, one click)
+- Returning users (resume exists) get a small "Check my fit" affordance instead
+- Results speak plain language: headline verdict ("You're a strong fit / Almost there / This one's a stretch"), "ATS match" + "Recruiter appeal" mini-scores, "Quick wins — you have this experience, it's just not written down" with **Add to resume / Added-undo** buttons, honest missing-skills line, "full N-point job check" drawer
+- KeywordManager (advanced) now renders ONLY after a tailored resume exists — first-time users see exactly one path
+- If analysis fails: "Build anyway" fallback — never a dead end
+
+**Incident:** a failed local write corrupted several files with null bytes (ReadyToApply.tsx, lib/match-studio.ts, .git/HEAD, .git/config tail, .git/index, refs/heads/main, FETCH_HEAD). Recovery: HEAD/config rebuilt by hand, main sha recovered from reflog tail (172b873) then fast-forwarded to origin/main (18665d5), index rebuilt via reset --mixed, corrupted worktree files restored from HEAD / rewritten. Lesson: if `git status` says "not a repository" or files turn to nulls, check .git/HEAD + config for zeroed bytes BEFORE panicking; reflog + packed-refs + GitHub remote hold recoverable truth.
+
 ## Session 46 — Ready-to-Apply engine shipped (Phase 1) (Aug 22, 2026)
 
 **Goal:** Build the Two-Gate optimizer per the board-reviewed design — grading + verdict + smart pre-selection, with impeccable-craft UI.
