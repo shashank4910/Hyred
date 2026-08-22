@@ -26,6 +26,18 @@ export function sanitizeCityFilter(city: string | null | undefined): string {
 }
 
 /**
+ * Sanitize a free-text dashboard search term before embedding it in a
+ * PostgREST `or(title.ilike.…,company.ilike.…)` expression. Commas separate
+ * predicates and parens group them there, so any of `,()` can truncate or
+ * rewrite the filter; `%`/`_` are LIKE wildcards. Replace with a space so
+ * multi-word queries like "IBM, Inc" still search sensibly.
+ */
+export function sanitizeMatchSearchTerm(q: string | null | undefined): string {
+  if (!q) return '';
+  return q.replace(/[%_(),.*\\'"]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
  * Unique sorted city labels from raw location strings (case-insensitive de-dupe).
  */
 export function uniqueCitiesFromLocations(

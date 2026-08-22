@@ -46,6 +46,8 @@ type Props = {
   highlightId?: string | null;
 };
 
+const PAGE_SIZE = 20;
+
 export function MatchList({ initialMatches, total: initialTotal, initialHasMore, showSource = false, highlightId }: Props) {
   const [matches, setMatches] = useState<MatchItem[]>(initialMatches);
   const [total, setTotal] = useState(initialTotal);
@@ -59,8 +61,21 @@ export function MatchList({ initialMatches, total: initialTotal, initialHasMore,
   const listRef = useRef<HTMLUListElement>(null);
   const pendingFlip = useRef<Map<string, DOMRect> | null>(null);
   const seenFilterKey = useRef<string | null>(null);
+  const loadMoreAbort = useRef<AbortController | null>(null);
 
-  const scrollKey = `hyred_scroll_${sp.toString()}`;
+  // Normalized (sorted, `from` excluded) query string so the scroll-save key
+  // and the job-detail returnHref always match regardless of param order.
+  const normalizedQuery = useMemo(() => {
+    const params = new URLSearchParams();
+    for (const [k, v] of [...sp.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+      if (k === 'from') continue;
+      params.set(k, v);
+    }
+    return params.toString();
+  }, [sp]);
+
+  const scrollKey = `hyred_scroll_${normalizedQuery}`;
+  const returnHref = `/${normalizedQuery ? `?${normalizedQuery}` : ''}`;
 
   // The desktop dashboard scrolls the job list column (#dashboard-list-scroll),
   // not the window — so scroll save/restore must target that container first.
@@ -95,9 +110,15 @@ export function MatchList({ initialMatches, total: initialTotal, initialHasMore,
   const loadMore = useCallback(async () => {
     if (loading || refreshing || !hasMore) return;
     setLoading(true);
+    const controller = new AbortController();
+    loadMoreAbort.current?.abort();
+    loadMoreAbort.current = controller;
     try {
       const nextPage = page + 1;
-      const res = await fetch(`/api/matches?${buildQuery(nextPage)}`, { cache: 'default' });
+      const res = await fetch(`/api/matches?${buildQuery(nextPage)}`, {
+        cache: 'default',
+        signal: controller.signal,
+      });
       if (!res.ok) throw new Error('Failed');
       const data = await res.json();
       const newMatches = (data.matches ?? []) as MatchItem[];
@@ -108,8 +129,14 @@ export function MatchList({ initialMatches, total: initialTotal, initialHasMore,
       setPage(nextPage);
       setHasMore(data.hasMore ?? false);
       if (typeof data.total === 'number') setTotal(data.total);
-    } catch { /* retry on next scroll */ }
-    finally { setLoading(false); }
+    } catch (err) {
+      // A filter change aborted this stale page fetch — drop its results.
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      /* retry on next scroll */
+    }
+    finally {
+      if (!controller.signal.aborted) setLoading(false);
+    }
   }, [loading, refreshing, hasMore, page, buildQuery, sortMode]);
 
   // Filter/sort/status change: hit the lightweight API immediately (do not wait
@@ -121,6 +148,10 @@ export function MatchList({ initialMatches, total: initialTotal, initialHasMore,
     }
     if (seenFilterKey.current === filterKey) return;
     seenFilterKey.current = filterKey;
+
+    // Drop any in-flight page fetch for the OLD filters — its results would
+    // otherwise append into the new-filter list with a stale total.
+    loadMoreAbort.current?.abort();
 
     const controller = new AbortController();
     setRefreshing(true);
@@ -197,18 +228,25 @@ export function MatchList({ initialMatches, total: initialTotal, initialHasMore,
     return () => document.removeEventListener('click', handler, { capture: true });
   }, [scrollKey]);
 
-  // Restore scroll on mount
+  // Restore scroll on mount. Two rAFs so the list (and any client-refresh
+  // content) has laid out before we clamp scrollTop; remove the saved key only
+  // after applying it.
   useEffect(() => {
     const saved = sessionStorage.getItem(scrollKey);
-    if (saved) {
+    if (!saved) return;
+    const y = parseInt(saved, 10);
+    if (Number.isNaN(y)) {
+      sessionStorage.removeItem(scrollKey);
+      return;
+    }
+    requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const scroller = listScrollEl();
-        const y = parseInt(saved, 10);
         if (scroller) scroller.scrollTop = y;
         else window.scrollTo(0, y);
+        sessionStorage.removeItem(scrollKey);
       });
-      sessionStorage.removeItem(scrollKey);
-    }
+    });
   }, [scrollKey]);
 
   // Highlight card on back-navigation
@@ -283,6 +321,7 @@ export function MatchList({ initialMatches, total: initialTotal, initialHasMore,
                 showSource={showSource}
                 isOlder={showExpired && isJobPastFreshnessWindow(m.job)}
                 staggerIndex={i}
+                returnHref={returnHref}
               />
             </li>
           );
@@ -306,7 +345,7 @@ export function MatchList({ initialMatches, total: initialTotal, initialHasMore,
         </div>
       )}
 
-      {!hasMore && matches.length >= 20 && (
+      {!hasMore && matches.length >= PAGE_SIZE && (
         <p className="text-center text-xs text-text-muted py-4">All {total} matches loaded</p>
       )}
     </div>

@@ -25,7 +25,10 @@ export default async function JobMatchPage({
 }) {
   const { id } = await params;
   const sp = await searchParams;
-  const backHref = sp.return ? decodeURIComponent(sp.return) : `/?from=${id}`;
+  // Only honor internal return paths — never bounce to an external URL.
+  const decodedReturn = sp.return ? decodeURIComponent(sp.return) : '';
+  const isSafeReturn = decodedReturn.startsWith('/');
+  const backHref = isSafeReturn ? decodedReturn : `/?from=${id}`;
   const profile0 = await getCurrentProfile();
   if (!profile0) notFound();
   const isAdmin = await isCurrentUserAdmin();

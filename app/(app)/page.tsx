@@ -37,20 +37,6 @@ export default async function Dashboard({
   const status = sp.status ?? 'inbox';
   const onlyBookmarked = sp.bookmarked === '1';
 
-  const matchListKey = [
-    status,
-    onlyBookmarked ? '1' : '0',
-    sp.sort ?? '',
-    sp.min ?? '',
-    sp.q ?? '',
-    sp.remote ?? '',
-    sp.city ?? '',
-    sp.source ?? '',
-    sp.expired ?? '',
-    sp.fresh ?? '',
-    sp.from ?? '',
-  ].join('|');
-
   const sb = supabaseAdmin();
   const profile = await getCurrentProfile();
   const isAdmin = await isCurrentUserAdmin();
@@ -107,7 +93,9 @@ export default async function Dashboard({
   if (sp.remote === '1') chips.push({ label: 'Remote', clear: 'remote' });
   if (sp.city) chips.push({ label: sp.city, clear: 'city' });
   if (sp.expired === '1') chips.push({ label: 'Older jobs', clear: 'expired' });
-  if (sp.fresh) {
+  // When older jobs are included, freshness ticks are ignored server-side —
+  // don't show a "Last 24 hours" chip that claims otherwise.
+  if (sp.fresh && sp.expired !== '1') {
     chips.push({ label: freshnessLabel(sp.fresh), clear: 'fresh' });
   }
   if (isAdmin && sp.source) chips.push({ label: SOURCE_LABELS[sp.source] ?? sp.source, clear: 'source' });
@@ -126,6 +114,7 @@ export default async function Dashboard({
       ['sort', sp.sort],
       ['expired', sp.expired],
       ['fresh', sp.fresh],
+      ['from', sp.from],
     ];
     for (const [k, v] of keep) {
       if (k === drop || !v) continue;
@@ -173,7 +162,7 @@ export default async function Dashboard({
                 onlyBookmarked={onlyBookmarked}
               />
             </div>
-            <DashboardMatchesSection cacheKey={matchListKey}>
+            <DashboardMatchesSection>
               <DashboardMatchResults
                 profileId={profile.id}
                 isAdmin={isAdmin}
