@@ -22,6 +22,7 @@ import {
 import { STATUS_ORDER } from '@/lib/ui';
 import { CollapsibleCard } from '../../_components/CollapsibleCard';
 import { KeywordManager, type GenResult } from './KeywordManager';
+import { ReadyToApply } from './ReadyToApply';
 import { ResumePreviewModal, type ResumePreviewKind } from './ResumePreviewModal';
 import { ResumeTemplatePicker, DEFAULT_RESUME_TEMPLATE_ID } from './ResumeTemplatePicker';
 import { ResumeTemplateSamplePreview } from './ResumeTemplateSamplePreview';
@@ -668,6 +669,16 @@ export function JobActions({
           onSelect={setResumeTemplateId}
           onPreviewTemplate={previewTemplateLayout}
           isPremium={isPremium}
+        />
+
+        {/* Ready-to-Apply: two-gate fit analysis before keyword work */}
+        <ReadyToApply
+          matchId={matchId}
+          staged={selectedKeywords}
+          onStage={onStage}
+          onUnstage={onUnstage}
+          onOptimize={optimize}
+          generating={generatingResume}
         />
 
         {/* Keyword manager */}
