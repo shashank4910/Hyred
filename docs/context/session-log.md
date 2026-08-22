@@ -2,6 +2,29 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 43 — Migration runbook: 0017 gap, defensive 0023, batched 0024 backfill (Aug 22, 2026)
+
+**Goal:** Apply migrations 0023 (indexes) and 0024 (RPCs + pgvector) in Supabase; handle the failures that surfaced.
+
+### Timeline of what happened in prod
+| Event | Cause | Fix |
+|---|---|---|
+| 0023 first run failed `42P01: relation "company_catalog_requests" does not exist` | **Migration 0017 was never applied in prod** (company_catalog + company_catalog_requests tables and the dream_companies `catalog_id`/`source`/`custom_patterns` columns all missing). Supabase runs a script as ONE transaction → full rollback, no partial state | PR **#352**: rewrote 0023 with a `to_regclass()`-guarded `create_index_if_table_exists` helper — skips missing tables with a NOTICE. User ran 0017 (idempotent, `IF NOT EXISTS` throughout) then 0023 successfully |
+| 0024 first run failed "upstream timeout" | Whole-table vector backfill (~25k rows × 1536-float jsonb→vector cast) exceeded the SQL editor gateway timeout → full rollback | PR **#354**: backfill batched to `limit 1000` (run repeatedly until 0 rows; user ran with limit 5000). Functions/column DDL runs separately from the data copy |
+| Transient "column embedding does not exist" during verify | User's editor session/connection mismatch — `information_schema.columns` confirmed `embedding jsonb` + `embedding_vec` exist | No code change; re-run in the correct project |
+| Prod DB facts | 68,256 jobs; 24,740 jsonb embeddings; 768-dim legacy rows intentionally skipped by the backfill (`jsonb_array_length(embedding) = 1536` guard) | — |
+
+### State at session end
+- 0022 ✅ applied · 0017 ✅ applied (gap repaired) · 0023 ✅ applied (all indexes live) · 0024 functions/column ✅ applied; **vector backfill in progress** (9,000/24,740 done at last check; user finishing the remaining batches)
+- Code fallbacks mean the app worked correctly at every intermediate state
+
+### Rules distilled (also in CONTEXT.md Known Pitfalls)
+- Never assume a migration ran — make index/DDL migrations defensive (`to_regclass` checks)
+- Batch heavy backfills (5k rows/run); split cheap DDL from data copies
+- SQL editor scripts are all-or-nothing; a mid-script error is safe (rollback) but wastes the run
+
+---
+
 ## Session 42 — Perf follow-ups: grouped-count RPC, city RPC, pgvector candidates (Aug 22, 2026)
 
 **Goal:** The three documented follow-ups from the DB audit (Session 41).

@@ -88,6 +88,8 @@ How to open one section cheaply: `grep -n "<heading text>" CONTEXT.md` to get th
 | **User location → country filter** | `CONTEXT.md` → `### 5. Paid job APIs` + `lib/job-country-codes.ts` + `lib/data/job-location-dictionary.ts` | onboarding locations, worldwide cities, `job_country_code_or`, remote-only global |
 | **Distributed LLM runtime (multi-instance)** | `CONTEXT.md` → File Map (`lib/llm-key-runtime.ts`) + Known Pitfalls (in-memory cooldown row) + migration **0018** + Session 28 | Vercel-safe RPM cooldowns, `acquire_llm_chat_slot`, 10-user scale |
 | **Doc system / context bridges** | `docs/context/session-log.md` → Session 26 | fixing AGENTS↔CONTEXT↔session-log gaps |
+| **Score ledger (stop re-scoring rejects)** | `CONTEXT.md` → Known Pitfalls (rejects re-scored row) + migration **0022** + `lib/ingest.ts` (`persistScoreLedger`) + `lib/profile-insights.ts` (ledger clear on resume change) | ingest cost, "why is X not re-scored", resume re-upload re-scoring |
+| **DB performance (indexes, RPCs, pgvector)** | `CONTEXT.md` → Known Pitfalls (repeated COUNTs row) + migrations **0023**/****0024** + `lib/match-stats.ts` (RPC + fallback) + `lib/ingest.ts` (`candidate_jobs`) + Sessions **41–43** | slow pages, adding indexes, RPC fallbacks, vector backfill, SQL editor timeouts, missing-table 42P01 errors |
 
 > Keep this Index in sync when you add/rename a `##` section in `CONTEXT.md`. It is the single source of the map.
 
