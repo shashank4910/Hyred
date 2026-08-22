@@ -22,11 +22,21 @@ alter table jobs add column if not exists embedding_vec vector(1536);
 
 -- One-shot backfill from jsonb (jsonb::text is "[0.1,0.2,...]" which casts
 -- directly to vector). Idempotent.
+--
+-- ⚠️ BATCHED ON PURPOSE: a single UPDATE over the whole jobs table exceeds
+-- the Supabase SQL editor's upstream timeout on large tables. Run the
+-- statement below REPEATEDLY (it processes 1,000 rows per run) until it
+-- reports "Update rows 0", then the backfill is complete.
 update jobs
 set embedding_vec = (embedding::text)::vector
-where embedding is not null
-  and embedding_vec is null
-  and jsonb_array_length(embedding) = 1536;
+where id in (
+  select id
+  from jobs
+  where embedding is not null
+    and embedding_vec is null
+    and jsonb_array_length(embedding) = 1536
+  limit 1000
+);
 
 -- ---------- 1. Dashboard status counts (single grouped query) ----------
 -- Mirrors getDashboardCounts() in lib/match-stats.ts:
