@@ -67,7 +67,16 @@ async function getJobRequirements(
     .maybeSingle();
   if (!cacheErr && cached?.requirements) {
     const list = cached.requirements as CachedRequirement[];
-    if (Array.isArray(list) && list.length > 0) return list;
+    // Self-heal pre-v2 caches: sentence-length or garbled keywords mean the
+    // row was extracted by the old prompt — re-extract instead of trusting it.
+    const sane =
+      Array.isArray(list) &&
+      list.length >= 8 &&
+      list.every((r) => {
+        const kw = String(r?.keyword ?? '');
+        return kw && kw.length <= 60 && kw.split(/\s+/).length <= 5;
+      });
+    if (sane) return list;
   }
   // 42P01 (table missing pre-migration) or cache miss → extract once.
   if (cacheErr && cacheErr.code !== '42P01') {
@@ -80,9 +89,12 @@ async function getJobRequirements(
     `Extract the real requirements from this job posting. Return JSON:
 {"requirements":[{"keyword":"...","type":"tool|activity|concept|education|experience|soft","weight":"must|nice"}]}
 Rules:
-- 8 to ${MAX_REQUIREMENTS} items, each a short noun phrase exactly as the JD means it (e.g. "JMeter", "thread dump analysis", "Bachelor's degree").
+- 8 to ${MAX_REQUIREMENTS} items.
+- keyword MUST be a short canonical noun phrase of 1-4 words that a resume could contain verbatim: "JMeter", "thread dump analysis", "distributed systems", "capacity planning", "Bachelor degree", "performance testing".
+- NEVER extract verbs, clauses, or full sentences ("recognize performance issues in..." is WRONG — "performance issue analysis" is right).
+- Extract experience as a SHORT phrase like "performance testing experience" (the years live in the JD, not the keyword); education as "Bachelor degree" or "Bachelor degree in Computer Science".
 - "must" only when the JD clearly requires it (must-have section, explicit "required"); otherwise "nice".
-- No duplicates, no full sentences.
+- No duplicates, no garbled fragments, no soft-skill soup (at most 2 soft skills).
 
 JOB TITLE: ${job.title}
 
@@ -171,25 +183,28 @@ export async function analyzeMatchStudio(matchId: string): Promise<StudioAnalysi
       'You are a strict but fair hiring panel: a technical recruiter and an ATS in one. Output strict JSON only. Never invent resume facts.',
       `A candidate's resume and a job's requirement checklist are below.
 
-TASK A — evidence inference. For each requirement marked OPEN (not found verbatim in the resume), decide whether the candidate's ACTUAL WORK strongly suggests it anyway. Example: resume shows heap/memory-leak analysis with JProfiler ⇒ "Garbage Collection" is likely even if the words never appear. Return an entry ONLY for the ones you can support, citing the resume evidence:
-{"keyword":"...","evidence":"one sentence, cite the actual work","suggestion":"one full resume bullet, in past tense, built ONLY from the candidate's real work and numbers, phrased to include the keyword"}
-Requirements you cannot support from the resume get NO entry.
+TASK A — resolve each OPEN requirement (not found verbatim in the resume). Classify honestly:
+- "met": the resume CLEARLY satisfies it in different words. Example: JD asks "performance testing experience" / resume shows 7.7 years of performance engineering. Or JD asks "Bachelor degree in Computer Science" / resume has B.Tech in Information Technology.
+- "inferred": the exact activity is never written down, but adjacent work strongly suggests it. Example: resume shows heap/memory-leak analysis with JProfiler ⇒ "Garbage Collection" is likely.
+- neither: return NO entry — the requirement is genuinely absent.
+Each returned entry: {"keyword":"...","kind":"met|inferred","evidence":"one sentence citing the actual resume work","suggestion":"one full resume bullet in past tense"}
+Rules for "suggestion":
+- Build it ONLY from the candidate's real work and real numbers — no new tools, employers, or metrics.
+- The suggestion text MUST contain the requirement keyword VERBATIM. If you cannot write such a bullet truthfully, return the entry without a suggestion.
+- Only tool/activity/concept requirements get suggestions. Soft skills, education, and experience never do — they don't belong in bullets.
 
 TASK B — recruiter verdict. Scan the resume as a busy recruiter (7 seconds): {"human_score":0-100,"verdict_line":"one sentence: would you call this person?","hooks":["top 2-3 things that jump out"],"watch_outs":["0-2 honest concerns"]}
-
-Rules:
-- suggestion bullets may only reframe facts already in the resume; no new tools, numbers, or employers.
 - human_score below 70 when seniority/fit gaps are real. Be honest, not polite.
 
 JOB TITLE: ${job.title}
 
 CHECKLIST (state marks OPEN or PROVEN):
-${reqs.map((r) => `- ${r.keyword} [${r.weight}] — ${r.state === 'proven' ? 'PROVEN' : 'OPEN'}`).join('\n')}
+${reqs.map((r) => `- ${r.keyword} [${r.weight}] [type: ${r.type}] — ${r.state === 'proven' ? 'PROVEN' : 'OPEN'}`).join('\n')}
 
 RESUME:
 ${resumeExcerpt}
 
-Return JSON: {"inferred":[{"keyword":"...","evidence":"...","suggestion":"..."}],"recruiter":{"human_score":N,"verdict_line":"...","hooks":["..."],"watch_outs":["..."]}}`,
+Return JSON: {"resolved":[{"keyword":"...","kind":"met|inferred","evidence":"...","suggestion":"..."}],"recruiter":{"human_score":N,"verdict_line":"...","hooks":["..."],"watch_outs":["..."]}}`,
       0.25,
       true,
       'match_studio_grade',
@@ -197,7 +212,12 @@ Return JSON: {"inferred":[{"keyword":"...","evidence":"...","suggestion":"..."}]
     );
 
     const parsed = safeJson<{
-      inferred?: Array<{ keyword?: string; evidence?: string; suggestion?: string }>;
+      resolved?: Array<{
+        keyword?: string;
+        kind?: string;
+        evidence?: string;
+        suggestion?: string;
+      }>;
       recruiter?: {
         human_score?: number;
         verdict_line?: string;
@@ -206,13 +226,14 @@ Return JSON: {"inferred":[{"keyword":"...","evidence":"...","suggestion":"..."}]
       };
     }>(raw);
 
-    if (parsed?.inferred?.length) {
+    if (parsed?.resolved?.length) {
       const byKw = new Map(
-        parsed.inferred
+        parsed.resolved
           .filter((i) => typeof i.keyword === 'string' && i.keyword.trim())
           .map((i) => [
             String(i.keyword).trim().toLowerCase(),
             {
+              kind: i.kind === 'met' ? 'met' : 'inferred',
               evidence: String(i.evidence ?? '').slice(0, 220),
               suggestion: String(i.suggestion ?? '').slice(0, 320),
             },
@@ -221,10 +242,21 @@ Return JSON: {"inferred":[{"keyword":"...","evidence":"...","suggestion":"..."}]
       for (const r of reqs) {
         if (r.state !== 'absent') continue;
         const hit = byKw.get(r.keyword.toLowerCase());
-        if (hit) {
+        if (!hit) continue;
+        if (hit.kind === 'met') {
+          // Paraphrase match: the resume satisfies it in different words.
+          r.state = 'proven';
+          r.evidence = hit.evidence;
+        } else {
           r.state = 'inferred';
           r.evidence = hit.evidence;
-          r.suggestion = hit.suggestion;
+          // Deterministic guard: a suggestion that doesn't contain its own
+          // keyword is a mismatched bullet (observed in beta) — drop it and
+          // keep the evidence line only.
+          r.suggestion =
+            hit.suggestion && keywordInText(r.keyword, hit.suggestion)
+              ? hit.suggestion
+              : undefined;
         }
       }
     }
@@ -237,11 +269,14 @@ Return JSON: {"inferred":[{"keyword":"...","evidence":"...","suggestion":"..."}]
     }
   }
 
-  // Deterministic robot score: must=2, nice=1; proven=1, inferred=0.7.
+  // Deterministic robot score: must=2, nice=1; soft skills count half (ATS
+  // matchers weight hard skills — Jobscan's own priority order); proven=1,
+  // inferred=0.7.
   let earned = 0;
   let possible = 0;
   for (const r of reqs) {
-    const w = r.weight === 'must' ? 2 : 1;
+    const base = r.weight === 'must' ? 2 : 1;
+    const w = r.type === 'soft' ? base * 0.5 : base;
     possible += w;
     if (r.state === 'proven') earned += w;
     else if (r.state === 'inferred') earned += w * 0.7;
