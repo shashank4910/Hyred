@@ -2,6 +2,34 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 40 — Ingest efficiency: job_scores ledger + re-embed after JD enrichment (Aug 22, 2026)
+
+**Goal:** From a full matching-pipeline efficiency audit — kill the two biggest cost/quality wastes: (1) below-threshold jobs re-scored on every scan, (2) embeddings permanently stale after JD enrichment.
+
+### Root causes
+- `alreadyScored` was derived from `matches`, but a match row is only written when `finalScore >= minScore` → the majority of the funnel (rejects) left no record and was re-scored 4×/day per profile. Biggest LLM cost multiplier.
+- Jobs embedded at ingest from often-truncated descriptions (Adzuna ~500 chars); `ensureFullDescription` later upgraded the JD in DB but never re-embedded → cosine ranking ran on truncated text while the LLM scored the full JD.
+
+### Changes (files logged)
+| File | Change |
+|---|---|
+| `supabase/migrations/0022_job_scores_ledger.sql` | NEW — `job_scores(profile_id, job_id, score, similarity, scored_at)` PK `(profile_id, job_id)`, FKs cascade, backfill from `matches`. **Manual run in Supabase.** |
+| `lib/ingest.ts` | `alreadyScored` = matches ∪ `job_scores` (ledger read degrades gracefully via 42P01 check if table missing); new `persistScoreLedger()` upserts EVERY evaluation (rejects included) right after scoring |
+| `lib/profile-insights.ts` | `clearMatchesForResumeChange` now also deletes the corresponding `job_scores` rows so a new resume actually re-scores the pool (42P01-tolerant) |
+| `lib/jd-fetcher.ts` | New `reembedJob()` — after persisting an upgraded description, re-fetch title/company/location/tags, rebuild `jobToEmbeddingText`, re-embed, update `jobs.embedding`. Dynamic `import('./gemini')` to avoid the static circular dep (gemini imports `sanitizeJobDescriptionForAI` from jd-fetcher). Failures are non-fatal (warn log) |
+
+### Behavior notes
+- First scan after deploy re-scores nothing extra (backfill honors prior matches); reject-ledger starts accruing immediately.
+- Expected LLM call drop: roughly proportional to the reject share of the funnel (previously 100% of rejects × 4 scans/day).
+- Deploy step: run migration 0022 in Supabase console (project convention: manual).
+
+### Not done yet (from the same audit — next PRs)
+- Shared fetch/embed cron phase (paid/keyword sources currently fetched per profile)
+- pgvector top-K (cosine still computed in JS over last 800 jobs)
+- Per-job fact extraction shared across users
+
+---
+
 ## Session 39 — Greenhouse jobs: increase embed cap + priority queue (Aug 22, 2026)
 
 **Goal:** Fix Greenhouse engineering jobs not appearing on dashboards.

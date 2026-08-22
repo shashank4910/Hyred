@@ -48,7 +48,24 @@ export async function clearMatchesForResumeChange(
     .delete()
     .eq('profile_id', profileId)
     .in('status', [...MATCH_STATUSES_CLEARED_ON_RESUME_CHANGE])
-    .select('id');
+    .select('job_id');
   if (error) throw new Error(`Failed to clear matches after resume change: ${error.message}`);
+
+  // Also drop the corresponding job_scores ledger rows (rejects included) so
+  // the next scan re-scores those jobs against the NEW resume — otherwise the
+  // ledger would suppress exactly the re-scoring the clear was for.
+  const clearedJobIds = (data ?? []).map((r) => r.job_id as string).filter(Boolean);
+  if (clearedJobIds.length > 0) {
+    const { error: ledgerError } = await sb
+      .from('job_scores')
+      .delete()
+      .eq('profile_id', profileId)
+      .in('job_id', clearedJobIds);
+    if (ledgerError && ledgerError.code !== '42P01') {
+      // 42P01 = table missing (pre-0022) — nothing to clear yet.
+      console.warn('[profile] job_scores ledger clear failed:', ledgerError.message);
+    }
+  }
+
   return data?.length ?? 0;
 }

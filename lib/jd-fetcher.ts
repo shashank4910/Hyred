@@ -16,6 +16,7 @@
  */
 
 import { supabaseAdmin } from './supabase/server';
+import { jobToEmbeddingText } from './matcher';
 
 const FETCH_TIMEOUT_MS = 12_000;
 const USER_AGENT =
@@ -243,6 +244,42 @@ export async function fetchFullJobDescription(
 }
 
 /**
+ * Re-embed a job after its description was materially upgraded.
+ *
+ * WHY: embeddings are computed at ingest from whatever description existed
+ * then — often Adzuna's ~500-char stub. Without this, cosine ranking (and the
+ * candidate pre-filter built on it) permanently runs on truncated text while
+ * the LLM scores the full JD — ranking and scoring see different documents.
+ *
+ * gemini.ts imports from this module, so import it dynamically to avoid a
+ * static circular dependency at module-init time.
+ */
+async function reembedJob(jobId: string): Promise<void> {
+  try {
+    const sb = supabaseAdmin();
+    const { data: job } = await sb
+      .from('jobs')
+      .select('title, company, location, description, tags')
+      .eq('id', jobId)
+      .maybeSingle();
+    if (!job?.description) return;
+
+    const { embed } = await import('./gemini');
+    const vec = await embed(jobToEmbeddingText(job as Parameters<typeof jobToEmbeddingText>[0]));
+    if (!vec || vec.length === 0) return;
+
+    const { error } = await sb.from('jobs').update({ embedding: vec }).eq('id', jobId);
+    if (error) {
+      console.warn(`[jd-fetcher] Re-embed persist failed for job ${jobId}:`, error.message);
+    } else {
+      console.log(`[jd-fetcher] Re-embedded job ${jobId} after description upgrade`);
+    }
+  } catch (e) {
+    console.warn(`[jd-fetcher] Re-embed failed for job ${jobId}:`, (e as Error).message);
+  }
+}
+
+/**
  * Ensure a job has a substantive description. If the stored description
  * is short (typical of Adzuna-sourced jobs which are truncated to 500 chars),
  * fetch the full JD from the redirect URL and persist it.
@@ -311,6 +348,8 @@ export async function ensureFullDescription(args: {
       console.log(
         `[jd-fetcher] Job ${args.jobId} description: ${cleaned.length} → ${full.length} chars`,
       );
+      // Ranking (cosine pre-filter) must see the same document the LLM scores.
+      await reembedJob(args.jobId);
     }
   } catch (e) {
     console.warn(
