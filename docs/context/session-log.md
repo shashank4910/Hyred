@@ -13,6 +13,26 @@
 
 **Incident:** a failed local write corrupted several files with null bytes (ReadyToApply.tsx, lib/match-studio.ts, .git/HEAD, .git/config tail, .git/index, refs/heads/main, FETCH_HEAD). Recovery: HEAD/config rebuilt by hand, main sha recovered from reflog tail (172b873) then fast-forwarded to origin/main (18665d5), index rebuilt via reset --mixed, corrupted worktree files restored from HEAD / rewritten. Lesson: if `git status` says "not a repository" or files turn to nulls, check .git/HEAD + config for zeroed bytes BEFORE panicking; reflog + packed-refs + GitHub remote hold recoverable truth.
 
+## Session 48 — Keyword extraction QA: truncation bug + judgment rework (Aug 23, 2026)
+
+**Owner QA reports (two rounds) on the FIS Non-Functional Engineer JD:**
+1. Chips missed JVM/JProfiler/memory management class of keywords -> root cause: unified extractor sliced the JD to 5000 chars; the posting is ~10k, so Preferred Skills sections (where performance tools live) were physically deleted from the AI's input. NOTE: the unification (Session 47) had made this WORSE (old extractor used 7000).
+2. After widening: still missing JMeter/Gatling/k6/NeoLoad/Java while 'financial services'/'payment processing' took slots -> judgment failure: unranked 'list everything' prompt spends the cap on domain wallpaper over named tools. Two cap raises (25->30) were band-aids treating a judgment problem as a memory problem (owner called this out).
+
+**Fixes (lib/match-studio.ts, all shipped)**
+| Round | Fix |
+|---|---|
+| Truncation | Extraction window 5000 -> 12000 chars; keyword cap 30; prompt demands whole-posting coverage incl. preferred sections; cache v3 |
+| Judgment | Rework: split into TWO focused cached calls (requirements / keywords). Keywords call is PHASED: (1) TOOL CENSUS - every named tool anywhere incl. example lists ('tools such as JMeter, Gatling, k6' = one entry EACH) - never trimmed; (2) skills ranked by must-have section > repetition > title centrality; (3) trim order: domain phrases first, then concepts, then activities - NEVER a tool; max 3 domain terms, zero soft skills. Budget stays ~22 (density, not breadth). Deterministic post-validation: every keyword must appear verbatim in the JD text (anti-hallucination, keywordInText vs JD); tools structurally lead and cannot be displaced. Cache v4 (one-time re-extract) |
+
+**Rules distilled (also CONTEXT.md pitfalls):**
+- Never slice a JD below ~12000 chars for ANY AI prompt - the valuable sections (Preferred Skills, tool lists) sit at the END of postings
+- Keyword selection needs explicit priority rules: named tools are atomic ATS search tokens and outrank everything; domain/industry phrases are near-worthless wallpaper - cap them hard
+- When an LLM keeps making the same class of mistake, add a deterministic post-check; do not raise limits
+- Escape hatch promised to owner: if JMeter-class tools are still missing after v4, swap the extraction model - stop touching the prompt
+
+---
+
 ## Session 47 — Keyword chips honest tooltips + unified extraction (Aug 22-23, 2026)
 
 **Owner design decision:** fit check stays a separate feature; tailoring = the keyword chips. Three honest tiers with tooltips; smart bullet-first injection.
