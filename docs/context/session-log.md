@@ -13,6 +13,28 @@
 
 **Incident:** a failed local write corrupted several files with null bytes (ReadyToApply.tsx, lib/match-studio.ts, .git/HEAD, .git/config tail, .git/index, refs/heads/main, FETCH_HEAD). Recovery: HEAD/config rebuilt by hand, main sha recovered from reflog tail (172b873) then fast-forwarded to origin/main (18665d5), index rebuilt via reset --mixed, corrupted worktree files restored from HEAD / rewritten. Lesson: if `git status` says "not a repository" or files turn to nulls, check .git/HEAD + config for zeroed bytes BEFORE panicking; reflog + packed-refs + GitHub remote hold recoverable truth.
 
+## Session 47 — Keyword chips honest tooltips + unified extraction (Aug 22-23, 2026)
+
+**Owner design decision:** fit check stays a separate feature; tailoring = the keyword chips. Three honest tiers with tooltips; smart bullet-first injection.
+
+### Changes (files logged)
+| File | Change |
+|---|---|
+| `app/(app)/jobs/[id]/KeywordManager.tsx` | Three tooltip tiers: green = "Direct match - already in your resume. Nothing to do."; amber "Likely yours" = close-wording matches MERGED with fit-check inferred beliefs, tooltip shows the WHY (evidence) + "add only if you have genuinely worked with it"; red = "Not found anywhere. If you've used this - even on a side project - tap to add. Not used it? Skip it; adding skills you cannot discuss in an interview hurts you." 'Add all' REMOVED from red bucket (bulk-adding reds = stuffing; kept on amber). Color key rewritten. New `inferred` prop (keyword -> evidence) |
+| `app/(app)/jobs/[id]/ReadyToApply.tsx` | v3 layout: always-visible panel "How well do you fit this job?" + two labeled buttons (Check my fit secondary / Tailor my resume primary, independent). New `onAnalysis` callback reports analysis to the parent |
+| `app/(app)/jobs/[id]/JobActions.tsx` | Holds `inferredKeywords` map from fit-check analysis; passes to KeywordManager tooltips. KeywordManager gated to render only after a tailored resume exists (one path for first-time users) |
+| `lib/gemini.ts` | Bullet-first placement priority in generateAtsResume + weaveKeywordsIntoResume prompts: (1) rewrite most relevant experience bullet minimally+truthfully, (2) summary/achievements, (3) TECHNICAL SKILLS line LAST RESORT. Never pile keywords into one sentence |
+| `lib/match-studio.ts` | **Unified extraction:** extractJobAnalysis() returns requirements (8-16, weighted) AND full typed keyword list (18-25) in ONE JSON call, cached together in jd_requirements (v2 row shape `{v:2, requirements, keywords}`). New `getJobKeywordsCached()`. Prompt forbids omitting named tools that appear in the JD. v1 rows still read; garbled/keyword-less rows self-heal |
+| `app/api/match/[id]/resume/route.ts` | GET now uses `getJobKeywordsCached` (shared cache) instead of running `extractJdKeywordsTyped` uncached on EVERY page view — fixed the chips-missed-JVM/JProfiler/JProfiler-class mismatch AND a hidden per-view LLM cost |
+
+### Bug fixed (user report)
+Chips showed a different keyword universe than the fit check (missed JVM, memory management, JProfiler - all verifiably in the JD). Root cause: two independent LLM extractions. Fix: one cached extraction per job feeds both. First view after deploy re-analyzes once (old rows lack keywords), then cached forever.
+
+### UX history (why v3)
+v1 = wall of panels + jargon (too complex). v2 = one magic button, feature invisible (too hidden). v3 = visible panel, question phrasing, two clearly-labeled independent buttons. Lesson: owner wants VISIBLE + SIMPLE; never hide the feature inside another action.
+
+---
+
 ## Session 46 — Ready-to-Apply engine shipped (Phase 1) (Aug 22, 2026)
 
 **Goal:** Build the Two-Gate optimizer per the board-reviewed design — grading + verdict + smart pre-selection, with impeccable-craft UI.
