@@ -2,6 +2,33 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 41 — DB performance: index audit + hot-path query fixes (Aug 22, 2026)
+
+**Goal:** Full DB-performance-engineer review — is the app slow because of SQL? Missing/bad indexes? Duplicate queries?
+
+### Findings (short)
+- Dashboard fires ~13 queries/view; ~10 are exact COUNTs with the same filters (parallel, indexed — acceptable, RPC is a future win)
+- `/api/matches` recomputed an exact COUNT on **every infinite-scroll page** though the total never changes between pages
+- Ingest patched `ingest_runs` after **every 2-job scoring batch** (steady stream of small UPDATEs)
+- Job detail page ran 3 sequential round trips for independent lookups
+- Missing indexes: `matches(profile_id, created_at desc)` (Newest sort!), partial `jobs(fetched_at desc) WHERE embedding IS NULL` (embed queue), `ingest_runs(profile_id, status, …)`, `premium_usage_events(profile_id, feature_key, created_at)`, `llm_keys(is_active, priority)`, all ilike columns (q/city search), and FK-support indexes on `matches.job_id`, `job_scores.job_id`, `resume_versions.match_id`, `llm_usage_log.profile_id`, `dream_company_alerts.{job_id,dream_company_id}`, `company_catalog_requests.profile_id`
+- 4 redundant indexes duplicating PK/unique leading columns
+
+### Changes (files logged)
+| File | Change |
+|---|---|
+| `supabase/migrations/0023_performance_indexes.sql` | NEW — pg_trgm + GIN on jobs.title/company/location; `matches(profile_id, created_at desc)`; partial embed-queue index; ingest_runs/profile-status; premium quota window; llm_keys(active,priority); 7 FK-support indexes; drops 4 redundant indexes. **Manual run in Supabase.** |
+| `app/api/matches/route.ts` | Exact COUNT only on page 1; pages > 1 derive `hasMore` from page length and omit `total` (client already holds it) |
+| `app/(app)/jobs/[id]/page.tsx` | Match row + resume versions + premium sub fetched via one `Promise.all`; skills self-heal UPDATE now also guarded by `profile_id` |
+| `lib/ingest.ts` | `patchIngestRun` progress writes throttled to ~1/30s during scoring (final patch still records exact totals) |
+
+### Known follow-ups (bigger refactors, not done)
+- `getDashboardCounts` → one `GROUP BY status` RPC instead of ~10 counts
+- `listMatchCities` → distinct-locations RPC instead of 1000-row fetch
+- Embeddings still jsonb + JS cosine (pgvector top-K = Phase 3)
+
+---
+
 ## Session 40 — Ingest efficiency: job_scores ledger + re-embed after JD enrichment (Aug 22, 2026)
 
 **Goal:** From a full matching-pipeline efficiency audit — kill the two biggest cost/quality wastes: (1) below-threshold jobs re-scored on every scan, (2) embeddings permanently stale after JD enrichment.
