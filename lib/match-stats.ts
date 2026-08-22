@@ -1,6 +1,6 @@
 import type { supabaseAdmin } from './supabase/server';
 import type { Preferences } from './types';
-import { sanitizeCityFilter, uniqueCitiesFromLocations } from './match-location-filter';
+import { sanitizeCityFilter, sanitizeMatchSearchTerm, uniqueCitiesFromLocations } from './match-location-filter';
 import { STATUS_ORDER } from './ui';
 
 export const DEFAULT_DASHBOARD_MIN_SCORE = 50;
@@ -74,6 +74,19 @@ export function isJobPastFreshnessWindow(job: {
 
 export function dashboardMinScore(preferences?: Preferences | null): number {
   return preferences?.min_score ?? DEFAULT_DASHBOARD_MIN_SCORE;
+}
+
+/**
+ * Single parser for the URL `min` score floor, shared by the SSR list, the
+ * /api/matches route, counts, and the city list so they can never disagree.
+ * Empty/invalid → default 50; '0' → 0 (no floor, NULL llm_score rows included);
+ * otherwise clamped to 0–100.
+ */
+export function parseMinScore(raw: string | null | undefined): number {
+  if (raw == null || raw.trim() === '') return DEFAULT_DASHBOARD_MIN_SCORE;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return DEFAULT_DASHBOARD_MIN_SCORE;
+  return Math.max(0, Math.min(100, Math.round(n)));
 }
 
 export function staleJobCutoffIso(days: number = MAX_JOB_AGE_DAYS): string {
@@ -177,7 +190,7 @@ export async function getDashboardCounts(
   params: MatchFilterParams,
   isAdmin: boolean = false,
 ) {
-  const minScore = params.min ? Number(params.min) : 50;
+  const minScore = parseMinScore(params.min);
   const staleCutoff = dashboardFreshnessCutoffIso(params);
 
   const baseCountQuery = () => {
@@ -188,8 +201,10 @@ export async function getDashboardCounts(
          job:jobs!inner(title, company, remote, source, posted_at, location)`,
         { count: 'exact', head: true }
       )
-      .eq('profile_id', profileId)
-      .gte('llm_score', minScore);
+      .eq('profile_id', profileId);
+    if (minScore > 0) {
+      q = q.gte('llm_score', minScore);
+    }
 
     if (!includeExpiredJobs(params)) {
       q = q.or(jobFreshnessOrFilter(staleCutoff), { foreignTable: 'job' });
@@ -206,10 +221,12 @@ export async function getDashboardCounts(
       q = q.ilike('job.location', `%${city}%`);
     }
     if (params.q) {
-      const term = params.q.replace(/[%_]/g, '');
-      q = q.or(`title.ilike.%${term}%,company.ilike.%${term}%`, {
-        foreignTable: 'job',
-      });
+      const term = sanitizeMatchSearchTerm(params.q);
+      if (term) {
+        q = q.or(`title.ilike.%${term}%,company.ilike.%${term}%`, {
+          foreignTable: 'job',
+        });
+      }
     }
 
     return q;
@@ -245,16 +262,18 @@ export async function listMatchCities(
   params: MatchFilterParams & { status?: string; bookmarked?: string },
   isAdmin: boolean = false,
 ): Promise<string[]> {
-  const minScore = params.min ? Number(params.min) : DEFAULT_DASHBOARD_MIN_SCORE;
+  const minScore = parseMinScore(params.min);
   const staleCutoff = dashboardFreshnessCutoffIso(params);
   const status = params.status ?? 'inbox';
   const onlyBookmarked = params.bookmarked === '1';
 
   let q = sb
     .from('matches')
-    .select('job:jobs!inner(location, posted_at, fetched_at, title, company, source)')
-    .eq('profile_id', profileId)
-    .gte('llm_score', minScore);
+    .select('job:jobs!inner(location, posted_at, fetched_at)')
+    .eq('profile_id', profileId);
+  if (minScore > 0) {
+    q = q.gte('llm_score', minScore);
+  }
 
   if (!includeExpiredJobs(params)) {
     q = q.or(jobFreshnessOrFilter(staleCutoff), { foreignTable: 'job' });
@@ -272,10 +291,12 @@ export async function listMatchCities(
     q = q.eq('job.source', params.source);
   }
   if (params.q) {
-    const term = params.q.replace(/[%_]/g, '');
-    q = q.or(`title.ilike.%${term}%,company.ilike.%${term}%`, {
-      foreignTable: 'job',
-    });
+    const term = sanitizeMatchSearchTerm(params.q);
+    if (term) {
+      q = q.or(`title.ilike.%${term}%,company.ilike.%${term}%`, {
+        foreignTable: 'job',
+      });
+    }
   }
 
   // Prefer recently discovered jobs so rare cities (e.g. Noida) are not

@@ -82,6 +82,11 @@ export async function isCurrentUserAdmin(): Promise<boolean> {
 const PROFILE_COLUMNS =
   'id, user_id, email, full_name, resume_text, resume_embedding, preferences, insights, created_at, updated_at';
 
+/** True when this email match must stay case-insensitive but literal (no wildcards). */
+function escapeLikePattern(value: string): string {
+  return value.replace(/([%_\\])/g, '\\$1');
+}
+
 async function resolveProfileForUser(user: User): Promise<Profile> {
   const sb = supabaseAdmin();
   const email = (user.email ?? '').toLowerCase();
@@ -103,8 +108,14 @@ async function resolveProfileForUser(user: User): Promise<Profile> {
   // 3. Detached profile (user_id IS NULL) left by migration 0006 when an auth
   //    user was deleted. Wipe it so re-signup does NOT inherit old matches.
   //    (Migration 0008 switches auth delete to ON DELETE CASCADE instead.)
+  //    Escape LIKE wildcards — `_` in emails would otherwise match ANY
+  //    character and could delete a different user's detached profile.
   if (email) {
-    await sb.from('profiles').delete().ilike('email', email).is('user_id', null);
+    await sb
+      .from('profiles')
+      .delete()
+      .ilike('email', escapeLikePattern(email))
+      .is('user_id', null);
   }
 
   // 4. Create-or-adopt ATOMICALLY. Prefer user_id conflict target so concurrent
@@ -151,7 +162,7 @@ async function adoptLegacyOrphanProfile(
   const { data: existing } = await sb
     .from('profiles')
     .select(PROFILE_COLUMNS)
-    .ilike('email', email)
+    .ilike('email', escapeLikePattern(email))
     .is('user_id', null)
     .order('created_at', { ascending: true })
     .limit(1)

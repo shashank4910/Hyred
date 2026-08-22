@@ -4,9 +4,9 @@ import { getCurrentProfile, isCurrentUserAdmin } from '@/lib/current-user';
 import { applyMatchSort } from '@/lib/apply-match-sort';
 import { resolveMatchSort } from '@/lib/ui';
 import { enrichMatchListSkills } from '@/lib/match-skill-enrich';
-import { sanitizeCityFilter } from '@/lib/match-location-filter';
+import { sanitizeCityFilter, sanitizeMatchSearchTerm } from '@/lib/match-location-filter';
 import { MATCH_LIST_SELECT } from '@/lib/match-list-select';
-import { includeExpiredJobs, jobFreshnessOrFilter, dashboardFreshnessCutoffIso } from '@/lib/match-stats';
+import { includeExpiredJobs, jobFreshnessOrFilter, dashboardFreshnessCutoffIso, parseMinScore } from '@/lib/match-stats';
 import { sortMatchesByFreshness } from '@/lib/job-listing-time';
 
 export const runtime = 'nodejs';
@@ -29,10 +29,10 @@ export async function GET(req: NextRequest) {
   const isAdmin = await isCurrentUserAdmin();
 
   const url = new URL(req.url);
-  const page = Math.max(1, parseInt(url.searchParams.get('page') ?? '1', 10));
+  const page = Math.max(1, parseInt(url.searchParams.get('page') ?? '1', 10) || 1);
   const status = url.searchParams.get('status') ?? 'inbox';
   const sort = resolveMatchSort(url.searchParams.get('sort'));
-  const minScore = parseInt(url.searchParams.get('min') ?? '50', 10);
+  const minScore = parseMinScore(url.searchParams.get('min'));
   const q = url.searchParams.get('q') ?? '';
   const remote = url.searchParams.get('remote') === '1';
   const city = sanitizeCityFilter(url.searchParams.get('city'));
@@ -43,11 +43,15 @@ export async function GET(req: NextRequest) {
   const offset = (page - 1) * PAGE_SIZE;
 
   // Slim select — no JD description blob (was the slow part of list loads).
+  // min=0 means no floor at all: NULL llm_score rows stay visible, matching
+  // the SSR list in DashboardMatchResults.
   let query = sb
     .from('matches')
     .select(MATCH_LIST_SELECT, { count: 'exact' })
-    .eq('profile_id', profile.id)
-    .gte('llm_score', minScore);
+    .eq('profile_id', profile.id);
+  if (minScore > 0) {
+    query = query.gte('llm_score', minScore);
+  }
 
   const staleCutoff = dashboardFreshnessCutoffIso({
     fresh: url.searchParams.get('fresh'),
@@ -67,8 +71,10 @@ export async function GET(req: NextRequest) {
   query = applyMatchSort(query, sort);
 
   if (q) {
-    const term = q.replace(/[%_]/g, '');
-    query = query.or(`title.ilike.%${term}%,company.ilike.%${term}%`, { foreignTable: 'job' });
+    const term = sanitizeMatchSearchTerm(q);
+    if (term) {
+      query = query.or(`title.ilike.%${term}%,company.ilike.%${term}%`, { foreignTable: 'job' });
+    }
   }
   if (remote) {
     query = query.eq('job.remote', true);
@@ -81,7 +87,11 @@ export async function GET(req: NextRequest) {
     query = query.eq('job.source', source);
   }
 
-  const { data: matches, count } = await query.range(offset, offset + PAGE_SIZE - 1);
+  const { data: matches, count, error } = await query.range(offset, offset + PAGE_SIZE - 1);
+  if (error) {
+    console.error('[api/matches] query failed:', error.message);
+    return NextResponse.json({ error: 'query_failed' }, { status: 500 });
+  }
 
   const topSkills: string[] = Array.isArray((profile.insights as { top_skills?: string[] } | null)?.top_skills)
     ? (profile.insights as { top_skills: string[] }).top_skills

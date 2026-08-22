@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { MapPin, Clock, Heart, Crown } from 'lucide-react';
 import { relativeTime, formatShortDate, formatFullDate, SOURCE_LABELS } from '@/lib/ui';
 import { matchListingIso } from '@/lib/job-listing-time';
@@ -59,7 +59,12 @@ export function MatchCard({
   const [bookmarked, setBookmarked] = useState(initialBookmarked);
   const [saving, setSaving] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const delay = Math.min(staggerIndex, 7) * 60;
+
+  // Dates use local TZ + Date.now(); rendering them during SSR risks a React
+  // hydration mismatch when server/client clocks or timezones differ.
+  useEffect(() => setMounted(true), []);
 
   async function toggleBookmark(e: React.MouseEvent) {
     e.preventDefault();
@@ -119,6 +124,8 @@ export function MatchCard({
             onClick={toggleBookmark}
             disabled={saving}
             title={bookmarked ? 'Remove save' : 'Save this job'}
+            aria-label={bookmarked ? 'Remove save' : 'Save this job'}
+            aria-pressed={bookmarked}
             className={[
               'rounded-full p-1.5 transition-transform duration-300',
               bookmarked ? 'text-error' : 'text-on-surface-variant hover:text-ink',
@@ -149,7 +156,7 @@ export function MatchCard({
             {job.remote ? 'Remote' : job.location}
           </span>
         )}
-        {listingAt && (
+        {mounted && listingAt && (
           <span className="inline-flex items-center gap-1" title={tooltip}>
             <Clock className="h-3.5 w-3.5" />
             {formatShortDate(listingAt)}

@@ -1,11 +1,11 @@
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { getCurrentProfile } from '@/lib/current-user';
 import { applyMatchSort } from '@/lib/apply-match-sort';
-import { DEFAULT_LIST_MIN_SCORE, resolveMatchSort } from '@/lib/ui';
+import { resolveMatchSort } from '@/lib/ui';
 import { enrichMatchListSkills } from '@/lib/match-skill-enrich';
-import { sanitizeCityFilter } from '@/lib/match-location-filter';
+import { sanitizeCityFilter, sanitizeMatchSearchTerm } from '@/lib/match-location-filter';
 import { MATCH_LIST_SELECT } from '@/lib/match-list-select';
-import { includeExpiredJobs, jobFreshnessOrFilter, dashboardFreshnessCutoffIso } from '@/lib/match-stats';
+import { includeExpiredJobs, jobFreshnessOrFilter, dashboardFreshnessCutoffIso, parseMinScore } from '@/lib/match-stats';
 import { sortMatchesByFreshness } from '@/lib/job-listing-time';
 import { EmptyMatches } from './EmptyMatches';
 import { MatchList } from './MatchList';
@@ -48,10 +48,12 @@ function applyDashboardFilters(query: any, opts: {
     query = query.ilike('job.location', `%${city}%`);
   }
   if (opts.q) {
-    const term = opts.q.replace(/[%]/g, '');
-    query = query.or(`title.ilike.%${term}%,company.ilike.%${term}%`, {
-      foreignTable: 'job',
-    });
+    const term = sanitizeMatchSearchTerm(opts.q);
+    if (term) {
+      query = query.or(`title.ilike.%${term}%,company.ilike.%${term}%`, {
+        foreignTable: 'job',
+      });
+    }
   }
   return query;
 }
@@ -89,9 +91,7 @@ export async function DashboardMatchResults({
   const status = searchParams.status ?? 'inbox';
   const onlyBookmarked = searchParams.bookmarked === '1';
   const sort = resolveMatchSort(searchParams.sort);
-  const rawMin = searchParams.min;
-  const effectiveMinScore =
-    rawMin === '0' ? 0 : rawMin ? Number(rawMin) : DEFAULT_LIST_MIN_SCORE;
+  const effectiveMinScore = parseMinScore(searchParams.min);
   const highlightId = searchParams.from ?? null;
   const showExpired = includeExpiredJobs(searchParams);
 

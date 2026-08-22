@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Check, SlidersHorizontal, X } from 'lucide-react';
 import { DEFAULT_LIST_MIN_SCORE, SOURCE_LABELS } from '@/lib/ui';
@@ -9,7 +9,7 @@ import { useDashboardNav } from './DashboardNavContext';
 import PremiumSelect from '@/app/_components/ui/PremiumSelect';
 import './MatchFilters.css';
 
-const SOURCES = ['remotive', 'remoteok', 'hn', 'arbeitnow', 'adzuna_in', 'himalayas', 'jsearch', 'jobspipe', 'jobdatalake', 'linkedin', 'greenhouse', 'lever', 'ashby'];
+const SOURCES = ['remotive', 'remoteok', 'hn', 'arbeitnow', 'adzuna_in', 'himalayas', 'jsearch', 'jobspipe', 'jobdatalake', 'linkedin', 'greenhouse', 'lever', 'ashby', 'manual'];
 
 const REMOTE_VALUE = '__remote__';
 
@@ -76,12 +76,33 @@ export function MatchFilters({
   const sp = useSearchParams();
   const { navigate, isPending } = useDashboardNav();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const mobileToggleRef = useRef<HTMLButtonElement>(null);
+  const mobileCloseRef = useRef<HTMLButtonElement>(null);
   const source = sp.get('source') ?? '';
   const minScore = sp.get('min') ?? '';
   const remote = sp.get('remote') ?? '';
   const city = sp.get('city') ?? '';
   const expired = sp.get('expired') ?? '';
   const freshIds = parseFreshIds(sp.get('fresh') ?? '');
+
+  // Treat the mobile sheet as a dialog: Escape closes, focus moves in on open
+  // and returns to the trigger on close.
+  useEffect(() => {
+    if (!mobileOpen) return;
+    mobileCloseRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMobileOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      mobileToggleRef.current?.focus();
+    };
+  }, [mobileOpen]);
+
+  function closeMobile() {
+    setMobileOpen(false);
+  }
 
   const locationValue = remote === '1' ? REMOTE_VALUE : city;
   const sliderValue = minScore === '' ? DEFAULT_LIST_MIN_SCORE : Number(minScore) || 0;
@@ -257,6 +278,7 @@ export function MatchFilters({
       <button
         type="button"
         className="btn lg:hidden"
+        ref={mobileToggleRef}
         onClick={() => setMobileOpen((o) => !o)}
         aria-expanded={mobileOpen}
       >
@@ -270,12 +292,12 @@ export function MatchFilters({
       </button>
 
       {mobileOpen ? (
-        <div className="fixed inset-0 z-50 lg:hidden">
+        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Filters">
           <button
             type="button"
             className="absolute inset-0 bg-ink/40"
             aria-label="Close filters"
-            onClick={() => setMobileOpen(false)}
+            onClick={closeMobile}
           />
           <div className="absolute bottom-0 left-0 right-0 max-h-[85vh] overflow-y-auto rounded-t-3xl bg-primary p-6 text-white shadow-elevated animate-slide-up">
             <div className="mb-4 flex items-center justify-between">
@@ -286,7 +308,7 @@ export function MatchFilters({
                     reset
                   </button>
                 )}
-                <button type="button" onClick={() => setMobileOpen(false)} className="rounded-full bg-white p-2" aria-label="Close">
+                <button type="button" ref={mobileCloseRef} onClick={closeMobile} className="rounded-full bg-white p-2" aria-label="Close">
                   <X className="h-4 w-4" />
                 </button>
               </div>
