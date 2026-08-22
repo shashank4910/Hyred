@@ -104,7 +104,7 @@
 
 .hyred-select__menu {
   z-index: 120;
-  overflow: hidden;
+  overflow: visible;
   padding: 0.35rem;
   border-radius: 16px;
   background: #ffffff;
