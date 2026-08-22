@@ -191,7 +191,35 @@ export async function getDashboardCounts(
   isAdmin: boolean = false,
 ) {
   const minScore = parseMinScore(params.min);
-  const staleCutoff = dashboardFreshnessCutoffIso(params);
+  const staleCutoff = includeExpiredJobs(params) ? null : dashboardFreshnessCutoffIso(params);
+  const city = sanitizeCityFilter(params.city);
+  const q = sanitizeMatchSearchTerm(params.q);
+
+  // Fast path: ONE grouped query (migration 0024 RPC) replaces the ~10
+  // parallel exact COUNTs below. Falls back to the old queries when the
+  // function is missing (pre-migration deploy).
+  const { data: rpcResult, error: rpcError } = await sb.rpc('dashboard_status_counts', {
+    p_profile_id: profileId,
+    p_min_score: minScore,
+    p_stale_cutoff: staleCutoff,
+    p_source: isAdmin && params.source ? params.source : null,
+    p_remote: params.remote === '1' ? true : null,
+    p_city: city || null,
+    p_q: q || null,
+  });
+  if (!rpcError && rpcResult) {
+    const r = rpcResult as { counts?: Record<string, number>; inbox?: number; bookmarked?: number };
+    const counts: Record<string, number> = {};
+    for (const s of STATUS_ORDER) counts[s] = r.counts?.[s] ?? 0;
+    return {
+      inboxCount: r.inbox ?? 0,
+      bookmarkedCount: r.bookmarked ?? 0,
+      counts,
+    };
+  }
+  if (rpcError) {
+    console.warn('[match-stats] dashboard_status_counts RPC failed, falling back:', rpcError.message);
+  }
 
   const baseCountQuery = () => {
     let q = sb
@@ -207,7 +235,10 @@ export async function getDashboardCounts(
     }
 
     if (!includeExpiredJobs(params)) {
-      q = q.or(jobFreshnessOrFilter(staleCutoff), { foreignTable: 'job' });
+      q = q.or(
+        jobFreshnessOrFilter(staleCutoff ?? dashboardFreshnessCutoffIso(params)),
+        { foreignTable: 'job' },
+      );
     }
 
     if (isAdmin && params.source) {
@@ -263,37 +294,60 @@ export async function listMatchCities(
   isAdmin: boolean = false,
 ): Promise<string[]> {
   const minScore = parseMinScore(params.min);
-  const staleCutoff = dashboardFreshnessCutoffIso(params);
+  const staleCutoff = includeExpiredJobs(params) ? null : dashboardFreshnessCutoffIso(params);
   const status = params.status ?? 'inbox';
   const onlyBookmarked = params.bookmarked === '1';
+  const q = sanitizeMatchSearchTerm(params.q);
 
-  let q = sb
+  // Fast path: city extraction happens in the DB (migration 0024 RPC) —
+  // no more shipping up to 1000 full job rows to the app per page view.
+  const { data: rpcCities, error: rpcError } = await sb.rpc('match_city_labels', {
+    p_profile_id: profileId,
+    p_min_score: minScore,
+    p_stale_cutoff: staleCutoff,
+    p_status: status,
+    p_bookmarked: onlyBookmarked,
+    p_source: isAdmin && params.source ? params.source : null,
+    p_q: q || null,
+  });
+  if (!rpcError && Array.isArray(rpcCities)) {
+    return rpcCities.filter((c): c is string => typeof c === 'string');
+  }
+  if (rpcError) {
+    console.warn('[match-stats] match_city_labels RPC failed, falling back:', rpcError.message);
+  }
+
+  // Fallback (pre-0024): fetch rows and extract cities client-side.
+  let fallbackQuery = sb
     .from('matches')
     .select('job:jobs!inner(location, posted_at, fetched_at)')
     .eq('profile_id', profileId);
   if (minScore > 0) {
-    q = q.gte('llm_score', minScore);
+    fallbackQuery = fallbackQuery.gte('llm_score', minScore);
   }
 
   if (!includeExpiredJobs(params)) {
-    q = q.or(jobFreshnessOrFilter(staleCutoff), { foreignTable: 'job' });
+    fallbackQuery = fallbackQuery.or(
+      jobFreshnessOrFilter(staleCutoff ?? dashboardFreshnessCutoffIso(params)),
+      { foreignTable: 'job' },
+    );
   }
 
   if (onlyBookmarked) {
-    q = q.eq('bookmarked', true);
+    fallbackQuery = fallbackQuery.eq('bookmarked', true);
   } else if (status === 'inbox') {
-    q = q.in('status', ['new', 'viewed']);
+    fallbackQuery = fallbackQuery.in('status', ['new', 'viewed']);
   } else {
-    q = q.eq('status', status);
+    fallbackQuery = fallbackQuery.eq('status', status);
   }
 
   if (isAdmin && params.source) {
-    q = q.eq('job.source', params.source);
+    fallbackQuery = fallbackQuery.eq('job.source', params.source);
   }
   if (params.q) {
     const term = sanitizeMatchSearchTerm(params.q);
     if (term) {
-      q = q.or(`title.ilike.%${term}%,company.ilike.%${term}%`, {
+      fallbackQuery = fallbackQuery.or(`title.ilike.%${term}%,company.ilike.%${term}%`, {
         foreignTable: 'job',
       });
     }
@@ -301,7 +355,7 @@ export async function listMatchCities(
 
   // Prefer recently discovered jobs so rare cities (e.g. Noida) are not
   // dropped when the account has more than the sample cap.
-  const { data } = await q
+  const { data } = await fallbackQuery
     .order('fetched_at', { ascending: false, foreignTable: 'job' })
     .limit(1000);
 

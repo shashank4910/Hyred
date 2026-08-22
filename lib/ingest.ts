@@ -378,7 +378,11 @@ export async function runIngest(opts?: {
       try {
         const text = jobToEmbeddingText(j);
         const vec = await embed(text, 'embed', p.id);
-        await sb.from('jobs').update({ embedding: vec }).eq('id', j.id);
+        // Write both: jsonb (legacy reads) + vector column (pgvector RPC path).
+        await sb
+          .from('jobs')
+          .update({ embedding: vec, embedding_vec: `[${vec.join(',')}]` })
+          .eq('id', j.id);
         return true;
       } catch (e) {
         const msg = (e as Error).message || String(e);
@@ -451,39 +455,63 @@ export async function runIngest(opts?: {
       for (const s of existingScores ?? []) alreadyScored.add(s.job_id as string);
     }
 
-    const { data: candidates } = await sb
-      .from('jobs')
-      .select('id, title, company, location, description, embedding, url')
-      .not('embedding', 'is', null)
-      .order('fetched_at', { ascending: false })
-      .limit(800);
-
     type Cand = {
       id: string;
       title: string;
       company: string | null;
       location: string | null;
       description: string | null;
-      embedding: number[] | null;
       url: string | null;
+      similarity: number;
     };
 
-    const eligible = (candidates ?? [])
+    // Fast path (migration 0024): the DB computes cosine similarity against
+    // the pgvector column, so ~800×1536 floats of embedding JSONB no longer
+    // ship to the app on every scan. Fallback keeps the legacy jsonb path for
+    // 768-dim legacy resumes or pre-migration databases.
+    const resumeVec = p.resume_embedding!;
+    let candidates: Cand[] | null = null;
+    if (resumeVec.length === 1536) {
+      const { data: rpcCands, error: rpcErr } = await sb.rpc('candidate_jobs', {
+        p_resume: `[${resumeVec.join(',')}]`,
+        p_limit: 800,
+      });
+      if (rpcErr) {
+        console.warn('[ingest] candidate_jobs RPC failed, falling back:', rpcErr.message);
+      } else {
+        candidates = ((rpcCands ?? []) as Array<Record<string, unknown>>).map((r) => ({
+          id: r.id as string,
+          title: (r.title as string) ?? '',
+          company: (r.company as string | null) ?? null,
+          location: (r.location as string | null) ?? null,
+          description: (r.description as string | null) ?? null,
+          url: (r.url as string | null) ?? null,
+          similarity: (r.similarity as number) ?? 0,
+        }));
+      }
+    }
+    if (!candidates) {
+      const { data: rows } = await sb
+        .from('jobs')
+        .select('id, title, company, location, description, embedding, url')
+        .not('embedding', 'is', null)
+        .order('fetched_at', { ascending: false })
+        .limit(800);
+      candidates = (rows ?? []).map((j) => ({
+        id: j.id,
+        title: j.title ?? '',
+        company: j.company,
+        location: j.location,
+        description: j.description,
+        url: (j as { url?: string | null }).url ?? null,
+        similarity: cosineSimilarity(resumeVec, (j as { embedding?: number[] | null }).embedding ?? []),
+      }));
+    }
+
+    const eligible = candidates
       .filter((c) => !alreadyScored.has(c.id))
       .filter(
         (c) => !c.company || !blacklist.has(c.company.toLowerCase().trim()),
-      )
-      .map(
-        (c) =>
-          ({
-            id: c.id,
-            title: c.title ?? '',
-            company: c.company,
-            location: c.location,
-            description: c.description,
-            embedding: c.embedding,
-            url: (c as { url?: string | null }).url ?? null,
-          }) as Cand,
       );
 
     // ---------- 7. AI-driven pre-filter (title patterns + AI relevance) ----------
@@ -501,12 +529,8 @@ export async function runIngest(opts?: {
       );
 
       // Cap "maybe" to avoid running AI on too many — take the most similar by cosine
-      const resumeVec = p.resume_embedding!;
       const maybeWithSim = maybe
-        .map((c) => ({
-          ...c,
-          similarity: cosineSimilarity(resumeVec, c.embedding as number[]),
-        }))
+        .map((c) => ({ ...c }))
         .sort((a, b) => b.similarity - a.similarity)
         .slice(0, 100); // Increased from 60 — more candidates reach AI relevance filter
 
@@ -533,17 +557,8 @@ export async function runIngest(opts?: {
       toScore = finalSet.slice(0, SIMILARITY_TOP_N);
     } else {
       // Fallback: no SearchProfile available, use cosine similarity only
-      const resumeVec = p.resume_embedding!;
-      toScore = eligible
-        .map((c) => ({
-          ...c,
-          similarity: cosineSimilarity(resumeVec, c.embedding as number[]),
-        }))
-        .sort(
-          (a, b) =>
-            (b as Cand & { similarity: number }).similarity -
-            (a as Cand & { similarity: number }).similarity,
-        )
+      toScore = [...eligible]
+        .sort((a, b) => b.similarity - a.similarity)
         .slice(0, SIMILARITY_TOP_N);
     }
 
@@ -569,11 +584,7 @@ export async function runIngest(opts?: {
     toScore = toScore.slice(0, SIMILARITY_TOP_N + TOP_COMPANY_CAP);
 
     // ---------- 8. Compute similarity for the final scoring set ----------
-    const resumeVec = p.resume_embedding!;
-    const ranked = toScore.map((c) => ({
-      ...c,
-      similarity: cosineSimilarity(resumeVec, c.embedding as number[]),
-    }));
+    const ranked = toScore.map((c) => ({ ...c }));
 
     // ---------- 9. LLM score (parallel batches + wall-clock budget) ----------
     // Check for cancellation before expensive LLM scoring stage
