@@ -290,8 +290,8 @@ export function MatchFilters({
         </div>
       ) : null}
 
-      <aside className="hidden h-full w-full rounded-[1.5rem] bg-primary p-5 text-white shadow-glass lg:block">
-        <div className="mb-4 flex items-center justify-between">
+      <aside className="hidden h-full w-full overflow-y-auto rounded-[1.5rem] bg-primary p-5 text-white shadow-glass lg:block">
+        <div className="sticky top-0 z-10 -mx-5 -mt-5 mb-4 flex items-center justify-between rounded-t-[1.5rem] bg-primary px-5 pt-5 pb-2">
           <h2 className="text-xl font-bold text-white">Filters</h2>
           {hasFilters && (
             <button type="button" onClick={clearFilters} className="rounded-full bg-white/15 px-3 py-1 text-sm font-semibold text-white">
