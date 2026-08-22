@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { getCurrentProfile } from '@/lib/current-user';
 import { ensureFullDescription } from '@/lib/jd-fetcher';
-import { generateAtsResume, extractJdKeywordsTyped, keywordInText, keywordCloseInText, type KeywordType } from '@/lib/gemini';
+import { generateAtsResume, keywordInText, keywordCloseInText, type KeywordType } from '@/lib/gemini';
+import { getJobKeywordsCached } from '@/lib/match-studio';
 import { requireFeatureAccess, recordFeatureUsage } from '@/lib/premium';
 
 export const runtime = 'nodejs';
@@ -54,15 +55,22 @@ export async function GET(
     });
   }
 
-  // LLM-based extraction + per-keyword type (tool vs activity) — the same
-  // typed function the generator uses. The type is decided by the model here,
-  // once, and ferried to the POST so placement stays consistent and scalable.
-  const typed = await extractJdKeywordsTyped({
-    jobTitle: job.title,
-    jobDescription: fullDescription,
-  });
+  // Typed keyword extraction - SHARED per-job cache (jd_requirements, the
+  // same extraction the fit check uses). One LLM call per job ever, and the
+  // chips and fit check can never disagree on the keyword universe again.
+  const typed = await getJobKeywordsCached(sb, {
+    id: job.id,
+    title: job.title,
+    description: fullDescription,
+  }).catch(() => [] as { keyword: string; type: string }[])
+    .then((list) =>
+      list.map((k) => ({
+        keyword: k.keyword,
+        type: (k.type === 'tool' ? 'tool' : 'activity') as KeywordType,
+      })),
+    );
 
-  // Fall back to the job's existing tags if the LLM returned nothing.
+  // Fall back to the job's existing tags if the extraction returned nothing.
   const finalTyped = typed.length > 0
     ? typed
     : (job.tags ?? []).map((t) => ({ keyword: t, type: 'activity' as KeywordType }));
