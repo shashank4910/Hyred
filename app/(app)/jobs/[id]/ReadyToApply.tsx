@@ -98,6 +98,7 @@ export function ReadyToApply({
   onUnstage,
   onOptimize,
   generating,
+  onAnalysis,
 }: {
   matchId: string;
   staged: string[];
@@ -105,6 +106,8 @@ export function ReadyToApply({
   onUnstage: (kw: string) => void;
   onOptimize: (keywordsOverride?: string[]) => void;
   generating: boolean;
+  /** Notifies the parent (KeywordManager wiring) when an analysis lands. */
+  onAnalysis?: (analysis: StudioAnalysis) => void;
 }) {
   const [phase, setPhase] = useState<Phase>('idle');
   const [step, setStep] = useState(0);
@@ -138,13 +141,14 @@ export function ReadyToApply({
       }
       setAnalysis(data as StudioAnalysis);
       setPhase('ready');
+      onAnalysis?.(data as StudioAnalysis);
       return data as StudioAnalysis;
     } catch {
       setErrorMsg('Connection dropped mid-analysis. You can still tailor your resume below.');
       setPhase('error');
       return null;
     }
-  }, [matchId]);
+  }, [matchId, onAnalysis]);
 
   /** Tailor uses the smart keyword set when the check has run. */
   function tailorNow() {

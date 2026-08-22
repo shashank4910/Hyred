@@ -42,6 +42,7 @@ export function KeywordManager({
   jdKeywords,
   originalPresent,
   closePresent = [],
+  inferred = {},
   result,
   staged,
   generating,
@@ -55,6 +56,10 @@ export function KeywordManager({
   jdKeywords: string[];
   originalPresent: string[];
   closePresent?: string[];
+  /** AI-believed skills: keyword -> evidence sentence (from the fit-check
+   *  engine). These render in the amber "likely yours" bucket with a
+   *  tooltip explaining WHY the AI believes the user has them. */
+  inferred?: Record<string, string>;
   result: GenResult;
   staged: string[];
   generating: boolean;
@@ -73,6 +78,11 @@ export function KeywordManager({
     () => new Set(closePresent.map((k) => k.toLowerCase())),
     [closePresent],
   );
+  const inferredMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const [k, v] of Object.entries(inferred)) m.set(k.toLowerCase(), v);
+    return m;
+  }, [inferred]);
   const stagedSet = useMemo(
     () => new Set(staged.map((k) => k.toLowerCase())),
     [staged],
@@ -114,7 +124,7 @@ export function KeywordManager({
       const isStaged = stagedSet.has(lc);
       const isPresent = presentSet.has(lc);
       const isOriginal = originalSet.has(lc);
-      const isClose = closeSet.has(lc);
+      const isClose = closeSet.has(lc) || inferredMap.has(lc);
 
       if (isPresent && isOriginal) {
         inResume.push(kw);
@@ -131,7 +141,16 @@ export function KeywordManager({
       }
     }
     return { inResume, added, willAdd, closeMatch, missing, dirty };
-  }, [universe, stagedSet, presentSet, originalSet, closeSet]);
+  }, [universe, stagedSet, presentSet, originalSet, closeSet, inferredMap]);
+
+  const inferredTooltip = (kw: string): string => {
+    const lc = kw.toLowerCase();
+    if (inferredMap.has(lc)) {
+      const why = inferredMap.get(lc);
+      return `The AI believes you have used this - it just is not written in your resume. ${why ? `Why: ${why}` : ''} Add it only if you have genuinely worked with it.`;
+    }
+    return 'You likely have this skill already - the words are just different in your resume. Click to add the JD wording.';
+  };
 
   const exactCount = inResume.length + added.length;
   const score = result?.ats_match_score ?? null;
@@ -194,15 +213,15 @@ export function KeywordManager({
       <div className="rounded-xl border border-outline-variant/40 bg-surface-container-low/60 px-3 py-2 text-[10px] text-on-surface-variant leading-relaxed space-y-0.5">
         <div className="flex items-start gap-1.5">
           <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-emerald-500" aria-hidden />
-          <span><span className="font-semibold text-emerald-700">Green</span> = exact wording already in your resume</span>
+          <span><span className="font-semibold text-emerald-700">Green</span> = direct match - already in your resume. Nothing to do.</span>
         </div>
         <div className="flex items-start gap-1.5">
           <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-orange-500" aria-hidden />
-          <span><span className="font-semibold text-orange-700">Amber</span> = same skill, different words — Optimize adds the JD phrase</span>
+          <span><span className="font-semibold text-orange-700">Amber</span> = likely yours - you have probably used this, just never wrote it down. Hover a chip to see why.</span>
         </div>
         <div className="flex items-start gap-1.5">
           <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-red-500" aria-hidden />
-          <span><span className="font-semibold text-error">Red</span> = not found — tap to add</span>
+          <span><span className="font-semibold text-error">Red</span> = not found anywhere. Add only if you have really used it - otherwise skip it.</span>
         </div>
       </div>
 
@@ -224,6 +243,7 @@ export function KeywordManager({
             {inResume.map((kw) => (
               <span
                 key={kw}
+                title="Direct match - this exact keyword is already in your resume. Nothing to do here."
                 className="inline-flex items-center gap-1 rounded-badge border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700"
               >
                 <CheckCircle2 className="h-3 w-3" />
@@ -284,12 +304,12 @@ export function KeywordManager({
         </div>
       )}
 
-      {/* CLOSE MATCH (amber, click to add JD exact wording) */}
+      {/* LIKELY YOURS (amber: close wording + AI-believed-from-fit-check) */}
       {closeMatch.length > 0 && (
         <div>
           <div className="flex items-center justify-between flex-wrap gap-2 mb-1.5">
             <div className="text-[10px] uppercase tracking-wide text-orange-700 font-medium">
-              Close match — tap to add JD wording ({closeMatch.length})
+              Likely yours - tap to add ({closeMatch.length})
             </div>
             <button
               type="button"
@@ -307,7 +327,7 @@ export function KeywordManager({
                 type="button"
                 onClick={() => onStage(kw)}
                 disabled={generating}
-                title="You likely have this skill already. Click to weave the JD’s exact phrase on next optimize."
+                title={inferredTooltip(kw)}
                 className="inline-flex items-center gap-1 rounded-badge border border-orange-300 bg-orange-50 px-2 py-0.5 text-xs text-orange-800 transition-all duration-150 cursor-pointer hover:border-primary/40 hover:bg-primary/10 hover:text-on-surface disabled:cursor-wait disabled:opacity-60"
               >
                 <Plus className="h-3 w-3" />
@@ -318,21 +338,11 @@ export function KeywordManager({
         </div>
       )}
 
-      {/* MISSING (red, click to add) */}
+      {/* MISSING (red: add only if genuinely used) */}
       {missing.length > 0 && (
         <div>
-          <div className="flex items-center justify-between flex-wrap gap-2 mb-1.5">
-            <div className="text-[10px] uppercase tracking-wide text-error font-medium">
-              Missing — tap to add ({missing.length})
-            </div>
-            <button
-              type="button"
-              onClick={() => onStageMany(missing)}
-              disabled={generating}
-              className="text-[11px] font-semibold text-primary hover:text-on-surface underline-offset-2 hover:underline disabled:opacity-50"
-            >
-              + Add all
-            </button>
+          <div className="text-[10px] uppercase tracking-wide text-error font-medium mb-1.5">
+            Not in your resume ({missing.length}) - add only if you have really used it
           </div>
           <div className="flex flex-wrap gap-1.5">
             {missing.map((kw) => (
@@ -341,7 +351,7 @@ export function KeywordManager({
                 type="button"
                 onClick={() => onStage(kw)}
                 disabled={generating}
-                title="Click to add this keyword on next optimize."
+                title="Not found anywhere in your resume. If you have used this - even on a side project - tap to add it and we will weave it into your experience. Not used it? Just skip it; adding skills you cannot discuss in an interview hurts you."
                 className="inline-flex items-center gap-1 rounded-badge border border-error/30 bg-error-container/20 px-2 py-0.5 text-xs text-error transition-all duration-150 cursor-pointer hover:border-primary/40 hover:bg-primary/10 hover:text-on-surface disabled:cursor-wait disabled:opacity-60"
               >
                 <Plus className="h-3 w-3" />

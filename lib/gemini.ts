@@ -2068,8 +2068,9 @@ async function weaveKeywordsIntoResume(args: {
   const prompt = `You are editing an already-formatted ATS resume. Insert each of the MISSING KEYWORDS below so it appears at least once, placing EACH in the MOST NATURAL location.
 
 PLACEMENT RULES (this is the whole point of this edit):
-- If a keyword is a concrete TOOL / TECHNOLOGY / FRAMEWORK / PROGRAMMING LANGUAGE / PLATFORM / LIBRARY (a named product or language, e.g. JMeter, Splunk, Kubernetes, Python), add it to the most appropriate existing skills line under TECHNICAL SKILLS — a line like "Performance Testing: ..." or "APM & Monitoring: ...". Use the REAL category name already in the resume. NEVER write the literal word "Category" as a label.
-- If a keyword is an ACTIVITY, TESTING TYPE, METHODOLOGY, METRIC, or CONCEPT (e.g. load testing, stress testing, endurance testing, baseline testing, distributed systems, KPI, SLA), it is NOT a skill. DO NOT list it under TECHNICAL SKILLS. Instead weave it naturally into the PROFESSIONAL SUMMARY, a KEY ACHIEVEMENTS bullet, or a relevant PROFESSIONAL EXPERIENCE bullet, rephrasing the sentence minimally and truthfully so it reads like real experience.
+- PREFERRED: weave each keyword into the most relevant existing PROFESSIONAL EXPERIENCE bullet with a minimal, truthful edit - it must read like it was always part of that bullet. The summary or a KEY ACHIEVEMENTS bullet is the second choice.
+- A concrete TOOL / TECHNOLOGY / FRAMEWORK / PROGRAMMING LANGUAGE / PLATFORM / LIBRARY (a named product or language, e.g. JMeter, Splunk, Kubernetes, Python) may instead join the most appropriate existing skills line under TECHNICAL SKILLS — use the REAL category name already in the resume. NEVER write the literal word "Category" as a label.
+- An ACTIVITY, TESTING TYPE, METHODOLOGY, METRIC, or CONCEPT (e.g. load testing, stress testing, endurance testing, baseline testing, distributed systems, KPI, SLA) is NOT a skill. DO NOT list it under TECHNICAL SKILLS. Weave it naturally into the PROFESSIONAL SUMMARY, a KEY ACHIEVEMENTS bullet, or a relevant PROFESSIONAL EXPERIENCE bullet, rephrasing the sentence minimally and truthfully so it reads like real experience.
 - Use the EXACT keyword wording given (e.g. write "load testing", not "load tests").
 
 HARD RULES:
@@ -2447,9 +2448,13 @@ ${keywordsToAdd.map(k => `  - ${k}`).join('\n')}
 
 KEYWORDS-TO-ADD RULES:
 - Each keyword above MUST appear at least once in the final resume - the user explicitly flagged these as critical for the ATS scan.
-- PLACE EACH KEYWORD WHERE IT NATURALLY BELONGS - do NOT dump them all into TECHNICAL SKILLS:
-  - TOOLS / TECHNOLOGIES / FRAMEWORKS / PROGRAMMING LANGUAGES / PLATFORMS / LIBRARIES (a named product or language, e.g. JMeter, Splunk, Kubernetes, Python) go in the most appropriate existing skills line under TECHNICAL SKILLS (e.g. "Performance Testing: ..."). Use the REAL category name — NEVER the literal word "Category" as a label.
-  - ACTIVITIES / TESTING TYPES / METHODOLOGIES / METRICS / CONCEPTS (e.g. load testing, stress testing, endurance testing, baseline testing, distributed systems, KPI, SLA) are NOT skills. DO NOT list them under TECHNICAL SKILLS. Weave them naturally into the PROFESSIONAL SUMMARY, a KEY ACHIEVEMENTS bullet, or a relevant PROFESSIONAL EXPERIENCE bullet.
+- PLACEMENT PRIORITY (follow this order strictly - do NOT stuff keywords into lists):
+  1. BEST: rewrite the most relevant existing PROFESSIONAL EXPERIENCE bullet so the keyword appears naturally inside the sentence - a minimal, truthful edit to a bullet that already describes that kind of work.
+  2. GOOD: weave it into the PROFESSIONAL SUMMARY or a KEY ACHIEVEMENTS bullet when no experience bullet fits.
+  3. LAST RESORT ONLY (when no truthful bullet placement exists): add to the most appropriate "Category: ..." line under TECHNICAL SKILLS.
+- Never pile multiple keywords into one sentence or list them in a row - each addition should read like it was always there.
+- TOOLS / TECHNOLOGIES / FRAMEWORKS / PROGRAMMING LANGUAGES / PLATFORMS / LIBRARIES (a named product or language, e.g. JMeter, Splunk, Kubernetes, Python) go in the most appropriate existing skills line under TECHNICAL SKILLS (e.g. "Performance Testing: ..."). Use the REAL category name — NEVER the literal word "Category" as a label.
+- ACTIVITIES / TESTING TYPES / METHODOLOGIES / METRICS / CONCEPTS (e.g. load testing, stress testing, endurance testing, baseline testing, distributed systems, KPI, SLA) are NOT skills. DO NOT list them under TECHNICAL SKILLS. Weave them naturally into the PROFESSIONAL SUMMARY, a KEY ACHIEVEMENTS bullet, or a relevant PROFESSIONAL EXPERIENCE bullet.
 - Use the keyword's EXACT wording (e.g. write "JMeter" not "Apache JMeter performance tool"; if the keyword is "load testing", use that phrase even if the candidate normally writes "performance testing").
 - Do NOT fabricate experience. The candidate already describes related performance/QA/testing work - attach each activity keyword to that existing work rather than inventing new jobs or bullets. Do NOT add any related, sibling, or commonly-grouped tool that is not in the list above.
 - For genuine TOOL keywords only, reorder TECHNICAL SKILLS entries so they appear FIRST in their category line.
