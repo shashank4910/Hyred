@@ -92,9 +92,11 @@ function parseCacheRow(raw: unknown): JobAnalysisCache | null {
 }
 
 function cacheRowIsSane(cache: JobAnalysisCache): boolean {
-  // Self-heal pre-v2 caches: sentence-length or garbled keywords mean the row
-  // was extracted by the old prompt — re-extract instead of trusting it.
+  // v3 = extracted with the 12000-char window (v1/v2 rows were built from a
+  // 5000-char truncated JD that silently dropped the JD's tail sections —
+  // one-time invalidation re-extracts them). Also self-heal garbled rows.
   return (
+    (cache as { v?: number }).v === 3 &&
     cache.requirements.length >= 8 &&
     cache.keywords.length >= 18 &&
     cache.requirements.every((r) => {
@@ -107,7 +109,11 @@ function cacheRowIsSane(cache: JobAnalysisCache): boolean {
 async function extractJobAnalysis(
   job: { id: string; title: string; description: string | null },
 ): Promise<JobAnalysisCache> {
-  const jd = sanitizeJobDescriptionForAI(job.description ?? '').slice(0, 5000);
+  // 12000 chars (~3k tokens) — JD "Preferred Skills" sections live at the
+  // END of the posting; a 5000-char window silently deleted JMeter/k6-class
+  // tools from the AI's input (Session 47 bug). One cached call per job, so
+  // the larger prompt costs nothing extra after the first analysis.
+  const jd = sanitizeJobDescriptionForAI(job.description ?? '').slice(0, 12000);
   const raw = await chat(
     'You analyze job descriptions for a resume tool. Output strict JSON only.',
     `Analyze this job posting and return TWO lists in one JSON.
@@ -123,10 +129,10 @@ REQUIREMENTS (the hiring checklist):
 
 ATS KEYWORDS (the full scanner list):
 {"keywords":[{"keyword":"...","type":"tool|activity"}]}
-- 18-25 keywords: every specific tool, technology, framework, language, platform, methodology, metric, and named process an ATS would search for - INCLUDING ones already in the requirements list (use the same phrasing).
-- "tool" = a NAMED product/language/platform (JMeter, JProfiler, JVM, Kubernetes); "activity" = everything else (memory management, load testing, SLA).
+- 20-30 keywords covering the WHOLE posting, including the "Preferred Skills" / "Nice to have" sections near the end: every specific tool, technology, framework, language, platform, methodology, metric, testing type, and named process an ATS would search for.
+- "tool" = a NAMED product/language/platform (JMeter, Gatling, k6, JProfiler, JVM, Kubernetes, OpenTelemetry); "activity" = everything else (memory management, load testing, SLA, fault tolerance).
 - Use the JD's exact phrasing, 1-3 words, skip generic soft skills ("communication", "leadership").
-- Do NOT omit specific named tools that appear in the JD (e.g. if "JProfiler" or "JVM" appears, it MUST be in the list).
+- Do NOT omit specific named tools that appear ANYWHERE in the JD, including preferred/nice-to-have sections (e.g. if "JMeter", "k6", or "Gatling" appears, each MUST be in the list).
 
 JOB TITLE: ${job.title}
 
@@ -171,10 +177,10 @@ Return JSON: {"requirements":[...],"keywords":[...]}`,
     if (seenK.has(key)) continue;
     seenK.add(key);
     keywords.push({ keyword: kw, type: k?.type === 'tool' ? 'tool' : 'activity' });
-    if (keywords.length >= 25) break;
+    if (keywords.length >= 30) break;
   }
 
-  return { v: 2, requirements, keywords };
+  return { v: 3, requirements, keywords };
 }
 
 /**
