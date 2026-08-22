@@ -52,83 +52,181 @@ interface CachedRequirement {
   weight: 'must' | 'nice';
 }
 
+/** Typed keyword for the chips UI (tool vs activity). */
+export interface StudioKeyword {
+  keyword: string;
+  type: string;
+}
+
+/**
+ * Cache row shape (v2): both the requirement checklist AND the full typed
+ * keyword list from ONE extraction call. v1 rows (bare arrays) still read.
+ */
+interface JobAnalysisCache {
+  v: 2;
+  requirements: CachedRequirement[];
+  keywords: StudioKeyword[];
+}
+
 const MAX_REQUIREMENTS = 16;
 const PRESELECT_CAP = 8;
 
-/** Per-JOB requirement extraction with DB cache (shared across users). */
-async function getJobRequirements(
+function parseCacheRow(raw: unknown): JobAnalysisCache | null {
+  if (Array.isArray(raw)) {
+    // v1 row: requirements only, no typed keywords.
+    const list = raw as CachedRequirement[];
+    if (Array.isArray(list) && list.length > 0) return { v: 2, requirements: list, keywords: [] };
+    return null;
+  }
+  if (raw && typeof raw === 'object') {
+    const o = raw as Partial<JobAnalysisCache>;
+    if (Array.isArray(o.requirements) && o.requirements.length > 0) {
+      return {
+        v: 2,
+        requirements: o.requirements,
+        keywords: Array.isArray(o.keywords) ? o.keywords : [],
+      };
+    }
+  }
+  return null;
+}
+
+function cacheRowIsSane(cache: JobAnalysisCache): boolean {
+  // Self-heal pre-v2 caches: sentence-length or garbled keywords mean the row
+  // was extracted by the old prompt — re-extract instead of trusting it.
+  return (
+    cache.requirements.length >= 8 &&
+    cache.keywords.length >= 18 &&
+    cache.requirements.every((r) => {
+      const kw = String(r?.keyword ?? '');
+      return kw && kw.length <= 60 && kw.split(/\s+/).length <= 5;
+    })
+  );
+}
+
+async function extractJobAnalysis(
+  job: { id: string; title: string; description: string | null },
+): Promise<JobAnalysisCache> {
+  const jd = sanitizeJobDescriptionForAI(job.description ?? '').slice(0, 5000);
+  const raw = await chat(
+    'You analyze job descriptions for a resume tool. Output strict JSON only.',
+    `Analyze this job posting and return TWO lists in one JSON.
+
+REQUIREMENTS (the hiring checklist):
+{"requirements":[{"keyword":"...","type":"tool|activity|concept|education|experience|soft","weight":"must|nice"}]}
+- 8 to ${MAX_REQUIREMENTS} items.
+- keyword MUST be a short canonical noun phrase of 1-4 words that a resume could contain verbatim: "JMeter", "thread dump analysis", "distributed systems", "capacity planning", "Bachelor degree", "performance testing".
+- NEVER extract verbs, clauses, or full sentences ("recognize performance issues in..." is WRONG - "performance issue analysis" is right).
+- Extract experience as a SHORT phrase like "performance testing experience"; education as "Bachelor degree" or "Bachelor degree in Computer Science".
+- "must" only when the JD clearly requires it (must-have section, explicit "required"); otherwise "nice".
+- No duplicates, no garbled fragments, no soft-skill soup (at most 2 soft skills).
+
+ATS KEYWORDS (the full scanner list):
+{"keywords":[{"keyword":"...","type":"tool|activity"}]}
+- 18-25 keywords: every specific tool, technology, framework, language, platform, methodology, metric, and named process an ATS would search for - INCLUDING ones already in the requirements list (use the same phrasing).
+- "tool" = a NAMED product/language/platform (JMeter, JProfiler, JVM, Kubernetes); "activity" = everything else (memory management, load testing, SLA).
+- Use the JD's exact phrasing, 1-3 words, skip generic soft skills ("communication", "leadership").
+- Do NOT omit specific named tools that appear in the JD (e.g. if "JProfiler" or "JVM" appears, it MUST be in the list).
+
+JOB TITLE: ${job.title}
+
+JOB DESCRIPTION:
+${jd}
+
+Return JSON: {"requirements":[...],"keywords":[...]}`,
+    0.2,
+    true,
+    'match_studio_requirements',
+  );
+
+  const parsed = safeJson<{
+    requirements?: CachedRequirement[];
+    keywords?: StudioKeyword[];
+  }>(raw);
+  if (!parsed) throw new Error('Could not parse job analysis');
+
+  const seenR = new Set<string>();
+  const requirements: CachedRequirement[] = [];
+  for (const r of parsed.requirements ?? []) {
+    const kw = String(r?.keyword ?? '').trim();
+    if (!kw || kw.length > 60) continue;
+    const key = kw.toLowerCase();
+    if (seenR.has(key)) continue;
+    seenR.add(key);
+    requirements.push({
+      keyword: kw,
+      type: String(r?.type ?? 'concept'),
+      weight: r?.weight === 'nice' ? 'nice' : 'must',
+    });
+    if (requirements.length >= MAX_REQUIREMENTS) break;
+  }
+  if (requirements.length === 0) throw new Error('Could not read job requirements');
+
+  const seenK = new Set<string>();
+  const keywords: StudioKeyword[] = [];
+  for (const k of parsed.keywords ?? []) {
+    const kw = String(k?.keyword ?? '').trim();
+    if (!kw || kw.length < 2 || kw.length > 60) continue;
+    const key = kw.toLowerCase();
+    if (seenK.has(key)) continue;
+    seenK.add(key);
+    keywords.push({ keyword: kw, type: k?.type === 'tool' ? 'tool' : 'activity' });
+    if (keywords.length >= 25) break;
+  }
+
+  return { v: 2, requirements, keywords };
+}
+
+/**
+ * Cached per-JOB analysis (requirements + typed keywords) shared by the fit
+ * check AND the tailoring chips - ONE extraction call per job, ever.
+ */
+async function getJobAnalysis(
   sb: ReturnType<typeof supabaseAdmin>,
   job: { id: string; title: string; description: string | null },
-): Promise<CachedRequirement[]> {
+): Promise<JobAnalysisCache> {
   const { data: cached, error: cacheErr } = await sb
     .from('jd_requirements')
     .select('requirements')
     .eq('job_id', job.id)
     .maybeSingle();
   if (!cacheErr && cached?.requirements) {
-    const list = cached.requirements as CachedRequirement[];
-    // Self-heal pre-v2 caches: sentence-length or garbled keywords mean the
-    // row was extracted by the old prompt — re-extract instead of trusting it.
-    const sane =
-      Array.isArray(list) &&
-      list.length >= 8 &&
-      list.every((r) => {
-        const kw = String(r?.keyword ?? '');
-        return kw && kw.length <= 60 && kw.split(/\s+/).length <= 5;
-      });
-    if (sane) return list;
+    const row = parseCacheRow(cached.requirements);
+    if (row && cacheRowIsSane(row)) return row;
   }
-  // 42P01 (table missing pre-migration) or cache miss → extract once.
+  // 42P01 (table missing pre-migration) or cache miss/stale → extract once.
   if (cacheErr && cacheErr.code !== '42P01') {
     console.warn('[match-studio] jd_requirements read failed:', cacheErr.message);
   }
 
-  const jd = sanitizeJobDescriptionForAI(job.description ?? '').slice(0, 5000);
-  const raw = await chat(
-    'You extract structured hiring requirements from job descriptions. Output strict JSON only.',
-    `Extract the real requirements from this job posting. Return JSON:
-{"requirements":[{"keyword":"...","type":"tool|activity|concept|education|experience|soft","weight":"must|nice"}]}
-Rules:
-- 8 to ${MAX_REQUIREMENTS} items.
-- keyword MUST be a short canonical noun phrase of 1-4 words that a resume could contain verbatim: "JMeter", "thread dump analysis", "distributed systems", "capacity planning", "Bachelor degree", "performance testing".
-- NEVER extract verbs, clauses, or full sentences ("recognize performance issues in..." is WRONG — "performance issue analysis" is right).
-- Extract experience as a SHORT phrase like "performance testing experience" (the years live in the JD, not the keyword); education as "Bachelor degree" or "Bachelor degree in Computer Science".
-- "must" only when the JD clearly requires it (must-have section, explicit "required"); otherwise "nice".
-- No duplicates, no garbled fragments, no soft-skill soup (at most 2 soft skills).
-
-JOB TITLE: ${job.title}
-
-JOB DESCRIPTION:
-${jd}`,
-    0.2,
-    true,
-    'match_studio_requirements',
-  );
-  const parsed = safeJson<{ requirements?: CachedRequirement[] }>(raw);
-  const seen = new Set<string>();
-  const list: CachedRequirement[] = [];
-  for (const r of parsed?.requirements ?? []) {
-    const kw = String(r?.keyword ?? '').trim();
-    if (!kw || kw.length > 60) continue;
-    const key = kw.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    list.push({
-      keyword: kw,
-      type: String(r?.type ?? 'concept'),
-      weight: r?.weight === 'nice' ? 'nice' : 'must',
-    });
-    if (list.length >= MAX_REQUIREMENTS) break;
-  }
-  if (list.length === 0) throw new Error('Could not read job requirements');
+  const analysis = await extractJobAnalysis(job);
 
   if (!cacheErr) {
     const { error: upErr } = await sb
       .from('jd_requirements')
-      .upsert({ job_id: job.id, requirements: list }, { onConflict: 'job_id' });
+      .upsert({ job_id: job.id, requirements: analysis }, { onConflict: 'job_id' });
     if (upErr) console.warn('[match-studio] jd_requirements write failed:', upErr.message);
   }
-  return list;
+  return analysis;
+}
+
+/** Requirements for the fit check (cached per job). */
+async function getJobRequirements(
+  sb: ReturnType<typeof supabaseAdmin>,
+  job: { id: string; title: string; description: string | null },
+): Promise<CachedRequirement[]> {
+  return (await getJobAnalysis(sb, job)).requirements;
+}
+
+/**
+ * Typed keyword list for the tailoring chips - the SAME cached extraction the
+ * fit check uses, so chips and fit check can never disagree again.
+ */
+export async function getJobKeywordsCached(
+  sb: ReturnType<typeof supabaseAdmin>,
+  job: { id: string; title: string; description: string | null },
+): Promise<StudioKeyword[]> {
+  return (await getJobAnalysis(sb, job)).keywords;
 }
 
 function safeJson<T>(raw: string): T | null {
