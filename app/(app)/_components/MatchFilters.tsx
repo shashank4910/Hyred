@@ -290,7 +290,7 @@ export function MatchFilters({
         </div>
       ) : null}
 
-      <aside className="hidden h-full w-full overflow-y-auto rounded-[1.5rem] bg-primary p-5 text-white shadow-glass lg:block">
+      <aside className="hidden h-full w-full rounded-[1.5rem] bg-primary p-5 text-white shadow-glass lg:block">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-xl font-bold text-white">Filters</h2>
           {hasFilters && (
