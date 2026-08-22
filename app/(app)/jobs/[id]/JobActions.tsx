@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition, useEffect, useRef, type ReactNode } from 'react';
+import { useState, useTransition, useEffect, useRef, useCallback, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
@@ -149,6 +149,20 @@ export function JobActions({
       setPreviewPdfLoading(false);
     }
   }
+
+  // Fit-check engine's "likely yours" beliefs (keyword -> evidence), shared
+  // with the KeywordManager chips so amber tooltips can explain WHY.
+  const [inferredKeywords, setInferredKeywords] = useState<Record<string, string>>({});
+  const handleStudioAnalysis = useCallback(
+    (a: { requirements: Array<{ keyword: string; state: string; evidence?: string }> }) => {
+      const map: Record<string, string> = {};
+      for (const r of a.requirements ?? []) {
+        if (r.state === 'inferred' && r.evidence) map[r.keyword] = r.evidence;
+      }
+      setInferredKeywords(map);
+    },
+    [],
+  );
 
   // Load JD keywords for the keyword panel
   useEffect(() => {
@@ -681,6 +695,7 @@ export function JobActions({
           onUnstage={onUnstage}
           onOptimize={optimize}
           generating={generatingResume}
+          onAnalysis={handleStudioAnalysis}
         />
 
         {/* Keyword manager — advanced control, shown once a tailored resume
@@ -705,6 +720,7 @@ export function JobActions({
                 jdKeywords={jdKeywords}
                 originalPresent={alreadyHaveKeywords}
                 closePresent={closeHaveKeywords}
+                inferred={inferredKeywords}
                 result={keywords}
                 staged={selectedKeywords}
                 generating={generatingResume}
