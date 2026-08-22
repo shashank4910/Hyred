@@ -90,11 +90,7 @@ export default function PremiumSelect({
     requestAnimationFrame(() => menuRef.current?.focus());
   }, [open, optionRows, value]);
 
-  useEffect(() => {
-    if (!open) return;
-    const el = menuRef.current?.querySelector('[data-active="true"]');
-    el?.scrollIntoView({ block: 'nearest' });
-  }, [open, active]);
+
 
   useEffect(() => {
     if (!open) return;
@@ -164,19 +160,36 @@ export default function PremiumSelect({
     }
   }
 
+  function scrollActiveIntoView(nextActive: number) {
+    requestAnimationFrame(() => {
+      const el = menuRef.current?.querySelector('[data-active="true"]');
+      el?.scrollIntoView({ block: 'nearest' });
+    });
+  }
+
   function onMenuKey(e: ReactKeyboardEvent<HTMLDivElement>) {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setActive((n) => Math.min(optionRows.length - 1, n + 1));
+      setActive((n) => {
+        const next = Math.min(optionRows.length - 1, n + 1);
+        scrollActiveIntoView(next);
+        return next;
+      });
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setActive((n) => Math.max(0, n - 1));
+      setActive((n) => {
+        const next = Math.max(0, n - 1);
+        scrollActiveIntoView(next);
+        return next;
+      });
     } else if (e.key === 'Home') {
       e.preventDefault();
       setActive(0);
+      scrollActiveIntoView(0);
     } else if (e.key === 'End') {
       e.preventDefault();
       setActive(optionRows.length - 1);
+      scrollActiveIntoView(optionRows.length - 1);
     } else if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       commit(active);
