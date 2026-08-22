@@ -2,6 +2,23 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 45 — "Category:" placeholder bug + CORE COMPETENCIES polish (Aug 22, 2026)
+
+**Symptom (user report, DP World JD):** generated resume's TECHNICAL SKILLS had a line `Distributed Systems:` with no items followed by **seven literal `Category: ` lines** duplicating every real skills category; CORE COMPETENCIES read as a lowercase comma-dump ("performance test framework, analyze test results…"). Content quality otherwise fixed by Session 44 (all 5 jobs + Education present; keyword coverage truthful — no fabricated tools, Docker/K8s/AWS correctly absent).
+
+**Root cause:** the weave-repair prompt (and main-writer format spec) said to place tools in 'the most appropriate **"Category: ..."** line'. The LLM copied the placeholder word **verbatim** as the category name, duplicating every line under `Category:` labels.
+
+**Fixes (lib/gemini.ts)**
+| Change | Detail |
+|---|---|
+| Prompt wording (4 sites) | 'add to the most appropriate existing skills line (e.g. "Performance Testing: …"). Use the REAL category name — NEVER the literal word "Category" as a label' |
+| `sanitizeSkillsSection()` | NEW deterministic backstop, run before final return: removes literal `Category:` lines (merging any genuinely-new items into the first skills line), drops empty `Label:` lines **inside TECHNICAL SKILLS only** (`Client:` sublines elsewhere untouched). Verified against the exact broken output |
+| `ensureCompetencyKeywordsPresent` | Items now capitalized consistently |
+
+**Keyword critique verdict (recorded for tuning):** summary keyword-density is high but truthful; JD coverage correct (JMeter, distributed web application, CPU/memory/network usage, Garbage Collection, thread dump analysis, capacity planning all present; no invented tools).
+
+---
+
 ## Session 44 — Tailored resume truncated / missing jobs: no max_tokens + no completeness guard (Aug 22, 2026)
 
 **Symptom (user report):** After optimizing a resume for a Performance Test Engineer JD, the preview PDF was truncated (a bullet ended at "Embedded performance engineering"), 4 of 5 employers were missing (Coforge, TCS, Cognizant ×2), Education dropped, and selected JD keywords looked forcibly stuffed.

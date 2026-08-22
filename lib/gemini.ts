@@ -1940,6 +1940,63 @@ export function isSkillLikeKeyword(keyword: string): boolean {
  * Otherwise create one (placed right before TECHNICAL SKILLS if present, else at
  * the end). Returns the updated text and the keywords actually inserted.
  */
+/**
+ * Deterministic cleanup for the "Category:" placeholder bug (Session 45): the
+ * repair LLM sometimes copies the prompt's placeholder label verbatim and
+ * writes literal "Category: JMeter, ..." lines that duplicate the real skills
+ * categories, plus empty labels like "Distributed Systems:" with no items.
+ * - Literal "Category:" lines are removed; any item NOT already present
+ *   elsewhere is merged into the first skills content line.
+ * - Empty "Label:" lines INSIDE TECHNICAL SKILLS are dropped (outside that
+ *   section, lines like "Client:" are intentional and untouched).
+ */
+export function sanitizeSkillsSection(text: string): string {
+  const lines = text.split('\n');
+  const literalCatRe = /^\s*category\s*:\s*(.*)$/i;
+
+  const stray: string[] = [];
+  const kept: string[] = [];
+  for (const line of lines) {
+    const m = line.match(literalCatRe);
+    if (m) {
+      for (const item of m[1].split(',')) {
+        const t = item.trim();
+        if (t) stray.push(t);
+      }
+      continue;
+    }
+    kept.push(line);
+  }
+
+  const skillsIdx = kept.findIndex((l) => /^\s*TECHNICAL SKILLS\s*$/i.test(l));
+  if (skillsIdx !== -1) {
+    // Find the section end (next ALL-CAPS header) and drop empty labels inside.
+    let end = kept.length;
+    for (let i = skillsIdx + 1; i < kept.length; i++) {
+      const t = kept[i].trim();
+      if (t.length >= 3 && /^[A-Z][A-Z0-9 &/]*$/.test(t)) { end = i; break; }
+    }
+    for (let i = skillsIdx + 1; i < end; i++) {
+      if (/^\s*[A-Za-z][A-Za-z0-9 &/()\-]*:\s*$/.test(kept[i])) kept[i] = '';
+    }
+  }
+
+  if (stray.length > 0 && skillsIdx !== -1) {
+    const bodyWithoutStrayLines = kept.join('\n');
+    const novel = stray.filter((s) => !keywordInText(s, bodyWithoutStrayLines));
+    if (novel.length > 0) {
+      for (let i = skillsIdx + 1; i < kept.length; i++) {
+        if (kept[i].trim()) {
+          kept[i] = `${kept[i].replace(/\s+$/, '')}, ${novel.join(', ')}`;
+          break;
+        }
+      }
+    }
+  }
+
+  return kept.filter((l) => l !== '').join('\n');
+}
+
 export function ensureCompetencyKeywordsPresent(
   text: string,
   required: string[],
@@ -1958,6 +2015,10 @@ export function ensureCompetencyKeywordsPresent(
   }
   if (missing.length === 0) return { text, added: [] };
 
+  // Present each competency consistently: capitalized, comma-separated.
+  const pretty = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+  const prettyMissing = missing.map(pretty);
+
   const lines = text.split('\n');
   const isSectionHeader = (l: string) => {
     const t = l.trim();
@@ -1975,9 +2036,9 @@ export function ensureCompetencyKeywordsPresent(
     }
     if (contentIdx !== -1) {
       const existing = lines[contentIdx].split(',').map(s => s.trim()).filter(Boolean);
-      lines[contentIdx] = [...missing, ...existing].join(', ');
+      lines[contentIdx] = [...prettyMissing, ...existing].join(', ');
     } else {
-      lines.splice(compIdx + 1, 0, missing.join(', '));
+      lines.splice(compIdx + 1, 0, prettyMissing.join(', '));
     }
     return { text: lines.join('\n'), added: missing };
   }
@@ -1985,10 +2046,10 @@ export function ensureCompetencyKeywordsPresent(
   // No competencies section -> create one, preferably just before TECHNICAL SKILLS.
   const skillsIdx = lines.findIndex(l => /^\s*TECHNICAL SKILLS\s*$/i.test(l));
   if (skillsIdx !== -1) {
-    lines.splice(skillsIdx, 0, 'CORE COMPETENCIES', missing.join(', '), '');
+    lines.splice(skillsIdx, 0, 'CORE COMPETENCIES', prettyMissing.join(', '), '');
     return { text: lines.join('\n'), added: missing };
   }
-  return { text: [...lines, '', 'CORE COMPETENCIES', missing.join(', ')].join('\n'), added: missing };
+  return { text: [...lines, '', 'CORE COMPETENCIES', prettyMissing.join(', ')].join('\n'), added: missing };
 }
 
 /**
@@ -2007,7 +2068,7 @@ async function weaveKeywordsIntoResume(args: {
   const prompt = `You are editing an already-formatted ATS resume. Insert each of the MISSING KEYWORDS below so it appears at least once, placing EACH in the MOST NATURAL location.
 
 PLACEMENT RULES (this is the whole point of this edit):
-- If a keyword is a concrete TOOL / TECHNOLOGY / FRAMEWORK / PROGRAMMING LANGUAGE / PLATFORM / LIBRARY (a named product or language, e.g. JMeter, Splunk, Kubernetes, Python), add it to the most appropriate "Category: ..." line under TECHNICAL SKILLS.
+- If a keyword is a concrete TOOL / TECHNOLOGY / FRAMEWORK / PROGRAMMING LANGUAGE / PLATFORM / LIBRARY (a named product or language, e.g. JMeter, Splunk, Kubernetes, Python), add it to the most appropriate existing skills line under TECHNICAL SKILLS — a line like "Performance Testing: ..." or "APM & Monitoring: ...". Use the REAL category name already in the resume. NEVER write the literal word "Category" as a label.
 - If a keyword is an ACTIVITY, TESTING TYPE, METHODOLOGY, METRIC, or CONCEPT (e.g. load testing, stress testing, endurance testing, baseline testing, distributed systems, KPI, SLA), it is NOT a skill. DO NOT list it under TECHNICAL SKILLS. Instead weave it naturally into the PROFESSIONAL SUMMARY, a KEY ACHIEVEMENTS bullet, or a relevant PROFESSIONAL EXPERIENCE bullet, rephrasing the sentence minimally and truthfully so it reads like real experience.
 - Use the EXACT keyword wording given (e.g. write "load testing", not "load tests").
 
@@ -2387,7 +2448,7 @@ ${keywordsToAdd.map(k => `  - ${k}`).join('\n')}
 KEYWORDS-TO-ADD RULES:
 - Each keyword above MUST appear at least once in the final resume - the user explicitly flagged these as critical for the ATS scan.
 - PLACE EACH KEYWORD WHERE IT NATURALLY BELONGS - do NOT dump them all into TECHNICAL SKILLS:
-  - TOOLS / TECHNOLOGIES / FRAMEWORKS / PROGRAMMING LANGUAGES / PLATFORMS / LIBRARIES (a named product or language, e.g. JMeter, Splunk, Kubernetes, Python) go in the most appropriate "Category: ..." line under TECHNICAL SKILLS.
+  - TOOLS / TECHNOLOGIES / FRAMEWORKS / PROGRAMMING LANGUAGES / PLATFORMS / LIBRARIES (a named product or language, e.g. JMeter, Splunk, Kubernetes, Python) go in the most appropriate existing skills line under TECHNICAL SKILLS (e.g. "Performance Testing: ..."). Use the REAL category name — NEVER the literal word "Category" as a label.
   - ACTIVITIES / TESTING TYPES / METHODOLOGIES / METRICS / CONCEPTS (e.g. load testing, stress testing, endurance testing, baseline testing, distributed systems, KPI, SLA) are NOT skills. DO NOT list them under TECHNICAL SKILLS. Weave them naturally into the PROFESSIONAL SUMMARY, a KEY ACHIEVEMENTS bullet, or a relevant PROFESSIONAL EXPERIENCE bullet.
 - Use the keyword's EXACT wording (e.g. write "JMeter" not "Apache JMeter performance tool"; if the keyword is "load testing", use that phrase even if the candidate normally writes "performance testing").
 - Do NOT fabricate experience. The candidate already describes related performance/QA/testing work - attach each activity keyword to that existing work rather than inventing new jobs or bullets. Do NOT add any related, sibling, or commonly-grouped tool that is not in the list above.
@@ -2431,7 +2492,7 @@ CRITICAL RULES:
 4. CLIENT NAME PRIVACY & HONESTY: a client / end-customer name may appear ONLY in a "Client: ClientName (Domain)" subline directly under the relevant job header in PROFESSIONAL EXPERIENCE - that is the only allowed location. Do NOT mention a client name anywhere else: not in PROFESSIONAL SUMMARY, not in KEY ACHIEVEMENTS, not in any bullet, not in skills. Replace any such mention with neutral phrasing like "the organization" or "a major enterprise client", or simply omit it.
    - ONLY add a "Client:" subline when the input resume actually names a real client for that specific role. NEVER invent a client, and NEVER attach a domain label (e.g. "BFSI", "Healthcare", "Retail") to a role unless that domain is explicitly stated in the candidate's own resume. Do not assume any default domain.
 5. Allowed transformations:
-   a. Convert any tables to "Category: Tool1, Tool2, Tool3" plain-text lines.
+   a. Convert any tables to plain-text lines like "Performance Testing: Tool1, Tool2, Tool3" (real category name — NEVER the literal word "Category" as a label).
    b. Weave KEYWORDS TO ADD naturally into existing bullets where the candidate truthfully has that experience.
    c. Rewrite the Professional Summary per the directive below.
    d. Reorder Skills entries inside TECHNICAL SKILLS to put JD-priority tools first.
@@ -2447,7 +2508,7 @@ FORMAT (these patterns are what ATS parsers expect):
 - Every bullet starts with "- " (hyphen + space). Never use "*" or any unicode bullet symbol.
 - Job header: "Job Title  |  Company, City  |  Month YYYY - Month YYYY" (straight hyphen between dates).
 - Optional client subline directly under job header: "Client: ClientName (Domain)".
-- Skills lines: "Category: Tool1, Tool2, Tool3" - one category per line, no tables.
+- Skills lines: "<Real Category>: Tool1, Tool2, Tool3" (e.g. "Performance Testing: JMeter, LoadRunner") - one category per line, no tables. NEVER use the literal word "Category" as a label.
 - One blank line between sections. No blank line between job header and its bullets.
 ${keywordsBlock}
 CANDIDATE CONTACT BLOCK (reproduce these lines EXACTLY as given, at the very top, one item per line, in this order — do NOT add, invent, or guess any contact line, e.g. a LinkedIn/GitHub/website/phone that is not listed here):
@@ -2661,6 +2722,11 @@ or omit any role. Output the COMPLETE resume.`);
   const ats_match_score = scoredJd.length > 0
     ? Math.round((present / scoredJd.length) * 100)
     : 0;
+
+  // Cleanup: strip literal "Category:" placeholder lines and empty skills
+  // labels the repair pass may have introduced (Session 45). Keyword presence
+  // is preserved — genuinely-new stray items are merged into the skills lines.
+  resume = sanitizeSkillsSection(resume);
 
   // Deterministic guarantee: never ship a PDF with a blank title band because
   // the LLM dropped line 2 despite the contact block in the prompt.
