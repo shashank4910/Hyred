@@ -2,6 +2,24 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 42 — Perf follow-ups: grouped-count RPC, city RPC, pgvector candidates (Aug 22, 2026)
+
+**Goal:** The three documented follow-ups from the DB audit (Session 41).
+
+### Changes (files logged)
+| File | Change |
+|---|---|
+| `supabase/migrations/0024_perf_rpcs_pgvector.sql` | NEW — `create extension vector`; `jobs.embedding_vec vector(1536)` backfilled from jsonb (1536-length only; legacy 768 rows stay NULL); 3 STABLE functions: `dashboard_status_counts` (one grouped query → jsonb {counts, inbox, bookmarked}), `match_city_labels` (city extraction in SQL, mirrors `extractCityLabel` semantics), `candidate_jobs` (newest-800 pool with DB-side `<=>` cosine). **Manual run in Supabase.** |
+| `lib/match-stats.ts` | `getDashboardCounts` → single RPC (~10 counts → 1 query); `listMatchCities` → RPC (no 1000-row fetch). Both fall back to the legacy path on RPC error (pre-migration safe) |
+| `lib/ingest.ts` | Candidate pool via `candidate_jobs` RPC when resume vector is 1536-d — stops shipping ~6 MB of embedding JSONB per scan; similarity now comes from the DB (maybe-ranking, fallback sort, and final ranked set all use it). Legacy jsonb+JS-cosine path kept for 768-dim resumes / missing migration |
+| `lib/ingest.ts` + `lib/jd-fetcher.ts` | Embed + re-embed now write BOTH `embedding` (jsonb) and `embedding_vec` (vector) |
+
+### Semantics notes
+- `candidate_jobs` keeps newest-first limit-800 ordering (same pool as before) — NOT similarity-ordered top-K yet; an HNSW index + `order by embedding_vec <=> resume` is the next step when the pool outgrows 800
+- RPC args pass `p_stale_cutoff: null` for expired=1 (no freshness filter), `p_min_score: 0` for no floor — matching JS behavior including NULL llm_score rows
+
+---
+
 ## Session 41 — DB performance: index audit + hot-path query fixes (Aug 22, 2026)
 
 **Goal:** Full DB-performance-engineer review — is the app slow because of SQL? Missing/bad indexes? Duplicate queries?

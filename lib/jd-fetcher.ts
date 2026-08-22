@@ -268,7 +268,10 @@ async function reembedJob(jobId: string): Promise<void> {
     const vec = await embed(jobToEmbeddingText(job as Parameters<typeof jobToEmbeddingText>[0]));
     if (!vec || vec.length === 0) return;
 
-    const { error } = await sb.from('jobs').update({ embedding: vec }).eq('id', jobId);
+    const { error } = await sb
+      .from('jobs')
+      .update({ embedding: vec, embedding_vec: `[${vec.join(',')}]` })
+      .eq('id', jobId);
     if (error) {
       console.warn(`[jd-fetcher] Re-embed persist failed for job ${jobId}:`, error.message);
     } else {
