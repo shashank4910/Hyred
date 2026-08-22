@@ -206,10 +206,10 @@ export function MatchFilters({
         </button>
       </div>
 
-      <label className="block text-sm font-semibold text-white">
-        Location
-        <span className="mt-1.5 flex flex-col gap-1.5">
-          {isAdmin && (
+      {isAdmin && (
+        <label className="block text-sm font-semibold text-white">
+          Source
+          <span className="mt-1.5 block">
             <PremiumSelect
               variant="forest"
               value={source}
@@ -220,7 +220,13 @@ export function MatchFilters({
                 ...SOURCES.map((s) => ({ value: s, label: SOURCE_LABELS[s] ?? s })),
               ]}
             />
-          )}
+          </span>
+        </label>
+      )}
+
+      <label className="block text-sm font-semibold text-white">
+        Location
+        <span className="mt-1.5 block">
           <PremiumSelect
             variant="forest"
             value={locationValue}
