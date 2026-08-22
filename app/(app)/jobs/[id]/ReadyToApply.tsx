@@ -1,18 +1,18 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, Minus, Radar, ScanLine, ChevronDown, ShieldCheck } from 'lucide-react';
+import { Check, Minus, Radar, ChevronDown, Wand2, ShieldCheck } from 'lucide-react';
 import type { StudioAnalysis, StudioRequirement } from '@/lib/match-studio';
 
-type Phase = 'idle' | 'loading' | 'ready' | 'error';
+type Phase = 'idle' | 'analyzing' | 'error' | 'ready';
 
-const LOADER_STEPS = [
+const STEPS = [
   'Reading the job',
-  'Grading your evidence',
-  'Recruiter review',
+  'Checking your experience',
+  'Picking your keywords',
 ] as const;
 
-/** Count a number up with an exponential ease-out — arrival feels earned. */
+/** Count a number up with an exponential ease-out - arrival feels earned. */
 function useCountUp(target: number | null, active: boolean, durationMs = 900): number {
   const [value, setValue] = useState(0);
   const raf = useRef<number | null>(null);
@@ -36,33 +36,30 @@ function useCountUp(target: number | null, active: boolean, durationMs = 900): n
   return value;
 }
 
-function ScoreBlock({
+function ScoreLine({
   label,
   score,
-  meterClass,
-  textClass,
+  barClass,
 }: {
   label: string;
   score: number | null;
-  meterClass: string;
-  textClass: string;
+  barClass: string;
 }) {
   const shown = useCountUp(score, score != null);
   return (
-    <div className="min-w-[8.5rem] flex-1">
-      <p className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-muted">
+    <div className="flex items-center gap-2" role="img" aria-label={`${label} ${score ?? 'unavailable'} of 100`}>
+      <span className="text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-muted">
         {label}
-      </p>
-      <p className={`mt-0.5 text-[2.6rem] font-extrabold leading-none tabular-nums ${textClass}`}>
-        {score == null ? '–' : shown}
-      </p>
-      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-ink/8" role="img"
-        aria-label={`${label} score ${score ?? 'unavailable'} of 100`}>
-        <div
-          className={`h-full rounded-full transition-[width] duration-700 ease-out ${meterClass}`}
+      </span>
+      <span className="h-1 w-14 overflow-hidden rounded-full bg-ink/8">
+        <span
+          className={`block h-full rounded-full transition-[width] duration-700 ease-out ${barClass}`}
           style={{ width: `${score ?? 0}%` }}
         />
-      </div>
+      </span>
+      <span className="text-sm font-bold tabular-nums text-ink">
+        {score == null ? '-' : shown}
+      </span>
     </div>
   );
 }
@@ -87,6 +84,13 @@ function StateIcon({ state }: { state: StudioRequirement['state'] }) {
   );
 }
 
+/**
+ * One door, one button. The analysis is the invisible brain behind
+ * "Tailor my resume" - the user never has to understand a "fit check".
+ * Before a resume exists: single CTA that analyzes, picks keywords, and
+ * generates. After: the panel becomes a plain-language results header with
+ * add/remove suggestions.
+ */
 export function ReadyToApply({
   matchId,
   staged,
@@ -94,6 +98,7 @@ export function ReadyToApply({
   onUnstage,
   onOptimize,
   generating,
+  hasResume,
 }: {
   matchId: string;
   staged: string[];
@@ -101,6 +106,7 @@ export function ReadyToApply({
   onUnstage: (kw: string) => void;
   onOptimize: (keywordsOverride?: string[]) => void;
   generating: boolean;
+  hasResume: boolean;
 }) {
   const [phase, setPhase] = useState<Phase>('idle');
   const [step, setStep] = useState(0);
@@ -111,8 +117,8 @@ export function ReadyToApply({
 
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
 
-  const analyze = useCallback(async () => {
-    setPhase('loading');
+  const analyze = useCallback(async (): Promise<StudioAnalysis | null> => {
+    setPhase('analyzing');
     setStep(0);
     setErrorMsg('');
     timers.current.forEach(clearTimeout);
@@ -124,21 +130,30 @@ export function ReadyToApply({
       const res = await fetch(`/api/match/${matchId}/studio`, { method: 'POST' });
       const data = await res.json();
       if (!res.ok) {
-        if (data?.error === 'no_resume') {
-          setErrorMsg('Upload your resume first, then come back for the fit check.');
-        } else {
-          setErrorMsg('The fit check could not run. Try again in a moment.');
-        }
+        setErrorMsg(
+          data?.error === 'no_resume'
+            ? 'Upload your resume first, then come back.'
+            : 'We could not analyze this job. You can still tailor without the check.',
+        );
         setPhase('error');
-        return;
+        return null;
       }
       setAnalysis(data as StudioAnalysis);
       setPhase('ready');
+      return data as StudioAnalysis;
     } catch {
-      setErrorMsg('Connection dropped mid-analysis. Try again.');
+      setErrorMsg('Connection dropped mid-analysis. You can still tailor without the check.');
       setPhase('error');
+      return null;
     }
   }, [matchId]);
+
+  /** The one button: analyze, then build with the smart keyword set. */
+  async function tailorNow() {
+    const result = await analyze();
+    const preselected = result?.preselected;
+    onOptimize(preselected && preselected.length > 0 ? preselected : undefined);
+  }
 
   const isStaged = (kw: string) =>
     staged.some((k) => k.toLowerCase() === kw.toLowerCase());
@@ -152,62 +167,66 @@ export function ReadyToApply({
     (r) => r.state === 'absent' && r.weight === 'must',
   );
 
-  const verdictTone =
-    analysis && analysis.humanScore != null && analysis.humanScore >= 70
-      ? 'text-ink'
-      : 'text-on-surface-variant';
-
-  function generate() {
-    if (!analysis) return;
-    const merged = [...analysis.preselected];
-    for (const k of staged) {
-      if (!merged.some((m) => m.toLowerCase() === k.toLowerCase())) merged.push(k);
-    }
-    onOptimize(merged.length > 0 ? merged : undefined);
-  }
+  const weak = Math.min(analysis?.robotScore ?? 100, analysis?.humanScore ?? 100);
+  const headline =
+    weak >= 70
+      ? "You're a strong fit for this job"
+      : weak >= 50
+        ? 'Almost there - a few quick wins below'
+        : "This one's a stretch - being honest with you";
 
   return (
     <section
-      aria-label="Fit check"
+      aria-label="Tailor resume"
       className="mb-5 rounded-2xl border border-primary/15 bg-lime-brand/5 p-5"
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="flex items-center gap-2 text-sm font-bold text-ink">
-            <ScanLine className="h-4 w-4 text-primary" />
-            Fit Check
-          </h3>
-          <p className="mt-0.5 text-xs text-on-surface-variant">
-            Grades this job against your real experience, then tells you the truth about the gaps.
-          </p>
-        </div>
-        {phase === 'idle' && (
-          <button type="button" onClick={analyze} className="btn-primary text-sm">
-            Run fit check
-          </button>
-        )}
-        {phase === 'ready' && (
+      {/* Before: the one button they came for */}
+      {!hasResume && phase !== 'ready' && phase !== 'analyzing' && (
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h3 className="flex items-center gap-2 text-sm font-bold text-ink">
+              <Wand2 className="h-4 w-4 text-primary" />
+              Tailor your resume for this job
+            </h3>
+            <p className="mt-0.5 text-xs leading-snug text-on-surface-variant">
+              We read the job, match it against your experience, pick the right
+              keywords, and build the resume. One click.
+            </p>
+          </div>
           <button
             type="button"
-            onClick={analyze}
-            className="text-xs font-semibold text-primary underline-offset-2 hover:underline"
+            onClick={tailorNow}
+            disabled={generating}
+            className="btn-primary text-sm disabled:opacity-60"
           >
-            Re-run
+            {generating ? 'Building...' : 'Tailor my resume'}
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* Loading: a step rail that fills as the pipeline works */}
-      {phase === 'loading' && (
-        <div className="mt-5" aria-live="polite">
-          <ol className="space-y-0">
-            {LOADER_STEPS.map((label, i) => {
+      {/* Returning user with a resume: small re-check affordance */}
+      {hasResume && phase !== 'ready' && phase !== 'analyzing' && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs text-on-surface-variant">
+            Want to know how well this resume fits the job before sending it?
+          </p>
+          <button type="button" onClick={tailorNow} className="btn text-xs">
+            {generating ? 'Working...' : 'Check my fit'}
+          </button>
+        </div>
+      )}
+
+      {/* Analyzing: a step rail that fills as the pipeline works */}
+      {phase === 'analyzing' && (
+        <div aria-live="polite">
+          <ol>
+            {STEPS.map((label, i) => {
               const done = i < step;
               const active = i === step;
               return (
                 <li key={label} className="flex items-start gap-3">
                   <span className="relative flex w-5 justify-center">
-                    {i < LOADER_STEPS.length - 1 && (
+                    {i < STEPS.length - 1 && (
                       <span
                         aria-hidden
                         className={`absolute top-5 h-7 w-px transition-colors duration-500 ${
@@ -233,64 +252,75 @@ export function ReadyToApply({
                     }`}
                   >
                     {label}
-                    {active && <span className="ml-1 text-muted">…</span>}
+                    {active && <span className="ml-1 text-muted">...</span>}
                   </span>
                 </li>
               );
             })}
           </ol>
+          {generating && (
+            <p className="mt-3 text-sm font-medium text-primary">Writing your resume...</p>
+          )}
         </div>
       )}
 
       {phase === 'error' && (
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-on-surface-variant">{errorMsg}</p>
-          <button type="button" onClick={analyze} className="btn text-xs">
-            Try again
-          </button>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs text-on-surface-variant">{errorMsg}</p>
+          <div className="flex gap-2">
+            <button type="button" onClick={analyze} className="btn text-xs">
+              Try the check again
+            </button>
+            {!hasResume && (
+              <button
+                type="button"
+                onClick={() => onOptimize()}
+                className="btn-primary text-xs"
+              >
+                Build anyway
+              </button>
+            )}
+          </div>
         </div>
       )}
 
+      {/* After: plain-language results */}
       {phase === 'ready' && analysis && (
-        <div className="mt-5">
-          {/* Score strip */}
-          <div className="flex flex-wrap items-start gap-x-8 gap-y-4">
-            <ScoreBlock
-              label="Robot score"
-              score={analysis.robotScore}
-              meterClass="bg-lime-brand"
-              textClass="text-ink"
-            />
-            <ScoreBlock
-              label="Human score"
-              score={analysis.humanScore}
-              meterClass="bg-primary"
-              textClass="text-primary"
-            />
-            <div className="min-w-[12rem] flex-1">
-              <p className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-muted">
-                Recruiter verdict
-              </p>
-              <p className={`mt-1 text-sm leading-snug ${verdictTone}`}>
-                {analysis.verdictLine || 'No verdict recorded.'}
-              </p>
-              {analysis.watchOuts.length > 0 && (
-                <ul className="mt-1.5 space-y-0.5">
-                  {analysis.watchOuts.map((w) => (
-                    <li key={w} className="text-xs leading-snug text-muted">
-                      {w}
-                    </li>
-                  ))}
-                </ul>
+        <div>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className="text-base font-extrabold tracking-tight text-ink">{headline}</h3>
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-5 gap-y-1.5">
+                <ScoreLine label="ATS match" score={analysis.robotScore} barClass="bg-lime-brand" />
+                <ScoreLine label="Recruiter appeal" score={analysis.humanScore} barClass="bg-primary" />
+              </div>
+              {analysis.verdictLine && (
+                <p className="mt-2 text-sm leading-snug text-on-surface-variant">
+                  {analysis.verdictLine}
+                </p>
               )}
             </div>
+            {!hasResume && (
+              <button
+                type="button"
+                onClick={() =>
+                  onOptimize(
+                    analysis.preselected.length > 0 ? analysis.preselected : undefined,
+                  )
+                }
+                disabled={generating}
+                className="btn-primary text-sm disabled:opacity-60"
+              >
+                {generating ? 'Building...' : 'Build my resume'}
+              </button>
+            )}
           </div>
 
-          {/* Suggestions: inferred evidence, one tap to stage */}
+          {/* Quick wins: add what your work already proves */}
           {suggestions.length > 0 && (
-            <div className="mt-6">
+            <div className="mt-5">
               <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">
-                Found in your work — not written in your resume
+                Quick wins - you have this experience, it's just not written down
               </p>
               <ul className="mt-2 divide-y divide-ink/5">
                 {suggestions.map((r) => {
@@ -303,11 +333,6 @@ export function ReadyToApply({
                           {r.evidence && (
                             <p className="mt-0.5 text-xs leading-snug text-on-surface-variant">
                               {r.evidence}
-                            </p>
-                          )}
-                          {r.suggestion && (
-                            <p className="mt-1.5 border-l-2 border-lime-brand pl-2.5 text-xs italic leading-snug text-on-surface-variant">
-                              {r.suggestion}
                             </p>
                           )}
                         </div>
@@ -323,10 +348,10 @@ export function ReadyToApply({
                         >
                           {on ? (
                             <>
-                              <Check className="h-3.5 w-3.5" strokeWidth={3} /> Staged — undo
+                              <Check className="h-3.5 w-3.5" strokeWidth={3} /> Added - undo
                             </>
                           ) : (
-                            'Weave in'
+                            'Add to resume'
                           )}
                         </button>
                       </div>
@@ -334,31 +359,50 @@ export function ReadyToApply({
                   );
                 })}
               </ul>
+              {staged.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const merged = [...analysis.preselected];
+                    for (const k of staged) {
+                      if (!merged.some((m) => m.toLowerCase() === k.toLowerCase())) {
+                        merged.push(k);
+                      }
+                    }
+                    onOptimize(merged);
+                  }}
+                  disabled={generating}
+                  className="btn-primary mt-3 text-sm disabled:opacity-60"
+                >
+                  {generating
+                    ? 'Updating...'
+                    : `Update resume with ${staged.length} addition${staged.length === 1 ? '' : 's'}`}
+                </button>
+              )}
             </div>
           )}
 
-          {/* Honest flags */}
           {missingMustHaves.length > 0 && (
             <p className="mt-4 flex items-start gap-2 text-xs leading-snug text-on-surface-variant">
               <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
               <span>
-                Required but absent, so we left them out:{' '}
+                The job also asks for{' '}
                 <span className="font-semibold">
                   {missingMustHaves.map((r) => r.keyword).join(', ')}
                 </span>
-                . Be ready to speak to them if interviewed.
+                . We left those out because your resume doesn't show them - be ready to
+                speak to them in an interview.
               </span>
             </p>
           )}
 
-          {/* Full checklist drawer */}
           <button
             type="button"
             onClick={() => setShowAll((v) => !v)}
             aria-expanded={showAll}
             className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline underline-offset-2"
           >
-            {showAll ? 'Hide' : 'See'} all {analysis.requirements.length} checks
+            {showAll ? 'Hide' : 'Show'} the full {analysis.requirements.length}-point job check
             <ChevronDown
               className={`h-3.5 w-3.5 transition-transform duration-200 ${showAll ? 'rotate-180' : ''}`}
             />
@@ -385,21 +429,6 @@ export function ReadyToApply({
               ))}
             </ul>
           )}
-
-          {/* Primary action */}
-          <div className="mt-5 flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={generate}
-              disabled={generating}
-              className="btn-primary text-sm disabled:opacity-60"
-            >
-              {generating ? 'Generating…' : 'Generate tailored resume'}
-            </button>
-            <p className="text-xs text-muted">
-              {analysis.preselected.length} proven keywords pre-selected for you.
-            </p>
-          </div>
         </div>
       )}
     </section>
