@@ -63,7 +63,7 @@ export interface StudioKeyword {
  * keyword list from ONE extraction call. v1 rows (bare arrays) still read.
  */
 interface JobAnalysisCache {
-  v: 2;
+  v: number;
   requirements: CachedRequirement[];
   keywords: StudioKeyword[];
 }
