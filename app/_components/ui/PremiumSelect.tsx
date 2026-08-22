@@ -98,7 +98,10 @@ export default function PremiumSelect({
 
   useEffect(() => {
     if (!open) return;
-    const place = () => {
+    const place = (e?: Event) => {
+      // Skip scroll events that originate from inside the menu —
+      // those are the user scrolling the option list, not the page.
+      if (e && e.type === 'scroll' && menuRef.current?.contains(e.target as Node)) return;
       const el = triggerRef.current;
       if (!el) return;
       const r = el.getBoundingClientRect();
@@ -107,10 +110,11 @@ export default function PremiumSelect({
       const gap = 6;
       const below = window.innerHeight - r.bottom - 12;
       const openUp = below < maxH && r.top > below;
-      setMenuBox({
-        top: openUp ? Math.max(8, r.top - maxH - gap) : r.bottom + gap,
-        left: Math.min(r.left, window.innerWidth - width - 8),
-        width,
+      const top = openUp ? Math.max(8, r.top - maxH - gap) : r.bottom + gap;
+      const left = Math.min(r.left, window.innerWidth - width - 8);
+      setMenuBox((prev) => {
+        if (prev.top === top && prev.left === left && prev.width === width) return prev;
+        return { top, left, width };
       });
     };
     place();
