@@ -435,6 +435,7 @@ export async function chat(
   jsonMode = false,
   operation = 'chat',
   profileId?: string,
+  maxTokens?: number,
 ): Promise<string> {
   return withLlmChatSlot(async () => {
     const estimatedTokens = RateLimiter.estimateTokenCost(systemPrompt, userPrompt, 500);
@@ -480,6 +481,11 @@ export async function chat(
         const res = await provider.client.chat.completions.create({
           model: provider.model,
           temperature,
+          // Explicit output budget. When omitted, many OpenAI-compatible
+          // providers (Groq, Cerebras, proxy gateways) default to ~1024
+          // completion tokens — long outputs (tailored resumes) got silently
+          // cut off mid-sentence (Session 44).
+          max_tokens: maxTokens ?? 4096,
           ...(jsonMode ? { response_format: { type: 'json_object' as const } } : {}),
           messages: [
             { role: 'system', content: systemPrompt },
@@ -2026,6 +2032,11 @@ ${args.resume.slice(0, 16000)}`;
     0.2,
     false,
     'generateAtsResume',
+    undefined,
+    // Must at least cover the input resume size — a small default cap here
+    // would truncate the repaired resume (Session 44). 16000-char input ≈
+    // 4k output tokens; 8192 leaves headroom within every model's cap.
+    8192,
   );
   return normalizeAscii(raw);
 }
@@ -2195,6 +2206,36 @@ function cleanJdTitle(raw: string): string | null {
  * Returns an honest ATS Match Score (% of JD keywords actually present in
  * the generated resume) so the user can see whether to regenerate.
  */
+/**
+ * Canonical employment date ranges present in a resume text, e.g.
+ * "2024-09#present", "2023-08#2024-09". Used by the completeness guard in
+ * generateAtsResume to detect dropped roles. Month names only — bare year
+ * ranges (education etc.) are deliberately ignored to reduce false positives.
+ */
+function extractEmploymentRanges(text: string): Set<string> {
+  const month = '(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\.?\\s*';
+  const re = new RegExp(
+    `${month}((19|20)\\d{2})\\s*[-\u2013]\\s*(?:${month})?((19|20)\\d{2}|present)`,
+    'gi',
+  );
+  const out = new Set<string>();
+  for (const line of text.split('\n')) {
+    let m: RegExpExecArray | null;
+    re.lastIndex = 0;
+    while ((m = re.exec(line))) {
+      const startMonth = m[1].slice(0, 3).toLowerCase();
+      const startYear = m[2];
+      // m[4] = optional end month, m[5] = end year or "present"
+      const endRaw = (m[5] ?? '').toLowerCase();
+      const end = endRaw.includes('present')
+        ? 'present'
+        : `${m[5]}-${(m[4] ?? '').slice(0, 3).toLowerCase()}`;
+      out.add(`${startYear}-${startMonth}#${end}`);
+    }
+  }
+  return out;
+}
+
 export async function generateAtsResume(args: {
   resumeText: string;
   jobTitle: string;
@@ -2427,14 +2468,60 @@ Output the complete tailored resume in plain ASCII text. No preamble, no explana
 
 CRITICAL: do NOT prefix the output with any header label like "Resume", "RESUME", "Curriculum Vitae", "CV", or "PROFILE". The PDF renderer treats the first non-empty line of your output as the candidate's NAME - if you put "Resume" first, the literal word "Resume" will be rendered huge in the header band where the candidate's name should be. The very first non-empty line MUST be the candidate's full name (exactly as given in the contact block above).${targetCurrentRoleTitle ? ' The very second line MUST be the role title tagline.' : ''}`;
 
-  const raw = await chat(
-    'You reformat resumes into ATS-friendly plain ASCII text. Preserve all real content. Never fabricate experience. Output ONLY the resume.',
-    prompt,
-    0.25,
-  );
+  const runWriter = async (extraDirective = ''): Promise<string> => {
+    const raw = await chat(
+      'You reformat resumes into ATS-friendly plain ASCII text. Preserve all real content. Never fabricate experience. Output ONLY the resume.',
+      prompt + extraDirective,
+      0.25,
+      false,
+      'generateAtsResume',
+      undefined,
+      // A 5-role resume is ~2k output tokens; 8192 leaves ample headroom so
+      // the output can never be cut off mid-bullet (Session 44 root cause).
+      8192,
+    );
+    return normalizeAscii(raw);
+  };
 
-  // Defense-in-depth ASCII normalization in case the model slipped a unicode char in.
-  let resume = normalizeAscii(raw);
+  let resume = await runWriter();
+
+  // ── Completeness guard: never ship a resume that lost employers ────────────
+  // Compares employment date ranges ("Sep 2024 - Present" etc.) between the
+  // input and the output. Missing ranges mean the model dropped roles or the
+  // output was truncated — retry once with an explicit list, then fail loudly
+  // instead of shipping a mangled resume (Session 44: a truncated generation
+  // silently dropped 4 of 5 jobs and the repair pass polished the wreckage).
+  const inputRanges = extractEmploymentRanges(args.resumeText);
+  if (inputRanges.size > 0) {
+    const missingRanges = (text: string): string[] =>
+      {
+        const out = extractEmploymentRanges(text);
+        return [...inputRanges].filter((k) => !out.has(k));
+      };
+    let missing = missingRanges(resume);
+    if (missing.length > 0) {
+      console.warn('[generateAtsResume] output dropped roles, retrying with explicit list',
+        JSON.stringify({ missing }));
+      const retry = await runWriter(`
+
+COMPLETENESS REQUIREMENT (your previous draft violated this): EVERY employment
+date range from the input resume MUST appear in your output. The draft was
+missing:
+${missing.map((r) => `  - ${r}`).join('\n')}
+Include those roles with their full headers and bullets. Do not shorten, merge,
+or omit any role. Output the COMPLETE resume.`);
+      const retryMissing = missingRanges(retry);
+      if (retryMissing.length < missing.length) {
+        resume = retry;
+        missing = retryMissing;
+      }
+      if (missing.length > 0) {
+        throw new Error(
+          `ATS resume generation incomplete: ${missing.length} role(s) missing (${missing.join('; ')}). Retry generation.`,
+        );
+      }
+    }
+  }
 
   // ── ATS Match Score: % of JD keywords actually present in the resume ────────
   // Score over the JD keywords MINUS anything the user explicitly excluded — a

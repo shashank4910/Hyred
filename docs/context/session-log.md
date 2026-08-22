@@ -2,6 +2,24 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 44 — Tailored resume truncated / missing jobs: no max_tokens + no completeness guard (Aug 22, 2026)
+
+**Symptom (user report):** After optimizing a resume for a Performance Test Engineer JD, the preview PDF was truncated (a bullet ended at "Embedded performance engineering"), 4 of 5 employers were missing (Coforge, TCS, Cognizant ×2), Education dropped, and selected JD keywords looked forcibly stuffed.
+
+**Root cause:** `chat()` in `lib/gemini.ts` never set `max_tokens` on the OpenAI-compatible call. Most providers (Groq, Cerebras, proxy gateways) default to ~1024 completion tokens when omitted — a 5-role resume needs ~2k. The output was cut mid-stream; the keyword-repair pass then "polished" the already-mangled text (which is why the cut bullet survived and missing jobs never came back), and the deterministic CORE COMPETENCIES backstop force-appended selected keywords onto the wreckage.
+
+**Fixes (lib/gemini.ts)**
+| Change | Detail |
+|---|---|
+| `chat()` `max_tokens` param | Explicit output budget — default **4096**, overridable per call. Omitted values were the root cause |
+| `generateAtsResume` writer | 8192-token output budget (5-role resume ≈ 2k output; ample headroom) |
+| `weaveKeywordsIntoResume` repair pass | 8192-token budget (16k-char input ≈ 4k output — a small cap here would truncate the REPAIRED resume) |
+| **Completeness guard** | New `extractEmploymentRanges()` canonicalizes month-year date ranges (e.g. `2024-sep#present`); if the output drops any range present in the input, one retry with the explicit missing list, then **throw** (`ATS resume generation incomplete: N role(s) missing`) instead of silently shipping a mangled resume. Verified against the real failure: reproduces exactly the 2 dropped roles |
+
+**Also noted:** bare-year ranges (education) deliberately ignored to avoid false positives.
+
+---
+
 ## Session 43 — Migration runbook: 0017 gap, defensive 0023, batched 0024 backfill (Aug 22, 2026)
 
 **Goal:** Apply migrations 0023 (indexes) and 0024 (RPCs + pgvector) in Supabase; handle the failures that surfaced.
