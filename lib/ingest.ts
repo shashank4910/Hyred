@@ -428,16 +428,28 @@ export async function runIngest(opts?: {
     }
 
     // ---------- 6. Build candidate pool (skip jobs already scored for this resume) ----------
-    // Any job that already has a match row for this profile is skipped — no
-    // repeat LLM scoring on re-scans (saves cost). After a resume upload, the
-    // profile API clears non-protected matches so the next scan can re-score.
+    // Any job with a match row OR a job_scores ledger row for this profile is
+    // skipped — no repeat LLM scoring on re-scans (saves cost). The ledger
+    // also covers below-threshold rejects, which previously were re-scored on
+    // every scan. After a resume upload, the profile API clears non-protected
+    // matches AND ledger rows so the next scan can re-score.
+    const alreadyScored = new Set<string>();
     const { data: existingMatches } = await sb
       .from('matches')
       .select('job_id')
       .eq('profile_id', p.id);
-    const alreadyScored = new Set(
-      (existingMatches ?? []).map((m) => m.job_id as string),
-    );
+    for (const m of existingMatches ?? []) alreadyScored.add(m.job_id as string);
+    const { data: existingScores, error: ledgerErr } = await sb
+      .from('job_scores')
+      .select('job_id')
+      .eq('profile_id', p.id)
+      .limit(5000);
+    if (ledgerErr) {
+      // Table may not exist yet (pre-0022) — degrade to match-row dedup only.
+      console.warn('[ingest] job_scores ledger unreadable:', ledgerErr.message);
+    } else {
+      for (const s of existingScores ?? []) alreadyScored.add(s.job_id as string);
+    }
 
     const { data: candidates } = await sb
       .from('jobs')
@@ -585,6 +597,26 @@ export async function runIngest(opts?: {
     const scoredPending: ScoredPending[] = [];
     const savedJobIds = new Set<string>();
 
+    /** Record every evaluation in the job_scores ledger — rejects included —
+     *  so future scans skip them instead of re-paying the LLM. */
+    async function persistScoreLedger(entry: ScoredPending): Promise<void> {
+      const { error: ledgerError } = await sb
+        .from('job_scores')
+        .upsert(
+          {
+            profile_id: p.id,
+            job_id: entry.c.id,
+            score: entry.finalScore,
+            similarity: entry.c.similarity,
+          },
+          { onConflict: 'profile_id,job_id' },
+        );
+      if (ledgerError && ledgerError.code !== '42P01') {
+        // 42P01 = table missing (pre-0022 deploy) — fine, next scan retries.
+        console.warn('[ingest] job_scores ledger write failed:', ledgerError.message);
+      }
+    }
+
     async function persistScoredMatch(entry: ScoredPending): Promise<boolean> {
       const { data: matchRow, error } = await sb
         .from('matches')
@@ -688,6 +720,7 @@ export async function runIngest(opts?: {
               jobId: c.id,
             };
             scoredPending.push(entry);
+            await persistScoreLedger(entry);
 
             if (finalScore >= minScore) {
               const ok = await persistScoredMatch(entry);
