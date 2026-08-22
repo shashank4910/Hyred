@@ -10,6 +10,7 @@ import { DashboardNavProvider } from './_components/DashboardNavContext';
 import { RunIngestButton } from './_components/RunIngestButton';
 import { Search, Sparkles } from 'lucide-react';
 import { getDashboardCounts, listMatchCities, freshnessLabel } from '@/lib/match-stats';
+import { SOURCE_LABELS } from '@/lib/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -109,6 +110,7 @@ export default async function Dashboard({
   if (sp.fresh) {
     chips.push({ label: freshnessLabel(sp.fresh), clear: 'fresh' });
   }
+  if (isAdmin && sp.source) chips.push({ label: SOURCE_LABELS[sp.source] ?? sp.source, clear: 'source' });
   if (sp.min) chips.push({ label: `Score ${sp.min}+`, clear: 'min' });
 
   function hrefWithout(drop: string) {

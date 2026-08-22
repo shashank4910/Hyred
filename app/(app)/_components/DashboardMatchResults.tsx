@@ -12,6 +12,50 @@ import { MatchList } from './MatchList';
 
 const PAGE_SIZE = 20;
 
+// Shared filter conditions applied to both the main query and the
+// hidden-below-threshold count query. Keeps them in sync so a new filter
+// added once doesn't silently diverge from the other.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Supabase chained builders change type per select(); any is the simplest escape.
+function applyDashboardFilters(query: any, opts: {
+  showExpired: boolean;
+  staleCutoff: string;
+  onlyBookmarked: boolean;
+  status: string;
+  isAdmin: boolean;
+  source?: string;
+  remote?: string;
+  city?: string;
+  q?: string;
+}): any {
+  if (!opts.showExpired) {
+    query = query.or(jobFreshnessOrFilter(opts.staleCutoff), { foreignTable: 'job' });
+  }
+  if (opts.onlyBookmarked) {
+    query = query.eq('bookmarked', true);
+  } else if (opts.status === 'inbox') {
+    query = query.in('status', ['new', 'viewed']);
+  } else {
+    query = query.eq('status', opts.status);
+  }
+  if (opts.isAdmin && opts.source) {
+    query = query.eq('job.source', opts.source);
+  }
+  if (opts.remote === '1') {
+    query = query.eq('job.remote', true);
+  }
+  const city = sanitizeCityFilter(opts.city);
+  if (city) {
+    query = query.ilike('job.location', `%${city}%`);
+  }
+  if (opts.q) {
+    const term = opts.q.replace(/[%]/g, '');
+    query = query.or(`title.ilike.%${term}%,company.ilike.%${term}%`, {
+      foreignTable: 'job',
+    });
+  }
+  return query;
+}
+
 export type DashboardMatchSearchParams = {
   status?: string;
   q?: string;
@@ -61,6 +105,20 @@ export async function DashboardMatchResults({
       : [];
   }
 
+  const staleCutoff = dashboardFreshnessCutoffIso(searchParams);
+
+  const filterOpts = {
+    showExpired,
+    staleCutoff,
+    onlyBookmarked,
+    status,
+    isAdmin,
+    source: searchParams.source,
+    remote: searchParams.remote,
+    city: searchParams.city,
+    q: searchParams.q,
+  };
+
   // Slim list select — skip JD description (large) for dashboard cards.
   let query = sb
     .from('matches')
@@ -71,37 +129,8 @@ export async function DashboardMatchResults({
     query = query.gte('llm_score', effectiveMinScore);
   }
 
-  const staleCutoff = dashboardFreshnessCutoffIso(searchParams);
-  if (!showExpired) {
-    query = query.or(jobFreshnessOrFilter(staleCutoff), { foreignTable: 'job' });
-  }
-
   query = applyMatchSort(query, sort);
-
-  if (onlyBookmarked) {
-    query = query.eq('bookmarked', true);
-  } else if (status === 'inbox') {
-    query = query.in('status', ['new', 'viewed']);
-  } else {
-    query = query.eq('status', status);
-  }
-
-  if (isAdmin && searchParams.source) {
-    query = query.eq('job.source', searchParams.source);
-  }
-  if (searchParams.remote === '1') {
-    query = query.eq('job.remote', true);
-  }
-  const city = sanitizeCityFilter(searchParams.city);
-  if (city) {
-    query = query.ilike('job.location', `%${city}%`);
-  }
-  if (searchParams.q) {
-    const term = searchParams.q.replace(/[%]/g, '');
-    query = query.or(`title.ilike.%${term}%,company.ilike.%${term}%`, {
-      foreignTable: 'job',
-    });
-  }
+  query = applyDashboardFilters(query, filterOpts);
 
   const { data: matches, count: matchCount } = await query.limit(PAGE_SIZE);
 
@@ -119,33 +148,7 @@ export async function DashboardMatchResults({
       .from('matches')
       .select('id', { count: 'exact', head: true })
       .eq('profile_id', profileId);
-    const belowCutoff = dashboardFreshnessCutoffIso(searchParams);
-    if (!showExpired) {
-      below = below.or(jobFreshnessOrFilter(belowCutoff), { foreignTable: 'job' });
-    }
-    if (onlyBookmarked) {
-      below = below.eq('bookmarked', true);
-    } else if (status === 'inbox') {
-      below = below.in('status', ['new', 'viewed']);
-    } else {
-      below = below.eq('status', status);
-    }
-    if (isAdmin && searchParams.source) {
-      below = below.eq('job.source', searchParams.source);
-    }
-    if (searchParams.remote === '1') {
-      below = below.eq('job.remote', true);
-    }
-    const belowCity = sanitizeCityFilter(searchParams.city);
-    if (belowCity) {
-      below = below.ilike('job.location', `%${belowCity}%`);
-    }
-    if (searchParams.q) {
-      const term = searchParams.q.replace(/[%]/g, '');
-      below = below.or(`title.ilike.%${term}%,company.ilike.%${term}%`, {
-        foreignTable: 'job',
-      });
-    }
+    below = applyDashboardFilters(below, filterOpts);
     const { count: belowCount } = await below;
     hiddenBelowThreshold = belowCount ?? 0;
   }
