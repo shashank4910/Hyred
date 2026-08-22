@@ -681,7 +681,6 @@ export function JobActions({
           onUnstage={onUnstage}
           onOptimize={optimize}
           generating={generatingResume}
-          hasResume={!!atsResume}
         />
 
         {/* Keyword manager — advanced control, shown once a tailored resume

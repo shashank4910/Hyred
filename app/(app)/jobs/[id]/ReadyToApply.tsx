@@ -98,7 +98,6 @@ export function ReadyToApply({
   onUnstage,
   onOptimize,
   generating,
-  hasResume,
 }: {
   matchId: string;
   staged: string[];
@@ -106,7 +105,6 @@ export function ReadyToApply({
   onUnstage: (kw: string) => void;
   onOptimize: (keywordsOverride?: string[]) => void;
   generating: boolean;
-  hasResume: boolean;
 }) {
   const [phase, setPhase] = useState<Phase>('idle');
   const [step, setStep] = useState(0);
@@ -133,7 +131,7 @@ export function ReadyToApply({
         setErrorMsg(
           data?.error === 'no_resume'
             ? 'Upload your resume first, then come back.'
-            : 'We could not analyze this job. You can still tailor without the check.',
+            : 'We could not analyze this job. You can still tailor your resume below.',
         );
         setPhase('error');
         return null;
@@ -142,17 +140,22 @@ export function ReadyToApply({
       setPhase('ready');
       return data as StudioAnalysis;
     } catch {
-      setErrorMsg('Connection dropped mid-analysis. You can still tailor without the check.');
+      setErrorMsg('Connection dropped mid-analysis. You can still tailor your resume below.');
       setPhase('error');
       return null;
     }
   }, [matchId]);
 
-  /** The one button: analyze, then build with the smart keyword set. */
-  async function tailorNow() {
-    const result = await analyze();
-    const preselected = result?.preselected;
-    onOptimize(preselected && preselected.length > 0 ? preselected : undefined);
+  /** Tailor uses the smart keyword set when the check has run. */
+  function tailorNow() {
+    const preselected = analysis?.preselected;
+    if (preselected && preselected.length > 0) {
+      onOptimize(preselected);
+    } else if (staged.length > 0) {
+      onOptimize(staged);
+    } else {
+      onOptimize();
+    }
   }
 
   const isStaged = (kw: string) =>
@@ -180,39 +183,43 @@ export function ReadyToApply({
       aria-label="Tailor resume"
       className="mb-5 rounded-2xl border border-primary/15 bg-lime-brand/5 p-5"
     >
-      {/* Before: the one button they came for */}
-      {!hasResume && phase !== 'ready' && phase !== 'analyzing' && (
-        <div className="flex flex-wrap items-center justify-between gap-4">
+      {/* The panel is always visible and self-explanatory */}
+      {phase !== 'analyzing' && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="flex items-center gap-2 text-sm font-bold text-ink">
               <Wand2 className="h-4 w-4 text-primary" />
-              Tailor your resume for this job
+              How well do you fit this job?
             </h3>
             <p className="mt-0.5 text-xs leading-snug text-on-surface-variant">
-              We read the job, match it against your experience, pick the right
-              keywords, and build the resume. One click.
+              We check the job's requirements against your real experience -
+              and tell you the truth about the gaps.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={tailorNow}
-            disabled={generating}
-            className="btn-primary text-sm disabled:opacity-60"
-          >
-            {generating ? 'Building...' : 'Tailor my resume'}
-          </button>
-        </div>
-      )}
-
-      {/* Returning user with a resume: small re-check affordance */}
-      {hasResume && phase !== 'ready' && phase !== 'analyzing' && (
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs text-on-surface-variant">
-            Want to know how well this resume fits the job before sending it?
-          </p>
-          <button type="button" onClick={tailorNow} className="btn text-xs">
-            {generating ? 'Working...' : 'Check my fit'}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {phase !== 'ready' && (
+              <button type="button" onClick={analyze} className="btn text-xs">
+                Check my fit
+              </button>
+            )}
+            {phase === 'ready' && (
+              <button
+                type="button"
+                onClick={analyze}
+                className="text-xs font-semibold text-primary underline-offset-2 hover:underline"
+              >
+                Re-check
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={tailorNow}
+              disabled={generating}
+              className="btn-primary text-xs disabled:opacity-60"
+            >
+              {generating ? 'Building...' : 'Tailor my resume'}
+            </button>
+          </div>
         </div>
       )}
 
@@ -265,54 +272,27 @@ export function ReadyToApply({
       )}
 
       {phase === 'error' && (
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-primary/10 pt-4">
           <p className="text-xs text-on-surface-variant">{errorMsg}</p>
-          <div className="flex gap-2">
-            <button type="button" onClick={analyze} className="btn text-xs">
-              Try the check again
-            </button>
-            {!hasResume && (
-              <button
-                type="button"
-                onClick={() => onOptimize()}
-                className="btn-primary text-xs"
-              >
-                Build anyway
-              </button>
-            )}
-          </div>
+          <button type="button" onClick={analyze} className="btn text-xs">
+            Try again
+          </button>
         </div>
       )}
 
       {/* After: plain-language results */}
       {phase === 'ready' && analysis && (
-        <div>
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h3 className="text-base font-extrabold tracking-tight text-ink">{headline}</h3>
-              <div className="mt-1.5 flex flex-wrap items-center gap-x-5 gap-y-1.5">
-                <ScoreLine label="ATS match" score={analysis.robotScore} barClass="bg-lime-brand" />
-                <ScoreLine label="Recruiter appeal" score={analysis.humanScore} barClass="bg-primary" />
-              </div>
-              {analysis.verdictLine && (
-                <p className="mt-2 text-sm leading-snug text-on-surface-variant">
-                  {analysis.verdictLine}
-                </p>
-              )}
+        <div className="mt-4 border-t border-primary/10 pt-4">
+          <div className="min-w-0">
+            <h3 className="text-base font-extrabold tracking-tight text-ink">{headline}</h3>
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-5 gap-y-1.5">
+              <ScoreLine label="ATS match" score={analysis.robotScore} barClass="bg-lime-brand" />
+              <ScoreLine label="Recruiter appeal" score={analysis.humanScore} barClass="bg-primary" />
             </div>
-            {!hasResume && (
-              <button
-                type="button"
-                onClick={() =>
-                  onOptimize(
-                    analysis.preselected.length > 0 ? analysis.preselected : undefined,
-                  )
-                }
-                disabled={generating}
-                className="btn-primary text-sm disabled:opacity-60"
-              >
-                {generating ? 'Building...' : 'Build my resume'}
-              </button>
+            {analysis.verdictLine && (
+              <p className="mt-2 text-sm leading-snug text-on-surface-variant">
+                {analysis.verdictLine}
+              </p>
             )}
           </div>
 
