@@ -29,32 +29,44 @@ export default async function JobMatchPage({
   const decodedReturn = sp.return ? decodeURIComponent(sp.return) : '';
   const isSafeReturn = decodedReturn.startsWith('/');
   const backHref = isSafeReturn ? decodedReturn : `/?from=${id}`;
-  const profile0 = await getCurrentProfile();
+  // Parallel auth resolution — these were sequential round trips (each does
+  // its own auth.getUser() + profile query) and added a second auth hop of
+  // pure latency to every job page view.
+  const [profile0, isAdmin] = await Promise.all([
+    getCurrentProfile(),
+    isCurrentUserAdmin(),
+  ]);
   if (!profile0) notFound();
-  const isAdmin = await isCurrentUserAdmin();
   const sb = supabaseAdmin();
 
-  await sb
+  // Mark-as-viewed AND fetch the row in one round trip when possible:
+  // update(...).select() returns the full row only when it actually flipped
+  // 'new' → 'viewed'. When the status was already 'viewed' (repeat visits,
+  // the common case) zero rows match, so we fall back to a plain select.
+  const VIEW_SELECT = `id, llm_score, similarity, reason, status, bookmarked, matched_skills, missing_skills, cover_letter, notes, applied_at, tailored_resume_text, tailored_resume_url,
+       profile:profiles(insights),
+       job:jobs(id, title, company, location, remote, url, source, salary, description, posted_at, fetched_at, tags)`;
+  const { data: updatedMatch } = await sb
     .from('matches')
     .update({ status: 'viewed' })
     .eq('id', id)
     .eq('profile_id', profile0.id)
-    .eq('status', 'new');
+    .eq('status', 'new')
+    .select(VIEW_SELECT)
+    .maybeSingle();
 
   // Main match row + the two independent lookups run together — they were
   // sequential round trips before (resume versions and premium status don't
   // depend on the match row).
   const [{ data: match }, { data: resumeVersions }, { data: premiumSub }] = await Promise.all([
-    sb
-      .from('matches')
-      .select(
-        `id, llm_score, similarity, reason, status, bookmarked, matched_skills, missing_skills, cover_letter, notes, applied_at, tailored_resume_text, tailored_resume_url,
-       profile:profiles(insights),
-       job:jobs(id, title, company, location, remote, url, source, salary, description, posted_at, fetched_at, tags)`,
-      )
-      .eq('id', id)
-      .eq('profile_id', profile0.id)
-      .maybeSingle(),
+    updatedMatch
+      ? Promise.resolve({ data: updatedMatch })
+      : sb
+          .from('matches')
+          .select(VIEW_SELECT)
+          .eq('id', id)
+          .eq('profile_id', profile0.id)
+          .maybeSingle(),
     sb
       .from('resume_versions')
       .select('id, label, ats_match_score, created_at')
@@ -95,11 +107,23 @@ export default async function JobMatchPage({
   // saw a partial JD until a hard refresh re-queried the updated row.
   // Now we fetch + persist it here, server-side, so the first render is complete.
   // ensureFullDescription is idempotent: a no-op once the JD is long enough.
-  const fullDescription = await ensureFullDescription({
-    jobId: job.id,
-    currentDescription: job.description,
-    url: job.url,
-  });
+  //
+  // TIME-BOXED to 2.5s: the fetch hits the company's career page over the
+  // internet (12s timeout inside jd-fetcher) — a slow site used to block the
+  // ENTIRE page render for 5-6s. If the fetch can't win in 2.5s we render
+  // with the stored description instead; the ingest/scan path still does the
+  // full unbounded fetch and persistence, so the JD self-heals for the next
+  // visit.
+  const fullDescription = await Promise.race([
+    ensureFullDescription({
+      jobId: job.id,
+      currentDescription: job.description,
+      url: job.url,
+    }),
+    new Promise<string | null>((resolve) =>
+      setTimeout(() => resolve(job.description), 2_500),
+    ),
+  ]);
 
   // Dynamic self-healing: Recalculate matched skills using the full description
   // and the user's top profile skills if they are not in sync.
