@@ -96,7 +96,7 @@ function cacheRowIsSane(cache: JobAnalysisCache): boolean {
   // 5000-char truncated JD that silently dropped the JD's tail sections —
   // one-time invalidation re-extracts them). Also self-heal garbled rows.
   return (
-    (cache as { v?: number }).v === 3 &&
+    (cache as { v?: number }).v === 4 &&
     cache.requirements.length >= 8 &&
     cache.keywords.length >= 18 &&
     cache.requirements.every((r) => {
@@ -106,54 +106,43 @@ function cacheRowIsSane(cache: JobAnalysisCache): boolean {
   );
 }
 
+const MAX_KEYWORDS = 22;
+const MAX_DOMAIN_TERMS = 3;
+
 async function extractJobAnalysis(
   job: { id: string; title: string; description: string | null },
 ): Promise<JobAnalysisCache> {
-  // 12000 chars (~3k tokens) — JD "Preferred Skills" sections live at the
-  // END of the posting; a 5000-char window silently deleted JMeter/k6-class
-  // tools from the AI's input (Session 47 bug). One cached call per job, so
-  // the larger prompt costs nothing extra after the first analysis.
+  // 12000 chars - JD "Preferred Skills" sections live at the END of the
+  // posting; a shorter window silently deleted JMeter/k6-class tools from
+  // the AI's input (Session 47 bug). Cached once per job, so the larger
+  // prompt costs nothing after the first analysis.
   const jd = sanitizeJobDescriptionForAI(job.description ?? '').slice(0, 12000);
-  const raw = await chat(
-    'You analyze job descriptions for a resume tool. Output strict JSON only.',
-    `Analyze this job posting and return TWO lists in one JSON.
 
-REQUIREMENTS (the hiring checklist):
+  // ── Call 1: the requirement checklist (focused, unchanged behavior) ──────
+  const reqRaw = await chat(
+    'You extract structured hiring requirements from job descriptions. Output strict JSON only.',
+    `Extract the real requirements from this job posting. Return JSON:
 {"requirements":[{"keyword":"...","type":"tool|activity|concept|education|experience|soft","weight":"must|nice"}]}
+Rules:
 - 8 to ${MAX_REQUIREMENTS} items.
-- keyword MUST be a short canonical noun phrase of 1-4 words that a resume could contain verbatim: "JMeter", "thread dump analysis", "distributed systems", "capacity planning", "Bachelor degree", "performance testing".
+- keyword MUST be a short canonical noun phrase of 1-4 words that a resume could contain verbatim: "JMeter", "thread dump analysis", "distributed systems", "Bachelor degree".
 - NEVER extract verbs, clauses, or full sentences ("recognize performance issues in..." is WRONG - "performance issue analysis" is right).
-- Extract experience as a SHORT phrase like "performance testing experience"; education as "Bachelor degree" or "Bachelor degree in Computer Science".
+- Extract experience as a SHORT phrase like "performance testing experience"; education as "Bachelor degree".
 - "must" only when the JD clearly requires it (must-have section, explicit "required"); otherwise "nice".
-- No duplicates, no garbled fragments, no soft-skill soup (at most 2 soft skills).
-
-ATS KEYWORDS (the full scanner list):
-{"keywords":[{"keyword":"...","type":"tool|activity"}]}
-- 20-30 keywords covering the WHOLE posting, including the "Preferred Skills" / "Nice to have" sections near the end: every specific tool, technology, framework, language, platform, methodology, metric, testing type, and named process an ATS would search for.
-- "tool" = a NAMED product/language/platform (JMeter, Gatling, k6, JProfiler, JVM, Kubernetes, OpenTelemetry); "activity" = everything else (memory management, load testing, SLA, fault tolerance).
-- Use the JD's exact phrasing, 1-3 words, skip generic soft skills ("communication", "leadership").
-- Do NOT omit specific named tools that appear ANYWHERE in the JD, including preferred/nice-to-have sections (e.g. if "JMeter", "k6", or "Gatling" appears, each MUST be in the list).
+- No duplicates, no garbled fragments, at most 2 soft skills.
 
 JOB TITLE: ${job.title}
 
 JOB DESCRIPTION:
-${jd}
-
-Return JSON: {"requirements":[...],"keywords":[...]}`,
+${jd}`,
     0.2,
     true,
     'match_studio_requirements',
   );
-
-  const parsed = safeJson<{
-    requirements?: CachedRequirement[];
-    keywords?: StudioKeyword[];
-  }>(raw);
-  if (!parsed) throw new Error('Could not parse job analysis');
-
+  const reqParsed = safeJson<{ requirements?: CachedRequirement[] }>(reqRaw);
   const seenR = new Set<string>();
   const requirements: CachedRequirement[] = [];
-  for (const r of parsed.requirements ?? []) {
+  for (const r of reqParsed?.requirements ?? []) {
     const kw = String(r?.keyword ?? '').trim();
     if (!kw || kw.length > 60) continue;
     const key = kw.toLowerCase();
@@ -168,19 +157,54 @@ Return JSON: {"requirements":[...],"keywords":[...]}`,
   }
   if (requirements.length === 0) throw new Error('Could not read job requirements');
 
+  // ── Call 2: ATS keywords with PHASED judgment (density, not breadth) ────
+  // The failure this prevents: an unranked "list everything" prompt spends
+  // the cap on domain wallpaper ("financial services") and drops named tools
+  // ("JMeter") - the exact tokens recruiters type into an ATS.
+  const kwRaw = await chat(
+    'You select the exact keywords a recruiter would type into an ATS to find candidates for this job. Named tools outrank every other term. Output strict JSON only.',
+    `Select the ATS keywords for this posting. Work in PHASES, in this order:
+
+PHASE 1 - TOOL CENSUS (this layer is NEVER trimmed later): list EVERY distinct named tool, technology, framework, programming language, platform, product, database, and certification that appears ANYWHERE in the posting - required AND preferred/nice-to-have sections, including tools mentioned only as examples ("tools such as JMeter, Gatling, k6" means JMeter AND Gatling AND k6 each get their own entry). Use the posting's exact spelling.
+
+PHASE 2 - SKILLS: add the strongest non-tool skills: testing types, methodologies, metrics, technical concepts. Rank by (a) appears in a Required/must-have section, (b) how many times the posting repeats it, (c) how central it is to the role's title.
+
+PHASE 3 - TRIM to at most ${MAX_KEYWORDS} total. If over budget, cut in this order: domain/industry phrases first, then repeated concepts, then activities. NEVER cut a named tool to make room for a non-tool. Keep at most ${MAX_DOMAIN_TERMS} domain/industry phrases (e.g. "financial services", "payment processing"). Zero soft skills ("communication", "leadership").
+
+Each entry: {"keyword":"...","type":"tool"} for named products/languages/platforms, {"keyword":"...","type":"activity"} for everything else. 1-3 words, JD's exact phrasing.
+
+JOB TITLE: ${job.title}
+
+JOB DESCRIPTION:
+${jd}
+
+Return JSON: {"keywords":[{"keyword":"...","type":"tool|activity"}]}`,
+    0.15,
+    true,
+    'match_studio_keywords',
+  );
+
+  const kwParsed = safeJson<{ keywords?: StudioKeyword[] }>(kwRaw);
+  const tools: StudioKeyword[] = [];
+  const activities: StudioKeyword[] = [];
   const seenK = new Set<string>();
-  const keywords: StudioKeyword[] = [];
-  for (const k of parsed.keywords ?? []) {
+  for (const k of kwParsed?.keywords ?? []) {
     const kw = String(k?.keyword ?? '').trim();
     if (!kw || kw.length < 2 || kw.length > 60) continue;
     const key = kw.toLowerCase();
     if (seenK.has(key)) continue;
+    // Anti-hallucination: every keyword must actually appear in the JD text.
+    if (!keywordInText(kw, jd)) continue;
     seenK.add(key);
-    keywords.push({ keyword: kw, type: k?.type === 'tool' ? 'tool' : 'activity' });
-    if (keywords.length >= 30) break;
+    const entry: StudioKeyword = { keyword: kw, type: k?.type === 'tool' ? 'tool' : 'activity' };
+    if (entry.type === 'tool') tools.push(entry);
+    else activities.push(entry);
   }
+  // Deterministic composition: tools are untouchable and always lead the
+  // list; activities fill the remainder of the budget.
+  const keywords = [...tools, ...activities].slice(0, Math.max(tools.length, MAX_KEYWORDS));
 
-  return { v: 3, requirements, keywords };
+  return { v: 4, requirements, keywords };
 }
 
 /**
