@@ -103,6 +103,7 @@ How to open one section cheaply: `grep -n "<heading text>" CONTEXT.md` to get th
 6. **Multi-user:** resolve the user with `getCurrentProfile()` (`lib/current-user.ts`); scope every user-data query by `profile_id`. Never use the old "first profile" pattern.
 7. **Free infra only** beyond API keys (owner constraint). No paid services without asking.
 8. **Auto-commit + push everything (Freebuff rule, `.freebuff/rules.md`):** committing/pushing is part of every task — never ask "should I commit/push/merge?". After any change (fix, feature, docs, config, rules, extension work): commit on a fresh branch, push immediately, open a PR, merge when CI is green, verify live, and end the session with zero uncommitted work.
+9. **Explain simply, always:** every explanation to the user must use easy, everyday words and at least one simple relatable example or analogy. No jargon without a plain-language gloss. Lead with "what was the problem → what was fixed → what it means for you" in story form (e.g. "the app kept re-asking the expert about candidates it already rejected" beats "idempotency was missing"). Code/comments stay technical; user-facing explanations stay simple.
 
 ---
 
