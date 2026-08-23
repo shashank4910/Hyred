@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { analyzeMatchStudio } from '@/lib/match-studio';
+import { analyzeMatchStudio, buildProposedChanges } from '@/lib/match-studio';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -16,7 +16,11 @@ export async function POST(
   const { id } = await params;
   try {
     const analysis = await analyzeMatchStudio(id);
-    return NextResponse.json(analysis);
+    // Story-first review: the deterministic preview of concrete changes (reframed
+    // bullets + missing must-haves). Stateless — Accept/Skip lives client-side.
+    // No regeneration, no DB write, no quota charge (free-tier friendly).
+    const changes = buildProposedChanges(analysis);
+    return NextResponse.json({ ...analysis, changes });
   } catch (e) {
     const msg = (e as Error).message;
     if (msg === 'Not authenticated') {

@@ -333,8 +333,12 @@ export function JobActions({
 
 
   // The single action. Generates (or regenerates in-place) the resume, weaving
-  // in exactly the staged keywords. Keeps the current resume visible while it
-  // runs, and reports the score change.
+  // in exactly the accepted keywords and keeping out the excluded ones. Keeps the
+  // current resume visible while it runs, and reports the score change.
+  //
+  // Accepts two call shapes from the two entry points:
+  //   - ReadyToApply's story-first review:  optimize({ selected, excluded })
+  //   - KeywordManager's chips:             optimize() — uses the staged set
   function mergeKeywordLists(base: string[], add: string[]): string[] {
     const have = new Set(base.map((k) => k.toLowerCase()));
     const next = [...base];
@@ -348,22 +352,38 @@ export function JobActions({
     return next;
   }
 
-  async function optimize(keywordsOverride?: string[]) {
+  async function optimize(keywordsOverride?: string[] | { selected?: string[]; excluded?: string[] }) {
     setGeneratingResume(true);
     const firstRun = !atsResume;
     const id = toast.loading(firstRun ? 'Optimizing your resume...' : 'Re-optimizing...');
     const oldScore = keywords?.ats_match_score ?? null;
-    const keywordsToWeave =
-      keywordsOverride && keywordsOverride.length > 0
-        ? keywordsOverride
-        : selectedKeywordsRef.current;
+
+    // Resolve the weave set + exclusion set from whichever entry point fired.
+    let keywordsToWeave: string[] = [];
+    let excludedToWeave: string[] = [];
+    let useOverrideInline: string[] | undefined;
+    if (Array.isArray(keywordsOverride)) {
+      useOverrideInline = keywordsOverride;
+    } else if (keywordsOverride && typeof keywordsOverride === 'object') {
+      keywordsToWeave = keywordsOverride.selected ?? [];
+      excludedToWeave = keywordsOverride.excluded ?? [];
+    }
+    if (useOverrideInline) {
+      keywordsToWeave = useOverrideInline;
+    }
+    if (keywordsToWeave.length === 0 && excludedToWeave.length === 0) {
+      keywordsToWeave = selectedKeywordsRef.current;
+    }
+    const jdUniverse = jdKeywords.length > 0 ? jdKeywords : undefined;
+
     try {
       const res = await fetch(`/api/match/${matchId}/resume`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           selectedKeywords: keywordsToWeave.length > 0 ? keywordsToWeave : undefined,
-          jdKeywords: jdKeywords.length > 0 ? jdKeywords : undefined,
+          excludedKeywords: excludedToWeave.length > 0 ? excludedToWeave : undefined,
+          jdKeywords: jdUniverse,
           keywordTypes: Object.keys(keywordTypes).length > 0 ? keywordTypes : undefined,
         }),
       });
@@ -690,9 +710,6 @@ export function JobActions({
             exists, so first-time users see exactly one way forward. */}
         <ReadyToApply
           matchId={matchId}
-          staged={selectedKeywords}
-          onStage={onStage}
-          onUnstage={onUnstage}
           onOptimize={optimize}
           generating={generatingResume}
           onAnalysis={handleStudioAnalysis}

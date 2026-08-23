@@ -1,8 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, Minus, Radar, ChevronDown, Wand2, ShieldCheck } from 'lucide-react';
-import type { StudioAnalysis, StudioRequirement } from '@/lib/match-studio';
+import { Check, Wand2, ShieldCheck, Sparkles } from 'lucide-react';
+import type { StudioAnalysis, ProposedChange } from '@/lib/match-studio';
 
 type Phase = 'idle' | 'analyzing' | 'error' | 'ready';
 
@@ -64,26 +64,6 @@ function ScoreLine({
   );
 }
 
-function StateIcon({ state }: { state: StudioRequirement['state'] }) {
-  if (state === 'proven')
-    return (
-      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-lime-brand">
-        <Check className="h-3 w-3 text-ink" strokeWidth={3} />
-      </span>
-    );
-  if (state === 'inferred')
-    return (
-      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-orange-100">
-        <Radar className="h-3 w-3 text-orange-700" strokeWidth={2.5} />
-      </span>
-    );
-  return (
-    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink/5">
-      <Minus className="h-3 w-3 text-muted" strokeWidth={2.5} />
-    </span>
-  );
-}
-
 /**
  * One door, one button. The analysis is the invisible brain behind
  * "Tailor my resume" - the user never has to understand a "fit check".
@@ -93,18 +73,13 @@ function StateIcon({ state }: { state: StudioRequirement['state'] }) {
  */
 export function ReadyToApply({
   matchId,
-  staged,
-  onStage,
-  onUnstage,
   onOptimize,
   generating,
   onAnalysis,
 }: {
   matchId: string;
-  staged: string[];
-  onStage: (kw: string) => void;
-  onUnstage: (kw: string) => void;
-  onOptimize: (keywordsOverride?: string[]) => void;
+  /** Apply the tailorable resume. `selected` = keywords to weave in; `excluded` = keywords to keep OUT (skipped reframes). */
+  onOptimize: (opts?: { selected?: string[]; excluded?: string[] }) => void;
   generating: boolean;
   /** Notifies the parent (KeywordManager wiring) when an analysis lands. */
   onAnalysis?: (analysis: StudioAnalysis) => void;
@@ -112,8 +87,12 @@ export function ReadyToApply({
   const [phase, setPhase] = useState<Phase>('idle');
   const [step, setStep] = useState(0);
   const [analysis, setAnalysis] = useState<StudioAnalysis | null>(null);
+  const [changes, setChanges] = useState<ProposedChange[]>([]);
+  // Accept/skip state for each reframe, keyed by change id. Missing warnings
+  // are never accept-able (you don't claim a tool you lack), so only reframes
+  // appear here. Default: reframes are pre-accepted; the user can skip any.
+  const [decisions, setDecisions] = useState<Record<string, boolean>>({});
   const [errorMsg, setErrorMsg] = useState('');
-  const [showAll, setShowAll] = useState(false);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
@@ -140,6 +119,17 @@ export function ReadyToApply({
         return null;
       }
       setAnalysis(data as StudioAnalysis);
+      const proposed = (data as StudioAnalysis & { changes?: ProposedChange[] }).changes ?? [];
+      setChanges(proposed);
+      // Pre-accept every reframe (they reflect real, unwritten experience). Missing
+      // warnings are not in the map because they are never accept-able.
+      setDecisions(
+        Object.fromEntries(
+          proposed
+            .filter((c) => c.kind === 'reframe')
+            .map((c) => [c.id, true]),
+        ),
+      );
       setPhase('ready');
       onAnalysis?.(data as StudioAnalysis);
       return data as StudioAnalysis;
@@ -150,29 +140,31 @@ export function ReadyToApply({
     }
   }, [matchId, onAnalysis]);
 
-  /** Tailor uses the smart keyword set when the check has run. */
+  /** Which accepted reframes should be woven in (their keywords). */
+  const acceptedReframes = changes.filter(
+    (c) => c.kind === 'reframe' && decisions[c.id],
+  );
+
+  /**
+   * Tailor my resume: runs the analysis if not yet done (landing on the review),
+   * otherwise the proposed changes are already visible. Never applies silently —
+   * the user confirms each change, then taps Apply.
+   */
   function tailorNow() {
-    const preselected = analysis?.preselected;
-    if (preselected && preselected.length > 0) {
-      onOptimize(preselected);
-    } else if (staged.length > 0) {
-      onOptimize(staged);
-    } else {
-      onOptimize();
+    if (!analysis) {
+      analyze();
     }
   }
 
-  const isStaged = (kw: string) =>
-    staged.some((k) => k.toLowerCase() === kw.toLowerCase());
+  /** Apply the accepted changes via the parent. Skipped reframes become exclusions. */
+  function applyChanges() {
+    const reframes = changes.filter((c) => c.kind === 'reframe');
+    const selected = reframes.filter((c) => decisions[c.id]).map((c) => c.keyword);
+    const excluded = reframes.filter((c) => !decisions[c.id]).map((c) => c.keyword);
+    onOptimize({ selected, excluded });
+  }
 
-  const suggestions = (analysis?.requirements ?? [])
-    .filter((r) => r.state === 'inferred' && r.suggestion)
-    .sort((a, b) => (a.weight === 'must' ? -1 : 1) - (b.weight === 'must' ? -1 : 1))
-    .slice(0, 3);
-
-  const missingMustHaves = (analysis?.requirements ?? []).filter(
-    (r) => r.state === 'absent' && r.weight === 'must',
-  );
+  const missingMustHaves = changes.filter((c) => c.kind === 'missing');
 
   const weak = Math.min(analysis?.robotScore ?? 100, analysis?.humanScore ?? 100);
   const headline =
@@ -300,121 +292,84 @@ export function ReadyToApply({
             )}
           </div>
 
-          {/* Quick wins: add what your work already proves */}
-          {suggestions.length > 0 && (
-            <div className="mt-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">
-                Quick wins - you have this experience, it's just not written down
-              </p>
-              <ul className="mt-2 divide-y divide-ink/5">
-                {suggestions.map((r) => {
-                  const on = isStaged(r.keyword);
+          {/* Review summary: how many changes to confirm before tailoring */}
+          <div className="mt-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">
+              Suggested changes
+            </p>
+            <ul className="mt-2 divide-y divide-ink/5">
+              {changes
+                .filter((c) => c.kind === 'reframe')
+                .map((c) => {
+                  const on = !!decisions[c.id];
                   return (
-                    <li key={r.keyword} className="py-3">
+                    <li key={c.id} className="py-3">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-semibold text-ink">{r.keyword}</p>
-                          {r.evidence && (
+                          <p className="text-sm font-semibold text-ink">{c.keyword}</p>
+                          {c.suggested && (
+                            <p className="mt-1 text-xs italic leading-snug text-on-surface-variant">
+                              {c.suggested}
+                            </p>
+                          )}
+                          {c.evidence && (
                             <p className="mt-0.5 text-xs leading-snug text-on-surface-variant">
-                              {r.evidence}
+                              Why: {c.evidence}
                             </p>
                           )}
                         </div>
                         <button
                           type="button"
-                          onClick={() => (on ? onUnstage(r.keyword) : onStage(r.keyword))}
+                          onClick={() => setDecisions((prev) => ({ ...prev, [c.id]: !on }))}
                           className={
                             on
                               ? 'inline-flex items-center gap-1.5 rounded-full bg-ink px-3.5 py-1.5 text-xs font-bold text-white transition-colors hover:bg-ink/85'
-                              : 'inline-flex items-center gap-1.5 rounded-full bg-lime-brand px-3.5 py-1.5 text-xs font-bold text-ink transition-transform duration-150 hover:-translate-y-px active:translate-y-0'
+                              : 'inline-flex items-center gap-1.5 rounded-full bg-surface/60 px-3.5 py-1.5 text-xs font-bold text-ink transition-colors hover:bg-ink/85 hover:text-white'
                           }
                           aria-pressed={on}
                         >
                           {on ? (
                             <>
-                              <Check className="h-3.5 w-3.5" strokeWidth={3} /> Added - undo
+                              <Check className="h-3.5 w-3.5" strokeWidth={3} /> Will add
                             </>
                           ) : (
-                            'Add to resume'
+                            'Skip'
                           )}
                         </button>
                       </div>
                     </li>
                   );
                 })}
-              </ul>
-              {staged.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const merged = [...analysis.preselected];
-                    for (const k of staged) {
-                      if (!merged.some((m) => m.toLowerCase() === k.toLowerCase())) {
-                        merged.push(k);
-                      }
-                    }
-                    onOptimize(merged);
-                  }}
-                  disabled={generating}
-                  className="btn-primary mt-3 text-sm disabled:opacity-60"
-                >
-                  {generating
-                    ? 'Updating...'
-                    : `Update resume with ${staged.length} addition${staged.length === 1 ? '' : 's'}`}
-                </button>
-              )}
-            </div>
-          )}
-
-          {missingMustHaves.length > 0 && (
-            <p className="mt-4 flex items-start gap-2 text-xs leading-snug text-on-surface-variant">
-              <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
-              <span>
-                The job also asks for{' '}
-                <span className="font-semibold">
-                  {missingMustHaves.map((r) => r.keyword).join(', ')}
-                </span>
-                . We left those out because your resume doesn't show them - be ready to
-                speak to them in an interview.
-              </span>
-            </p>
-          )}
-
-          <button
-            type="button"
-            onClick={() => setShowAll((v) => !v)}
-            aria-expanded={showAll}
-            className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline underline-offset-2"
-          >
-            {showAll ? 'Hide' : 'Show'} the full {analysis.requirements.length}-point job check
-            <ChevronDown
-              className={`h-3.5 w-3.5 transition-transform duration-200 ${showAll ? 'rotate-180' : ''}`}
-            />
-          </button>
-          {showAll && (
-            <ul className="mt-2 divide-y divide-ink/5 rounded-xl border border-ink/8 bg-white px-3.5">
-              {analysis.requirements.map((r) => (
-                <li key={r.keyword} className="flex items-start gap-2.5 py-2.5">
-                  <StateIcon state={r.state} />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm text-ink">
-                      {r.keyword}
-                      <span className="ml-2 text-[0.65rem] font-medium uppercase tracking-wide text-muted">
-                        {r.weight === 'must' ? 'Required' : 'Nice to have'}
-                      </span>
-                    </p>
-                    {r.evidence && (
-                      <p className="mt-0.5 text-xs leading-snug text-on-surface-variant">
-                        {r.evidence}
-                      </p>
-                    )}
-                  </div>
-                </li>
-              ))}
             </ul>
-          )}
-        </div>
-      )}
+
+            {missingMustHaves.length > 0 && (
+              <p className="mt-3 flex items-start gap-2 text-xs leading-snug text-on-surface-variant">
+                <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                <span>
+                  The job also asks for{' '}
+                  <span className="font-semibold">
+                    {missingMustHaves.map((c) => c.keyword).join(', ')}
+                  </span>
+                  . We recommend leaving those out — your resume doesn't show them, so
+                  claiming them would hurt. Be ready to speak to them in an interview.
+                </span>
+              </p>
+            )}
+
+            <button
+              type="button"
+              onClick={applyChanges}
+              disabled={generating}
+              className="btn-primary mt-4 text-sm disabled:opacity-60"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              {generating
+                ? 'Building...'
+                : `Tailor my resume with ${acceptedReframes.length} change${acceptedReframes.length === 1 ? '' : 's'}`}
+            </button>
+            </div>
+          </div>
+        )}
     </section>
   );
 }
