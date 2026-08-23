@@ -174,6 +174,9 @@ export function KeywordManager({
 
   return (
     <div className="space-y-3">
+      <p className="text-[10px] uppercase tracking-wide text-on-surface-variant font-medium mb-0.5">
+        What the ATS scanned — exact keywords from this posting, checked against your resume
+      </p>
       {/* Score / status header */}
       <div className={`relative flex items-center justify-between rounded-card border px-3 py-2 ${scoreTone}`}>
         <div className="flex items-center gap-2 min-w-0">

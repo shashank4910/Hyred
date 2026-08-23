@@ -46,6 +46,91 @@ export interface StudioAnalysis {
   analyzedAt: string;
 }
 
+/**
+ * A single proposed change in the story-first tailoring review. The review is
+ * stateless on the server: it is built on demand from the cached analysis, and
+ * Accept/Skip state lives client-side (same pattern as the existing keyword
+ * chips) until the user hits Apply.
+ */
+export type ProposedChangeKind = 'reframe' | 'missing';
+
+export interface ProposedChange {
+  id: string;
+  kind: ProposedChangeKind;
+  keyword: string;
+  type: string;
+  weight: 'must' | 'nice';
+  /**
+   * Proposed new text (a reframed bullet) — only for `reframe` changes. The
+   * engine never invents: this comes straight from the analysis's guarded
+   * suggestion, so it always contains the keyword verbatim and no fabricated
+   * metrics.
+   */
+  suggested?: string;
+  /** Human-readable justification (from the analysis's evidence line). */
+  evidence?: string;
+  /**
+   * Whether the change is pre-selected. Reframes are pre-selected when they
+   * come from a proven/inferred requirement; missing warnings are NEVER
+   * pre-selected — you do not auto-claim a tool you lack.
+   */
+  accepted: boolean;
+  /** The change must be applied only if accepted. */
+  required: boolean;
+}
+
+/**
+ * Derive the list of proposed changes for the story-first review from a fit
+ * analysis. This is a pure, deterministic transform of `analyzeMatchStudio`
+ * output — no LLM, no DB, no quota.
+ *
+ * Rules (value honesty over keyword breadth):
+ * - `proven` requirements need no change — dropped entirely.
+ * - `inferred` requirements with a bullet suggestion become a `reframe` (the
+ *   close-any wording you already have, but written to lead with the keyword).
+ * - `absent` must-haves become a `missing` warning (never auto-accepted).
+ * - `absent` nice-to-haves / soft skills / education are left out — they are
+ *   not ATS tokens you should fabricate.
+ */
+export function buildProposedChanges(analysis: StudioAnalysis): ProposedChange[] {
+  const changes: ProposedChange[] = [];
+
+  for (const r of analysis.requirements) {
+    if (r.state === 'proven') continue;
+
+    if (r.state === 'inferred' && !!r.suggestion) {
+      changes.push({
+        id: `reframe-${r.keyword.toLowerCase().replace(/\s+/g, '-')}`,
+        kind: 'reframe',
+        keyword: r.keyword,
+        type: r.type,
+        weight: r.weight,
+        suggested: r.suggestion,
+        evidence: r.evidence,
+        // Known-but-unwritten experience is safe to pre-tick (the skill is real).
+        accepted: true,
+        required: analysis.preselected.includes(r.keyword),
+      });
+      continue;
+    }
+
+    if (r.state === 'absent' && r.weight === 'must') {
+      changes.push({
+        id: `missing-${r.keyword.toLowerCase().replace(/\s+/g, '-')}`,
+        kind: 'missing',
+        keyword: r.keyword,
+        type: r.type,
+        weight: r.weight,
+        // Never pre-select an absent skill — claiming it would be fabrication.
+        accepted: false,
+        required: true,
+      });
+    }
+  }
+
+  return changes;
+}
+
 interface CachedRequirement {
   keyword: string;
   type: string;
