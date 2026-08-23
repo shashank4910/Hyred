@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { ArrowLeft, MapPin, Clock, FileText } from 'lucide-react';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { getCurrentProfile, isCurrentUserAdmin } from '@/lib/current-user';
-import { ensureFullDescription } from '@/lib/jd-fetcher';
+import { ensureFullDescription, stripHtml } from '@/lib/jd-fetcher';
 import { supplementMatchedFromProfile, filterMissingSkillsForJd } from '@/lib/match-skill-enrich';
 import { JobActions } from './JobActions';
 import { AutoApplyButton } from './AutoApplyButton';
@@ -125,6 +125,12 @@ export default async function JobMatchPage({
     ),
   ]);
 
+  // Render hygiene: whatever we render must be plain text. Some sources
+  // (LinkedIn detail endpoint) store HTML fragments; a failed backfill used
+  // to surface raw tags in the page. Strip defensively at the last mile.
+  const displayDescription = stripHtml(fullDescription ?? '').trim() ||
+    stripHtml(job.description ?? '').trim();
+
   // Dynamic self-healing: Recalculate matched skills using the full description
   // and the user's top profile skills if they are not in sync.
   const candidateSkills = (match.profile as any)?.insights?.top_skills;
@@ -166,7 +172,7 @@ export default async function JobMatchPage({
   const isPremium = Boolean(premiumSub?.plan && premiumSub.plan !== 'free');
   const tailoredText =
     (match as unknown as { tailored_resume_text?: string | null }).tailored_resume_text ?? '';
-  const jdRaw = fullDescription || job.description || 'No description.';
+  const jdRaw = displayDescription || 'No description.';
   const jdPreview =
     jdRaw.length > 120 ? `${jdRaw.slice(0, 120).trim()}…` : jdRaw;
 
@@ -292,7 +298,7 @@ export default async function JobMatchPage({
         defaultOpen={false}
       >
         <pre className="whitespace-pre-wrap text-sm text-on-surface-variant font-sans leading-relaxed max-h-[70vh] overflow-y-auto">
-          {fullDescription || job.description || 'No description.'}
+          {displayDescription || 'No description.'}
         </pre>
       </CollapsibleCard>
     </div>
