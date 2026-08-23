@@ -4,7 +4,11 @@
  */
 
 const DEFAULT_MAX_SLOTS = 25;
-const DEFAULT_MAX_WAIT_MS = 45_000;
+// Queuing must never eat a serverless route's function budget: the studio
+// route (60s) runs up to 3 sequential LLM calls, so waiting 45s for a slot
+// left no room for any of them (504 at ~61s). 12s still rides out brief
+// bursts while preserving most of the budget for actual model time.
+const DEFAULT_MAX_WAIT_MS = 12_000;
 // A slot held longer than this is treated as abandoned (serverless instance
 // frozen/killed before release) and reclaimed by the next acquirer. Must
 // exceed the slowest legitimate LLM call, including retries.

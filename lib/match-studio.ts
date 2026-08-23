@@ -203,10 +203,14 @@ async function extractJobAnalysis(
   // prompt costs nothing after the first analysis.
   const jd = sanitizeJobDescriptionForAI(job.description ?? '').slice(0, 12000);
 
-  // ── Call 1: the requirement checklist (focused, unchanged behavior) ──────
-  const reqRaw = await chat(
-    'You extract structured hiring requirements from job descriptions. Output strict JSON only.',
-    `Extract the real requirements from this job posting. Return JSON:
+  // ── Calls 1+2 in PARALLEL: requirement checklist + ATS keywords ──────────
+  // They share no data, and both are cached per job afterwards. Sequential
+  // execution doubled the cold-cache latency of every first analysis and was
+  // a direct contributor to the studio route's 60s timeout.
+  const [reqRaw, kwRaw] = await Promise.all([
+    chat(
+      'You extract structured hiring requirements from job descriptions. Output strict JSON only.',
+      `Extract the real requirements from this job posting. Return JSON:
 {"requirements":[{"keyword":"...","type":"tool|activity|concept|education|experience|soft","weight":"must|nice"}]}
 Rules:
 - 8 to ${MAX_REQUIREMENTS} items.
@@ -220,10 +224,34 @@ JOB TITLE: ${job.title}
 
 JOB DESCRIPTION:
 ${jd}`,
-    0.2,
-    true,
-    'match_studio_requirements',
-  );
+      0.2,
+      true,
+      'match_studio_requirements',
+    ),
+    chat(
+      'You select the exact keywords a recruiter would type into an ATS to find candidates for this job. Named tools outrank every other term. Output strict JSON only.',
+      `Select the ATS keywords for this posting. Work in PHASES, in this order:
+
+PHASE 1 - TOOL CENSUS (this layer is NEVER trimmed later): list EVERY distinct named tool, technology, framework, programming language, platform, product, database, and certification that appears ANYWHERE in the posting - required AND preferred/nice-to-have sections, including tools mentioned only as examples ("tools such as JMeter, Gatling, k6" means JMeter AND Gatling AND k6 each get their own entry). Use the posting's exact spelling.
+
+PHASE 2 - SKILLS: add the strongest non-tool skills: testing types, methodologies, metrics, technical concepts. Rank by (a) appears in a Required/must-have section, (b) how many times the posting repeats it, (c) how central it is to the role's title.
+
+PHASE 3 - TRIM to at most ${MAX_KEYWORDS} total. If over budget, cut in this order: domain/industry phrases first, then repeated concepts, then activities. NEVER cut a named tool to make room for a non-tool. Keep at most ${MAX_DOMAIN_TERMS} domain/industry phrases (e.g. "financial services", "payment processing"). Zero soft skills ("communication", "leadership").
+
+Each entry: {"keyword":"...","type":"tool"} for named products/languages/platforms, {"keyword":"...","type":"activity"} for everything else. 1-3 words, JD's exact phrasing.
+
+JOB TITLE: ${job.title}
+
+JOB DESCRIPTION:
+${jd}
+
+Return JSON: {"keywords":[{"keyword":"...","type":"tool|activity"}]}`,
+      0.15,
+      true,
+      'match_studio_keywords',
+    ),
+  ]);
+
   const reqParsed = safeJson<{ requirements?: CachedRequirement[] }>(reqRaw);
   const seenR = new Set<string>();
   const requirements: CachedRequirement[] = [];
@@ -242,33 +270,10 @@ ${jd}`,
   }
   if (requirements.length === 0) throw new Error('Could not read job requirements');
 
-  // ── Call 2: ATS keywords with PHASED judgment (density, not breadth) ────
-  // The failure this prevents: an unranked "list everything" prompt spends
-  // the cap on domain wallpaper ("financial services") and drops named tools
-  // ("JMeter") - the exact tokens recruiters type into an ATS.
-  const kwRaw = await chat(
-    'You select the exact keywords a recruiter would type into an ATS to find candidates for this job. Named tools outrank every other term. Output strict JSON only.',
-    `Select the ATS keywords for this posting. Work in PHASES, in this order:
-
-PHASE 1 - TOOL CENSUS (this layer is NEVER trimmed later): list EVERY distinct named tool, technology, framework, programming language, platform, product, database, and certification that appears ANYWHERE in the posting - required AND preferred/nice-to-have sections, including tools mentioned only as examples ("tools such as JMeter, Gatling, k6" means JMeter AND Gatling AND k6 each get their own entry). Use the posting's exact spelling.
-
-PHASE 2 - SKILLS: add the strongest non-tool skills: testing types, methodologies, metrics, technical concepts. Rank by (a) appears in a Required/must-have section, (b) how many times the posting repeats it, (c) how central it is to the role's title.
-
-PHASE 3 - TRIM to at most ${MAX_KEYWORDS} total. If over budget, cut in this order: domain/industry phrases first, then repeated concepts, then activities. NEVER cut a named tool to make room for a non-tool. Keep at most ${MAX_DOMAIN_TERMS} domain/industry phrases (e.g. "financial services", "payment processing"). Zero soft skills ("communication", "leadership").
-
-Each entry: {"keyword":"...","type":"tool"} for named products/languages/platforms, {"keyword":"...","type":"activity"} for everything else. 1-3 words, JD's exact phrasing.
-
-JOB TITLE: ${job.title}
-
-JOB DESCRIPTION:
-${jd}
-
-Return JSON: {"keywords":[{"keyword":"...","type":"tool|activity"}]}`,
-    0.15,
-    true,
-    'match_studio_keywords',
-  );
-
+  // Keyword parsing (the parallel call above). Phased judgment: an unranked
+  // "list everything" prompt spends the cap on domain wallpaper ("financial
+  // services") and drops named tools ("JMeter") - the exact tokens recruiters
+  // type into an ATS.
   const kwParsed = safeJson<{ keywords?: StudioKeyword[] }>(kwRaw);
   const tools: StudioKeyword[] = [];
   const activities: StudioKeyword[] = [];
@@ -359,6 +364,7 @@ function safeJson<T>(raw: string): T | null {
  * Full analysis for one (user, job). One cached call per job + one per user.
  */
 export async function analyzeMatchStudio(matchId: string): Promise<StudioAnalysis> {
+  const startedAt = Date.now();
   const profile = await getCurrentProfile();
   if (!profile) throw new Error('Not authenticated');
   if (!profile.resume_text) throw new Error('no_resume');
@@ -392,9 +398,17 @@ export async function analyzeMatchStudio(matchId: string): Promise<StudioAnalysi
 
   if (open.length > 0 || reqs.length > 0) {
     const resumeExcerpt = profile.resume_text!.slice(0, 9000);
-    const raw = await chat(
-      'You are a strict but fair hiring panel: a technical recruiter and an ATS in one. Output strict JSON only. Never invent resume facts.',
-      `A candidate's resume and a job's requirement checklist are below.
+    // Budget-aware grade call: the studio route has a hard 60s function cap.
+    // Reserve time for DB + response and give the LLM whatever remains; if
+    // that is too little for even one attempt (or the call fails), fail open —
+    // the deterministic robot score below still ships without the recruiter
+    // verdict. A timeout error must not 500 the whole analysis.
+    const gradeBudgetMs = Math.max(0, 52_000 - (Date.now() - startedAt));
+    let raw: string | null = null;
+    if (gradeBudgetMs >= 10_000) {
+      raw = await chat(
+        'You are a strict but fair hiring panel: a technical recruiter and an ATS in one. Output strict JSON only. Never invent resume facts.',
+        `A candidate's resume and a job's requirement checklist are below.
 
 TASK A — resolve each OPEN requirement (not found verbatim in the resume). Classify honestly:
 - "met": the resume CLEARLY satisfies it in different words. Example: JD asks "performance testing experience" / resume shows 7.7 years of performance engineering. Or JD asks "Bachelor degree in Computer Science" / resume has B.Tech in Information Technology.
@@ -418,13 +432,21 @@ RESUME:
 ${resumeExcerpt}
 
 Return JSON: {"resolved":[{"keyword":"...","kind":"met|inferred","evidence":"...","suggestion":"..."}],"recruiter":{"human_score":N,"verdict_line":"...","hooks":["..."],"watch_outs":["..."]}}`,
-      0.25,
-      true,
-      'match_studio_grade',
-      profile.id,
-    );
+        0.25,
+        true,
+        'match_studio_grade',
+        profile.id,
+      ).catch((e) => {
+        console.warn('[match-studio] grade call failed open:', (e as Error).message);
+        return null;
+      });
+    } else {
+      console.warn(
+        `[match-studio] skipping grade call, budget exhausted (${gradeBudgetMs}ms left)`,
+      );
+    }
 
-    const parsed = safeJson<{
+    const parsed = raw ? safeJson<{
       resolved?: Array<{
         keyword?: string;
         kind?: string;
@@ -437,7 +459,7 @@ Return JSON: {"resolved":[{"keyword":"...","kind":"met|inferred","evidence":"...
         hooks?: string[];
         watch_outs?: string[];
       };
-    }>(raw);
+    }>(raw) : null;
 
     if (parsed?.resolved?.length) {
       const byKw = new Map(
