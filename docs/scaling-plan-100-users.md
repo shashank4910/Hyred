@@ -2,7 +2,7 @@
 
 > **Created:** Aug 19, 2026
 > **Goal:** Scale Hyred from ~15 users to 100+ users with reliable AI scoring
-> **Status:** OpenRouter account created, awaiting $5 credit top-up
+> **Status:** ⚠️ SUPERSEDED Aug 23 (Session 49) — Cerebras/Bluesminds/Gemini/Groq all removed; the app now routes chat + embeddings to **OpenRouter only** (prepaid credit), with OpenAI gpt-4o-mini as the paid last resort. Sections below are kept for history.
 
 ---
 

@@ -101,14 +101,14 @@ Supabase → **Authentication → URL Configuration**:
 | `NEXT_PUBLIC_SUPABASE_URL` | ✅ | already set; now used for auth |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ | already set; now used for auth (anon key, not service key) |
 | `SUPABASE_SERVICE_ROLE_KEY` | ✅ | server-side privileged ops |
-| `OPENAI_API_KEY` | ✅ | LLM (testing primary/fallback) + embeddings |
-| `GROQ_API_KEY` | optional | free chat provider (Groq primary by default) |
+| `OPENROUTER_API_KEY` | ✅ | the ONLY chat provider (prepaid credit) + embeddings |
+| `OPENAI_API_KEY` | optional | paid LAST resort for chat |
 | `ADMIN_EMAIL` | recommended | the ONE email allowed into `/admin`; blank = Admin area off |
-| `LLM_PRIMARY` | optional | `groq` (default) or `openai` |
+| ~~`LLM_PRIMARY`~~ | ❌ removed | routing is fixed: OpenRouter → OpenAI (Session 49) |
 | ~~`AUTH_SECRET`~~ | ❌ removed | no longer used |
 | `APP_PASSWORD` | only if using the browser extension | unrelated to web sign-in now |
 
-**GitHub Actions secrets** (cron `Daily ingest`): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY`, `GROQ_API_KEY`, `ADZUNA_*`. (Leave `INGEST_PROFILE_EMAIL` blank so the cron scans **all** onboarded users.)
+**GitHub Actions secrets** (cron `Daily ingest`): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `OPENROUTER_API_KEY`, `ADZUNA_*`. (`OPENAI_API_KEY` only if you want the paid last resort.) (Leave `INGEST_PROFILE_EMAIL` blank so the cron scans **all** onboarded users.)
 
 ---
 
@@ -126,7 +126,7 @@ Supabase → **Authentication → URL Configuration**:
 
 - ✅ **`resumes` storage bucket is private** (migration **0019** + `lib/resume-storage.ts` signed URLs). **Run `0019_private_resumes_bucket.sql` in the Supabase SQL Editor** on each environment if not applied yet.
 - ✅ **Original resume file download** (migration **0020**) — run `0020_profile_original_resume.sql` so My Resume can store/download the exact uploaded PDF/DOCX (not a re-styled text PDF).
-- **No per-user quotas** → on a shared OpenAI key, an active stranger spends your money. Add quotas/BYOK before a public launch (Phase 3/4). See the Groq capacity + OpenAI cost analysis in `CONTEXT.md` Phase 3.
+- **No per-user quotas** → on a shared OpenAI key, an active stranger spends your money. Add quotas/BYOK before a public launch (Phase 3/4). See the provider cost analysis in `CONTEXT.md` Phase 3.
 - **Legal:** Privacy Policy + Terms exist; add in-app "delete account" before collecting strangers' resumes (Phase 4).
 
 For testing among a few known people, the current state is fine.

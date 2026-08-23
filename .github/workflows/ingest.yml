@@ -32,11 +32,13 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          # GROQ_API_KEY is the FREE chat fallback (Llama 3.3 70B) used when
-          # OpenAI's chat call fails. Embeddings are OpenAI text-embedding-3-small
-          # (1536 dims) - see lib/gemini.ts. Replaced Gemini (gemini-2.0-flash
-          # deprecated + free-tier 429, May 2026). Safe to keep even if unused.
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          # OPENROUTER_API_KEY is the ONLY chat provider (prepaid credit) and
+          # also serves embeddings (text-embedding-3-small via OpenRouter's
+          # OpenAI-compatible endpoint - see lib/gemini.ts). Groq/Gemini/
+          # Cerebras/Bluesminds were removed Aug 2026 (Session 49): every
+          # fallback tier was dead or 429ing, and chain fall-through made calls
+          # slow and flaky. OpenAI key below is the paid last resort.
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
           ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
           # Do NOT pass INGEST_PROFILE_EMAIL here. That secret is owner-only
