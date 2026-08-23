@@ -1,0 +1,57 @@
+# Hyred — AI-Powered Job Search Platform
+
+> Hyred (hyred.in) is an AI job-search dashboard that matches users to the right jobs, scores their fit, generates tailored resumes, and auto-fills applications.
+
+## What Hyred Does
+
+- **Job Matching**: AI scores how well your resume matches each job (0-100 fit score)
+- **Resume Tailoring**: Generates a customized resume optimized for each specific job
+- **Cover Letter Generation**: AI writes personalized cover letters per job
+- **ATS Resume Checker**: Scores your resume against Applicant Tracking Systems
+- **Auto-Apply**: Chrome extension that fills job applications automatically
+- **Job Aggregation**: Ingests jobs from LinkedIn, Indeed, Naukri, Adzuna, and 30+ ATS platforms
+
+## Public Pages (no auth required)
+
+- `/explore` — Browse and search all indexed jobs. Supports `?q=` search and `?source=` filter.
+- `/explore/[id]` — Individual job page with full description, company info, and structured data.
+- `/free-tools/ats-score-checker` — Free ATS resume scoring tool.
+- `/login` — Sign in / sign up.
+- `/contact` — Contact form.
+- `/privacy` — Privacy policy.
+- `/terms` — Terms of service.
+
+## Public API (no auth required)
+
+### Search Jobs
+```
+GET /api/explore/search?q={keyword}&source={source}&page={n}
+```
+Returns paginated job listings matching the query. Each result includes:
+- `id`, `title`, `company`, `location`, `remote`, `salary`, `source`, `posted_at`, `tags`, `url`
+
+### Get Job Details
+```
+GET /api/explore/job/{id}
+```
+Returns full job details including description, structured data, and apply URL.
+
+## Authenticated API (requires Hyred account)
+
+- `POST /api/coverletter` — Generate AI cover letter for a job match
+- `POST /api/ats-checker` — Score a resume against ATS criteria
+- `POST /api/ats-fix` — Get AI suggestions to improve resume ATS score
+- `POST /api/dream-companies` — Set up job alerts for dream companies
+
+## Data Schema (JSON-LD)
+
+Job pages use schema.org `JobPosting` structured data:
+- `title`, `description`, `datePosted`, `employmentType`
+- `hiringOrganization` (company name)
+- `jobLocation` (city/region)
+- `offers` (salary if available)
+
+## Contact
+
+- Website: https://hyred.in
+- Owner: Shashank

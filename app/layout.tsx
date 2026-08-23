@@ -6,7 +6,6 @@ import './globals.css';
 export const metadata: Metadata = {
   title: { default: 'Hyred', template: '%s · Hyred' },
   description: 'AI that matches you to the right jobs and tailors your resume to get you Hyred.',
-  robots: 'noindex, nofollow',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -1,0 +1,17 @@
+{
+  "schema_version": "v1",
+  "name_for_human": "Hyred",
+  "name_for_model": "hyred",
+  "description_for_human": "AI-powered job search: find jobs, check ATS resume score, generate tailored resumes and cover letters.",
+  "description_for_model": "Hyred is an AI job-search platform. Use it to search for jobs by keyword/location, check how well a resume scores against ATS systems, generate tailored resumes for specific jobs, and write personalized cover letters. Jobs are sourced from LinkedIn, Indeed, Naukri, and 30+ ATS platforms.",
+  "auth": {
+    "type": "none"
+  },
+  "api": {
+    "type": "openapi",
+    "url": "https://hyred.in/api/openapi.json"
+  },
+  "logo_url": "https://hyred.in/logo.png",
+  "contact_email": "support@hyred.in",
+  "legal_info_url": "https://hyred.in/terms"
+}

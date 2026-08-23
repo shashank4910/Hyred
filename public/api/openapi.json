@@ -1,0 +1,139 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Hyred Public API",
+    "description": "Public API for searching jobs on Hyred. No authentication required for search endpoints.",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Hyred Support",
+      "url": "https://hyred.in/contact"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://hyred.in",
+      "description": "Production"
+    }
+  ],
+  "paths": {
+    "/api/explore/search": {
+      "get": {
+        "operationId": "searchJobs",
+        "summary": "Search jobs",
+        "description": "Search for jobs by keyword, source, and pagination. Returns structured job listings with title, company, location, salary, and tags.",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Search keyword (matches title, company, description)",
+            "schema": { "type": "string" },
+            "example": "performance testing"
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "description": "Filter by job source",
+            "schema": {
+              "type": "string",
+              "enum": ["linkedin", "indeed", "naukri", "adzuna", "glassdoor", "jsearch", "greenhouse", "lever", "workday"]
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Page number (1-indexed, 24 results per page)",
+            "schema": { "type": "integer", "default": 1, "minimum": 1 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful search results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean" },
+                    "jobs": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/JobListing" }
+                    },
+                    "total": { "type": "integer" },
+                    "page": { "type": "integer" },
+                    "totalPages": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/explore/job/{id}": {
+      "get": {
+        "operationId": "getJob",
+        "summary": "Get job details",
+        "description": "Get full details for a specific job including description and apply URL.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Job ID",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Job details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean" },
+                    "job": { "$ref": "#/components/schemas/JobDetail" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Job not found"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "JobListing": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "company": { "type": "string", "nullable": true },
+          "location": { "type": "string", "nullable": true },
+          "remote": { "type": "boolean" },
+          "salary": { "type": "string", "nullable": true },
+          "source": { "type": "string" },
+          "posted_at": { "type": "string", "format": "date-time", "nullable": true },
+          "tags": { "type": "array", "items": { "type": "string" }, "nullable": true },
+          "url": { "type": "string", "format": "uri" }
+        }
+      },
+      "JobDetail": {
+        "allOf": [
+          { "$ref": "#/components/schemas/JobListing" },
+          {
+            "type": "object",
+            "properties": {
+              "description": { "type": "string", "nullable": true },
+              "fetched_at": { "type": "string", "format": "date-time" }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

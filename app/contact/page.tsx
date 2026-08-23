@@ -10,8 +10,25 @@ export const metadata: Metadata = {
 };
 
 export default function ContactPage() {
+  const structuredData = {
+    '@context': 'https://schema.org',
+    '@type': 'ContactPage',
+    name: 'Contact Hyred',
+    url: 'https://hyred.in/contact',
+    mainEntity: {
+      '@type': 'Organization',
+      name: 'Hyred',
+      url: 'https://hyred.in',
+      email: PUBLIC_CONTACT_EMAIL,
+    },
+  };
+
   return (
     <LegalDocumentLayout title="Contact us">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
       <p className="text-sm text-on-surface-variant mb-8">
         Questions about {PRODUCT_NAME}, feedback, bugs, or partnerships — we read every message and
         will get back to you as soon as we can.
