@@ -23,7 +23,7 @@ const USER_AGENT =
   'Mozilla/5.0 (compatible; JobRadarBot/1.0; +https://github.com/shashank4910/JobRadar)';
 
 /** Threshold below which we consider a description "truncated" and worth refetching. */
-const TRUNCATED_LENGTH_THRESHOLD = 1000;
+export const TRUNCATED_LENGTH_THRESHOLD = 1000;
 
 /**
  * Robust HTML → plain-text converter. Exported so all sources can share

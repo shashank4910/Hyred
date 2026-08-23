@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { ArrowLeft, MapPin, Clock, FileText } from 'lucide-react';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { getCurrentProfile, isCurrentUserAdmin } from '@/lib/current-user';
-import { ensureFullDescription, stripHtml } from '@/lib/jd-fetcher';
+import { ensureFullDescription, stripHtml, TRUNCATED_LENGTH_THRESHOLD } from '@/lib/jd-fetcher';
 import { supplementMatchedFromProfile, filterMissingSkillsForJd } from '@/lib/match-skill-enrich';
 import { JobActions } from './JobActions';
 import { AutoApplyButton } from './AutoApplyButton';
@@ -104,26 +104,28 @@ export default async function JobMatchPage({
   // Adzuna (and some other sources) truncate JDs to ~500 chars on ingest.
   // Previously the page rendered whatever was in the DB and the full JD was
   // only fetched later by background API calls (skills/resume) — so the user
-  // saw a partial JD until a hard refresh re-queried the updated row.
+  // saw a partial JD until a cold refresh re-queried the updated row.
   // Now we fetch + persist it here, server-side, so the first render is complete.
   // ensureFullDescription is idempotent: a no-op once the JD is long enough.
   //
-  // TIME-BOXED to 2.5s: the fetch hits the company's career page over the
-  // internet (12s timeout inside jd-fetcher) — a slow site used to block the
-  // ENTIRE page render for 5-6s. If the fetch can't win in 2.5s we render
-  // with the stored description instead; the ingest/scan path still does the
-  // full unbounded fetch and persistence, so the JD self-heals for the next
-  // visit.
-  const fullDescription = await Promise.race([
-    ensureFullDescription({
-      jobId: job.id,
-      currentDescription: job.description,
-      url: job.url,
-    }),
-    new Promise<string | null>((resolve) =>
-      setTimeout(() => resolve(job.description), 2_500),
-    ),
-  ]);
+  // We do NOT race this against a short timer anymore. That timer made
+  // truncation NONDETERMINISTIC — whether the full JD (fetched from the
+  // company's page over the internet) won or a slow network let the short
+  // stored copy slip in depended purely on timing. ensureFullDescription is
+  // already a fast same-process no-op when the stored JD is substantial
+  // (>= TRUNCATED_LENGTH_THRESHOLD), so the only jobs that ever wait on the
+  // network are exactly the truncated ones — the ones we must NEVER render
+  // truncated. We favor correctness (a complete JD) over shaving a rare
+  // slow fetch's latency.
+  const storedCleaned = stripHtml(job.description ?? '').trim();
+  const fullDescription =
+    storedCleaned.length >= TRUNCATED_LENGTH_THRESHOLD
+      ? storedCleaned
+      : await ensureFullDescription({
+          jobId: job.id,
+          currentDescription: storedCleaned,
+          url: job.url,
+        });
 
   // Render hygiene: whatever we render must be plain text. Some sources
   // (LinkedIn detail endpoint) store HTML fragments; a failed backfill used
