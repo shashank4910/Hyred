@@ -4,13 +4,13 @@ import { useState, useRef, useCallback } from 'react';
 import {
   Upload,
   FileText,
-  Loader2,
   XCircle,
   BarChart3,
   Search,
   BookOpen,
   ClipboardPaste,
 } from 'lucide-react';
+import { ScanLoader } from '@/app/_components/ScanLoader';
 import type { AtsCheckResult } from '@/lib/ats-checker';
 import type { AtsReport } from '@/lib/ats-report';
 import { ATS_SAMPLE_JD, ATS_SAMPLE_RESUME } from '@/lib/ats-checker-samples';
@@ -248,7 +248,7 @@ export function AtsCheckerWidget() {
         >
           {loading ? (
             <>
-              <Loader2 className="w-5 h-5 animate-spin" />
+              <ScanLoader size={0.3} />
               Analyzing resume...
             </>
           ) : (
