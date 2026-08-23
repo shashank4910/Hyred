@@ -349,6 +349,42 @@ export async function getJobKeywordsCached(
   return (await getJobAnalysis(sb, job)).keywords;
 }
 
+/**
+ * Cache-READ-ONLY keyword read for passive callers (page-load chip fetch).
+ *
+ * WHY THIS EXISTS (Session 53 RCA): the job page fires GET /api/match/[id]/resume
+ * on mount, and that route used getJobKeywordsCached — which EXTRACTS (2 LLM
+ * calls) on cache miss. When the user also clicked "Check my fit", the studio
+ * POST extracted the same job concurrently. Two parallel INSERT ... ON CONFLICT
+ * (job_id) DO UPDATE upserts on the same key deadlock in Postgres → BOTH roll
+ * back → the cache row never persists → every future visit re-extracts again,
+ * 4 LLM calls stack inside one 60s function window → 504 (observed live:
+ * two overlapping extraction pairs at 17:38 with NO resulting cache row).
+ *
+ * Rule: only the studio POST (single writer) may extract. Everyone else reads.
+ * Returns [] on miss — the caller falls back to job tags, and the chips fill
+ * in after the first fit check caches the row.
+ */
+export async function readJobKeywordsIfCached(
+  job: { id: string; title: string; description: string | null },
+): Promise<StudioKeyword[]> {
+  try {
+    const { supabaseAdmin } = await import('./supabase/server');
+    const sb = supabaseAdmin();
+    const { data: cached, error } = await sb
+      .from('jd_requirements')
+      .select('requirements')
+      .eq('job_id', job.id)
+      .maybeSingle();
+    if (error || !cached?.requirements) return [];
+    const row = parseCacheRow(cached.requirements);
+    if (row && cacheRowIsSane(row)) return row.keywords;
+    return [];
+  } catch {
+    return [];
+  }
+}
+
 function safeJson<T>(raw: string): T | null {
   try {
     const start = raw.indexOf('{');
