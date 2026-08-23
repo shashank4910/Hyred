@@ -249,15 +249,40 @@
     );
   }
 
+  /** Sites that are definitely NOT job application forms. */
+  function isNonJobSite() {
+    const h = HOST.toLowerCase();
+    return (
+      /google\.com|gmail\.com|youtube\.com|facebook\.com|twitter\.com|x\.com|instagram\.com|reddit\.com|github\.com|stackoverflow\.com|stackexchange\.com|wikipedia\.org|amazon\.com|medium\.com|notion\.so|docs\.google|drive\.google|calendar\.google|chat\.openai|openai\.com|anthropic\.com|perplexity\.ai/i.test(h) ||
+      /netflix\.com|spotify\.com|zoom\.us|slack\.com|discord\.com|twitch\.tv|apple\.com|microsoft\.com| office\.com/i.test(h)
+    );
+  }
+
   function shouldShowCopilotCard() {
     if (isConfirmationOrPostApplyPage()) return false;
+    if (isNonJobSite()) return false;
+
+    const ats = detectAts();
+    const isKnownAts = ats !== 'generic';
     const empty = countEmptyFillableFields();
-    if (empty >= 1) return true;
+
+    // Known ATS platforms (Workday, Greenhouse, Lever, etc.) — always show
+    if (isKnownAts && empty >= 1) return true;
+    // Cover letter / resume upload steps — always show
     if (isCoverLetterStep() || hasOptionalCoverLetterUpload()) return true;
     const resumeIn = findResumeFileInput();
     if (resumeIn && !resumeIn.files?.length) return true;
-    if ((isWorkdayDom() || isUniversalCareerSite()) && empty >= 1) return true;
-    return looksLikeApplicationForm() && empty >= 2;
+
+    // Generic / unknown sites — require strong signals:
+    //   - Multiple empty fields that look like an application form, OR
+    //   - A form action containing 'apply' (clear job-form intent)
+    const looksForm = looksLikeApplicationForm();
+    const hasApplyAction = !!document.querySelector('form[action*="apply"]');
+    const hasApplyId = !!document.querySelector('form[id*="application"], form[class*="application"]');
+    if (empty >= 3 && (looksForm || hasApplyAction || hasApplyId)) return true;
+    if (empty >= 2 && looksForm && (hasApplyAction || hasApplyId)) return true;
+
+    return false;
   }
 
   function estimateFillTargetCount() {
