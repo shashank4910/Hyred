@@ -2,6 +2,36 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 53 — "Check my fit" 504 saga: three stacked root causes + the cache-write race (Aug 23, 2026)
+
+**User report:** clicking "Check my fit" -> "The analysis timed out on our side" (Vercel `FUNCTION_INVOCATION_TIMEOUT`, 60s), repeatedly, even after an initial fix. This took THREE rounds to fully fix — the record is worth keeping.
+
+### Round 1 (PR #380) — slow LLM extraction
+**Evidence (`llm_usage_log`):** `match_studio_keywords` calls took **38–85s** on cold-cache jobs while `match_studio_requirements` took 1–6s. Root cause: the extraction prompt fed the full 12k-char JD with "list EVERY tool anywhere" — a huge output ask on OpenRouter's 8b model.
+**Fix:** `chat()` attempt timeout 25s→12s; JD window 12000→8000 chars; prompt TOOL CENSUS bounded (cap ~20 tools, no near-dups).
+**Deployed, but STILL 504.** → This fixed call length, not the blocker.
+
+### Fix 2 (PR #381) — the REAL blocker: a **cache-write race**
+Evidence in the failing window (17:38 UTC):
+```
+17:38:50 match_studio_requirements  3.2s   ← studio POST extraction
+17:38:53 match_studio_keywords      5.4s   ← studio POST extraction
+17:39:09 match_studio_requirements 18.2s   ← SECOND extraction, CONCURRENT
+17:39:14 match_studio_keywords     24.3s   ← "" 
+```
+**No cache row in `jd_requirements` for the job after BOTH succeeded.** Root cause: the job page fires `GET /api/match/[id]/resume` on mount to load chips, and that route called `getJobKeywordsCached`, which **extracts on cache-miss**. When the user clicked "Check my fit", the studio POST extracted the same job concurrently. Two parallel `INSERT ... ON CONFLICT (job_id) DO UPDATE` on the same key → **Postgres deadlock → both roll back → cache never persists → every visit re-extracts** → 4 LLM calls stack inside one studio request's 60s window → 504. The grade call then never completed (no `match_studio_grade` row for 2h) and died silently.
+
+**Fix:** Only the studio POST may extract (single writer). New `readJobKeywordsIfCached()` — cache-read-only, `[]` on miss. `GET /resume` now uses it; falls back to job tags. Removes 2 LLM calls per uncached page view too.
+- **Verified working after deploy** (user confirmed; no extraction pairs at all post-deploy).
+
+### Lessons that last
+1. **A slow LLM call and a cache race both present as the SAME "timeout" symptom.** Check `llm_usage_log` for the exact request window: overlapping duplicate calls (two extractions for one job) = a race, not latency. Timeout only treats the symptom if the real blocker is redundant work.
+2. **`INSERT ... ON CONFLICT DO UPDATE` on the same PK from two serverless instances is a deadlock, not a concurrency bug.** Both transactions can serialize then each roll back. The subtle part: the extraction code "succeeded" (returned keywords) but the DB cache write was rolled back, so the next visit re-extracts — nothing visibly failed in logs except a nearly-identical duplicate call.
+3. **Make one route the single cache writer; every other caller reads.** For a per-job LLM cache this makes the "once cached = cached forever" promise actually hold.
+4. **A page background request can race a user action** — the GET /resume chip loader fired on mount, so the very first job view already spent 2 LLM calls before the user did anything. Passive routes must read-only the cache.
+
+Covers PRs #380 + #381. How to re-check: `llm_usage_log` — a healthy first fit-check shows ONE extraction pair (requirements+keywords) then the row exists in `jd_requirements`.
+
 ## Session 52 — OpenRouter-only cutover cleanup: one provider, hardened LLM calls, docs reset (Aug 23, 2026)
 
 > **Read this first if you're debugging ANY LLM/AI issue (even 6 months later).** This session consolidated the provider chain to OpenRouter-only and hardened every LLM call. If an AI feature 429s / 504s / shows "AI is busy" / "We could not analyze this job" — the causes and how to fix fast are all below.
