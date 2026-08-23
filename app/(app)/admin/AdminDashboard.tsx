@@ -232,7 +232,7 @@ export function AdminDashboard() {
       </div>
 
 
-      {/* === LLM KEYS & TOKEN USAGE (Primary — Cerebras/Groq/OpenAI) === */}
+      {/* === LLM KEYS & TOKEN USAGE (Primary — OpenRouter + paid OpenAI fallback) === */}
       <LlmKeysPanel />
 
       {/* === LIVE LLM KEY ACTIVITY (which key answered each call, in real time) === */}

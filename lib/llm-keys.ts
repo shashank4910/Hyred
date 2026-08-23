@@ -31,15 +31,26 @@ export type LlmKey = {
   updated_at: string;
 };
 
+// Only `openrouter` (active) and `openai` (paid last resort) are used by the
+// runtime chain. The other providers are kept in the type + PROVIDER_DEFAULTS
+// for DB-read compat: existing rows in the `llm_keys` table may reference them,
+// and the Admin Center lists them. They are NEVER called at runtime (lib/gemini.ts
+// only iterates `openrouter` then `openai` — see Session 49/52).
 export type LlmProvider = 'cerebras' | 'groq' | 'openai' | 'gemini' | 'mistral' | 'sambanova' | 'bluesminds' | 'openrouter';
 
 export const PROVIDER_DEFAULTS: Record<string, { baseUrl: string; model: string }> = {
+  // inactive — kept for DB compat
   cerebras: { baseUrl: 'https://api.cerebras.ai/v1', model: 'gpt-oss-120b' },
+  // inactive — kept for DB compat
   groq: { baseUrl: 'https://api.groq.com/openai/v1', model: 'openai/gpt-oss-120b' },
   openai: { baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
+  // inactive — kept for DB compat
   gemini: { baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-2.5-flash-lite' },
+  // inactive — kept for DB compat
   mistral: { baseUrl: 'https://api.mistral.ai/v1', model: 'mistral-large-latest' },
+  // inactive — kept for DB compat
   sambanova: { baseUrl: 'https://api.sambanova.ai/v1', model: 'Meta-Llama-3.3-70B-Instruct' },
+  // inactive — kept for DB compat
   bluesminds: { baseUrl: 'https://api.bluesminds.com/v1', model: 'gpt-4o' },
   openrouter: { baseUrl: 'https://openrouter.ai/api/v1', model: 'meta-llama/llama-3.1-8b-instruct' },
 };

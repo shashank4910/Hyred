@@ -7,7 +7,7 @@
 ---
 
 ## 30-second project summary
-**Hyred** (hyred.in; repo `JobRadar`) = a **multi-user** AI job-search dashboard. Next.js 15 + React 19 + TS on Vercel, Supabase (Postgres + Auth + Storage), **Groq Llama 3.3 70B (free) primary + OpenAI gpt-4o-mini fallback** for chat, OpenAI `text-embedding-3-small` for embeddings, GitHub Actions cron for ingest, Python browser-use agent on Render for auto-apply. GitHub repo is **private**. Owner/admin: Shashank.
+**Hyred** (hyred.in; repo `JobRadar`) = a **multi-user** AI job-search dashboard. Next.js 15 + React 19 + TS on Vercel, Supabase (Postgres + Auth + Storage), **OpenRouter (prepaid credit) primary + OpenAI gpt-4o-mini paid fallback** for chat, OpenRouter `text-embedding-3-small` for embeddings, GitHub Actions cron for ingest, Python browser-use agent on Render for auto-apply. GitHub repo is **private**. Owner/admin: Shashank.
 
 ---
 
@@ -50,8 +50,8 @@ How to open one section cheaply: `grep -n "<heading text>" CONTEXT.md` to get th
 | **Apply profile form** | `CONTEXT.md` → `### Apply profile` + AI Auto-Apply section + Known Pitfalls (owner PII rows) | `/apply-profile`, extension autofill source |
 | **Current UI / design tokens / Stitch / UI PRs** | `CONTEXT.md` → `## UI & Design System` (Hyred Lime, Session **33**) | any frontend styling, layout, or UX work |
 | Multi-tenant plan & phase status | `CONTEXT.md` → `## ⭐ ACTIVE INITIATIVE` → `### Progress Tracker` | planning the next phase |
-| LLM provider strategy (Groq/OpenAI, why not Gemini) | `CONTEXT.md` → Phase 0 research note + the `gemini-2.0-flash` pitfall row | changing AI providers |
-| Capacity limits (Groq free tier, users per key) | `CONTEXT.md` → `#### Phase 3 capacity analysis` | scaling / quota decisions |
+| LLM provider strategy (OpenRouter prepaid, why the old free tiers were dropped) | `CONTEXT.md` → Known Pitfalls (provider rows) + `docs/context/session-log.md` → Session 49 | changing AI providers |
+| Capacity limits / provider budgets | `CONTEXT.md` → File Map (`lib/llm-keys.ts`) + `lib/llm-keys.ts` `PROVIDER_BUDGET`; old Groq/Cerebras capacity notes marked historical | scaling / quota decisions |
 | Cost per user / 1→1000 scaling | `CONTEXT.md` → `#### OpenAI-primary cost model` | budgeting |
 | Premium pricing floor / monetization planning | `CONTEXT.md` → `#### Minimum premium pricing floor` + `### Premium Tier 1` | Stripe tiers, what to charge, quota gates |
 | Shared ingest / pub-sub by role topic (Phase 3) | `CONTEXT.md` → `#### Phase 3 design note — shared ingest / pub-sub by role topic` | scaling ingest before public launch |
@@ -104,7 +104,7 @@ How to open one section cheaply: `grep -n "<heading text>" CONTEXT.md` to get th
 2. **Verify before pushing:** run `npm run typecheck` (and `npm run build` for app changes). Must be clean.
 3. **Git workflow:** new branch → PR → **always merge when CI is green** (squash + delete branch). Treat merge as part of completing **every** fix or update — do not leave work unshipped on an open PR. Merge without waiting for a second "please merge" unless CI is failing or the user explicitly says not to. **Never** push follow-up commits to a merged/closed PR's branch — branch off latest `main` and open a NEW PR. After merging, verify the change is live via `https://raw.githubusercontent.com/shashank4910/JobRadar/main/<path>` (local git cache can be stale in sandboxes).
 4. **Evidence-based debugging:** read actual logs/errors first; don't guess-and-check.
-5. **AI providers:** Groq primary + OpenAI fallback via `LLM_PRIMARY`. **Never reintroduce `gemini-2.0-flash`** (deprecated → 429). Embeddings are OpenAI-only.
+5. **AI providers:** OpenRouter primary (prepaid credit) + OpenAI paid fallback — fixed chain in `lib/gemini.ts`. **Never reintroduce `gemini-2.0-flash`** (deprecated → 429). Embeddings go through OpenRouter (`text-embedding-3-small`).
 6. **Multi-user:** resolve the user with `getCurrentProfile()` (`lib/current-user.ts`); scope every user-data query by `profile_id`. Never use the old "first profile" pattern.
 7. **Free infra only** beyond API keys (owner constraint). No paid services without asking.
 8. **Auto-commit + push everything (Freebuff rule, `.freebuff/rules.md`):** committing/pushing is part of every task — never ask "should I commit/push/merge?". After any change (fix, feature, docs, config, rules, extension work): commit on a fresh branch, push immediately, open a PR, merge when CI is green, verify live, and end the session with zero uncommitted work.

@@ -17,8 +17,7 @@ type ChatMessage = {
  *
  * Provider chain:
  *   1. OpenAI gpt-4o-mini (vision-capable)
- *   2. Gemini 2.5 Flash Lite via OpenAI-compat endpoint (vision-capable, free)
- *   3. Bluesminds gpt-4o (vision-capable)
+ *   2. OpenRouter (vision-capable model, prepaid credit — Session 49)
  *
  * Images are sent inline as base64 data URIs in the OpenAI vision format.
  */
@@ -77,7 +76,7 @@ export async function POST(req: NextRequest) {
         'You help the developer (Shashank) debug issues by analyzing screenshots, error messages, ' +
         'and code snippets. Be concise, direct, and practical. When you see an error in a screenshot, ' +
         'explain what it means and suggest the fix. You have full context about the Hyred codebase ' +
-        '(Next.js 15, Supabase, Groq/OpenAI LLMs, job ingest pipeline, ATS resume builder).',
+        '(Next.js 15, Supabase, OpenRouter/OpenAI LLMs, job ingest pipeline, ATS resume builder).',
     };
 
     const fullMessages = [systemMessage, ...openaiMessages];
@@ -85,8 +84,12 @@ export async function POST(req: NextRequest) {
     // ── Try providers in order ──────────────────────────────────────────
     const providers = [
       { name: 'OpenAI', getClient: () => tryCreateOpenAI(), model: process.env.OPENAI_MODEL || 'gpt-4o-mini' },
-      { name: 'Gemini', getClient: () => tryCreateGemini(), model: process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite' },
-      { name: 'Bluesminds', getClient: () => tryCreateBluesminds(), model: 'gpt-4o' },
+      {
+        name: 'OpenRouter',
+        getClient: () => tryCreateOpenRouter(),
+        // Vision-capable model on OpenRouter (the primary chat model is not vision-capable).
+        model: process.env.OPENROUTER_VISION_MODEL || 'meta-llama/llama-3.2-11b-vision-instruct',
+      },
     ];
 
     let lastError: string | null = null;
@@ -139,20 +142,11 @@ function tryCreateOpenAI(): OpenAI | null {
   return new OpenAI({ apiKey: key });
 }
 
-function tryCreateGemini(): OpenAI | null {
-  const key = process.env.GEMINI_API_KEY;
+function tryCreateOpenRouter(): OpenAI | null {
+  const key = process.env.OPENROUTER_API_KEY;
   if (!key) return null;
   return new OpenAI({
     apiKey: key,
-    baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai',
-  });
-}
-
-function tryCreateBluesminds(): OpenAI | null {
-  const key = process.env.BLUESMINDS_API_KEY;
-  if (!key) return null;
-  return new OpenAI({
-    apiKey: key,
-    baseURL: 'https://api.bluesminds.com/v1',
+    baseURL: 'https://openrouter.ai/api/v1',
   });
 }
