@@ -13,6 +13,35 @@
 
 **Incident:** a failed local write corrupted several files with null bytes (ReadyToApply.tsx, lib/match-studio.ts, .git/HEAD, .git/config tail, .git/index, refs/heads/main, FETCH_HEAD). Recovery: HEAD/config rebuilt by hand, main sha recovered from reflog tail (172b873) then fast-forwarded to origin/main (18665d5), index rebuilt via reset --mixed, corrupted worktree files restored from HEAD / rewritten. Lesson: if `git status` says "not a repository" or files turn to nulls, check .git/HEAD + config for zeroed bytes BEFORE panicking; reflog + packed-refs + GitHub remote hold recoverable truth.
 
+## Session 50 — Internet of Agents: make Hyred discoverable by AI agents (Aug 23, 2026)
+
+**Audit finding:** Hyred was invisible to AI agents (ChatGPT, Claude, Gemini) and search engines due to several missing standards.
+
+### Changes (files logged)
+| File | Change |
+|---|---|
+| `app/layout.tsx` | Removed `robots: 'noindex, nofollow'` from root layout — was blocking ALL crawlers from indexing ANY page |
+| `app/(app)/layout.tsx` | Added `robots: 'noindex, nofollow'` to auth-only layout — authenticated pages stay hidden from crawlers |
+| `public/llms.txt` | NEW — AI agent discovery file describing Hyred's capabilities, public pages, API endpoints, and data schema |
+| `public/.well-known/ai-plugin.json` | NEW — OpenAI ChatGPT plugin manifest so ChatGPT can discover Hyred as a tool |
+| `public/api/openapi.json` | NEW — OpenAPI 3.0 spec documenting the public search and job detail endpoints |
+| `app/api/explore/search/route.ts` | NEW — Public job search API (no auth): `GET /api/explore/search?q=...&source=...&page=...` |
+| `app/api/explore/job/[id]/route.ts` | NEW — Public job detail API (no auth): `GET /api/explore/job/{id}` |
+| `app/robots.ts` | Updated to allow `/api/explore/`, `/llms.txt`, `/.well-known/` while still blocking authenticated API routes |
+| `app/contact/page.tsx` | Added JSON-LD `ContactPage` structured data |
+
+### What was wrong → what was fixed → what it means
+
+**The "CLOSED" sign problem:** The root `layout.tsx` had `robots: 'noindex, nofollow'` which told every crawler (Google, ChatGPT, Claude) to ignore the entire site. Even though `/explore` had great JSON-LD `JobPosting` data, no agent could discover it because the root metadata said "don't look here." Now `noindex` only applies to authenticated `(app)` routes — public pages are fully crawlable.
+
+**Agent discovery:** Without `llms.txt`, an AI agent visiting hyred.in had no idea what the site does. The new file tells agents: "This is a job search platform. Here are the public pages. Here's the API. Here's the data schema." Think of it like a business card for robots.
+
+**ChatGPT integration:** The `.well-known/ai-plugin.json` lets ChatGPT discover Hyred as a plugin. When someone asks "find me performance testing jobs," ChatGPT can now find and use Hyred.
+
+**Public API:** The new `/api/explore/search` and `/api/explore/job/{id}` endpoints let any agent search your job database without authentication. Combined with the OpenAPI spec, agents can programmatically discover and use your data.
+
+---
+
 ## Session 49 — Job description HTML rendering fix + extension copilot card UX (Aug 23, 2026)
 
 **Two user-reported bugs fixed in one session:**
