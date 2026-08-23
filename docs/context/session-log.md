@@ -13,6 +13,26 @@
 
 **Incident:** a failed local write corrupted several files with null bytes (ReadyToApply.tsx, lib/match-studio.ts, .git/HEAD, .git/config tail, .git/index, refs/heads/main, FETCH_HEAD). Recovery: HEAD/config rebuilt by hand, main sha recovered from reflog tail (172b873) then fast-forwarded to origin/main (18665d5), index rebuilt via reset --mixed, corrupted worktree files restored from HEAD / rewritten. Lesson: if `git status` says "not a repository" or files turn to nulls, check .git/HEAD + config for zeroed bytes BEFORE panicking; reflog + packed-refs + GitHub remote hold recoverable truth.
 
+## Session 49 — Job description HTML rendering fix + extension copilot card UX (Aug 23, 2026)
+
+**Two user-reported bugs fixed in one session:**
+
+### 1. Job detail page: description not showing / showing raw HTML
+**Symptom:** the "Job description" CollapsibleCard on `/jobs/[id]` showed garbled content or "No description."
+**Root cause:** code computed `displayDescription` (HTML-stripped via `stripHtml`) but only used it for the 120-char preview snippet (`jdPreview`). The expanded `<pre>` block still rendered raw `fullDescription || job.description`, which could contain HTML tags (`<p>`, `<ul>`, `<div>`) from LinkedIn detail endpoints — surfacing literal tags as text.
+**Fix:** `app/(app)/jobs/[id]/page.tsx` — CollapsibleCard `<pre>` now renders `displayDescription || 'No description.'` (the HTML-stripped version).
+
+### 2. Extension copilot card appearing on every page
+**Symptom:** the Hyred Autofill copilot card popped up on non-job pages (GitHub, Stack Overflow, blogs) — anywhere with 1 empty input field.
+**Root cause:** `shouldShowCopilotCard()` in `extension/content.js` returned `true` for `countEmptyFillableFields() >= 1` on any page. The content script runs on `<all_urls>` via manifest, and the `MutationObserver` in `maybeMount()` re-checked on every DOM mutation.
+**Fix:** `extension/content.js` v0.16.16 — new tiered detection:
+- **Blocklist guard** (`isNonJobSite()`): Google, GitHub, social media, streaming, Microsoft/Apple domains → card never appears.
+- **Known ATS** (Workday, Greenhouse, Lever, Ashby, etc.): show with ≥1 empty field.
+- **Unknown/generic sites**: require ≥3 empty fields + form indicators, or ≥2 fields with both form detection AND `apply` action on the form.
+**Files changed:** `extension/content.js`, `extension/manifest.json` (version bump 0.16.15 → 0.16.16).
+
+---
+
 ## Session 48 — Keyword extraction QA: truncation bug + judgment rework (Aug 23, 2026)
 
 **Owner QA reports (two rounds) on the FIS Non-Functional Engineer JD:**
