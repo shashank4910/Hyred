@@ -5,6 +5,10 @@
 
 const DEFAULT_MAX_SLOTS = 25;
 const DEFAULT_MAX_WAIT_MS = 45_000;
+// A slot held longer than this is treated as abandoned (serverless instance
+// frozen/killed before release) and reclaimed by the next acquirer. Must
+// exceed the slowest legitimate LLM call, including retries.
+const SLOT_LEASE_SECONDS = 300;
 const POLL_MS = 300;
 
 function sleep(ms: number): Promise<void> {
@@ -17,6 +21,7 @@ async function tryAcquireSlot(): Promise<boolean> {
     const sb = supabaseAdmin();
     const { data, error } = await sb.rpc('acquire_llm_chat_slot', {
       p_max_slots: DEFAULT_MAX_SLOTS,
+      p_lease_seconds: SLOT_LEASE_SECONDS,
     });
     if (error) {
       console.warn('[llm-concurrency] acquire failed:', error.message);
