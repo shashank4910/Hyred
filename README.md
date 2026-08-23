@@ -1,8 +1,8 @@
 # JobRadar
 
-AI-curated job matches from across the web. Pulls jobs from public job APIs, scores them against your resume with Groq (free) — falling back to OpenAI — and gives you a curated dashboard plus a tailored cover letter on demand.
+AI-curated job matches from across the web. Pulls jobs from public job APIs, scores them against your resume with OpenRouter (prepaid credit) — falling back to OpenAI — and gives you a curated dashboard plus a tailored cover letter on demand.
 
-- **Stack**: Next.js 15 (App Router) + TypeScript + Tailwind, Supabase (Postgres), Groq Llama 3.3 70B (free chat primary) + OpenAI gpt-4o-mini (paid chat fallback) & `text-embedding-3-small` (embeddings), GitHub Actions cron, Vercel hosting.
+- **Stack**: Next.js 15 (App Router) + TypeScript + Tailwind, Supabase (Postgres), OpenRouter chat (prepaid credit) + OpenAI gpt-4o-mini (paid last resort) & `text-embedding-3-small` via OpenRouter (embeddings), GitHub Actions cron, Vercel hosting.
 - **Cost**: ₹0/month using free tiers.
 
 ## Features
@@ -44,8 +44,8 @@ Web app (Next.js on Vercel):
 - Run `supabase/migrations/0001_init.sql`.
 - Run `supabase/migrations/0002_production.sql`.
 
-### 2. Get a Groq API key (free chat fallback)
-- https://console.groq.com/keys -> Create API key. Free tier: ~14,400 req/day (Llama 3.3 70B).
+### 2. Get an OpenRouter API key (chat + embeddings)
+- https://openrouter.ai/settings/keys -> Create key. Add ~$10 prepaid credit; all models bill from it.
 
 ### 3. Local env
 ```bash
@@ -70,7 +70,7 @@ npm run dev
 
 ### 6. Schedule the cron
 - GitHub repo -> Settings -> Secrets and variables -> Actions.
-- Add: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY`, optionally `GROQ_API_KEY` (free chat fallback) and `INGEST_PROFILE_EMAIL`.
+- Add: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `OPENROUTER_API_KEY` (required; `OPENAI_API_KEY` is the paid last resort) and `INGEST_PROFILE_EMAIL`.
 - Auto-runs every 6 hours; manual trigger available in **Actions** tab.
 
 ## Scripts

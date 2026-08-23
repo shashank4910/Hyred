@@ -1,32 +1,21 @@
 /**
- * AI helpers — Groq (Llama 3.3 70B) is the FREE primary for chat; OpenAI
- * gpt-4o-mini is the paid fallback. Embeddings are OpenAI-only.
+ * AI helpers — OpenRouter (`meta-llama/llama-3.1-8b-instruct`) is the ONLY chat
+ * provider; OpenAI gpt-4o-mini remains the paid last resort. Embeddings go
+ * through OpenRouter's OpenAI-compatible endpoint (text-embedding-3-small).
  *
- * Chat-based calls (scoreJob, matchSkills, generateAtsResume, etc.) try Groq
- * first (free, if GROQ_API_KEY is set) and fall back to OpenAI (paid, if
- * OPENAI_API_KEY is set). Both use the OpenAI-compatible chat-completions API,
- * so a single code path serves both — Groq just points the same OpenAI SDK at
- * its base URL.
+ * ONE PROVIDER BY DESIGN (Aug 2026): every fallback tier failed in real use —
+ * Cerebras keys 402'd, Bluesminds broke on heavy payloads, Gemini free tier
+ * allows ~20 req/day, and Groq's shared gpt-oss-120b returns 429 under Match
+ * Studio's 12k-char prompts. Chain fall-through turned those failures into
+ * slow, flaky requests that "succeeded" only after detouring through 2–3 dead
+ * tiers (Session 49). OpenRouter's prepaid credit is cheap (~$6.60/month at
+ * 100 users), fast, and one key covers chat AND embeddings (PR #341).
  *
- * ORDER IS CONFIGURABLE via LLM_PRIMARY ("groq" | "openai", default "groq").
- * Vercel and GitHub Actions have separate env, so you can keep Groq primary on
- * the dashboard (on-demand calls = free) while setting LLM_PRIMARY=openai for
- * the ingest cron if Groq's free tokens-per-minute cap throttles the 30-80 job
- * scoring burst. If the chosen primary fails, the chain falls through to the
- * other provider automatically.
- *
- * WHY GROQ INSTEAD OF GEMINI (May 2026): the previous fallback `gemini-2.0-flash`
- * is deprecated (shuts down 2026-06-01) and since 2026-03-06 is "existing
- * customers only", so free/new keys get `429 ResourceExhausted` with `limit: 0`
- * — which LOOKS like a rate limit but means "model not on your plan". Google
- * also cut free-tier limits 50-80% in Dec 2025 and the free tier trains on data
- * (a problem for resumes/PII). Groq's free tier is ~14,400 req/day and fast.
- *
- * NO SILENT MASKING: chat() no longer swallows the OpenAI error with a
- * console.warn. If a provider fails we record its error and try the next; if
+ * NO SILENT MASKING: chat() does not swallow provider errors with a
+ * console.warn. If the provider fails we record its error and try the next; if
  * ALL providers fail we throw a single combined, readable error so the real
- * cause (e.g. OpenAI key missing/exhausted) is visible instead of being hidden
- * behind a fallback failure.
+ * cause (e.g. OpenRouter key missing/exhausted) is visible instead of being
+ * hidden behind a fallback failure.
  *
  * Embeddings are OpenAI text-embedding-3-small (1536 dims). Gemini's
  * text-embedding-004 was deprecated by Google on 2026-01-14 (v1beta returns
@@ -86,45 +75,20 @@ import { withLlmChatSlot } from './llm-concurrency';
 import { normalizeProfileSeniority } from './profile-seniority';
 
 const OPENAI_CHAT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
-const GROQ_CHAT_MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
-const CEREBRAS_CHAT_MODEL = process.env.CEREBRAS_MODEL || 'gpt-oss-120b';
-const GEMINI_CHAT_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
-const GROQ_BASE_URL = 'https://api.groq.com/openai/v1';
-const CEREBRAS_BASE_URL = 'https://api.cerebras.ai/v1';
-const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai';
 const EMBED_MODEL = 'text-embedding-3-small';
 
-// Chat: all free tiers first, OpenAI paid last. LLM_PRIMARY picks which free
-// provider is tried first (default cerebras). Embeddings stay OpenAI-only in embed().
-const LLM_PRIMARY = (process.env.LLM_PRIMARY || 'openrouter').toLowerCase();
-
-const FREE_CHAT_PROVIDERS = [
-  'cerebras',
-  'groq',
-  'openrouter',
-  'gemini',
-  'bluesminds',
-  'mistral',
-  'sambanova',
-] as const;
+// Chat: OpenRouter only, then paid OpenAI as absolute last resort.
+const FREE_CHAT_PROVIDERS = ['openrouter'] as const;
 
 const PAID_CHAT_PROVIDER = 'openai';
 
 /** Free providers in priority order, then OpenAI always last. */
 function getChatProviderOrder(): string[] {
-  const primary = LLM_PRIMARY;
-  if (primary === PAID_CHAT_PROVIDER) {
-    return [...FREE_CHAT_PROVIDERS, PAID_CHAT_PROVIDER];
-  }
-  return [
-    primary,
-    ...FREE_CHAT_PROVIDERS.filter((p) => p !== primary),
-    PAID_CHAT_PROVIDER,
-  ];
+  return [...FREE_CHAT_PROVIDERS, PAID_CHAT_PROVIDER];
 }
 
-// Env-var fallbacks for free chat providers only (OpenAI appended separately at end).
-const ENV_FALLBACK_PROVIDERS = ['cerebras', 'groq', 'openrouter', 'gemini', 'bluesminds'];
+// Env-var fallback when no DB key is available (OpenAI appended separately at end).
+const ENV_FALLBACK_PROVIDERS = ['openrouter'] as const;
 
 function getOpenAIClient(): OpenAI | null {
   const key = process.env.OPENAI_API_KEY;
@@ -132,31 +96,10 @@ function getOpenAIClient(): OpenAI | null {
   return new OpenAI({ apiKey: key });
 }
 
-function getGroqClient(): OpenAI | null {
-  const key = process.env.GROQ_API_KEY;
+function getOpenRouterClient(): OpenAI | null {
+  const key = process.env.OPENROUTER_API_KEY;
   if (!key) return null;
-  return new OpenAI({ apiKey: key, baseURL: GROQ_BASE_URL });
-}
-
-function getCerebrasClient(): OpenAI | null {
-  const key = process.env.CEREBRAS_API_KEY;
-  if (!key) return null;
-  return new OpenAI({ apiKey: key, baseURL: CEREBRAS_BASE_URL });
-}
-
-function getGeminiClient(): OpenAI | null {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) return null;
-  return new OpenAI({ apiKey: key, baseURL: GEMINI_BASE_URL });
-}
-
-function getBluesmindsClient(): OpenAI | null {
-  const key = process.env.BLUESMINDS_API_KEY;
-  if (!key) return null;
-  return new OpenAI({
-    apiKey: key,
-    baseURL: PROVIDER_DEFAULTS.bluesminds.baseUrl,
-  });
+  return new OpenAI({ apiKey: key, baseURL: PROVIDER_DEFAULTS.openrouter.baseUrl });
 }
 
 type ProviderEntry = {
@@ -353,20 +296,14 @@ async function buildProviderChain(): Promise<ProviderEntry[]> {
 
 function getEnvFallbackClient(provider: string): OpenAI | null {
   switch (provider) {
-    case 'bluesminds': return getBluesmindsClient();
-    case 'cerebras': return getCerebrasClient();
-    case 'groq': return getGroqClient();
-    case 'gemini': return getGeminiClient();
+    case 'openrouter': return getOpenRouterClient();
     default: return null;
   }
 }
 
 function getEnvFallbackModel(provider: string): string {
   switch (provider) {
-    case 'bluesminds': return PROVIDER_DEFAULTS.bluesminds.model;
-    case 'cerebras': return CEREBRAS_CHAT_MODEL;
-    case 'groq': return GROQ_CHAT_MODEL;
-    case 'gemini': return GEMINI_CHAT_MODEL;
+    case 'openrouter': return PROVIDER_DEFAULTS.openrouter.model;
     default: return '';
   }
 }
@@ -374,14 +311,11 @@ function getEnvFallbackModel(provider: string): string {
 /**
  * Core chat function with intelligent multi-key rotation and usage tracking.
  *
- * Strategy (best practice for free-tier multi-key LLM):
- * 1. Round-robin across ALL keys of the primary provider (spreads RPM load)
+ * Strategy (best practice for prepaid-key LLM):
+ * 1. Round-robin across ALL OpenRouter keys (spreads RPM load)
  * 2. On 429: cooldown that key for 60s (NOT mark as daily-exhausted) + try next key
  * 3. On success: record ACTUAL tokens from API response (accurate tracking)
- * 4. Only after ALL keys of a provider are exhausted/cooling → try next provider
- * 5. OpenAI (paid) is the absolute last resort
- *
- * This means 5 Cerebras keys with 5 RPM each = effectively 25 RPM (one every 2.4s).
+ * 4. Only after ALL keys are exhausted/cooling → paid OpenAI as last resort
  */
 /**
  * Estimate RPM limit for a provider. Checks the estimated RPM for provider type
@@ -455,7 +389,7 @@ export async function chat(
     const providers = await buildProviderChainCached();
     if (providers.length === 0) {
       throw new Error(
-        'No chat LLM configured. Add keys in Admin Center or set CEREBRAS_API_KEY / GROQ_API_KEY / OPENAI_API_KEY env vars.',
+        'No chat LLM configured. Add keys in Admin Center or set OPENROUTER_API_KEY (or OPENAI_API_KEY) env vars.',
       );
     }
 
@@ -553,7 +487,7 @@ export async function chat(
   });
 }
 
-/** JSON-mode chat shared by ingest helpers (Groq primary, OpenAI fallback). */
+/** JSON-mode chat shared by ingest helpers (OpenRouter primary). */
 export async function llmJsonChat(
   systemPrompt: string,
   userPrompt: string,

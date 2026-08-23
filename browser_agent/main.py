@@ -228,14 +228,12 @@ async def _run_apply(task_id: str, req: ApplyRequest):
     _log(task_id, f"🌐 Target URL: {req.job_url}")
 
     try:
-        # Mirror the Next.js app: Groq (Llama 3.3 70B) as the FREE primary,
-        # OpenAI gpt-4o-mini as the paid fallback. Gemini was dropped May 2026
-        # because gemini-2.0-flash is deprecated and free/new keys 429 (limit:0).
-        # LLM_PROVIDER=openai forces OpenAI-first (e.g. if Groq form-filling is
-        # weaker for a given site).
-        provider_pref = (os.getenv("LLM_PROVIDER", "groq") or "groq").lower()
+        # Mirror the Next.js app: OpenRouter (prepaid credit) is the ONLY
+        # primary, OpenAI gpt-4o-mini stays as the paid fallback. Groq was
+        # dropped Aug 2026 — its shared gpt-oss-120b 429s constantly; the
+        # Next.js chain no longer routes to it either (Session 49).
         openai_key = os.getenv("OPENAI_API_KEY")
-        groq_key = os.getenv("GROQ_API_KEY")
+        openrouter_key = os.getenv("OPENROUTER_API_KEY")
 
         llm = None
         llm_name = ""
@@ -247,28 +245,30 @@ async def _run_apply(task_id: str, req: ApplyRequest):
                 temperature=0.2,
             ), "OpenAI gpt-4o-mini"
 
-        def _build_groq():
-            # Groq exposes an OpenAI-compatible API, so we reuse ChatOpenAI with
-            # Groq's base URL + key (no extra dependency needed).
+        def _build_openrouter():
+            # OpenRouter exposes an OpenAI-compatible API, so we reuse
+            # ChatOpenAI with OpenRouter's base URL (no extra dependency).
             return ChatOpenAI(
-                model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
-                api_key=groq_key,
-                base_url="https://api.groq.com/openai/v1",
+                model=os.getenv(
+                    "OPENROUTER_MODEL", "meta-llama/llama-3.1-8b-instruct"
+                ),
+                api_key=openrouter_key,
+                base_url="https://openrouter.ai/api/v1",
                 temperature=0.2,
-            ), "Groq llama-3.3-70b-versatile"
+            ), "OpenRouter llama-3.1-8b-instruct"
 
-        order = ("openai", "groq") if provider_pref == "openai" else ("groq", "openai")
+        order = ("openrouter", "openai") if openrouter_key else ("openai",)
         for choice in order:
             if choice == "openai" and openai_key:
                 llm, llm_name = _build_openai()
                 break
-            if choice == "groq" and groq_key:
-                llm, llm_name = _build_groq()
+            if choice == "openrouter" and openrouter_key:
+                llm, llm_name = _build_openrouter()
                 break
 
         if llm is None:
             raise ValueError(
-                "No LLM configured. Set OPENAI_API_KEY (preferred) or GROQ_API_KEY in environment."
+                "No LLM configured. Set OPENROUTER_API_KEY (preferred) or OPENAI_API_KEY in environment."
             )
 
         # Build context string with all candidate info
