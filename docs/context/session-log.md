@@ -2,6 +2,21 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 51 — "AI is busy" outage: leaked LLM semaphore slots + lease-based recovery (Aug 23, 2026)
+
+**User report:** repeated "We could not analyze this job" failures. Vercel logs showed 65+ `AI is busy right now (too many concurrent requests)` errors in ~90s, from chat paths AND `[jd-fetcher] Re-embed failed` — every LLM call failing.
+
+### Root cause (confirmed with live evidence)
+The global LLM semaphore (`llm_chat_semaphore`, migration 0018) is a bare counter: `acquire_llm_chat_slot` increments, `release_llm_chat_slot` decrements in a `finally`. On Vercel serverless, an instance frozen/killed mid-request after acquiring never runs the release → slot leaks permanently. Verified against prod DB: row pinned at exactly **25/25 from 10:10:48 UTC with `updated_at` frozen for ~100 min** while requests kept timing out. Leaked slots, not load.
+
+### Fix
+1. **Mitigation (applied to prod immediately):** reset `active_slots` to 0 via service-role client; observed acquire/release cycles resuming (`updated_at` ticking). Prod unblocked.
+2. **Durable fix — PR #375:** `supabase/migrations/0026_llm_semaphore_leases.sql` adds `last_acquired_at` lease column; when the pool is exhausted but every lease is older than `p_lease_seconds` (300s default), the next acquirer reclaims the pool atomically in one UPDATE (CASE reads pre-update row). Semaphore self-heals instead of pinning. `lib/llm-concurrency.ts` passes `p_lease_seconds=300`. RPC keeps defaults → in-flight deploys compatible.
+
+**⚠️ Manual step:** run 0026 in Supabase SQL Editor (project procedure; idempotent). Until applied, leaks can re-pin prod and need another manual reset.
+
+**Lesson:** any cross-instance lock guarded only by in-process `finally` will leak under serverless freezing. Distributed semaphores need ownership/expiry semantics (leases), not bare counters.
+
 ## Session 46b — Fit Check → "one door" Tailor flow + local git corruption incident (Aug 22, 2026)
 
 **UX fix (user critique):** a user clicking Tailor/Build Resume landed on a "Fit Check" section they never asked for, above ANOTHER keyword section — two doors, confusing. Redesign:
