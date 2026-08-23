@@ -151,6 +151,10 @@ interface JobAnalysisCache {
   v: number;
   requirements: CachedRequirement[];
   keywords: StudioKeyword[];
+  /** Length of the JD text the extraction actually saw (chars). Lets the
+   *  sanity gate tell "this job genuinely has few tools" (short/truncated JD)
+   *  from "extraction is stale/broken". Session 53/Round 3. */
+  jdLength?: number;
 }
 
 const MAX_REQUIREMENTS = 16;
@@ -167,9 +171,10 @@ function parseCacheRow(raw: unknown): JobAnalysisCache | null {
     const o = raw as Partial<JobAnalysisCache>;
     if (Array.isArray(o.requirements) && o.requirements.length > 0) {
       return {
-        v: 2,
+        v: typeof o.v === 'number' ? o.v : 2,
         requirements: o.requirements,
         keywords: Array.isArray(o.keywords) ? o.keywords : [],
+        jdLength: typeof o.jdLength === 'number' ? o.jdLength : undefined,
       };
     }
   }
@@ -177,13 +182,21 @@ function parseCacheRow(raw: unknown): JobAnalysisCache | null {
 }
 
 function cacheRowIsSane(cache: JobAnalysisCache): boolean {
-  // v3 = extracted with the 12000-char window (v1/v2 rows were built from a
-  // 5000-char truncated JD that silently dropped the JD's tail sections —
-  // one-time invalidation re-extracts them). Also self-heal garbled rows.
+  // v5 = extraction as of Session 53 (records jdLength so the gate can tell a
+  // genuinely sparse JD from a stale/broken extraction). v1-v4 rows lacked it;
+  // keep rejecting those so one-time re-extraction writes a v5 row.
+  //
+  // Keyword floor is JD-length aware: a truncated/stub JD (LinkedIn "…see this
+  // and similar jobs on LinkedIn", career sites that return nothing) legitimately
+  // yields ~0 real keywords after the anti-hallucination filter. Demanding >=18
+  // there made the row permanently "insane" → re-extract on EVERY visit → the
+  // studio route's 27s+ extraction pair + grade call blew the 60s budget → 504.
+  if ((cache as { v?: number }).v !== 5) return false;
+  const jdLen = cache.jdLength ?? 0;
+  const minKeywords = jdLen >= 5000 ? 18 : jdLen >= 1500 ? 6 : 2;
   return (
-    (cache as { v?: number }).v === 4 &&
     cache.requirements.length >= 8 &&
-    cache.keywords.length >= 18 &&
+    cache.keywords.length >= minKeywords &&
     cache.requirements.every((r) => {
       const kw = String(r?.keyword ?? '');
       return kw && kw.length <= 60 && kw.split(/\s+/).length <= 5;
@@ -294,7 +307,7 @@ Return JSON: {"keywords":[{"keyword":"...","type":"tool|activity"}]}`,
   // list; activities fill the remainder of the budget.
   const keywords = [...tools, ...activities].slice(0, Math.max(tools.length, MAX_KEYWORDS));
 
-  return { v: 4, requirements, keywords };
+  return { v: 5, requirements, keywords, jdLength: jd.length };
 }
 
 /**
