@@ -197,11 +197,13 @@ const MAX_DOMAIN_TERMS = 3;
 async function extractJobAnalysis(
   job: { id: string; title: string; description: string | null },
 ): Promise<JobAnalysisCache> {
-  // 12000 chars - JD "Preferred Skills" sections live at the END of the
-  // posting; a shorter window silently deleted JMeter/k6-class tools from
-  // the AI's input (Session 47 bug). Cached once per job, so the larger
-  // prompt costs nothing after the first analysis.
-  const jd = sanitizeJobDescriptionForAI(job.description ?? '').slice(0, 12000);
+  // 8000 chars for extraction (down from 12000). "Preferred Skills" sections
+  // live at the END of postings, so we still keep 8000 to cover them — but a
+  // 12k-char JD fed to OpenRouter's 8b model for "list EVERY tool" was taking
+  // 38–85s (verified in llm_usage_log), blowing the 60s studio budget. 8k keeps
+  // coverage while halving the model's input, which is the dominant latency
+  // factor on slow-friendly models.
+  const jd = sanitizeJobDescriptionForAI(job.description ?? '').slice(0, 8000);
 
   // ── Calls 1+2 in PARALLEL: requirement checklist + ATS keywords ──────────
   // They share no data, and both are cached per job afterwards. Sequential
@@ -232,10 +234,8 @@ ${jd}`,
       'You select the exact keywords a recruiter would type into an ATS to find candidates for this job. Named tools outrank every other term. Output strict JSON only.',
       `Select the ATS keywords for this posting. Work in PHASES, in this order:
 
-PHASE 1 - TOOL CENSUS (this layer is NEVER trimmed later): list EVERY distinct named tool, technology, framework, programming language, platform, product, database, and certification that appears ANYWHERE in the posting - required AND preferred/nice-to-have sections, including tools mentioned only as examples ("tools such as JMeter, Gatling, k6" means JMeter AND Gatling AND k6 each get their own entry). Use the posting's exact spelling.
-
+PHASE 1 - TOOL CENSUS (keep it bounded): list the DISTINCT named tools, technologies, frameworks, languages, platforms, products, databases, and certifications that matter for this role — from the Required + Preferred sections AND example lists ("tools such as JMeter, Gatling, k6" means JMeter, Gatling AND k6 each get their own entry). Cap ~20 tools total. Do NOT repeat near-duplicates (Jmeter vs Apache JMeter).
 PHASE 2 - SKILLS: add the strongest non-tool skills: testing types, methodologies, metrics, technical concepts. Rank by (a) appears in a Required/must-have section, (b) how many times the posting repeats it, (c) how central it is to the role's title.
-
 PHASE 3 - TRIM to at most ${MAX_KEYWORDS} total. If over budget, cut in this order: domain/industry phrases first, then repeated concepts, then activities. NEVER cut a named tool to make room for a non-tool. Keep at most ${MAX_DOMAIN_TERMS} domain/industry phrases (e.g. "financial services", "payment processing"). Zero soft skills ("communication", "leadership").
 
 Each entry: {"keyword":"...","type":"tool"} for named products/languages/platforms, {"keyword":"...","type":"activity"} for everything else. 1-3 words, JD's exact phrasing.
