@@ -377,7 +377,9 @@ export async function chat(
   // OpenRouter request used to eat an entire serverless function budget
   // (studio 504 at 61.8s). Retries stay off here; provider fallback in the
   // loop below already retries on the next key.
-  const attemptTimeoutMs = opts?.timeoutMs ?? Number(process.env.LLM_ATTEMPT_TIMEOUT_MS ?? 25_000);
+  // Aggressive timeout for studio/grade calls: 12s per attempt (down from 25s)
+  // to fit within Vercel's 60s function limit alongside slot wait + overhead.
+  const attemptTimeoutMs = opts?.timeoutMs ?? Number(process.env.LLM_ATTEMPT_TIMEOUT_MS ?? 12_000);
   return withLlmChatSlot(async () => {
     // Total wall-clock budget across all provider fallbacks: no new attempt
     // may start unless it can still finish inside it (bounds the chain at
