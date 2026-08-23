@@ -370,8 +370,19 @@ export async function chat(
   operation = 'chat',
   profileId?: string,
   maxTokens?: number,
+  opts?: { timeoutMs?: number },
 ): Promise<string> {
+  // Hard ceiling per HTTP attempt. Without it the OpenAI SDK waits up to 10
+  // minutes per attempt (its own default) with retries on top — one hung
+  // OpenRouter request used to eat an entire serverless function budget
+  // (studio 504 at 61.8s). Retries stay off here; provider fallback in the
+  // loop below already retries on the next key.
+  const attemptTimeoutMs = opts?.timeoutMs ?? Number(process.env.LLM_ATTEMPT_TIMEOUT_MS ?? 25_000);
   return withLlmChatSlot(async () => {
+    // Total wall-clock budget across all provider fallbacks: no new attempt
+    // may start unless it can still finish inside it (bounds the chain at
+    // roughly two attempts by default instead of N_keys × timeout).
+    const chainDeadlineMs = Date.now() + attemptTimeoutMs * 2;
     const estimatedTokens = RateLimiter.estimateTokenCost(systemPrompt, userPrompt, 500);
     const rateLimiter = getRateLimiter();
 
@@ -397,6 +408,11 @@ export async function chat(
     const errors: string[] = [];
 
     for (const provider of providers) {
+      if (Date.now() + attemptTimeoutMs > chainDeadlineMs) {
+        errors.push(`${provider.name} → skipped, chat chain budget exhausted`);
+        continue;
+      }
+
       if (provider.keyId && (await isKeyOnCooldownDb(provider.keyId))) {
         errors.push(`${provider.name} → on DB cooldown`);
         continue;
@@ -412,20 +428,23 @@ export async function chat(
 
       const startMs = Date.now();
       try {
-        const res = await provider.client.chat.completions.create({
-          model: provider.model,
-          temperature,
-          // Explicit output budget. When omitted, many OpenAI-compatible
-          // providers (Groq, Cerebras, proxy gateways) default to ~1024
-          // completion tokens — long outputs (tailored resumes) got silently
-          // cut off mid-sentence (Session 44).
-          max_tokens: maxTokens ?? 4096,
-          ...(jsonMode ? { response_format: { type: 'json_object' as const } } : {}),
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt },
-          ],
-        });
+        const res = await provider.client.chat.completions.create(
+          {
+            model: provider.model,
+            temperature,
+            // Explicit output budget. When omitted, many OpenAI-compatible
+            // providers (Groq, Cerebras, proxy the models) default to ~1024
+            // completion tokens — long outputs (tailored resumes) got silently
+            // cut off mid-sentence (Session 44).
+            max_tokens: maxTokens ?? 4096,
+            ...(jsonMode ? { response_format: { type: 'json_object' as const } } : {}),
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt },
+            ],
+          },
+          { timeout: attemptTimeoutMs, maxRetries: 0 },
+        );
         const content = (res.choices[0]?.message?.content ?? '').trim();
 
         const tokensIn = res.usage?.prompt_tokens ?? 0;
