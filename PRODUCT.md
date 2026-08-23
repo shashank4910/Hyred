@@ -47,7 +47,7 @@ Unlike a generic job board, Hyred **scores every job against your actual resume*
 
 **Technical constraints:**
 - Free infra preferred beyond API keys (owner constraint)
-- LLM: Bluesminds primary (paid) with Groq/OpenAI/Gemini/Cerebras fallbacks; embeddings OpenAI-only
+- LLM: OpenRouter primary (prepaid credit) with OpenAI paid fallback; embeddings via OpenRouter (`text-embedding-3-small`)
 - Client bundles must not import server-only resume parser (`lib/resume.ts` → use `lib/resume-upload.ts` on client)
 - Private GitHub repo; deployment via PR → merge → Vercel
 

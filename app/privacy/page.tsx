@@ -62,7 +62,7 @@ export default function PrivacyPage() {
         We rely on your <strong>consent</strong> for resume processing and AI analysis. You give
         this consent when you create an account and accept our Terms of Service and Privacy Policy
         at sign-up. That covers resumes you upload or paste later, including analysis by third-party
-        AI providers (Groq, OpenAI) for matching, scoring, and suggestions. We also rely on{' '}
+        AI providers (OpenRouter, OpenAI) for matching, scoring, and suggestions. We also rely on{' '}
         <strong>contract / legitimate use</strong> where needed to provide the service you signed
         up for.
       </p>
@@ -81,7 +81,7 @@ export default function PrivacyPage() {
           <strong>Vercel</strong> — application hosting.
         </li>
         <li>
-          <strong>AI providers</strong> — e.g. Groq and OpenAI — to analyze resumes, score jobs,
+          <strong>AI providers</strong> — e.g. OpenRouter and OpenAI — to analyze resumes, score jobs,
           and generate text. Resume content is sent to these providers only to perform features you
           use.
         </li>

@@ -52,23 +52,25 @@ type ProviderBudgetConfig = {
 };
 
 const PROVIDER_LABELS: Record<string, string> = {
-  cerebras: 'Cerebras',
-  groq: 'Groq',
+  cerebras: 'Cerebras', // inactive — kept for DB compat (Session 52)
+  groq: 'Groq', // inactive — kept for DB compat
   openai: 'OpenAI',
-  gemini: 'Google Gemini',
-  mistral: 'Mistral',
-  sambanova: 'SambaNova',
-  bluesminds: 'Bluesminds',
+  gemini: 'Google Gemini', // inactive — kept for DB compat
+  mistral: 'Mistral', // inactive — kept for DB compat
+  sambanova: 'SambaNova', // inactive — kept for DB compat
+  bluesminds: 'Bluesminds', // inactive — kept for DB compat
+  openrouter: 'OpenRouter',
 };
 
 const PROVIDER_FREE_LIMITS: Record<string, string> = {
-  cerebras: '1M tokens/day',
-  groq: '~100K tokens/day',
+  cerebras: '1M tokens/day', // inactive
+  groq: '~100K tokens/day', // inactive
   openai: 'Paid ($0.15/1M in)',
-  gemini: '~1,000 req/day',
-  mistral: 'Free tier',
-  sambanova: '10-30 RPM',
-  bluesminds: '500 pi credits · 300 req/day · 20 RPM',
+  gemini: '~1,000 req/day', // inactive
+  mistral: 'Free tier', // inactive
+  sambanova: '10-30 RPM', // inactive
+  bluesminds: '500 pi credits · 300 req/day · 20 RPM', // inactive
+  openrouter: 'Prepaid credit (top-up at openrouter.ai)',
 };
 
 function keyBudgetUsed(k: LlmKeyRow, mode: string): number {
@@ -85,7 +87,7 @@ export function LlmKeysPanel() {
 
   // Add key form state
   const [showAddForm, setShowAddForm] = useState(false);
-  const [newProvider, setNewProvider] = useState('cerebras');
+  const [newProvider, setNewProvider] = useState('openrouter');
   const [newApiKey, setNewApiKey] = useState('');
   const [newLabel, setNewLabel] = useState('');
   const [newDailyLimit, setNewDailyLimit] = useState(1000000);
@@ -212,19 +214,11 @@ export function LlmKeysPanel() {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => resetProviderCounters('bluesminds')}
+            onClick={() => resetProviderCounters('all')}
             className="btn text-xs"
-            title="Reset Bluesminds counters and fix 500K token limits → 300 req/day"
+            title="Reset all LLM key counters back to 0"
           >
-            Reset Bluesminds
-          </button>
-          <button
-            type="button"
-            onClick={() => resetProviderCounters('cerebras')}
-            className="btn text-xs"
-            title="Set Cerebras tokens_used_today back to 0"
-          >
-            Reset Cerebras
+            Reset counters
           </button>
           <button onClick={fetchData} disabled={loading} className="btn text-xs">
             {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
@@ -457,7 +451,7 @@ export function LlmKeysPanel() {
           <Cpu className="h-10 w-10 mx-auto text-outline mb-3" />
           <p className="text-sm text-on-surface-variant">No LLM keys configured yet.</p>
           <p className="text-xs text-on-surface-variant mt-1">
-            Add your Cerebras, Groq, or other provider keys to enable AI scoring.
+            Add your OpenRouter key (primary) or an OpenAI key (paid last resort) to enable AI scoring.
           </p>
           <button onClick={() => setShowAddForm(true)} className="btn-primary text-xs mt-4">
             <Plus className="h-3.5 w-3.5" /> Add your first key
@@ -500,7 +494,7 @@ export function LlmKeysPanel() {
                 type="password"
                 value={newApiKey}
                 onChange={(e) => setNewApiKey(e.target.value)}
-                placeholder={newProvider === 'cerebras' ? 'csk-...' : newProvider === 'groq' ? 'gsk_...' : 'sk-...'}
+                placeholder={newProvider === 'openrouter' ? 'sk-or-...' : newProvider === 'cerebras' ? 'csk-...' : newProvider === 'groq' ? 'gsk_...' : 'sk-...'}
                 className="input w-full font-mono text-sm"
                 autoComplete="off"
               />
@@ -515,7 +509,7 @@ export function LlmKeysPanel() {
                 type="text"
                 value={newLabel}
                 onChange={(e) => setNewLabel(e.target.value)}
-                placeholder="e.g. Cerebras Account #3"
+                placeholder="e.g. OpenRouter Key #1"
                 className="input w-full text-sm"
               />
             </div>

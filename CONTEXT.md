@@ -17,7 +17,7 @@ JobRadar / Hyred is a personalized AI-powered job-search dashboard that:
 5. Provides skill-match analysis (JD requirements vs resume)
 
 **Owner:** Shashank Singh — Senior Performance Engineer (India, 7.7 years)
-**Stack:** Next.js 15, React 19, TypeScript, Supabase, **Bluesminds (`gpt-4o`, paid primary via `llm_keys` table & env `LLM_PRIMARY`)** → Gemini `gemini-2.5-flash-lite` (free fallback) → Groq `openai/gpt-oss-120b` (free) → OpenAI `gpt-4o-mini` (paid last-resort) & text-embedding-3-small (embeddings), Vercel, GitHub Actions, Python FastAPI + browser-use (auto-apply agent on Render)
+**Stack:** Next.js 15, React 19, TypeScript, Supabase, **OpenRouter (prepaid credit, primary via `llm_keys` table)** → OpenAI `gpt-4o-mini` (paid last-resort) & text-embedding-3-small (embeddings via OpenRouter), Vercel, GitHub Actions, Python FastAPI + browser-use (auto-apply agent on Render)
 
 ---
 
@@ -252,11 +252,13 @@ These shape everything. **Recorded answers will be filled in here as Shashank de
 | # | Decision | Recommendation | Shashank's answer |
 |---|---|---|---|
 | Q1 | Auth provider | **Supabase Auth** (email/pass + Google OAuth) — already on Supabase, native Postgres RLS, free tier, email verify + reset built in | ✅ **Supabase Auth (email/password + Google)** — shipped in Phase 1 |
-| Q2 | Who pays for LLM calls? | Free tier + hard quotas, OR paid tiers (Stripe), OR bring-your-own-key. | ✅ for now: **shared OpenAI key for testing** (Groq primary in code, OpenAI fallback). BYOK/quotas deferred to Phase 3/4. |
+| Q2 | Who pays for LLM calls? | Free tier + hard quotas, OR paid tiers (Stripe), OR bring-your-own-key. | ✅ for now: **OpenRouter prepaid credit (primary) + OpenAI paid fallback**. BYOK/quotas deferred to Phase 3/4. |
 | Q3 | Auto-apply at launch? | **Gate off / waitlist** — Render 512MB agent already crashes for one user; multi-user needs a queue + workers | ✅ kept available but **secondary/untested for multi-user**; per-user browser-agent scaling deferred to Phase 5 |
 | Q4 | Hosting reality | Free tiers fine for beta; budget paid Supabase/Vercel at scale | ✅ **stay on free tiers** for the multi-user beta |
 
-### Phase 0 research note — Free / open-source models vs paid OpenAI (May 29, 2026)
+### Phase 0 research note — Free / open-source models vs paid OpenAI (May 29, 2026) — ⚠️ HISTORICAL
+
+> **Superseded Aug 23 (Session 49):** the multi-provider free-tier approach below was abandoned after every free tier failed in production (Cerebras 402, Bluesminds 400, Gemini ~20 req/day, Groq 429 under Match Studio's 12k-char prompts). The app now uses **OpenRouter prepaid credit (primary) → OpenAI (paid last resort)** — see Session 36 + 49 logs and `lib/llm-keys.ts` `PROVIDER_BUDGET`. Kept for the reasoning record (BYOK analysis still applies).
 
 Researched the latest 2026 landscape (web). Key findings:
 
@@ -318,7 +320,9 @@ Researched the latest 2026 landscape (web). Key findings:
 
 **Top MNC** stays cheap: filter existing `matches` / `jobs` by `lib/top-companies.ts` — **$0** extra scan cost.
 
-#### Phase 3 capacity analysis — single shared Groq free key (May 2026, evidence-based)
+#### Phase 3 capacity analysis — single shared Groq free key (May 2026, evidence-based) — ⚠️ SUPERSEDED Aug 23 (Session 49)
+
+> **Historical.** Groq (and all other free tiers) were removed Aug 2026. Chat runs on **OpenRouter prepaid credit** (`meta-llama/llama-3.1-8b-instruct`) with OpenAI as paid last resort; sizing/cost questions now → `lib/llm-keys.ts` `PROVIDER_BUDGET` + Session 36/49 logs. Kept below for the record.
 
 **Question:** how many users can one shared Groq free API key support, and how many cron runs/day?
 
@@ -353,7 +357,9 @@ Researched the latest 2026 landscape (web). Key findings:
 
 Quick win for Phase 3: the "stop re-sending the full resume on every `scoreJob` call" change alone cuts per-job tokens roughly in half. Tackle first.
 
-#### OpenAI-primary cost model — scaling 1 → 1,000 users (May 2026, evidence-based)
+#### OpenAI-primary cost model — scaling 1 → 1,000 users (May 2026, evidence-based) — ⚠️ SUPERSEDED Aug 23 (Session 49)
+
+> **Historical.** Chat now runs on OpenRouter prepaid credit, not OpenAI-primary. The linear-cost math here still holds as the worst case; actuals are a small fraction (see Session 36's cost notes). Kept for the record.
 
 If OpenAI `gpt-4o-mini` is the primary (no Groq offset), here is the AI-only cost (LLM + embeddings; excludes Supabase/Vercel/hosting).
 
@@ -490,7 +496,7 @@ The auto-apply pipeline was built in Sessions 3-4 but has **never actually worke
 
 | Component | File | Status |
 |---|---|---|
-| Python agent | `browser_agent/main.py` | ✅ Built, `browser-use==0.1.40` (ancient), Groq primary LLM |
+| Python agent | `browser_agent/main.py` | ✅ Built, `browser-use==0.1.40` (ancient), OpenRouter primary LLM (`meta-llama/llama-3.1-8b-instruct`) + OpenAI fallback |
 | Docker for Render | `browser_agent/Dockerfile` | ✅ Built, deployed on Render free tier |
 | Orchestration API | `app/api/match/[id]/auto-apply/route.ts` | ✅ Built — generates resume, PDF, cover letter, calls agent |
 | Callback API | `app/api/match/[id]/apply-callback/route.ts` | ✅ Built — receives agent result, updates match |
@@ -1237,8 +1243,8 @@ Email/SMS delivery = future phase. Full spec: `docs/features-jun26-to-be-built.m
 ## File Map
 
 ```
-lib/gemini.ts              ← AI: chat() with Bluesminds→Gemini→Cerebras→Groq→OpenAI provider chain (order set by LLM_PRIMARY env, default=`bluesminds`), dynamically built from PROVIDER_DEFAULTS; RPM-aware round-robin across ALL DB keys per provider, in-memory cooldowns (65s on 429), env-var fallback only when provider has ZERO DB keys, synthetic `env:{provider}` key IDs logged to activity panel; sanitizeJobDescriptionForAI at all 5 prompt sites, scoreJob seniority+years cap (server-enforced); isSkillPresentInJd() exported helper (session 19) — post-filters matchedSkills+missingSkills in scoreJob+matchSkills to eliminate LLM hallucinations
-lib/llm-keys.ts            ← (Session 16 + later) Multi-key LLM rotation + PROVIDER_DEFAULTS (cerebras/groq/openai/gemini/mistral/sambanova/bluesminds). Bluesminds: `{ baseUrl: 'https://api.bluesminds.com/v1', model: 'gpt-4o' }`. Gets: getNextAvailableKey, recordUsage, daily reset, getRecentLlmActivity (live log), getAllLlmKeys, addLlmKey, updateLlmKey, deleteLlmKey, getLlmUsageSummary. Synthetic `env:{provider}` key IDs let env-var fallbacks appear in the admin activity panel.
+lib/gemini.ts              ← AI: chat() with **OpenRouter → OpenAI (paid last-resort) only** (Session 49). `FREE_CHAT_PROVIDERS = ['openrouter']` is hardcoded; `LLM_PRIMARY` env is no longer used. RPM-aware round-robin across ALL DB keys per provider, in-memory + DB cooldowns (65s on 429), one 25s HTTP-attempt timeout (SDK default was 10 min — `LLM_ATTEMPT_TIMEOUT_MS`), env-var fallback only when provider has ZERO DB keys, synthetic `env:{provider}` key IDs logged to activity panel; sanitizeJobDescriptionForAI at all 5 prompt sites, scoreJob seniority+years cap (server-enforced); isSkillPresentInJd() exported helper (session 19) — post-filters matchedSkills+missingSkills in scoreJob+matchSkills to eliminate LLM hallucinations
+lib/llm-keys.ts            ← (Session 16 + later) Multi-key LLM rotation + PROVIDER_DEFAULTS (cerebras/groq/openai/gemini/mistral/sambanova/bluesminds + openrouter). **Only `openrouter` + `openai` are active (Session 49); the rest are kept for DB-read compat (old `llm_keys` rows may reference them) and are marked `// inactive — kept for DB compat`.** Gets: getNextAvailableKey, recordUsage, daily reset, getRecentLlmActivity (live log), getAllLlmKeys, addLlmKey, updateLlmKey, deleteLlmKey, getLlmUsageSummary. Synthetic `env:{provider}` key IDs let env-var fallbacks appear in the admin activity panel.
 lib/jd-fetcher.ts          ← Fetches full JDs from source URLs; exports stripHtml + containsHtml + sanitizeJobDescriptionForAI; ensureFullDescription self-heals HTML in stored rows AND re-embeds after a description upgrade (Session 40 — ranking no longer runs on truncated stubs)
 lib/search-profile.ts      ← AI SearchProfile generation + title classification + AI relevance filter
 lib/ingest.ts              ← Main ingest pipeline (10 steps). INGEST_WALL_BUDGET_MS=50s (session 20) to prevent Vercel Hobby timeouts. SCORE_CONCURRENCY=5 + 3s SCORE_BATCH_DELAY_MS. Session 40: every evaluation persisted to the `job_scores` ledger (migration **0022**) so rejects are never re-scored. Session 41–42: candidate pool via `candidate_jobs` RPC (DB-side pgvector cosine, no ~6 MB embedding payload; legacy jsonb+JS-cosine fallback for 768-dim resumes); patchIngestRun throttled to ~1/30s during scoring; embed writes both `embedding` jsonb and `embedding_vec` vector
@@ -1652,7 +1658,7 @@ When a feature seems broken:
 
 ## Cost Model
 
-> **Updated Aug 21, 2026 (Session 36).** OpenRouter (`meta-llama/llama-3.1-8b-instruct` via `openrouter.ai/api/v1`) is now the chat **primary** (admin-managed via `llm_keys` table or `LLM_PRIMARY=openrouter` env). The fallback chain is: OpenRouter 8B → Gemini `gemini-2.5-flash-lite` (free, env-var) → Groq `openai/gpt-oss-120b` (free) → OpenAI `gpt-4o-mini` (paid, last resort). Cerebras (6 keys) and Bluesminds (3 keys) are **deactivated** (402/400 errors). Embeddings remain OpenAI-only (`text-embedding-3-small`).
+> **Updated Aug 23, 2026 (Session 49).** OpenRouter (`meta-llama/llama-3.1-8b-instruct` via `openrouter.ai/api/v1`, prepaid credit) is the chat **primary** (admin-managed via `llm_keys` table). The only fallback is paid OpenAI `gpt-4o-mini`. **Gemini / Groq / Cerebras / Bluesminds / Mistral / SambaNova were all removed from the runtime chain** Aug 23, 2026 — every one of them failed in production (Google shut down Gemini models, Groq 429s on big prompts, Cerebras/Bluesminds dead keys). Embeddings use OpenRouter `text-embedding-3-small`. Legacy provider rows remain in the DB but are inert (`lib/gemini.ts` only iterates `openrouter` + `openai`).
 
 | Operation | Cost (Bluesminds primary) | Fallback cost (any free provider) | Frequency |
 |---|---|---|---|

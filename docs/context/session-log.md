@@ -2,6 +2,65 @@
 
 > **Tier 3 — rarely needed.** Chronological history of past work sessions. Open ONLY to investigate *why* a past decision was made. For everything else, use `AGENTS.md` → Index. (Newest first.)
 
+## Session 52 — OpenRouter-only cutover cleanup: one provider, hardened LLM calls, docs reset (Aug 23, 2026)
+
+> **Read this first if you're debugging ANY LLM/AI issue (even 6 months later).** This session consolidated the provider chain to OpenRouter-only and hardened every LLM call. If an AI feature 429s / 504s / shows "AI is busy" / "We could not analyze this job" — the causes and how to fix fast are all below.
+
+### The decision: ONE chat provider (OpenRouter), OpenAI as paid last resort
+
+Every free tier failed in real production use (chronological):
+- **Gemini** — Google deprecated `gemini-2.0-flash` (Jun 1 2026 shutdown); newer free tiers ~20 req/day + train on data (PII risk).
+- **Cerebras** — 6 DB keys all returned `402 Payment Required` (free quota exhausted; needs payment).
+- **Bluesminds** — `400 "No connected db"` on heavy/parallel payloads; 300 req/day; both keys broke.
+- **Groq** — `429 Rate limit reached for model openai/gpt-oss-120b ... tokens per minute (TPM): Limit 8000, Requested 11/12/13` on **Match Studio's 12k-char JD prompts** (and `tokens per day (TPD): Limit 200000` on busy days). Groq's "free" gpt-oss-120b is a shared pool that 429s reliably on big prompts.
+
+**Lesson 1: a "fallback chain" of flaky free tiers is worse than one reliable paid provider.** Every chain fall-through burned 20–80s retrying dead tiers before eventually succeeding (or timing out). OpenRouter prepaid (`meta-llama/llama-3.1-8b-instruct`, ~$6.60/mo at 100 users) is cheap, fast, one key does chat AND embeddings (`text-embedding-3-small`).
+
+**Current chain (Aug 2026 →):** `lib/gemini.ts` `FREE_CHAT_PROVIDERS = ['openrouter']`; paid OpenAI `gpt-4o-mini` is the only fallback. **`LLM_PRIMARY` env var is now dead** — routing is hardcoded. Env needed: `OPENROUTER_API_KEY` (DB keys in `llm_keys` table also work, prioritized by `priority`). Legacy provider rows still in `llm_keys` are inert (never iterated).
+
+### 2. The three separate outage symptoms & their root causes (all Aug 22–23)
+
+Each of these looked identical to a user ("AI feature broke") but had a distinct cause. **Do not treat them as one bug:**
+
+| Symptom | Root cause — "the QA that caught it" | Durable fix |
+|---|---|---|
+| **Everything fails, "AI is busy right now"** | The **LLM semaphore leak** (below). Cross-instance counter pinned at 25/25. | Migration 0026: lease-based semaphore (see Session 51 entry) |
+| **"Unexpected end of JSON input" on Tailor** | API route had **no try/catch** around `generateAtsResume()`, which throws when LLM goes down or drops resume roles. Vercel returned an **empty-bodied 500** → browser `res.json()` crashed. | Wrap generation in try/catch → always JSON, `503 {error}`; client `safeParseJson()` |
+| **`api/match/[id]/studio` → 504 (61.8s)** | **3 sequential LLM calls with no per-request timeout.** OpenAI SDK defaults to a **10-minute** timeout per attempt; 12k-char Match Studio prompts were slow, so one hung call ate the whole 50–60s Vercel function budget. Also: `withLlmChatSlot` waited up to **45s** for a slot before any LLM work even started. | See "Timeout hardening" below |
+
+### 3. Timeout & concurrency hardening (PR #377 + #378) — the "never again" rules
+
+- **`chat()` hard timeout:** every HTTP attempt passes `{ timeout: 25_000, maxRetries: 0 }` to the OpenAI SDK (env `LLM_ATTEMPT_TIMEOUT_MS`). Default SDK timeout is **10 minutes** — never rely on it in a serverless function.
+- **Chain deadline:** `Date.now() + attemptTimeoutMs * 2` — a multi-key fallback can't stack `N keys × 25s`; it gives up after ~2 attempts.
+- **Slot wait capped:** `DEFAULT_MAX_WAIT_MS` 45s → **12s**. Queuing must not eat a route's function budget.
+- **Extraction parallelized:** `extractJobAnalysis()` now `Promise.all`s the requirements + keyword calls (they're independent; both cached in `jd_requirements` per job after first run — cold cache was 2 serial calls).
+- **Grade call fails open:** `analyzeMatchStudio` sizes the recruiter-grade `chat()` to whatever remains of the 60s route budget (skips if <10s left); on error returns `null` so the **deterministic robot score still ships** with a `null` human score — UI renders "-". Never 500 the whole analysis because the LLM hiccupped.
+- **Semaphore self-heal (migration 0026):** `acquire_llm_chat_slot(p_max_slots, p_lease_seconds=300)` stamps `last_acquired_at`; if the pool is full AND leases are stale (>300s), the next acquirer reclaims the pool atomically. A frozen serverless instance can only block for one lease window now.
+
+### 4. The "stale draft" migration lesson (burned ~30 min)
+
+When applying `0026_llm_semaphore_leases.sql` manually, the earlier version quoted in chat was run — it added the column but left the OLD single-arg function body that errored (`GREATEST types integer and text cannot be matched`) → every LLM call **fast-failed**. **Always paste the file from the current branch, not from chat history/summary scenarios.** `pull the current file` before running.
+
+### 5. Operability: environments, keys, monitoring (referenced constantly)
+
+- **Prod:** Vercel `job-radar` project (org `shashanks-projects-0776ada5`) → `hyred.in`. `OPENROUTER_API_KEY` must be set in Vercel Production env + GitHub Actions secrets (`ingest.yml`, `backfill-jds.yml`).
+- **The ONLY chat keys that matter:** `openrouter` (prio 1, active) + optional `openai` paid. All other `llm_keys` rows (cerebras/bluesminds/gemini/groq) — disable via Admin Center.
+- **LLM slot health (prod)** — query via supabase service key:
+  - `llm_chat_semaphore`: if `active_slots` is pinned at `max_slots` → leaked slots (or the DB RPC bug from section 4). Reset: `UPDATE llm_chat_semaphore SET active_slots = 0 WHERE id='global'`.
+  - `llm_usage_log` — `status` = `rate_limited`/`error` + `error_message` shows the provider reason. Check this BEFORE touching prompt/model/config code.
+- **Model:** `meta-llama/llama-3.1-8b-instruct` on OpenRouter (was switched in Session 36 from 70b to 8b for 3× cost). Tuning? Leave the prompt alone; the shortlist for "still missing tools" is **change the model** (Session 48 lesson: don't fix a judgment problem by raising caps).
+
+### 7. Cleanup shipped this session
+
+- `/AGENTS.md`, `CONTEXT.md`, `README`, `docs/scaling-plan-100-users.md`, `docs/AUTH_SETUP.md`, `PRODUCT.md`, privacy page — **all stale provider references → OpenRouter primary / OpenAI fallback**; historical sections marked `⚠️ HISTORICAL / SUPERSEDED` so the reasoning stays, but is clearly not current.
+- `lib/llm-keys.ts` — old provider entries kept (DB compat) but commented `// inactive — kept for DB compat`.
+- Admin Center labels (LlmKeysPanel / AdminDashboard) now say "OpenRouter + OpenAI" not "Cerebras/Groq/...".
+- `.env.example` rewrote to the two-provider reality.
+
+**Lessons that last:** read the actual error message/trace before touching prompts (Session 48 taught: "When an LLM keeps making the same class of mistake, add a deterministic post-check; do not raise limits"). For infra: a shared free tier is a latency bomb, not a cost saver. For route perf: **always bound HTTP timeouts explicitly** and **fail open on non-essential LLM calls**. Keep the one-page truth in `CONTEXT.md` Cost Model + this log.
+
+---
+
 ## Session 51 — "AI is busy" outage: leaked LLM semaphore slots + lease-based recovery (Aug 23, 2026)
 
 **User report:** repeated "We could not analyze this job" failures. Vercel logs showed 65+ `AI is busy right now (too many concurrent requests)` errors in ~90s, from chat paths AND `[jd-fetcher] Re-embed failed` — every LLM call failing.
