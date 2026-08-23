@@ -6,15 +6,16 @@ import { useId } from 'react';
  * Animated scan loader — morphing orb with rotating clip-path polygons.
  * Based on https://uiverse.io/andrew-manzyk
  *
- * Uses useId() so multiple instances on the same page don't collide.
+ * Renders as a bare Fragment (no wrapper div) so it sits cleanly inside
+ * buttons, flex rows, etc. The `size` prop scales the 100px base orb.
  */
 export function ScanLoader({ size = 1 }: { size?: number }) {
   const id = useId();
-  // Sanitize React's useId output (contains ":") for use in CSS url()
   const clipId = `scan-clip-${id.replace(/:/g, '')}`;
+  const px = Math.round(100 * size);
 
   return (
-    <div className="flex flex-col items-center gap-4">
+    <>
       <style>{`
         .scan-orb-${clipId} {
           --color-one: #ffbf48;
@@ -25,13 +26,13 @@ export function ScanLoader({ size = 1 }: { size?: number }) {
           --time-animation: 2s;
           position: relative;
           border-radius: 50%;
-          transform: scale(${size});
           box-shadow:
             0 0 25px 0 var(--color-three),
             0 20px 50px 0 var(--color-four);
           animation: clr-${clipId} calc(var(--time-animation) * 3) ease-in-out infinite;
-          width: 100px;
-          height: 100px;
+          width: ${px}px;
+          height: ${px}px;
+          flex-shrink: 0;
         }
 
         .scan-orb-${clipId}::before {
@@ -39,8 +40,8 @@ export function ScanLoader({ size = 1 }: { size?: number }) {
           position: absolute;
           top: 0;
           left: 0;
-          width: 100px;
-          height: 100px;
+          width: 100%;
+          height: 100%;
           border-radius: 50%;
           border-top: solid 1px var(--color-one);
           border-bottom: solid 1px var(--color-two);
@@ -51,8 +52,8 @@ export function ScanLoader({ size = 1 }: { size?: number }) {
         }
 
         .scan-orb-${clipId} .box {
-          width: 100px;
-          height: 100px;
+          width: 100%;
+          height: 100%;
           background: linear-gradient(180deg, var(--color-one) 30%, var(--color-two) 70%);
           mask: url(#${clipId});
           -webkit-mask: url(#${clipId});
@@ -60,6 +61,8 @@ export function ScanLoader({ size = 1 }: { size?: number }) {
 
         .scan-orb-${clipId} svg {
           position: absolute;
+          width: ${px}px;
+          height: ${px}px;
         }
 
         .scan-orb-${clipId} svg #${clipId} {
@@ -134,7 +137,7 @@ export function ScanLoader({ size = 1 }: { size?: number }) {
 
       <div className={`scan-orb-${clipId}`}>
         <div className="box" />
-        <svg width="100" height="100" aria-hidden="true">
+        <svg aria-hidden="true">
           <defs>
             <clipPath id={clipId} clipPathUnits="objectBoundingBox">
               <polygon points="0,0 1,0 1,1 0,1" />
@@ -148,6 +151,6 @@ export function ScanLoader({ size = 1 }: { size?: number }) {
           </defs>
         </svg>
       </div>
-    </div>
+    </>
   );
 }
