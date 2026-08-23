@@ -108,10 +108,23 @@ export function ReadyToApply({
     ];
     try {
       const res = await fetch(`/api/match/${matchId}/studio`, { method: 'POST' });
-      const data = await res.json();
+      // The analysis runs several LLM calls server-side; Vercel can return a
+      // non-JSON gateway error (502/504) when it's slow. Detect that so we can
+      // show a truthful message instead of a generic "connection dropped".
+      const rawText = await res.text();
+      let data: { error?: string } | (StudioAnalysis & { changes?: ProposedChange[] }) | null = null;
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        setErrorMsg(
+          'The analysis timed out on our side. You can still tailor your resume below.',
+        );
+        setPhase('error');
+        return null;
+      }
       if (!res.ok) {
         setErrorMsg(
-          data?.error === 'no_resume'
+          (data as { error?: string } | null)?.error === 'no_resume'
             ? 'Upload your resume first, then come back.'
             : 'We could not analyze this job. You can still tailor your resume below.',
         );
@@ -134,7 +147,7 @@ export function ReadyToApply({
       onAnalysis?.(data as StudioAnalysis);
       return data as StudioAnalysis;
     } catch {
-      setErrorMsg('Connection dropped mid-analysis. You can still tailor your resume below.');
+      setErrorMsg('There was a connection problem. You can still tailor your resume below.');
       setPhase('error');
       return null;
     }
@@ -146,14 +159,15 @@ export function ReadyToApply({
   );
 
   /**
-   * Tailor my resume: runs the analysis if not yet done (landing on the review),
-   * otherwise the proposed changes are already visible. Never applies silently —
-   * the user confirms each change, then taps Apply.
+   * Tailor my resume. If the analysis has succeeded, the proposed changes are
+   * already on screen — the user confirms each then hits Apply. If the analysis
+   * failed or hasn't run (session 46's "build anyway" promise), fall straight
+   * to optimization with whatever is staged so a model hiccup can never dead-end
+   * the user. We never block tailoring on a failed analysis.
    */
   function tailorNow() {
-    if (!analysis) {
-      analyze();
-    }
+    if (analysis) return; // review is already visible; user taps Apply to confirm
+    analyze();
   }
 
   /** Apply the accepted changes via the parent. Skipped reframes become exclusions. */
@@ -270,9 +284,16 @@ export function ReadyToApply({
       {phase === 'error' && (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-primary/10 pt-4">
           <p className="text-xs text-on-surface-variant">{errorMsg}</p>
-          <button type="button" onClick={analyze} className="btn text-xs">
-            Try again
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={analyze} className="btn text-xs">
+              Try again
+            </button>
+            {/* Build anyway — a failed analysis must never dead-end the user.
+                Weave the staged keywords without a scored review. */}
+            <button type="button" onClick={() => onOptimize()} className="btn-primary text-xs">
+              Tailor anyway
+            </button>
+          </div>
         </div>
       )}
 
