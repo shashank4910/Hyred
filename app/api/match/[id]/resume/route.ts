@@ -3,7 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase/server';
 import { getCurrentProfile } from '@/lib/current-user';
 import { ensureFullDescription } from '@/lib/jd-fetcher';
 import { generateAtsResume, keywordInText, keywordCloseInText, type KeywordType } from '@/lib/gemini';
-import { getJobKeywordsCached } from '@/lib/match-studio';
+import { readJobKeywordsIfCached } from '@/lib/match-studio';
 import { requireFeatureAccess, recordFeatureUsage } from '@/lib/premium';
 
 export const runtime = 'nodejs';
@@ -55,20 +55,19 @@ export async function GET(
     });
   }
 
-  // Typed keyword extraction - SHARED per-job cache (jd_requirements, the
-  // same extraction the fit check uses). One LLM call per job ever, and the
-  // chips and fit check can never disagree on the keyword universe again.
-  const typed = await getJobKeywordsCached(sb, {
+  // Typed keyword extraction — CACHE-READ-ONLY on passive page loads.
+  // Session 53 RCA: this route used to EXTRACT on cache-miss, racing the
+  // studio POST's own extraction for the same job → parallel upserts on the
+  // same job_id deadlocked in Postgres → cache never persisted → every page
+  // view re-extracted → 4 LLM calls stacked inside one studio request's 60s
+  // window → 504. Only the studio POST may extract (single writer); this GET
+  // returns [] on miss so the caller falls back to job tags and the chips
+  // fill in once the first fit-check caches the row.
+  const typed: Array<{ keyword: string; type: KeywordType }> = (await readJobKeywordsIfCached({
     id: job.id,
     title: job.title,
     description: fullDescription,
-  }).catch(() => [] as { keyword: string; type: string }[])
-    .then((list) =>
-      list.map((k) => ({
-        keyword: k.keyword,
-        type: (k.type === 'tool' ? 'tool' : 'activity') as KeywordType,
-      })),
-    );
+  })).map((k) => ({ keyword: k.keyword, type: (k.type === 'tool' ? 'tool' : 'activity') as KeywordType }));
 
   // Fall back to the job's existing tags if the extraction returned nothing.
   const finalTyped = typed.length > 0
