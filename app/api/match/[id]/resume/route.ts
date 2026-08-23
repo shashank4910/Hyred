@@ -185,6 +185,7 @@ export async function POST(
     return NextResponse.json({ error: 'No resume text found' }, { status: 400 });
   }
 
+  try {
   const gate = await requireFeatureAccess({ profileId: profile0.id, feature: 'resume_studio' });
   if (!gate.ok) {
     return NextResponse.json(gate, { status: gate.status });
@@ -274,6 +275,19 @@ export async function POST(
     usage: gate.usage,
     version: newVersion ?? null,
   });
+} catch (err) {
+  const message = err instanceof Error ? err.message : String(err);
+  console.error('[resume] generation failed:', message);
+  // ALWAYS return a JSON body so the client never hits an empty response
+  // (which crashes the browser with "Unexpected end of JSON input"). A non-2xx
+  // status flows through the client's `!res.ok` branch, which throws
+  // data.error → shows the toast → lets the user retry cleanly instead of a
+  // silent "ATS Match Score: 0%" success.
+  return NextResponse.json(
+    { error: 'We could not generate the resume right now. The AI service was temporarily unavailable. Please try again.' },
+    { status: 503 },
+  );
+}
 }
 
 /**

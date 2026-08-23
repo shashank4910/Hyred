@@ -31,6 +31,21 @@ import { createResumePdfObjectUrl, revokeResumePdfObjectUrl } from '@/lib/resume
 import { getResumeTemplate } from '@/lib/resume-templates';
 import type { ResumeVersionSummary } from '@/lib/types';
 
+// Reads the response body defensively. A proxy/Next 500 can come back with an
+// EMPTY body, and raw `await res.json()` on that throws
+// "Unexpected end of JSON input" and crashes the browser. We read the raw text
+// and parse only if there's something to parse, so an empty/anomalous body
+// always resolves to safe data instead of throwing.
+async function safeParseJson(res: Response): Promise<any> {
+  const rawText = await res.text();
+  if (!rawText) return {};
+  try {
+    return JSON.parse(rawText);
+  } catch {
+    return {};
+  }
+}
+
 export function JobActions({
   matchId,
   status,
@@ -169,7 +184,7 @@ export function JobActions({
     let cancelled = false;
     setLoadingKeywords(true);
     fetch(`/api/match/${matchId}/resume`)
-      .then((r) => r.json())
+      .then((r) => safeParseJson(r))
       .then((d) => {
         if (cancelled) return;
         if (d?.keywords) {
@@ -195,7 +210,7 @@ export function JobActions({
     const tid = toast.loading('Loading version…');
     try {
       const res = await fetch(`/api/match/${matchId}/resume/versions/${version.id}`);
-      const data = await res.json();
+      const data = await safeParseJson(res);
       if (!res.ok) throw new Error(data.error || 'Could not load version');
       const resumeText = data.version?.resume_text ?? '';
       if (!resumeText.trim()) throw new Error('This version has no resume text');
@@ -387,7 +402,7 @@ export function JobActions({
           keywordTypes: Object.keys(keywordTypes).length > 0 ? keywordTypes : undefined,
         }),
       });
-      const data = await res.json();
+      const data = await safeParseJson(res);
       if (res.status === 402) {
         toast.error('Resume Studio credits used up. Upgrade for more tailored resumes and Fix Studio rewrites.', {
           id,
