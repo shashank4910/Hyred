@@ -13,9 +13,14 @@ The global LLM semaphore (`llm_chat_semaphore`, migration 0018) is a bare counte
 1. **Mitigation (applied to prod immediately):** reset `active_slots` to 0 via service-role client; observed acquire/release cycles resuming (`updated_at` ticking). Prod unblocked.
 2. **Durable fix — PR #375:** `supabase/migrations/0026_llm_semaphore_leases.sql` adds `last_acquired_at` lease column; when the pool is exhausted but every lease is older than `p_lease_seconds` (300s default), the next acquirer reclaims the pool atomically in one UPDATE (CASE reads pre-update row). Semaphore self-heals instead of pinning. `lib/llm-concurrency.ts` passes `p_lease_seconds=300`. RPC keeps defaults → in-flight deploys compatible.
 
-**⚠️ Manual step:** run 0026 in Supabase SQL Editor (project procedure; idempotent). Until applied, leaks can re-pin prod and need another manual reset.
+### Applied & verified on prod (same day)
+1. **First SQL Editor run was a stale draft** — an earlier pre-final version of 0026 quoted in chat history. Result: half-applied state. The `last_acquired_at` column existed, but `acquire_llm_chat_slot` was still the old single-arg function AND its body errored on every call (`GREATEST types integer and text cannot be matched`) → all LLM calls fast-failed until fixed. Caught by verifying before merging instead of trusting the "ran it" confirmation.
+2. **Detection without psql access:** PostgREST OpenAPI introspection (`GET /rest/v1/` with service key) shows deployed RPC signatures; `release_llm_chat_slot` worked while `acquire_llm_chat_slot` didn't → isolated the problem to the acquire function body.
+3. **Recovery:** user re-ran the final file from the branch (copied to clipboard); deployed signature flipped to `(p_max_slots, p_lease_seconds)` ~5 min later.
+4. **Live verification against prod DB:** (a) acquire returns true + stamps lease, release returns slot; (b) simulated the outage state exactly (pinned 25/25, 10-min-old lease) → next acquirer reclaimed the pool and succeeded; (c) pinned pool with a *fresh* lease still denies acquirers → reclaim cannot over-admit during normal load. Row left clean at 0/25.
+5. **Merged PR #375** (12:31 UTC, CI green); Vercel Production deploy 12:32 UTC (commit `830411d`). From here, a frozen instance can pin the pool for at most one 300s lease window, then the next request self-heals it.
 
-**Lesson:** any cross-instance lock guarded only by in-process `finally` will leak under serverless freezing. Distributed semaphores need ownership/expiry semantics (leases), not bare counters.
+**Lessons:** (1) Any cross-instance lock guarded only by in-process `finally` leaks under serverless freezing — distributed semaphores need ownership/expiry semantics (leases), not bare counters. (2) Verify deployed DB state after every manual migration run *before* merging dependent code; introspect RPC signatures via PostgREST OpenAPI when there's no psql access. (3) Never execute migration drafts quoted in conversation history — the file on the branch at merge time is the only source of truth.
 
 ## Session 46b — Fit Check → "one door" Tailor flow + local git corruption incident (Aug 22, 2026)
 
