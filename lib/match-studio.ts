@@ -193,7 +193,9 @@ function cacheRowIsSane(cache: JobAnalysisCache): boolean {
   // studio route's 27s+ extraction pair + grade call blew the 60s budget → 504.
   if ((cache as { v?: number }).v !== 5) return false;
   const jdLen = cache.jdLength ?? 0;
-  const minKeywords = jdLen >= 5000 ? 18 : jdLen >= 1500 ? 6 : 2;
+  // Verified against prod: a 149-char stub yields 0 keywords. So <1500 JDs
+  // accept any result (>=0 keywords); 1500-4999 needs 4; >=5000 needs 18.
+  const minKeywords = jdLen >= 5000 ? 18 : jdLen >= 1500 ? 4 : 0;
   return (
     cache.requirements.length >= 8 &&
     cache.keywords.length >= minKeywords &&
