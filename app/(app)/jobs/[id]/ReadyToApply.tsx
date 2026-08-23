@@ -180,6 +180,35 @@ export function ReadyToApply({
 
   const missingMustHaves = changes.filter((c) => c.kind === 'missing');
 
+  // Build the full keyword universe for chips display (from analysis)
+  const allKeywords = analysis ? [
+    ...(analysis.preselected || []),
+    ...changes.filter(c => c.kind === 'reframe').map(c => c.keyword),
+    ...changes.filter(c => c.kind === 'missing').map(c => c.keyword)
+  ] : [];
+
+  // Categorize keywords for chips (green/amber/red)
+  const keywordChips = allKeywords.map(kw => {
+    const isPreselected = analysis?.preselected?.includes(kw) ?? false;
+    const isReframe = changes.some(c => c.kind === 'reframe' && c.keyword === kw);
+    const isMissing = missingMustHaves.some(c => c.keyword === kw);
+    const isAccepted = isReframe && decisions[`reframe-${kw.toLowerCase().replace(/\s+/g, '-')}`];
+    const isExcluded = isReframe && !decisions[`reframe-${kw.toLowerCase().replace(/\s+/g, '-')}`];
+    
+    let type: 'green' | 'amber' | 'red';
+    if (isMissing) type = 'red';
+    else if (isReframe) type = isAccepted ? 'green' : 'amber';
+    else if (isPreselected) type = 'green';
+    else type = 'red';
+    
+    return { keyword: kw, type, isAccepted, isExcluded, isMissing, isPreselected, isReframe };
+  });
+
+  // Count total keywords that will be woven (preselected + accepted reframes - excluded)
+  const totalKeywordsToWeave = keywordChips.filter(k => 
+    k.type === 'green' || (k.type === 'amber' && !k.isExcluded)
+  ).length;
+
   const weak = Math.min(analysis?.robotScore ?? 100, analysis?.humanScore ?? 100);
   const headline =
     weak >= 70
@@ -313,6 +342,61 @@ export function ReadyToApply({
             )}
           </div>
 
+          {/* Keyword chips — show all keywords with green/amber/red status */}
+          <div className="mt-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted mb-2">
+              Keywords for this job
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {keywordChips.map((chip) => (
+                <span
+                  key={chip.keyword}
+                  className={`
+                    inline-flex items-center gap-1 rounded-badge px-2 py-0.5 text-xs font-medium transition-colors
+                    ${chip.type === 'green' 
+                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                      : chip.type === 'amber' 
+                        ? 'bg-amber-50 text-amber-700 border border-amber-200' 
+                        : 'bg-red-50 text-red-700 border border-red-200'}
+                  `}
+                  title={
+                    chip.isMissing 
+                      ? 'Missing — not in your resume. Add only if you genuinely have this experience.'
+                      : chip.isReframe
+                        ? chip.isAccepted 
+                          ? 'Accepted — will be woven into your resume'
+                          : 'Skip — click to accept'
+                        : chip.isPreselected
+                          ? 'Pre-selected — already in your resume (exact match)'
+                          : 'Missing — not in your resume'
+                  }
+                >
+                  {chip.keyword}
+                  {chip.isReframe && !chip.isAccepted && (
+                    <button
+                      type="button"
+                      onClick={() => setDecisions(prev => ({ ...prev, [`reframe-${chip.keyword.toLowerCase().replace(/\s+/g, '-')}`]: true }))}
+                      className="ml-1 p-0.5 text-inherit hover:opacity-70"
+                      aria-label="Accept this keyword"
+                    >
+                      <Check className="h-3 w-3" strokeWidth={3} />
+                    </button>
+                  )}
+                  {chip.isReframe && chip.isAccepted && (
+                    <button
+                      type="button"
+                      onClick={() => setDecisions(prev => ({ ...prev, [`reframe-${chip.keyword.toLowerCase().replace(/\s+/g, '-')}`]: false }))}
+                      className="ml-1 p-0.5 text-inherit hover:opacity-70"
+                      aria-label="Remove this keyword"
+                    >
+                      <span className="text-xs">×</span>
+                    </button>
+                  )}
+                </span>
+              ))}
+            </div>
+          </div>
+
           {/* Review summary: how many changes to confirm before tailoring */}
           <div className="mt-5">
             <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">
@@ -377,7 +461,7 @@ export function ReadyToApply({
               </p>
             )}
 
-            <button
+<button
               type="button"
               onClick={applyChanges}
               disabled={generating}
@@ -386,7 +470,7 @@ export function ReadyToApply({
               <Sparkles className="h-3.5 w-3.5" />
               {generating
                 ? 'Building...'
-                : `Tailor my resume with ${acceptedReframes.length} change${acceptedReframes.length === 1 ? '' : 's'}`}
+                : `Tailor my resume with ${totalKeywordsToWeave} keyword${totalKeywordsToWeave === 1 ? '' : 's'}`}
             </button>
             </div>
           </div>
