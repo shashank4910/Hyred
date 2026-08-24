@@ -433,6 +433,25 @@ export async function analyzeMatchStudio(matchId: string): Promise<StudioAnalysi
   if (error || !match) throw new Error('Match not found');
 
   const job = match.job as unknown as { id: string; title: string; description: string | null };
+
+  // ── CACHE READ: per-(user, job) analysis cache (studio_analysis) ────────────
+  // If we already analyzed this (user, match) before, return the cached result
+  // immediately — no extraction, no grade, no LLM cost, no timeout risk.
+  // Table may not exist pre-migration (42P01) — treat as a miss.
+  try {
+    const { data: cachedRow } = await sb
+      .from('studio_analysis')
+      .select('analysis_json, created_at')
+      .eq('profile_id', profile.id)
+      .eq('job_id', matchId)
+      .maybeSingle();
+    if (cachedRow?.analysis_json) {
+      return cachedRow.analysis_json as StudioAnalysis;
+    }
+  } catch (e) {
+    console.warn('[match-studio] analysis cache read failed:', (e as Error).message);
+  }
+
   const checklist = await getJobRequirements(sb, job);
 
   // Deterministic gate first: verbatim presence needs no LLM.
@@ -447,16 +466,17 @@ export async function analyzeMatchStudio(matchId: string): Promise<StudioAnalysi
   let hooks: string[] = [];
   let watchOuts: string[] = [];
 
-  if (open.length > 0 || reqs.length > 0) {
-    const resumeExcerpt = profile.resume_text!.slice(0, 9000);
-    // Budget-aware grade call: the studio route has a hard 60s function cap.
-    // Reserve time for DB + response and give the LLM whatever remains; if
-    // that is too little for even one attempt (or the call fails), fail open —
-    // the deterministic robot score below still ships without the recruiter
-    // verdict. A timeout error must not 500 the whole analysis.
-    const gradeBudgetMs = Math.max(0, 52_000 - (Date.now() - startedAt));
+if (open.length > 0 || reqs.length > 0) {
+    // Trim resume to 5000 chars (was 9000) — the 8B model's 9k-char prompt was
+    // taking 30-50s; 5k keeps the signal, cuts latency to ~5s (verified in logs).
+    const resumeExcerpt = profile.resume_text!.slice(0, 5000);
+    // Budget-aware grade call: the studio route now has 120s cap.
+    // Reserve time for DB + response and give the LLM a fixed 25s window.
+    // If that's not enough for even one attempt, fail open — the deterministic
+    // robot score below still ships without the recruiter verdict.
+    const gradeBudgetMs = Math.max(0, 90_000 - (Date.now() - startedAt));
     let raw: string | null = null;
-    if (gradeBudgetMs >= 10_000) {
+    if (gradeBudgetMs >= 15_000) {
       raw = await chat(
         'You are a strict but fair hiring panel: a technical recruiter and an ATS in one. Output strict JSON only. Never invent resume facts.',
         `A candidate's resume and a job's requirement checklist are below.
@@ -487,6 +507,8 @@ Return JSON: {"resolved":[{"keyword":"...","kind":"met|inferred","evidence":"...
         true,
         'match_studio_grade',
         profile.id,
+        undefined,
+        { timeoutMs: 25_000 },
       ).catch((e) => {
         console.warn('[match-studio] grade call failed open:', (e as Error).message);
         return null;
@@ -580,7 +602,7 @@ Return JSON: {"resolved":[{"keyword":"...","kind":"met|inferred","evidence":"...
     .slice(0, PRESELECT_CAP)
     .map((r) => r.keyword);
 
-  return {
+  const result: StudioAnalysis = {
     robotScore,
     humanScore,
     verdictLine,
@@ -590,4 +612,25 @@ Return JSON: {"resolved":[{"keyword":"...","kind":"met|inferred","evidence":"...
     preselected,
     analyzedAt: new Date().toISOString(),
   };
+
+  // ── CACHE WRITE: per-(user, job) analysis cache (studio_analysis) ───────────
+  // So the grade/verdict is computed once per (user, job) and reused on every
+  // return visit — this plus the 120s cap ends the repeated 60s-timeout loop.
+  // The table may not exist pre-migration (42P01) — tolerate and continue.
+  try {
+    await sb
+      .from('studio_analysis')
+      .upsert(
+        {
+          profile_id: profile.id,
+          job_id: matchId,
+          analysis_json: result,
+        },
+        { onConflict: 'profile_id,job_id' },
+      );
+  } catch (e) {
+    console.warn('[match-studio] analysis cache write failed:', (e as Error).message);
+  }
+
+  return result;
 }
