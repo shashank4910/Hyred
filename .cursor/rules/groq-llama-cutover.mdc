@@ -1,0 +1,21 @@
+---
+description: Remind Shashank — Groq Llama 3.3 70B shuts down 16 Aug 2026; switch model
+alwaysApply: true
+---
+
+# Groq Llama cutoff — remind Shashank
+
+**Date:** 16 Aug 2026 (written 15 Aug). Groq **turns off** `llama-3.3-70b-versatile`.
+
+At the **start of the chat**, tell him in one line: Groq Llama 3.3 70B dies today — switch Hyred to `openai/gpt-oss-120b` (or `qwen/qwen3.6-27b`).
+
+Do not wait for him to remember. If he says go, change:
+
+- `lib/gemini.ts` (`GROQ_CHAT_MODEL`)
+- `lib/llm-keys.ts` (Groq default)
+- `browser_agent/main.py`
+- Groq rows in `llm_keys` + Vercel `GROQ_MODEL` if set
+
+Then typecheck, PR, merge. After it ships, **delete this rule** and `.cursor/notes/2026-08-16-groq-llama-cutover.md`.
+
+Note path: `.cursor/notes/2026-08-16-groq-llama-cutover.md`
