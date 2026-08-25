@@ -3,7 +3,7 @@ description: JobRadar project rules + context index (token-efficient)
 alwaysApply: true
 ---
 
-# JobRadar — read AGENTS.md first
+# JobRadar — read ONBOARDING.md first (new agent), then AGENTS.md
 
 This project's rules + a token-saving context **index** live in **`AGENTS.md`** at the repo root.
 

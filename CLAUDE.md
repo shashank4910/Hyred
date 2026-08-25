@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+## For new agents: Read `ONBOARDING.md` first — it has everything you need.
+
 This project uses **`AGENTS.md`** as the single source of project rules + a token-saving index.
 
 **Read `AGENTS.md` first**, then follow its Read Protocol: do NOT bulk-read `CONTEXT.md` — use the Index in `AGENTS.md` to open only the one section you need.
