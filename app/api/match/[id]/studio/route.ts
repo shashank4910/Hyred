@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { analyzeMatchStudio, buildProposedChanges } from '@/lib/match-studio';
 
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+// 120s (was 60): the analysis makes up to 3 LLM calls (extraction pair +
+// grade) and a cold-cache run measured 43-83s wall — Vercel killed it at 60s
+// mid-grade (no error rows even logged; Session 53 round 4). Matches the
+// resume route's 120s precedent.
+export const maxDuration = 120;
 
 /**
  * POST /api/match/[id]/studio — Ready-to-Apply analysis for the current user

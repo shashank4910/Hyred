@@ -49,3 +49,7 @@ data/
 .impeccable/live/*.png
 # impeccable-ignore-end
 
+
+# Stray nested projects (not part of the app, break **/*.ts build)
+performance-intelligence/
+portfolio/
