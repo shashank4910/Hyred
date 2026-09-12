@@ -918,9 +918,25 @@ export async function runIngestForAllProfiles(opts?: {
   sources?: import('./sources').SourceName[];
 }): Promise<{
   profiles: number;
+  skipped?: boolean;
+  skipReason?: string;
   results: { profileId: string; email: string; result?: IngestResult; error?: string }[];
 }> {
   const sb = supabaseAdmin();
+
+  // Cheap DB health gate: when the shared free-tier Postgres is saturated
+  // (CPU/mem pinned, "exceeded usage"), a plain COUNT can hang for minutes
+  // and the GHA job burns its whole budget retrying against a starved DB
+  // (observed Sep 10-12 2026: "Failed to list profiles: Gateway Timeout"
+  // on every 6-hourly run). Probe with a hard 10s budget and skip cleanly.
+  try {
+    await sb.from('profiles').select('id', { count: 'exact', head: true }).abortSignal(AbortSignal.timeout(10_000));
+  } catch (probeErr) {
+    const reason = `DB health probe failed/timed out (likely saturated or down): ${(probeErr as Error).message}`;
+    console.warn(`[ingest] Skipping run: ${reason}`);
+    return { profiles: 0, skipped: true, skipReason: reason, results: [] };
+  }
+
   const { data: profiles, error } = await sb
     .from('profiles')
     .select('id, email')

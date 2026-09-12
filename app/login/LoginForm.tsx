@@ -8,6 +8,32 @@ import { SignUpLegalConsent } from '@/app/_components/LegalConsentFields';
 
 type Mode = 'signin' | 'signup';
 
+/**
+ * When the shared free-tier Supabase Postgres is saturated, auth requests die
+ * with raw transport errors ("fetch failed" / gateway timeout / 5xx "Database
+ * error querying schema") which look like a bug to users. Map those to one
+ * friendly retry-later message; pass everything else (e.g. "Invalid login
+ * credentials") through untouched.
+ */
+function friendlyAuthError(e: unknown): string {
+  const msg = (e as Error)?.message ?? String(e);
+  const l = msg.toLowerCase();
+  const transient =
+    l.includes('timeout') ||
+    l.includes('timed out') ||
+    l.includes('fetch failed') ||
+    l.includes('failed to fetch') ||
+    l.includes('database error') ||
+    l.includes('unexpected_failure') ||
+    l.includes('service unavailable') ||
+    l.includes('bad gateway') ||
+    l.includes('gateway') ||
+    /\b(500|502|503|504)\b/.test(msg);
+  return transient
+    ? 'Hyred is temporarily unavailable — our database is overloaded. Please try again in a few minutes.'
+    : msg;
+}
+
 export function LoginForm({ next }: { next?: string }) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>('signin');
@@ -67,7 +93,7 @@ export function LoginForm({ next }: { next?: string }) {
         }
       }
     } catch (e) {
-      setError((e as Error).message);
+      setError(friendlyAuthError(e));
     } finally {
       setLoading(false);
     }
@@ -87,7 +113,7 @@ export function LoginForm({ next }: { next?: string }) {
       if (error) throw error;
       // Browser redirects to Google — no further action here.
     } catch (e) {
-      setError((e as Error).message);
+      setError(friendlyAuthError(e));
       setGoogleLoading(false);
     }
   }

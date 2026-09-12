@@ -22,6 +22,10 @@ async function main() {
     } else {
       console.log('Starting ingest for ALL onboarded profiles...');
       const summary = await runIngestForAllProfiles({ triggeredBy: 'cron' });
+      if (summary.skipped) {
+        console.warn(`Ingest skipped: ${summary.skipReason}`);
+        process.exit(0);
+      }
       console.log(
         `Scanned ${summary.profiles} profile(s):`,
         JSON.stringify(
